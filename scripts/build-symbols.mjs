@@ -73,8 +73,11 @@ async function nse() {
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const objs = toObjects(parseCsv(await res.text()));
+    // EQ is normal rolling settlement; BE/BZ are the trade-to-trade segment
+    // (compulsory delivery, no intraday) — still real, tradable NSE stocks,
+    // e.g. MTARTECH and BLISSGVS both list under BE.
     const out = objs
-      .filter((o) => pick(o, "SERIES") === "EQ" || !o.SERIES)
+      .filter((o) => ["EQ", "BE", "BZ"].includes(pick(o, "SERIES")) || !o.SERIES)
       .map((o) => ({
         s: pick(o, "SYMBOL"),
         n: pick(o, "NAME_OF_COMPANY", "COMPANY_NAME"),
