@@ -131,10 +131,13 @@ export default function PeriodPerformance({ closed, openingCapital, flows = [] }
                 <td className={`num ${totals.totalR >= 0 ? "pos" : "neg"}`}>
                   {rfmt(totals.totalR, 1)}
                 </td>
+                {/* Header has 11 columns: 5 filled above + these 5 + the bar
+                    column below. Getting this sum wrong shifts the whole
+                    footer row out of line with the body. */}
                 <td colSpan={5} className="num pp-dim">
                   {totals.green} of {rows.length} periods green
                 </td>
-                <td colSpan={2}></td>
+                <td></td>
               </tr>
             </tfoot>
           )}

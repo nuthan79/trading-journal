@@ -45,12 +45,16 @@ export default function Trades({ all, onEdit, onDelete, onNew }) {
     });
   }, [all, filter, q, sort]);
 
-  const th = (k, label, cls) => (
-    <th className={cls} style={{ cursor: "pointer" }}
-        onClick={() => setSort((s) => ({ k, dir: s.k === k ? -s.dir : -1 }))}>
-      {label}{sort.k === k ? (sort.dir === 1 ? " ↑" : " ↓") : ""}
-    </th>
-  );
+  const th = (k, label, cls) => {
+    const active = sort.k === k;
+    return (
+      <th className={cls} data-sortable
+          onClick={() => setSort((s) => ({ k, dir: s.k === k ? -s.dir : -1 }))}>
+        {label}
+        <span className="arrow">{active ? (sort.dir === 1 ? "↑" : "↓") : ""}</span>
+      </th>
+    );
+  };
 
   return (
     <div className="sec">

@@ -1,0 +1,143 @@
+/* ===================================================================
+   Tables — corrected alignment
+   ===================================================================
+
+   THE BUG THIS FIXES
+
+   The old rules were:
+
+       table.t th { text-align: left; ... }     specificity (0,1,2)
+       .num       { text-align: right; ... }    specificity (0,1,0)
+
+   `table.t th` counts one class plus two element selectors, so it beat
+   `.num` on every heading. The result: numeric column headings rendered
+   left-aligned above right-aligned figures — headings visibly drifting
+   left of their own data.
+
+   The fix is to state both defaults at the same depth, then override at
+   one level deeper so `.num` always wins on both th and td.
+
+   Add this to the end of globals.css and DELETE any earlier `table.t`
+   rules, or the old ones will keep fighting these.
+   =================================================================== */
+
+table.t {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+/* Shared defaults — th and td at identical specificity so neither can
+   silently outrank the other on alignment or padding. */
+table.t th,
+table.t td {
+  text-align: left;
+  padding: 9px 11px;
+  white-space: nowrap;
+  vertical-align: baseline;
+}
+
+/* Numeric columns. One level deeper than the defaults above, so this
+   wins cleanly on headings as well as cells. */
+table.t th.num,
+table.t td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* Tabular figures everywhere numbers appear, so digits sit in vertical
+   columns instead of jittering with proportional widths. */
+table.t td.num,
+table.t td .mono,
+table.t td.mono {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- headings ---------------------------------------------------- */
+
+table.t thead th {
+  font-family: 'Archivo', sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--ink3);
+  border-bottom: 1px solid var(--rule);
+
+  /* Header stays put while a long trade sheet scrolls */
+  position: sticky;
+  top: 0;
+  background: var(--card);
+  z-index: 2;
+}
+
+/* Sortable headings: reserve the arrow's width whether or not it shows,
+   so clicking to sort doesn't shift the column by a few pixels. */
+table.t thead th[data-sortable] {
+  cursor: pointer;
+  user-select: none;
+}
+table.t thead th[data-sortable]:hover { color: var(--ink2); }
+
+table.t thead th .arrow {
+  display: inline-block;
+  width: 11px;
+  text-align: center;
+  opacity: 0.6;
+  font-size: 9px;
+}
+
+/* ---- body -------------------------------------------------------- */
+
+table.t tbody td { border-bottom: 1px solid var(--rule); }
+table.t tbody tr:last-child td { border-bottom: 0; }
+table.t tbody tr:hover { background: #F3F6F4; }
+
+table.t tbody td.pos, table.t tbody td .pos { color: var(--long); }
+table.t tbody td.neg, table.t tbody td .neg { color: var(--short); }
+
+/* ---- footer ------------------------------------------------------ */
+
+table.t tfoot td {
+  border-top: 1px solid var(--ink3);
+  border-bottom: 0;
+  font-weight: 600;
+  background: var(--card);
+}
+
+/* ---- the scroll container ---------------------------------------- */
+
+/* Sticky headings need a scroll container that is not `overflow: hidden`
+   on the vertical axis, or the stickiness silently does nothing.
+
+   They also need a container that actually scrolls internally. Setting
+   overflow-x: auto forces overflow-y to compute as auto too (a box can't
+   mix `visible` with a non-`visible` axis — the spec coerces the visible
+   one), but without a bounded height that auto never triggers: content
+   height equals the box's own height, so there's nothing to scroll and
+   the page scrolls instead. On this page that's a second bug on top of
+   the first, because the sticky topbar (top: 0, above the table in the
+   DOM) then paints over the sticky header at that same offset. A capped
+   height makes this box the one that actually scrolls, which is what
+   sticky is positioned against. */
+.scroll {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 70vh;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* A table inside a bordered card shouldn't double up the card's own
+   padding — the cell padding is the gutter. */
+.card > table.t:first-child th:first-child,
+.card > table.t:first-child td:first-child { padding-left: 14px; }
+.card > table.t:first-child th:last-child,
+.card > table.t:first-child td:last-child  { padding-right: 14px; }
+
+/* ---- narrow screens ---------------------------------------------- */
+
+@media (max-width: 720px) {
+  table.t { font-size: 12.5px; }
+  table.t th, table.t td { padding: 8px 9px; }
+}

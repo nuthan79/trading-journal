@@ -137,13 +137,6 @@ select.in { font-family: 'Archivo', sans-serif; }
 .chip[data-on="1"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 .chip.rd[data-on="1"] { background: var(--short); border-color: var(--short); }
 
-table.t { width: 100%; border-collapse: collapse; font-size: 13px; }
-table.t th { text-align: left; font-size: 10px; font-weight: 600; letter-spacing: 0.11em;
-             text-transform: uppercase; color: var(--ink3); padding: 9px 10px;
-             border-bottom: 1px solid var(--rule); white-space: nowrap; }
-table.t td { padding: 9px 10px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
-table.t tr:last-child td { border-bottom: 0; }
-table.t tbody tr:hover { background: #F3F6F4; }
 .num { text-align: right; font-family: 'Spline Sans Mono', monospace; font-variant-numeric: tabular-nums; }
 .pos { color: var(--long); } .neg { color: var(--short); }
 .card.scroll { padding: 0; overflow-x: auto; }

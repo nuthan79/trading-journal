@@ -1,4 +1,5 @@
 import "./globals.css";
+import "./tables.css";
 
 export const metadata = {
   title: "Trading Journal",
