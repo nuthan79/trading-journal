@@ -5,6 +5,7 @@ import { Plus, Settings2, LayoutGrid, Table2, LineChart, BookOpen, LogOut } from
 import {
   listTrades, saveTrade as dbSaveTrade, deleteTrade as dbDeleteTrade,
   listDiary, saveDiary as dbSaveDiary, deleteDiary as dbDeleteDiary,
+  listFlows, markOpenPositions,
   getProfile, saveProfile as dbSaveProfile, signOut,
 } from "@/lib/db";
 import { derive, stats } from "@/lib/calc";
@@ -27,28 +28,45 @@ export default function Journal() {
   const [loading, setLoading] = useState(true);
   const [trades, setTrades] = useState([]);
   const [diary, setDiary] = useState([]);
+  const [flows, setFlows] = useState([]);
   const [profile, setProfile] = useState(null);
   const [editing, setEditing] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [flash, setFlash] = useState("");
 
+  const say = useCallback((m) => { setFlash(m); setTimeout(() => setFlash(""), 2600); }, []);
+
+  const mergeMarks = useCallback((rows) => {
+    if (!rows?.length) return;
+    setTrades((prev) => prev.map((t) => {
+      const hit = rows.find((r) => r.id === t.id);
+      return hit ? { ...t, last_price: hit.last_price, last_price_at: hit.last_price_at } : t;
+    }));
+  }, []);
+
   useEffect(() => {
     (async () => {
       try {
-        const [t, d, p] = await Promise.all([listTrades(), listDiary(), getProfile()]);
+        const [t, d, p, fl] = await Promise.all([listTrades(), listDiary(), getProfile(), listFlows()]);
         setTrades(t);
         setDiary(d);
         setProfile(p);
+        setFlows(fl);
+
+        const openNow = t.filter((x) => x.status === "open");
+        if (openNow.length) {
+          markOpenPositions(openNow).then(({ marked }) => {
+            if (marked.length) mergeMarks(marked);
+          });
+        }
       } catch (e) {
         setFlash(e.message || "Could not load the journal.");
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
-
-  const say = useCallback((m) => { setFlash(m); setTimeout(() => setFlash(""), 2600); }, []);
+  }, [mergeMarks]);
 
   const accountSize = profile?.account_size ?? 1000000;
 
@@ -175,13 +193,14 @@ export default function Journal() {
         {flash && <div className="warn" style={{ marginTop: 14 }}>{flash}</div>}
 
         {tab === "dash" && (
-          <Dashboard S={S} closed={closed} open={open} accountSize={accountSize} diary={diary} />
+          <Dashboard S={S} closed={closed} open={open} accountSize={accountSize} diary={diary}
+                     flows={flows} onMarked={mergeMarks} />
         )}
         {tab === "trades" && (
           <Trades all={all} onEdit={(t) => { setEditing(t); setShowForm(true); }} onDelete={removeTrade}
                   onNew={() => { setEditing(null); setShowForm(true); }} />
         )}
-        {tab === "perf" && <Performance closed={closed} S={S} />}
+        {tab === "perf" && <Performance closed={closed} S={S} accountSize={accountSize} flows={flows} />}
         {tab === "diary" && (
           <Diary diary={diary} trades={all} onSave={saveDiaryEntry} onDelete={removeDiaryEntry} say={say} />
         )}

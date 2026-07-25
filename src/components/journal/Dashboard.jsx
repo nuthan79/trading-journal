@@ -4,15 +4,12 @@ import { useMemo } from "react";
 import LedgerPlot from "./LedgerPlot";
 import Distribution from "./Distribution";
 import Tile from "./Tile";
-import { money, rfmt, pct } from "@/lib/format";
+import HeadlineNumbers from "./HeadlineNumbers";
+import OpenPositions from "./OpenPositions";
+import { rupee, rfmt, pct } from "@/lib/format";
 import { EXCHANGES } from "@/lib/constants";
 
-export default function Dashboard({ S, closed, open, accountSize, diary }) {
-  const openRisk = useMemo(
-    () => open.reduce((a, t) => a + (isFinite(t.riskAmt) ? t.riskAmt : 0), 0),
-    [open]
-  );
-
+export default function Dashboard({ S, closed, open, accountSize, diary, flows, onMarked }) {
   const pnlByExchange = useMemo(() => {
     const g = { NSE: 0, BSE: 0 };
     closed.forEach((t) => { if (isFinite(t.pnl)) g[t.exchange] += t.pnl; });
@@ -28,6 +25,8 @@ export default function Dashboard({ S, closed, open, accountSize, diary }) {
 
   return (
     <>
+      <div className="sec"><HeadlineNumbers closed={closed} openingCapital={accountSize} flows={flows} /></div>
+
       <div className="sec"><LedgerPlot rows={closed} /></div>
 
       <div className="sec grid4">
@@ -58,12 +57,12 @@ export default function Dashboard({ S, closed, open, accountSize, diary }) {
                   </div>
                 </div>
                 <div className={`mono ${pnlByExchange[ex] >= 0 ? "pos" : "neg"}`} style={{ fontSize: 19 }}>
-                  {money(pnlByExchange[ex])}
+                  {rupee(pnlByExchange[ex])}
                 </div>
               </div>
             ))}
             <div style={{ fontSize: 11.5, color: "var(--ink3)", lineHeight: 1.6 }}>
-              Account size {money(accountSize)}. Every performance number in this
+              Account size {rupee(accountSize)}. Every performance number in this
               journal is measured in R, which keeps setups comparable regardless of
               position size.
             </div>
@@ -72,43 +71,7 @@ export default function Dashboard({ S, closed, open, accountSize, diary }) {
       </div>
 
       <div className="sec">
-        <div className="sechead">
-          <div className="eyebrow">Open positions</div>
-          {open.length > 0 && (
-            <div className="mono" style={{ fontSize: 12, color: "var(--ink2)" }}>
-              at risk: {money(openRisk)}
-            </div>
-          )}
-        </div>
-        <div className="card scroll">
-          {open.length === 0 ? (
-            <div className="empty"><p style={{ margin: 0 }}>Nothing open. Flat is a position.</p></div>
-          ) : (
-            <table className="t">
-              <thead><tr>
-                <th>Symbol</th><th>Entered</th><th>Pattern</th>
-                <th className="num">Entry</th><th className="num">Stop</th>
-                <th className="num">Qty</th><th className="num">1R</th><th className="num">Risk %</th>
-              </tr></thead>
-              <tbody>
-                {open.map((t) => (
-                  <tr key={t.id}>
-                    <td><b className="disp">{t.symbol}</b>
-                      <span style={{ color: "var(--ink3)", fontSize: 11 }}> {t.exchange}</span></td>
-                    <td className="mono" style={{ fontSize: 12 }}>{t.entry_date}</td>
-                    <td style={{ color: "var(--ink2)", fontSize: 12 }}>{t.pattern || "—"}</td>
-                    <td className="num">{Number(t.entry_price).toFixed(2)}</td>
-                    <td className="num" style={{ color: "var(--short)" }}>{Number(t.stop_loss).toFixed(2)}</td>
-                    <td className="num">{t.quantity}</td>
-                    <td className="num">{money(t.riskAmt)}</td>
-                    <td className="num" style={{ color: t.riskPct > 2 ? "var(--short)" : "inherit" }}>
-                      {pct(t.riskPct, 2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+        <OpenPositions open={open} onMarked={onMarked} />
       </div>
 
       {lastEntry && (

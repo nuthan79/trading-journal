@@ -1,16 +1,26 @@
 /**
- * Display formatting. Pure functions, no I/O — INR only, everything else in
- * this journal is measured in R so there is never a second currency to format.
+ * Display formatting. Indian conventions, because "17.70 L" reads faster to an
+ * Indian trader than "₹1,770,000" does.
  */
 
-export const num = (v) => (v === "" || v === null || v === undefined ? NaN : Number(v));
+export function inr(v, { compact = true, decimals = 2 } = {}) {
+  if (v == null || !isFinite(v)) return "—";
+  const neg = v < 0;
+  const a = Math.abs(v);
+  let out;
 
-export function money(v) {
-  if (!isFinite(v)) return "—";
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency", currency: "INR", maximumFractionDigits: 0,
-  }).format(v);
+  if (!compact || a < 1e5) {
+    out = new Intl.NumberFormat("en-IN", { maximumFractionDigits: a < 100 ? 2 : 0 }).format(a);
+  } else if (a < 1e7) {
+    out = `${(a / 1e5).toFixed(decimals)} L`;
+  } else {
+    out = `${(a / 1e7).toFixed(decimals)} Cr`;
+  }
+  return (neg ? "−" : "") + out;
 }
+
+/** With the rupee sign — for money amounts standing on their own. */
+export const rupee = (v, opts) => (v == null || !isFinite(v) ? "—" : `₹${inr(v, opts)}`);
 
 export function rfmt(v, dp = 2) {
   if (!isFinite(v)) return "—";
@@ -22,8 +32,9 @@ export function pct(v, dp = 1) {
   return `${v.toFixed(dp)}%`;
 }
 
-export function band(v, edges, labels) {
-  if (!isFinite(v)) return "Not recorded";
-  for (let i = 0; i < edges.length; i++) if (v < edges[i]) return labels[i];
-  return labels[labels.length - 1];
+export function signedPct(v, dp = 1) {
+  if (!isFinite(v)) return "—";
+  return `${v >= 0 ? "+" : ""}${v.toFixed(dp)}%`;
 }
+
+export const days = (v) => (isFinite(v) ? `${Math.round(v)} d` : "—");

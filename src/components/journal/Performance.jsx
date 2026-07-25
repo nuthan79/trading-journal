@@ -2,8 +2,17 @@
 
 import { useMemo, useState } from "react";
 import { stats } from "@/lib/calc";
-import { num, band, rfmt, pct } from "@/lib/format";
+import { rfmt, pct } from "@/lib/format";
 import Tile from "./Tile";
+import PeriodPerformance from "./PeriodPerformance";
+
+const num = (v) => (v === "" || v === null || v === undefined ? NaN : Number(v));
+
+function band(v, edges, labels) {
+  if (!isFinite(v)) return "Not recorded";
+  for (let i = 0; i < edges.length; i++) if (v < edges[i]) return labels[i];
+  return labels[labels.length - 1];
+}
 
 const DIMENSIONS = [
   { id: "pattern", label: "Base pattern", get: (t) => t.pattern || "Not recorded" },
@@ -17,13 +26,12 @@ const DIMENSIONS = [
   { id: "rs", label: "RS rank",
     get: (t) => band(num(t.rs_rank), [70, 80, 90], ["Under 70", "70–79", "80–89", "90+"]) },
   { id: "exit", label: "Exit reason", get: (t) => t.exit_reason || "Not recorded" },
-  { id: "exchange", label: "Exchange", get: (t) => t.exchange },
   { id: "hold", label: "Holding period",
     get: (t) => band(t.heldDays, [5, 15, 40], ["Under 5 days", "5–15 days", "15–40 days", "Over 40 days"]) },
   { id: "month", label: "Month", get: (t) => (t.exit_date || t.entry_date || "").slice(0, 7) || "—" },
 ];
 
-export default function Performance({ closed, S }) {
+export default function Performance({ closed, S, accountSize, flows }) {
   const [dim, setDim] = useState("pattern");
   const D = DIMENSIONS.find((d) => d.id === dim);
 
@@ -70,6 +78,10 @@ export default function Performance({ closed, S }) {
               sub={`worst ${rfmt(S.worst)}`} />
         <Tile label="Max drawdown" value={`${S.maxDD.toFixed(1)}R`}
               sub={`longest losing run ${S.worstL}`} />
+      </div>
+
+      <div className="sec">
+        <PeriodPerformance closed={closed} openingCapital={accountSize} flows={flows} />
       </div>
 
       <div className="sec">

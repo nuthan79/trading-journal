@@ -179,3 +179,181 @@ export function monteCarlo(rMultiples, { trades = 60, riskPct = 0.75, runs = 500
     lossOdds: (rets.filter((x) => x < 0).length / runs) * 100,
   };
 }
+
+/* ==================================================================== */
+/*  Equity curve, headline numbers, and period breakdowns               */
+/* ==================================================================== */
+
+/** Closed trades in the order they were realised. */
+export function chronological(closed) {
+  return [...closed].sort(
+    (a, b) =>
+      new Date(a.exit_date || a.entry_date) - new Date(b.exit_date || b.entry_date)
+  );
+}
+
+/**
+ * Rupee equity curve.
+ *
+ * Starts from opening capital and applies each closed trade's net P&L in
+ * date order, injecting capital flows on their dates. This is what makes a
+ * percentage drawdown meaningful — an R drawdown tells you how many units of
+ * risk you gave back, a percentage drawdown tells you what it did to the
+ * account, and only the second one is what you actually have to sit through.
+ */
+export function equityCurve(closed, { openingCapital = 0, flows = [] } = {}) {
+  const rows = chronological(closed);
+  const fl = [...flows]
+    .map((f) => ({ d: new Date(f.flow_date), a: Number(f.amount) }))
+    .filter((f) => isFinite(f.a))
+    .sort((a, b) => a.d - b.d);
+
+  let equity = Number(openingCapital) || 0;
+  let fi = 0;
+  const points = [];
+
+  // Any capital that arrived before the first trade is part of the base
+  const firstDate = rows.length ? new Date(rows[0].exit_date || rows[0].entry_date) : new Date();
+  while (fi < fl.length && fl[fi].d <= firstDate) { equity += fl[fi].a; fi++; }
+
+  const base = equity;
+  let peak = equity, maxDD = 0, maxDDPct = 0;
+
+  for (const t of rows) {
+    const when = new Date(t.exit_date || t.entry_date);
+    while (fi < fl.length && fl[fi].d <= when) {
+      equity += fl[fi].a;
+      peak = Math.max(peak, equity);   // fresh capital isn't a recovery, but it does raise the bar
+      fi++;
+    }
+    if (isFinite(t.pnl)) equity += t.pnl;
+
+    peak = Math.max(peak, equity);
+    const dd = peak - equity;
+    if (dd > maxDD) maxDD = dd;
+    if (peak > 0 && dd / peak > maxDDPct) maxDDPct = dd / peak;
+
+    points.push({ id: t.id, date: when, equity, pnl: t.pnl, r: t.r });
+  }
+
+  while (fi < fl.length) { equity += fl[fi].a; fi++; }
+
+  return {
+    points, base, final: equity,
+    maxDD, maxDDPct: maxDDPct * 100,
+    netPnl: rows.reduce((s, t) => s + (isFinite(t.pnl) ? t.pnl : 0), 0),
+    charges: rows.reduce((s, t) => s + (Number(t.charges) || 0), 0),
+    capitalIn: fl.reduce((s, f) => s + (f.a > 0 ? f.a : 0), 0),
+  };
+}
+
+/* -------------------- Indian financial year helpers ------------------ */
+
+/** FY starts in April. Returns the calendar year the FY began in. */
+export function fyStartYear(date) {
+  const d = new Date(date);
+  return d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1;
+}
+
+/** Q1 = Apr–Jun, Q2 = Jul–Sep, Q3 = Oct–Dec, Q4 = Jan–Mar. */
+export function fyQuarter(date) {
+  const m = new Date(date).getMonth();
+  return Math.floor(((m + 9) % 12) / 3) + 1;
+}
+
+export const fyLabel = (date) => {
+  const y = fyStartYear(date);
+  return `FY${String(y + 1).slice(2)}`;
+};
+
+export const quarterLabel = (date) => `${fyLabel(date)} Q${fyQuarter(date)}`;
+
+export const monthLabel = (date) =>
+  new Date(date).toLocaleDateString("en-IN", { month: "short", year: "2-digit" });
+
+const realisedOn = (t) => t.exit_date || t.entry_date;
+
+/**
+ * Group closed trades into periods and compute both the R view and the rupee
+ * view for each. `openingCapital` lets each period report a return on the
+ * capital it actually started with rather than on today's balance.
+ */
+export function byPeriod(closed, grain, { openingCapital = 0, flows = [] } = {}) {
+  const label = grain === "month" ? monthLabel : grain === "quarter" ? quarterLabel : fyLabel;
+  const rows = chronological(closed);
+
+  const buckets = new Map();
+  for (const t of rows) {
+    const k = label(realisedOn(t));
+    if (!buckets.has(k)) buckets.set(k, { key: k, first: realisedOn(t), trades: [] });
+    buckets.get(k).trades.push(t);
+  }
+
+  // Walk periods in order, carrying equity forward so each % return is on the
+  // capital in play at the time
+  const fl = [...flows]
+    .map((f) => ({ d: new Date(f.flow_date), a: Number(f.amount) }))
+    .sort((a, b) => a.d - b.d);
+
+  let equity = Number(openingCapital) || 0;
+  let fi = 0;
+  const out = [];
+
+  for (const b of [...buckets.values()].sort((a, b) => new Date(a.first) - new Date(b.first))) {
+    const periodEnd = new Date(b.trades[b.trades.length - 1].exit_date || b.first);
+    while (fi < fl.length && fl[fi].d <= periodEnd) { equity += fl[fi].a; fi++; }
+
+    const opening = equity;
+    const s = stats(b.trades);
+    const pnl = b.trades.reduce((a, t) => a + (isFinite(t.pnl) ? t.pnl : 0), 0);
+    const value = b.trades.reduce((a, t) => a + (isFinite(t.exposure) ? t.exposure : 0), 0);
+    const risk = b.trades.reduce((a, t) => a + (isFinite(t.riskAmt) ? t.riskAmt : 0), 0);
+    equity += pnl;
+
+    out.push({
+      ...s,
+      key: b.key,
+      trades: b.trades.length,
+      pnl,
+      opening,
+      returnPct: opening > 0 ? (pnl / opening) * 100 : NaN,
+      avgValue: b.trades.length ? value / b.trades.length : NaN,
+      avgRisk: b.trades.length ? risk / b.trades.length : NaN,
+      avgRiskPct: opening > 0 && b.trades.length ? (risk / b.trades.length / opening) * 100 : NaN,
+    });
+  }
+  return out;
+}
+
+/** How many periods finished green — the "14/18 green months" figure. */
+export function greenCount(closed, grain, opts) {
+  const p = byPeriod(closed, grain, opts);
+  return { green: p.filter((x) => x.pnl > 0).length, total: p.length };
+}
+
+/**
+ * Everything the dashboard headline block shows, in one pass.
+ */
+export function headline(closed, { openingCapital = 0, flows = [] } = {}) {
+  const s = stats(closed);
+  if (!s.n) return { n: 0 };
+
+  const eq = equityCurve(closed, { openingCapital, flows });
+  const holds = closed.map((t) => t.heldDays).filter(isFinite);
+
+  // Return on the capital that was actually committed, not on today's balance
+  const capitalBase = eq.base + eq.capitalIn || Number(openingCapital) || NaN;
+
+  return {
+    ...s,
+    netPnl: eq.netPnl,
+    charges: eq.charges,
+    returnOnCapital: capitalBase > 0 ? (eq.netPnl / capitalBase) * 100 : NaN,
+    maxDDPct: eq.maxDDPct,
+    maxDDAmt: eq.maxDD,
+    avgHold: holds.length ? holds.reduce((a, b) => a + b, 0) / holds.length : NaN,
+    months: greenCount(closed, "month", { openingCapital, flows }),
+    quarters: greenCount(closed, "quarter", { openingCapital, flows }),
+    equity: eq,
+  };
+}

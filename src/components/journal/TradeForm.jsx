@@ -4,8 +4,10 @@ import { useState } from "react";
 import { X, Check } from "lucide-react";
 import SymbolSearch from "@/components/SymbolSearch";
 import { derive } from "@/lib/calc";
-import { num, money, pct } from "@/lib/format";
+import { rupee, pct } from "@/lib/format";
 import { PATTERNS, EXIT_REASONS, MISTAKES, STAGES } from "@/lib/constants";
+
+const num = (v) => (v === "" || v === null || v === undefined ? NaN : Number(v));
 
 const blank = () => ({
   status: "open", symbol: "", company: "", exchange: "NSE", side: "long",
@@ -153,11 +155,11 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, onSave
             <div className="row"><span>Risk per share</span>
               <b>{isFinite(d.riskPerShare) ? d.riskPerShare.toFixed(2) : "—"}</b></div>
             <div className="row"><span>1R — total risk</span>
-              <b>{money(d.riskAmt)}</b></div>
+              <b>{rupee(d.riskAmt)}</b></div>
             <div className="row"><span>Risk as % of account</span>
               <b style={{ color: overRisk ? "var(--short)" : "inherit" }}>{pct(d.riskPct, 2)}</b></div>
             <div className="row"><span>Position value / exposure</span>
-              <b>{money(d.exposure)}</b></div>
+              <b>{rupee(d.exposure)}</b></div>
             {overRisk && (
               <div className="warn" style={{ marginTop: 9 }}>
                 This position risks more than 2% of the account. Reduce the quantity or tighten the stop.
@@ -228,7 +230,7 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, onSave
                 {isFinite(d.r) && (
                   <div className="readout" style={{ marginTop: 12 }}>
                     <div className="row"><span>Realised P&amp;L (net of charges)</span>
-                      <b className={d.pnl >= 0 ? "pos" : "neg"}>{money(d.pnl)}</b></div>
+                      <b className={d.pnl >= 0 ? "pos" : "neg"}>{rupee(d.pnl)}</b></div>
                     <div className="row"><span>Outcome in R</span>
                       <b className={d.r >= 0 ? "pos" : "neg"} style={{ fontSize: 15 }}>{d.r >= 0 ? "+" : ""}{d.r.toFixed(2)}R</b></div>
                     {isFinite(d.heldDays) && (

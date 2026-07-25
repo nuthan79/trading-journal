@@ -39,30 +39,57 @@ export async function deleteTrade(id) {
   if (error) throw error;
 }
 
-/** Refresh last_price on open positions from the quote route. */
+/**
+ * Refresh last_price on the open positions.
+ *
+ * Uses .update() per row rather than .upsert(). An upsert sends Postgres
+ * INSERT ... ON CONFLICT DO UPDATE, and the INSERT half must satisfy every
+ * NOT NULL column — so a partial payload of {id, last_price} fails the
+ * not-null check before the conflict clause is ever reached.
+ *
+ * Returns the rows that were actually marked, so the caller can merge them
+ * into state without a full refetch.
+ */
 export async function markOpenPositions(openTrades) {
-  if (!openTrades.length) return [];
+  if (!openTrades?.length) return { marked: [], error: null };
+
+  const key = (e, s) => `${e}:${s}`;
   const q = openTrades.map((t) => `${t.symbol}:${t.exchange}`).join(",");
-  const res = await fetch(`/api/quotes?s=${encodeURIComponent(q)}`);
-  const { quotes = [] } = await res.json();
-  if (!quotes.length) return [];
 
-  const byKey = new Map(quotes.map((x) => [`${x.exchange}:${x.symbol}`, x]));
-  const updates = openTrades
-    .map((t) => {
-      const hit = byKey.get(`${t.exchange}:${t.symbol}`);
-      return hit?.price ? { id: t.id, last_price: hit.price, last_price_at: hit.at } : null;
-    })
-    .filter(Boolean);
+  let quotes = [];
+  try {
+    const res = await fetch(`/api/quotes?s=${encodeURIComponent(q)}`);
+    const json = await res.json();
+    quotes = json.quotes || [];
+    if (!quotes.length) {
+      return { marked: [], error: json.error || "No prices returned" };
+    }
+  } catch (err) {
+    return { marked: [], error: err.message };
+  }
 
-  if (!updates.length) return [];
-  const user_id = await uid();
-  const { data, error } = await supabase
-    .from("trades")
-    .upsert(updates.map((u) => ({ ...u, user_id })), { onConflict: "id" })
-    .select("id,last_price,last_price_at");
-  if (error) throw error;
-  return data;
+  const byKey = new Map(quotes.map((x) => [key(x.exchange, x.symbol), x]));
+  const marked = [];
+
+  // Sequential updates: a handful of open positions, and this keeps one bad
+  // row from failing the whole batch.
+  for (const t of openTrades) {
+    const hit = byKey.get(key(t.exchange, t.symbol));
+    if (!hit?.price) continue;
+
+    const patch = { last_price: hit.price, last_price_at: hit.at };
+    const { data, error } = await supabase
+      .from("trades")
+      .update(patch)
+      .eq("id", t.id)
+      .select("id,last_price,last_price_at")
+      .single();
+
+    if (!error && data) marked.push(data);
+    else if (error) console.warn("[mark]", t.symbol, error.message);
+  }
+
+  return { marked, error: marked.length ? null : "Nothing could be marked" };
 }
 
 /* -------------------------------- diary ---------------------------- */

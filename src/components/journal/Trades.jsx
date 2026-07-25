@@ -2,7 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { Plus, Pencil, Trash2, Download } from "lucide-react";
-import { num, money, rfmt, pct } from "@/lib/format";
+import { rupee, rfmt, pct } from "@/lib/format";
+
+const num = (v) => (v === "" || v === null || v === undefined ? NaN : Number(v));
 
 function exportCsv(all) {
   const cols = ["symbol", "exchange", "side", "entry_date", "entry_price", "quantity", "stop_loss",
@@ -120,7 +122,7 @@ export default function Trades({ all, onEdit, onDelete, onNew }) {
                   <td className="num">{t.quantity}</td>
                   <td className="num" style={{ fontSize: 12 }}>{pct(t.riskPct, 2)}</td>
                   <td className={`num ${isFinite(t.pnl) ? (t.pnl >= 0 ? "pos" : "neg") : ""}`}>
-                    {isFinite(t.pnl) ? money(t.pnl) : "—"}</td>
+                    {isFinite(t.pnl) ? rupee(t.pnl) : "—"}</td>
                   <td className={`num ${isFinite(t.r) ? (t.r >= 0 ? "pos" : "neg") : ""}`}
                       style={{ fontWeight: 500 }}>{isFinite(t.r) ? rfmt(t.r) : "—"}</td>
                   <td style={{ whiteSpace: "nowrap" }}>
