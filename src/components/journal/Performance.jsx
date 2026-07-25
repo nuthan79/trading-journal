@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { dimensionRows, DIMENSIONS, maxAbsTotalR, isThin } from "@/lib/edge";
+import { dimensionRows, DIMENSIONS, maxAbsTotalR, isThin, NOT_RECORDED } from "@/lib/edge";
 import { mistakeCost, outcomeTagCounts } from "@/lib/analysis";
 import { isExecutionError } from "@/lib/constants";
 import { rupee, rfmt, pct } from "@/lib/format";
@@ -78,7 +78,13 @@ export default function Performance({ closed, S, accountSize, flows }) {
                 const wpx = (Math.abs(g.totalR) / maxAbs) * 100;
                 return (
                   <tr key={g.key} style={{ opacity: isThin(g) ? 0.55 : 1 }}>
-                    <td><b style={{ fontWeight: 500 }}>{g.key}</b></td>
+                    <td>
+                      {g.key === NOT_RECORDED ? (
+                        <span style={{ fontStyle: "italic", color: "var(--ink3)" }}>{g.key}</span>
+                      ) : (
+                        <b style={{ fontWeight: 500 }}>{g.key}</b>
+                      )}
+                    </td>
                     <td className="num">{g.n}</td>
                     <td className="num">{pct(g.winRate, 0)}</td>
                     <td className="num pos">{rfmt(g.avgWin)}</td>
@@ -103,7 +109,7 @@ export default function Performance({ closed, S, accountSize, flows }) {
         </div>
         {groups.some((g) => isThin(g)) && (
           <div className="hint" style={{ marginTop: 8 }}>
-            Faded rows have fewer than 10 trades — noise, not signal. Read them as questions to watch, not conclusions.
+            Faded rows have fewer than 15 trades — noise, not signal. Read them as questions to watch, not conclusions.
           </div>
         )}
       </div>
