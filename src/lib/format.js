@@ -9,8 +9,11 @@ export function inr(v, { compact = true, decimals = 2 } = {}) {
   const a = Math.abs(v);
   let out;
 
-  if (!compact || a < 1e5) {
+  if (!compact || a < 1e3) {
     out = new Intl.NumberFormat("en-IN", { maximumFractionDigits: a < 100 ? 2 : 0 }).format(a);
+  } else if (a < 1e5) {
+    // thousands get a k so a row of trade P&Ls stays scannable at a glance
+    out = `${(a / 1e3).toFixed(1)}k`;
   } else if (a < 1e7) {
     out = `${(a / 1e5).toFixed(decimals)} L`;
   } else {

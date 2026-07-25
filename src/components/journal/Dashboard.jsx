@@ -4,7 +4,10 @@ import { useMemo } from "react";
 import LedgerPlot from "./LedgerPlot";
 import Distribution from "./Distribution";
 import Tile from "./Tile";
+import Summary from "./Summary";
 import HeadlineNumbers from "./HeadlineNumbers";
+import MonthlyReturns from "./MonthlyReturns";
+import ProfitConcentration from "./ProfitConcentration";
 import OpenPositions from "./OpenPositions";
 import { rupee, rfmt, pct } from "@/lib/format";
 import { EXCHANGES } from "@/lib/constants";
@@ -25,9 +28,19 @@ export default function Dashboard({ S, closed, open, accountSize, diary, flows, 
 
   return (
     <>
+      <div className="sec"><Summary closed={closed} openingCapital={accountSize} flows={flows} /></div>
+
       <div className="sec"><HeadlineNumbers closed={closed} openingCapital={accountSize} flows={flows} /></div>
 
       <div className="sec"><LedgerPlot rows={closed} /></div>
+
+      <div className="sec"><MonthlyReturns closed={closed} /></div>
+
+      <div className="sec"><ProfitConcentration closed={closed} /></div>
+
+      <div className="sec">
+        <OpenPositions open={open} onMarked={onMarked} />
+      </div>
 
       <div className="sec grid4">
         <Tile label="Expectancy" value={S.n ? rfmt(S.expectancy) : "—"}
@@ -68,10 +81,6 @@ export default function Dashboard({ S, closed, open, accountSize, diary, flows, 
             </div>
           </div>
         </div>
-      </div>
-
-      <div className="sec">
-        <OpenPositions open={open} onMarked={onMarked} />
       </div>
 
       {lastEntry && (
