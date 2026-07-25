@@ -33,9 +33,27 @@ export function derivePosition(t, accountSize) {
   const initialStop = n(t.initial_stop_loss ?? t.stop_loss);    // defines 1R
   const currentStop = n(t.stop_loss ?? t.initial_stop_loss);    // for live distance
 
-  const exits = [...(t.exits || [])].sort(
-    (a, b) => new Date(a.exit_date) - new Date(b.exit_date)
-  );
+  // Exit tranches, oldest first.
+  //
+  // If the trade_exits table doesn't exist yet — this file can ship ahead of
+  // its migration — fall back to the single exit recorded on the trade row
+  // itself. Without this a closed trade would show no tranches, therefore
+  // nothing sold, therefore "open" with no R, silently, for every closed
+  // trade in the journal.
+  const rawExits = t.exits;
+  const exits =
+    Array.isArray(rawExits) && rawExits.length
+      ? [...rawExits].sort((a, b) => new Date(a.exit_date) - new Date(b.exit_date))
+      : t.status === "closed" && n(t.exit_price) > 0
+      ? [{
+          exit_date: t.exit_date,
+          quantity: qty,
+          price: n(t.exit_price),
+          reason: t.exit_reason,
+          charges: 0,          // already counted in t.charges below
+          synthetic: true,     // came from the legacy columns, not a tranche row
+        }]
+      : [];
 
   /* ---- risk, fixed at entry ---------------------------------------- */
   const riskPerShare = Math.abs(entry - initialStop);
@@ -87,11 +105,17 @@ export function derivePosition(t, accountSize) {
     riskAmt > 0 && isFinite(unrealisedPnl) ? unrealisedPnl / riskAmt : NaN;
 
   /* ---- combined ---------------------------------------------------- */
+  // Careful with the zero case: `0 || NaN` evaluates to NaN, so a partial
+  // position whose banked profit exactly offsets its open loss would report
+  // no result at all. Decide on whether anything is known, not on truthiness.
+  const knowsRealised = isFinite(realisedPnl);
+  const knowsUnrealised = isFinite(unrealisedPnl);
   const pnl =
     status === "closed"
       ? realisedPnl
-      : (isFinite(realisedPnl) ? realisedPnl : 0) +
-        (isFinite(unrealisedPnl) ? unrealisedPnl : 0) || NaN;
+      : knowsRealised || knowsUnrealised
+      ? (knowsRealised ? realisedPnl : 0) + (knowsUnrealised ? unrealisedPnl : 0)
+      : NaN;
   const r = riskAmt > 0 && isFinite(pnl) ? pnl / riskAmt : NaN;
 
   /* ---- risk still live --------------------------------------------- */

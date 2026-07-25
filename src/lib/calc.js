@@ -274,6 +274,24 @@ export const monthLabel = (date) =>
 const realisedOn = (t) => t.exit_date || t.entry_date;
 
 /**
+ * The calendar boundary a period actually begins on — not the date of its
+ * first trade. Capital arriving on the 3rd was available to a month whose
+ * first trade closed on the 20th, and pretending otherwise distorts the
+ * return of every month you funded.
+ *
+ * FY quarters share calendar-quarter boundaries (Apr-Jun, Jul-Sep, Oct-Dec,
+ * Jan-Mar); only the labelling differs, so flooring the month to a multiple
+ * of three is correct for both.
+ */
+function periodStartOf(dateStr, grain) {
+  const d = new Date(dateStr);
+  const y = d.getFullYear(), m = d.getMonth();
+  if (grain === "month") return new Date(y, m, 1);
+  if (grain === "quarter") return new Date(y, Math.floor(m / 3) * 3, 1);
+  return new Date(fyStartYear(d), 3, 1);          // financial year: 1 April
+}
+
+/**
  * Group closed trades into periods and compute both the R view and the rupee
  * view for each. `openingCapital` lets each period report a return on the
  * capital it actually started with rather than on today's balance.
@@ -300,10 +318,20 @@ export function byPeriod(closed, grain, { openingCapital = 0, flows = [] } = {})
   const out = [];
 
   for (const b of [...buckets.values()].sort((a, b) => new Date(a.first) - new Date(b.first))) {
+    const periodStart = periodStartOf(b.first, grain);
     const periodEnd = new Date(b.trades[b.trades.length - 1].exit_date || b.first);
-    while (fi < fl.length && fl[fi].d <= periodEnd) { equity += fl[fi].a; fi++; }
+
+    // Capital that arrived BEFORE this period is part of what the period had
+    // to work with. Capital that arrives DURING it is not — counting it in the
+    // opening balance would understate the return of every month you topped
+    // the account up in.
+    while (fi < fl.length && fl[fi].d < periodStart) { equity += fl[fi].a; fi++; }
 
     const opening = equity;
+
+    let inflow = 0;
+    while (fi < fl.length && fl[fi].d <= periodEnd) { inflow += fl[fi].a; fi++; }
+    equity += inflow;
     const s = stats(b.trades);
     const pnl = b.trades.reduce((a, t) => a + (isFinite(t.pnl) ? t.pnl : 0), 0);
     const value = b.trades.reduce((a, t) => a + (isFinite(t.exposure) ? t.exposure : 0), 0);
@@ -316,6 +344,7 @@ export function byPeriod(closed, grain, { openingCapital = 0, flows = [] } = {})
       trades: b.trades.length,
       pnl,
       opening,
+      capitalIn: inflow,
       returnPct: opening > 0 ? (pnl / opening) * 100 : NaN,
       avgValue: b.trades.length ? value / b.trades.length : NaN,
       avgRisk: b.trades.length ? risk / b.trades.length : NaN,
