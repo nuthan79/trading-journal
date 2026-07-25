@@ -88,19 +88,19 @@ export default function HeadlineNumbers({ closed, openingCapital, flows = [] }) 
         </div>
       )}
 
-      <style jsx>{`
+      <style jsx global>{`
         .hn-grid {
           display: grid;
           grid-template-columns: repeat(9, minmax(0, 1fr));
-          border: 1px solid var(--rule);
+          border: 1px solid rgba(124, 139, 135, 0.45);
           border-radius: 3px;
-          background: var(--card);
+          background: transparent;
           overflow: hidden;
         }
         .hn-cell {
           padding: 13px 12px 12px;
-          border-right: 1px solid var(--rule);
-          border-bottom: 1px solid var(--rule);
+          border-right: 1px solid rgba(124, 139, 135, 0.45);
+          border-bottom: 1px solid rgba(124, 139, 135, 0.45);
           min-width: 0;
         }
         /* Right edge of each row, and the whole last row */
@@ -146,15 +146,15 @@ export default function HeadlineNumbers({ closed, openingCapital, flows = [] }) 
         }
 
         @media (max-width: 1120px) { .hn-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-          .hn-cell:nth-child(9n) { border-right: 1px solid var(--rule); }
+          .hn-cell:nth-child(9n) { border-right: 1px solid rgba(124, 139, 135, 0.45); }
           .hn-cell:nth-child(6n) { border-right: 0; }
-          .hn-cell:nth-last-child(-n + 9) { border-bottom: 1px solid var(--rule); }
+          .hn-cell:nth-last-child(-n + 9) { border-bottom: 1px solid rgba(124, 139, 135, 0.45); }
           .hn-cell:nth-last-child(-n + 6) { border-bottom: 0; }
         }
         @media (max-width: 720px) { .hn-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-          .hn-cell:nth-child(6n) { border-right: 1px solid var(--rule); }
+          .hn-cell:nth-child(6n) { border-right: 1px solid rgba(124, 139, 135, 0.45); }
           .hn-cell:nth-child(3n) { border-right: 0; }
-          .hn-cell:nth-last-child(-n + 6) { border-bottom: 1px solid var(--rule); }
+          .hn-cell:nth-last-child(-n + 6) { border-bottom: 1px solid rgba(124, 139, 135, 0.45); }
           .hn-cell:nth-last-child(-n + 3) { border-bottom: 0; }
           .hn-v { font-size: 17px; }
         }
