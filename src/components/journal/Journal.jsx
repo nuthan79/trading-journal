@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, Settings2, LayoutGrid, Table2, LineChart, BookOpen, LogOut } from "lucide-react";
+import { Plus, Settings2, LayoutGrid, Table2, LineChart, BookOpen, ClipboardList, LogOut } from "lucide-react";
 import {
   listTrades, saveTrade as dbSaveTrade, deleteTrade as dbDeleteTrade,
   listDiary, saveDiary as dbSaveDiary, deleteDiary as dbDeleteDiary,
@@ -13,6 +13,7 @@ import Dashboard from "./Dashboard";
 import Trades from "./Trades";
 import Performance from "./Performance";
 import Diary from "./Diary";
+import Review from "./Review";
 import TradeForm from "./TradeForm";
 import SettingsSheet from "./SettingsSheet";
 
@@ -21,6 +22,7 @@ const TABS = [
   { id: "trades", label: "Trades", icon: Table2 },
   { id: "perf", label: "Performance", icon: LineChart },
   { id: "diary", label: "Diary", icon: BookOpen },
+  { id: "review", label: "Review", icon: ClipboardList },
 ];
 
 export default function Journal() {
@@ -204,6 +206,7 @@ export default function Journal() {
         {tab === "diary" && (
           <Diary diary={diary} trades={all} onSave={saveDiaryEntry} onDelete={removeDiaryEntry} say={say} />
         )}
+        {tab === "review" && <Review closed={closed} stats={S} />}
       </div>
 
       {showForm && (
