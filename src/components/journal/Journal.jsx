@@ -8,7 +8,8 @@ import {
   listFlows, markOpenPositions,
   getProfile, saveProfile as dbSaveProfile, signOut,
 } from "@/lib/db";
-import { derive, stats } from "@/lib/calc";
+import { stats } from "@/lib/calc";
+import { derivePosition } from "@/lib/positions";
 import Dashboard from "./Dashboard";
 import Trades from "./Trades";
 import Performance from "./Performance";
@@ -16,6 +17,20 @@ import Diary from "./Diary";
 import Review from "./Review";
 import TradeForm from "./TradeForm";
 import SettingsSheet from "./SettingsSheet";
+
+/**
+ * Our schema stores one exit per trade (exit_price/exit_date/quantity), not
+ * a tranche list. derivePosition() reads a t.exits array, so this builds the
+ * single-exit equivalent for a closed trade. Charges live on t.charges alone
+ * here (not per-exit), so the synthesized exit omits charges — derivePosition
+ * would otherwise add it a second time via its own entry-side charges field.
+ */
+function withExits(t) {
+  if (t.status === "closed" && t.exit_date) {
+    return { ...t, exits: [{ exit_date: t.exit_date, quantity: t.quantity, price: t.exit_price }] };
+  }
+  return { ...t, exits: [] };
+}
 
 const TABS = [
   { id: "dash", label: "Dashboard", icon: LayoutGrid },
@@ -73,7 +88,11 @@ export default function Journal() {
   const accountSize = profile?.account_size ?? 1000000;
 
   const all = useMemo(
-    () => trades.map((t) => ({ ...t, ...derive(t, accountSize) })),
+    () => trades.map((t) => ({
+      ...t,
+      ...derivePosition(withExits(t), accountSize),
+      status: t.status, // authoritative from the DB; derivePosition recomputes it from exits
+    })),
     [trades, accountSize]
   );
   const closed = useMemo(

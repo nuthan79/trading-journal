@@ -439,6 +439,62 @@ function tradingCadence(closed) {
 /*  8. Data completeness — can't analyse what isn't recorded            */
 /* ==================================================================== */
 
+/* ==================================================================== */
+/*  Mistake cost — execution errors only                                */
+/* ==================================================================== */
+
+/**
+ * What each recurring execution error has cost.
+ *
+ * Outcome tags like "Setup failed" are deliberately excluded. A valid setup
+ * that didn't work is the cost of doing business, not a behaviour to fix, and
+ * in a breakout system it is the single largest category of losses — leaving it
+ * in would put it top of the table every time and bury the things you can
+ * actually change.
+ */
+export function mistakeCost(closed, isExecutionError) {
+  const m = new Map();
+  for (const t of closed) {
+    for (const tag of t.mistakes || []) {
+      if (isExecutionError && !isExecutionError(tag)) continue;
+      if (!m.has(tag)) m.set(tag, []);
+      m.get(tag).push(t);
+    }
+  }
+
+  const rows = [...m.entries()]
+    .map(([tag, trades]) => {
+      const rs = trades.map((t) => t.r).filter(isFinite);
+      const total = rs.reduce((a, b) => a + b, 0);
+      return {
+        tag,
+        count: trades.length,
+        totalR: +total.toFixed(2),
+        avgR: rs.length ? +(total / rs.length).toFixed(2) : null,
+        winRate: rs.length
+          ? +((rs.filter((x) => x > 0).length / rs.length) * 100).toFixed(0)
+          : null,
+      };
+    })
+    .sort((a, b) => a.totalR - b.totalR);
+
+  return rows;
+}
+
+/** Separate count of trades that simply didn't work, kept out of the above. */
+export function outcomeTagCounts(closed, isExecutionError) {
+  const m = new Map();
+  for (const t of closed) {
+    for (const tag of t.mistakes || []) {
+      if (isExecutionError && isExecutionError(tag)) continue;
+      m.set(tag, (m.get(tag) || 0) + 1);
+    }
+  }
+  return [...m.entries()].map(([tag, count]) => ({
+    tag, count, share: closed.length ? +((count / closed.length) * 100).toFixed(0) : null,
+  }));
+}
+
 function dataQuality(closed) {
   if (closed.length < 10) return null;
   const pc = (f) => +((closed.filter(f).length / closed.length) * 100).toFixed(0);

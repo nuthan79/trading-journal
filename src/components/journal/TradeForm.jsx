@@ -3,11 +3,19 @@
 import { useState } from "react";
 import { X, Check } from "lucide-react";
 import SymbolSearch from "@/components/SymbolSearch";
-import { derive } from "@/lib/calc";
+import { derivePosition } from "@/lib/positions";
 import { rupee, pct } from "@/lib/format";
-import { PATTERNS, EXIT_REASONS, MISTAKES, STAGES } from "@/lib/constants";
+import { PATTERNS, EXIT_REASONS, MISTAKES, STAGES, slBand } from "@/lib/constants";
 
 const num = (v) => (v === "" || v === null || v === undefined ? NaN : Number(v));
+
+/** See Journal.jsx's withExits — same reasoning, applied to live form state. */
+function withExits(t) {
+  if (t.status === "closed" && t.exit_date && t.exit_price !== "") {
+    return { ...t, exits: [{ exit_date: t.exit_date, quantity: t.quantity, price: t.exit_price }] };
+  }
+  return { ...t, exits: [] };
+}
 
 const blank = () => ({
   status: "open", symbol: "", company: "", exchange: "NSE", side: "long",
@@ -68,8 +76,9 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, onSave
   const [riskPct, setRiskPct] = useState(defaultRiskPct ?? 0.75);
   const [saving, setSaving] = useState(false);
   const set = (k) => (e) => setT((p) => ({ ...p, [k]: e.target.value }));
-  const d = derive(t, accountSize);
+  const d = derivePosition(withExits(t), accountSize);
   const editing = !!initial;
+  const slBandLabel = slBand(d.slPct);
 
   const toggleMistake = (m) =>
     setT((p) => ({ ...p, mistakes: p.mistakes.includes(m)
@@ -137,7 +146,10 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, onSave
               <label className="f"><span>Entry price</span>
                 <input className="in" inputMode="decimal" value={t.entry_price} onChange={set("entry_price")} /></label>
               <label className="f"><span>Stop loss</span>
-                <input className="in" inputMode="decimal" value={t.stop_loss} onChange={set("stop_loss")} /></label>
+                <input className="in" inputMode="decimal" value={t.stop_loss} onChange={set("stop_loss")} />
+                <div className="hint" style={{ color: slBandLabel === "wide" || slBandLabel === "very wide" ? "var(--brass)" : undefined }}>
+                  {isFinite(d.slPct) ? `${d.slPct.toFixed(1)}% from entry — ${slBandLabel}` : "How far the stop sits from entry"}
+                </div></label>
               <label className="f"><span>Quantity</span>
                 <input className="in" inputMode="numeric" value={t.quantity} onChange={set("quantity")} /></label>
             </div>

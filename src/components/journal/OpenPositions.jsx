@@ -87,6 +87,7 @@ export default function OpenPositions({ open, onMarked, showRefresh = true }) {
               <th className="num">Last</th>
               <th className="num">Change</th>
               <th className="num">Stop</th>
+              <th className="num">SL %</th>
               <th className="num">To stop</th>
               <th className="num">Qty</th>
               <th className="num">Value</th>
@@ -121,9 +122,16 @@ export default function OpenPositions({ open, onMarked, showRefresh = true }) {
                     {live ? signedPct(fromEntry) : "—"}
                   </td>
                   <td className="num neg">{stop.toFixed(2)}</td>
-                  <td className="num" style={{ color: breached ? "var(--short)" : undefined,
-                                               fontWeight: breached ? 600 : 400 }}>
-                    {live ? (breached ? "breached" : pct(Math.abs(toStop))) : "—"}
+                  <td className="num op-dim">{isFinite(t.slPct) ? pct(t.slPct, 1) : "—"}</td>
+                  <td className="num"
+                      style={{ color: breached ? "var(--short)" : t.stopAboveEntry ? "var(--brass)" : undefined,
+                               fontWeight: breached || t.stopAboveEntry ? 600 : 400 }}
+                      title={t.stopAboveEntry ? "Stop is above entry — this position can no longer lose" : undefined}>
+                    {live
+                      ? breached ? "breached"
+                        : t.stopAboveEntry ? `locked ${pct(Math.abs(toStop))}`
+                        : pct(Math.abs(toStop))
+                      : "—"}
                   </td>
                   <td className="num">{t.quantity}</td>
                   <td className="num">{rupee(t.exposure)}</td>

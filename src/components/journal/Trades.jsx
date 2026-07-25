@@ -92,6 +92,7 @@ export default function Trades({ all, onEdit, onDelete, onNew }) {
               {th("rs_rank", "RS", "num")}
               {th("entry_price", "Entry", "num")}
               {th("stop_loss", "Stop", "num")}
+              {th("slPct", "SL %", "num")}
               {th("quantity", "Qty", "num")}
               {th("riskPct", "Risk", "num")}
               {th("pnl", "P&L", "num")}
@@ -123,6 +124,7 @@ export default function Trades({ all, onEdit, onDelete, onNew }) {
                   <td className="num" style={{ fontSize: 12 }}>{t.rs_rank || "—"}</td>
                   <td className="num">{Number(t.entry_price).toFixed(2)}</td>
                   <td className="num">{Number(t.stop_loss).toFixed(2)}</td>
+                  <td className="num" style={{ fontSize: 12 }}>{isFinite(t.slPct) ? pct(t.slPct, 1) : "—"}</td>
                   <td className="num">{t.quantity}</td>
                   <td className="num" style={{ fontSize: 12 }}>{pct(t.riskPct, 2)}</td>
                   <td className={`num ${isFinite(t.pnl) ? (t.pnl >= 0 ? "pos" : "neg") : ""}`}>
