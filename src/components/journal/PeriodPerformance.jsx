@@ -24,7 +24,7 @@ const GRAINS = [
 ];
 
 export default function PeriodPerformance({ closed, openingCapital, flows = [] }) {
-  const [grain, setGrain] = useState("quarter");
+  const [grain, setGrain] = useState("month");
 
   const rows = useMemo(
     () => byPeriod(closed, grain, { openingCapital, flows }),
