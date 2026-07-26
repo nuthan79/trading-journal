@@ -77,17 +77,29 @@ export default function Summary({ closed, openingCapital, flows = [] }) {
           font-size: 17px;
           line-height: 1.62;
           color: var(--ink);
-          max-width: 78ch;
+          text-align: left;
+          /* A px measure, not ch. The ch unit is the width of the current
+             font's "0" — unstable in a variable font like Archivo, and it
+             changes again once the webfont loads, so the paragraph reflows. */
+          max-width: 660px;
+          /* Keeps the last line from orphaning a word or two */
+          text-wrap: pretty;
         }
         @media (max-width: 720px) { .sum-body { font-size: 15px; } }
       `}</style>
 
       <style jsx global>{`
+        /* Figures stay in the body font.
+           Setting them in Spline Sans Mono looked deliberate in isolation but
+           read badly inline: a mono face at the same font-size carries a
+           larger x-height and a wider advance, so each figure sat heavier
+           than the words around it and the spacing looked uneven. Archivo's
+           own tabular numerals give aligned digits without breaking the
+           line's rhythm. */
         .sum-fig {
-          font-family: 'Spline Sans Mono', monospace;
-          font-weight: 600;
+          font-weight: 700;
           font-variant-numeric: tabular-nums;
-          letter-spacing: -0.01em;
+          white-space: nowrap;
         }
         .sum-fig.up   { color: #4A5AA0; }
         .sum-fig.down { color: var(--short); }

@@ -157,6 +157,10 @@ export function bestWorst(closed, limit = 8) {
     r: t.r,
     pnl: t.pnl,
     pattern: t.pattern,
+    // Written at entry, before the outcome was known. Reading it back on your
+    // largest winner and largest loser is the most useful minute of any review.
+    thesis: t.thesis || null,
+    thesisWrittenAt: t.thesis_written_at || null,
   });
 
   return {

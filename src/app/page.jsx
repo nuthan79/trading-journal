@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { supabase } from "@/lib/db";
+import { supabase, getProfile, saveProfile } from "@/lib/db";
 import Journal from "@/components/journal/Journal";
+import FirstRun from "@/components/journal/FirstRun";
 
 export default function Home() {
   const [session, setSession] = useState(null);
@@ -13,6 +14,9 @@ export default function Home() {
   const [authErr, setAuthErr] = useState("");
   const [busy, setBusy] = useState(false);
 
+  const [profile, setProfile] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
@@ -21,6 +25,14 @@ export default function Home() {
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
     return () => sub.subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!session) { setProfile(null); return; }
+    setProfileLoading(true);
+    getProfile()
+      .then(setProfile)
+      .finally(() => setProfileLoading(false));
+  }, [session]);
 
   const signIn = async () => {
     setBusy(true); setAuthErr("");
@@ -60,6 +72,22 @@ export default function Home() {
           </div>
         </div>
       </div>
+    );
+  }
+
+  if (profileLoading || !profile) {
+    return <div className="wrap"><div className="eyebrow">Opening the ledger</div></div>;
+  }
+
+  if (!profile.onboarded_at) {
+    return (
+      <FirstRun
+        initialName={profile.journal_name}
+        onComplete={async (patch) => {
+          const saved = await saveProfile(patch);
+          setProfile(saved);
+        }}
+      />
     );
   }
 

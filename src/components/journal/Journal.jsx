@@ -230,6 +230,7 @@ export default function Journal() {
 
       {showForm && (
         <TradeForm initial={editing} accountSize={accountSize} defaultRiskPct={profile?.default_risk_pct}
+                   chargeConfig={profile?.charge_config}
                    onSave={saveTrade} onClose={() => { setShowForm(false); setEditing(null); }} />
       )}
 

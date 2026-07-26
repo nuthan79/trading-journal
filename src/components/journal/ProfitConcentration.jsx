@@ -44,7 +44,12 @@ function TradeTable({ title, rows, tone }) {
           <tbody>
             {rows.map((t) => (
               <tr key={t.id}>
-                <td><b className="disp">{t.symbol}</b></td>
+                <td>
+                  <b className="disp">{t.symbol}</b>
+                  {t.thesis && (
+                    <div className="tt-thesis" title={t.thesis}>{t.thesis}</div>
+                  )}
+                </td>
                 <td className="num mono tt-dim">{t.exitDate}</td>
                 <td className="num mono tt-dim">
                   {isFinite(t.heldDays) ? `${t.heldDays} d` : "—"}
@@ -64,6 +69,11 @@ function TradeTable({ title, rows, tone }) {
         .tt-head { display:block; border-bottom:1px solid var(--rule);
                    padding-bottom:9px; margin-bottom:2px; }
         .tt-dim { color: var(--ink3); font-size: 12px; }
+        .tt-thesis {
+          font-size: 11px; font-weight: 400; color: var(--ink3);
+          max-width: 170px; white-space: nowrap; overflow: hidden;
+          text-overflow: ellipsis; margin-top: 2px;
+        }
       `}</style>
     </section>
   );
@@ -100,7 +110,8 @@ export default function ProfitConcentration({ closed }) {
 
           <p className="pc-foot">
             Strip out your best 5% of trades and expectancy goes from{" "}
-            {rfmt(pcData.expectancy)} to {rfmt(pcData.expectancyLessTop5)}.{" "}
+            <b>{rfmt(pcData.expectancy)}</b> to{" "}
+            <b>{rfmt(pcData.expectancyLessTop5)}</b>.{" "}
             {pcData.broadEdge ? (
               <>The system still pays without them — the edge is broad, not lucky.</>
             ) : (
@@ -121,8 +132,11 @@ export default function ProfitConcentration({ closed }) {
               display:grid; grid-template-columns: 2fr 1fr 1fr 1fr;
               border:1px solid var(--rule); border-radius:3px; overflow:hidden;
             }
-            .pc-foot { font-size:12.5px; color:var(--ink2); line-height:1.6;
-                       margin:13px 0 0; max-width:74ch; }
+            .pc-foot { font-size:12.5px; color:var(--ink2); line-height:1.65;
+                       margin:13px 0 0; max-width:600px; text-align:left;
+                       text-wrap:pretty; }
+            .pc-foot b { font-weight:600; font-variant-numeric:tabular-nums;
+                         white-space:nowrap; color:var(--ink); }
             @media (max-width: 820px) {
               .pc-strip { grid-template-columns: 1fr 1fr; }
             }

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { X, Check } from "lucide-react";
 import SymbolSearch from "@/components/SymbolSearch";
+import ChargesField from "./ChargesField";
 import { derivePosition } from "@/lib/positions";
 import { rupee, pct } from "@/lib/format";
 import { PATTERNS, EXIT_REASONS, MISTAKES, STAGES, slBand } from "@/lib/constants";
@@ -22,7 +23,9 @@ const blank = () => ({
   entry_date: new Date().toISOString().slice(0, 10),
   entry_price: "", quantity: "", stop_loss: "",
   pattern: "", pivot_price: "", vol_pct_avg: "", weinstein_stage: "", rs_rank: "",
-  exit_date: "", exit_price: "", exit_reason: "", charges: "0",
+  thesis: "",
+  exit_date: "", exit_price: "", exit_reason: "",
+  charges: "0", charges_auto: true, charges_breakdown: null,
   mistakes: [], notes: "",
 });
 
@@ -38,8 +41,15 @@ function fromInitial(row) {
     pattern: row.pattern || "", pivot_price: str(row.pivot_price),
     vol_pct_avg: str(row.vol_pct_avg), weinstein_stage: str(row.weinstein_stage),
     rs_rank: str(row.rs_rank),
+    thesis: row.thesis || "",
     exit_date: row.exit_date || "", exit_price: str(row.exit_price),
-    exit_reason: row.exit_reason || "", charges: str(row.charges ?? 0),
+    exit_reason: row.exit_reason || "",
+    // charges_auto comes straight off the row, never defaulted to true here —
+    // an existing trade's figure was either computed or typed by the person
+    // who logged it, and only that stored flag says which.
+    charges: str(row.charges ?? 0),
+    charges_auto: row.charges_auto === true,
+    charges_breakdown: row.charges_breakdown || null,
     mistakes: row.mistakes || [], notes: row.notes || "",
   };
 }
@@ -62,16 +72,23 @@ function toPayload(t) {
     vol_pct_avg: numOrNull(t.vol_pct_avg),
     weinstein_stage: t.weinstein_stage ? Number(t.weinstein_stage) : null,
     rs_rank: numOrNull(t.rs_rank),
+    thesis: t.thesis?.trim() || null,
     exit_date: t.status === "closed" ? (t.exit_date || null) : null,
     exit_price: t.status === "closed" ? numOrNull(t.exit_price) : null,
     exit_reason: t.status === "closed" ? (t.exit_reason || null) : null,
+    // Whatever is in state is what ChargesField left there: unchanged from
+    // the loaded row when charges_auto was already false (its own effect
+    // refuses to touch the value in that case), or its latest proposal
+    // otherwise. This is never a fresh recompute performed here.
     charges: numOrNull(t.charges) ?? 0,
+    charges_auto: !!t.charges_auto,
+    charges_breakdown: t.charges_breakdown || null,
     mistakes: t.mistakes || [],
     notes: t.notes || null,
   };
 }
 
-export default function TradeForm({ initial, accountSize, defaultRiskPct, onSave, onClose }) {
+export default function TradeForm({ initial, accountSize, defaultRiskPct, chargeConfig, onSave, onClose }) {
   const [t, setT] = useState(initial ? fromInitial(initial) : blank());
   const [riskPct, setRiskPct] = useState(defaultRiskPct ?? 0.75);
   const [saving, setSaving] = useState(false);
@@ -206,11 +223,23 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, onSave
               <label className="f"><span>RS rank</span>
                 <input className="in" inputMode="numeric" placeholder="1–99" value={t.rs_rank} onChange={set("rs_rank")} /></label>
             </div>
-            <label className="f" style={{ marginTop: 12, maxWidth: 280 }}><span>Weinstein stage</span>
-              <select className="in" value={t.weinstein_stage} onChange={set("weinstein_stage")}>
-                <option value="">—</option>
-                {STAGES.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}
-              </select></label>
+            <div className="grid2" style={{ gap: 12, marginTop: 12 }}>
+              <label className="f" style={{ maxWidth: 280 }}><span>Weinstein stage</span>
+                <select className="in" value={t.weinstein_stage} onChange={set("weinstein_stage")}>
+                  <option value="">—</option>
+                  {STAGES.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}
+                </select></label>
+              <label className="f"><span>Why this trade</span>
+                <input className="in" value={t.thesis} onChange={set("thesis")}
+                       readOnly={t.status === "closed"}
+                       style={t.status === "closed" ? { color: "var(--ink2)", background: "var(--paper)" } : undefined}
+                       placeholder="The one-line reason, written now — not reconstructed after you know the outcome." />
+                <div className="hint">
+                  {t.status === "closed"
+                    ? "Locked once closed — this is what you thought at entry, not a rewrite after the fact."
+                    : "Read back after the trade closes, this is often the most honest line in the journal."}
+                </div></label>
+            </div>
           </div>
 
           <div>
@@ -223,22 +252,32 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, onSave
                         exit_date: p.exit_date || new Date().toISOString().slice(0, 10) }))}>Closed</button>
             </div>
             {t.status === "closed" && (
+              <div className="grid3" style={{ gap: 12 }}>
+                <label className="f"><span>Exit price</span>
+                  <input className="in" inputMode="decimal" value={t.exit_price} onChange={set("exit_price")} /></label>
+                <label className="f"><span>Exit date</span>
+                  <input className="in" type="date" value={t.exit_date} onChange={set("exit_date")} /></label>
+                <label className="f"><span>Why you exited</span>
+                  <select className="in" value={t.exit_reason} onChange={set("exit_reason")}>
+                    <option value="">—</option>
+                    {EXIT_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                  </select></label>
+              </div>
+            )}
+
+            <div style={{ marginTop: 12 }}>
+              <ChargesField
+                trade={t}
+                value={t.charges}
+                auto={t.charges_auto}
+                config={chargeConfig}
+                onChange={(charges, charges_auto, charges_breakdown) =>
+                  setT((p) => ({ ...p, charges, charges_auto, charges_breakdown }))}
+              />
+            </div>
+
+            {t.status === "closed" && (
               <>
-                <div className="grid3" style={{ gap: 12 }}>
-                  <label className="f"><span>Exit price</span>
-                    <input className="in" inputMode="decimal" value={t.exit_price} onChange={set("exit_price")} /></label>
-                  <label className="f"><span>Exit date</span>
-                    <input className="in" type="date" value={t.exit_date} onChange={set("exit_date")} /></label>
-                  <label className="f"><span>Why you exited</span>
-                    <select className="in" value={t.exit_reason} onChange={set("exit_reason")}>
-                      <option value="">—</option>
-                      {EXIT_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
-                    </select></label>
-                </div>
-                <div className="grid3" style={{ gap: 12, marginTop: 12 }}>
-                  <label className="f"><span>Charges (brokerage, STT, etc.)</span>
-                    <input className="in" inputMode="decimal" value={t.charges} onChange={set("charges")} /></label>
-                </div>
                 {isFinite(d.r) && (
                   <div className="readout" style={{ marginTop: 12 }}>
                     <div className="row"><span>Realised P&amp;L (net of charges)</span>
