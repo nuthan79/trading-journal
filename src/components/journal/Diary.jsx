@@ -1,14 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Plus, X, Trash2, Image as ImageIcon, Link2, Check } from "lucide-react";
 import { chartUrl } from "@/lib/db";
 import { resolveTradingViewChart } from "@/lib/charts";
 import { rfmt } from "@/lib/format";
 import { EMOTIONS } from "@/lib/constants";
+import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
-const DRAFT_KEY = "diary-draft-v1";
 
 function newDraft() {
   return {
@@ -38,22 +38,16 @@ function hasContent(payload) {
 }
 
 function loadPersistedDraft() {
-  try {
-    const raw = localStorage.getItem(DRAFT_KEY);
-    if (!raw) return null;
-    const p = JSON.parse(raw);
-    if (!hasContent(p)) return null;
-    return {
-      entry_date: p.entry_date || new Date().toISOString().slice(0, 10),
-      emotions: Array.isArray(p.emotions) ? p.emotions : [],
-      body: p.body || "",
-      trade_id: p.trade_id || "",
-      imageFile: null, imagePreview: null, imageUrl: p.imageUrl || null,
-      linkOpen: false, linkInput: "", linkError: "",
-    };
-  } catch {
-    return null;
-  }
+  const p = loadDraft(DRAFT_KEYS.diary);
+  if (!hasContent(p)) return null;
+  return {
+    entry_date: p.entry_date || new Date().toISOString().slice(0, 10),
+    emotions: Array.isArray(p.emotions) ? p.emotions : [],
+    body: p.body || "",
+    trade_id: p.trade_id || "",
+    imageFile: null, imagePreview: null, imageUrl: p.imageUrl || null,
+    linkOpen: false, linkInput: "", linkError: "",
+  };
 }
 
 export default function Diary({ diary, trades, onSave, onDelete, say }) {
@@ -61,7 +55,6 @@ export default function Diary({ diary, trades, onSave, onDelete, say }) {
   const [urls, setUrls] = useState({});
   const [saving, setSaving] = useState(false);
   const fileRef = useRef(null);
-  const draftRef = useRef(null);
   const restoredRef = useRef(false);
 
   useEffect(() => {
@@ -88,42 +81,11 @@ export default function Diary({ diary, trades, onSave, onDelete, say }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => { draftRef.current = draft; }, [draft]);
-
-  const flushDraft = useCallback(() => {
-    const payload = serializeDraft(draftRef.current);
-    try {
-      if (hasContent(payload)) localStorage.setItem(DRAFT_KEY, JSON.stringify(payload));
-      else localStorage.removeItem(DRAFT_KEY);
-    } catch {
-      // localStorage unavailable (private browsing, quota) — nothing to do
-    }
-  }, []);
-
-  const clearPersistedDraft = useCallback(() => {
-    try { localStorage.removeItem(DRAFT_KEY); } catch {}
-  }, []);
-
-  // Autosave on every change, debounced so fast typing doesn't hammer
-  // localStorage on each keystroke.
-  useEffect(() => {
-    if (draft === null) return;
-    const t = setTimeout(flushDraft, 400);
-    return () => clearTimeout(t);
-  }, [draft, flushDraft]);
-
-  // beforeunload doesn't reliably fire on mobile (backgrounding isn't an
-  // unload) — visibilitychange + pagehide are what actually catch the app
-  // switch that kills this tab.
-  useEffect(() => {
-    const onVisibility = () => { if (document.visibilityState === "hidden") flushDraft(); };
-    document.addEventListener("visibilitychange", onVisibility);
-    window.addEventListener("pagehide", flushDraft);
-    return () => {
-      document.removeEventListener("visibilitychange", onVisibility);
-      window.removeEventListener("pagehide", flushDraft);
-    };
-  }, [flushDraft]);
+  const serialized = draft ? serializeDraft(draft) : null;
+  const { clear: clearPersistedDraft } = useAutosave(
+    DRAFT_KEYS.diary,
+    hasContent(serialized) ? serialized : null
+  );
 
   const pickFile = (e) => {
     const f = e.target.files && e.target.files[0];

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { X, Check } from "lucide-react";
 import { BROKER_PRESETS, mergeConfig } from "@/lib/charges";
+import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
 
 const STATUTORY_FIELDS = [
   { k: "sttPct", label: "STT %", hint: "of turnover, both legs" },
@@ -22,20 +23,34 @@ const forSave = (cfg) => ({
   ...cfg,
   brokerageCap: cfg.brokerageCap === Infinity ? UNCAPPED : cfg.brokerageCap,
 });
+// Inverse of forSave — a drafted "no cap" preset round-trips through
+// localStorage the same way it round-trips through Supabase's jsonb column
+// (JSON has no Infinity), so it needs the same sentinel conversion back.
+const fromDraftCfg = (cfg) => ({
+  ...cfg,
+  brokerageCap: cfg.brokerageCap === UNCAPPED ? Infinity : cfg.brokerageCap,
+});
 
 export default function SettingsSheet({ profile, onSave, onClose }) {
-  const [s, setS] = useState({
+  const persisted = loadDraft(DRAFT_KEYS.settings);
+
+  const [s, setS] = useState(persisted?.s ?? {
     journal_name: profile.journal_name || "",
     account_size: String(profile.account_size ?? ""),
     default_risk_pct: String(profile.default_risk_pct ?? ""),
   });
-  const [cfg, setCfg] = useState(() => mergeConfig(profile.charge_config));
+  const [cfg, setCfg] = useState(() =>
+    persisted?.cfg ? fromDraftCfg(persisted.cfg) : mergeConfig(profile.charge_config)
+  );
   const [saving, setSaving] = useState(false);
   const set = (k) => (e) => setS((p) => ({ ...p, [k]: e.target.value }));
   const setRate = (k) => (e) => {
     const v = e.target.value;
     setCfg((p) => ({ ...p, [k]: v === "" ? "" : Number(v) }));
   };
+
+  const { clear: clearDraft } = useAutosave(DRAFT_KEYS.settings, { s, cfg: forSave(cfg) });
+  const closeAndClear = () => { clearDraft(); onClose(); };
 
   const presetName = useMemo(() => {
     for (const [name, preset] of Object.entries(BROKER_PRESETS)) {
@@ -58,6 +73,7 @@ export default function SettingsSheet({ profile, onSave, onClose }) {
         default_risk_pct: Number(s.default_risk_pct) || 0,
         charge_config: forSave(cfg),
       });
+      clearDraft();
       onClose();
     } finally {
       setSaving(false);
@@ -65,11 +81,11 @@ export default function SettingsSheet({ profile, onSave, onClose }) {
   };
 
   return (
-    <div className="modal" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="modal" onMouseDown={(e) => e.target === e.currentTarget && closeAndClear()}>
       <div className="sheet" style={{ maxWidth: 560 }} onMouseDown={(e) => e.stopPropagation()}>
         <div className="sheethead">
           <div className="disp" style={{ fontSize: 16 }}>Setup</div>
-          <button className="x" onClick={onClose} aria-label="Close"><X size={19} /></button>
+          <button className="x" onClick={closeAndClear} aria-label="Close"><X size={19} /></button>
         </div>
         <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 18 }}>
           <label className="f"><span>Journal name</span>
@@ -120,7 +136,7 @@ export default function SettingsSheet({ profile, onSave, onClose }) {
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 10,
                         borderTop: "1px solid var(--rule)", paddingTop: 16 }}>
-            <button className="btn ghost" onClick={onClose}>Cancel</button>
+            <button className="btn ghost" onClick={closeAndClear}>Cancel</button>
             <button className="btn" disabled={saving} onClick={submit}>
               <Check size={14} />{saving ? "Saving…" : "Save setup"}
             </button>

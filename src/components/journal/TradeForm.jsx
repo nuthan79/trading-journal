@@ -7,6 +7,7 @@ import ChargesField from "./ChargesField";
 import { derivePosition } from "@/lib/positions";
 import { rupee, pct } from "@/lib/format";
 import { PATTERNS, EXIT_REASONS, MISTAKES, STAGES, slBand } from "@/lib/constants";
+import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
 
 const num = (v) => (v === "" || v === null || v === undefined ? NaN : Number(v));
 
@@ -88,14 +89,26 @@ function toPayload(t) {
   };
 }
 
+// A draft only counts as "for this form" if it was left behind while
+// editing the same trade (or the same blank "new trade" slot) — otherwise
+// an in-progress edit on trade A could leak into trade B's form.
+const formIdOf = (initial) => initial?.id ?? "new";
+
 export default function TradeForm({ initial, accountSize, defaultRiskPct, chargeConfig, onSave, onClose }) {
-  const [t, setT] = useState(initial ? fromInitial(initial) : blank());
-  const [riskPct, setRiskPct] = useState(defaultRiskPct ?? 0.75);
+  const formId = formIdOf(initial);
+  const persisted = loadDraft(DRAFT_KEYS.trade);
+  const restored = persisted?.formId === formId ? persisted : null;
+
+  const [t, setT] = useState(restored?.t ?? (initial ? fromInitial(initial) : blank()));
+  const [riskPct, setRiskPct] = useState(restored?.riskPct ?? defaultRiskPct ?? 0.75);
   const [saving, setSaving] = useState(false);
   const set = (k) => (e) => setT((p) => ({ ...p, [k]: e.target.value }));
   const d = derivePosition(withExits(t), accountSize);
-  const editing = !!initial;
+  const editing = !!t.id;
   const slBandLabel = slBand(d.slPct);
+
+  const { clear: clearDraft } = useAutosave(DRAFT_KEYS.trade, { formId, t, riskPct });
+  const closeAndClear = () => { clearDraft(); onClose(); };
 
   const toggleMistake = (m) =>
     setT((p) => ({ ...p, mistakes: p.mistakes.includes(m)
@@ -118,13 +131,14 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
     setSaving(true);
     try {
       await onSave(toPayload(t));
+      clearDraft();
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="modal" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="modal" onMouseDown={(e) => e.target === e.currentTarget && closeAndClear()}>
       <div className="sheet" onMouseDown={(e) => e.stopPropagation()}>
         <div className="sheethead">
           <div>
@@ -133,7 +147,7 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
               {t.symbol ? t.symbol.toUpperCase() : "Untitled position"}
             </div>
           </div>
-          <button className="x" onClick={onClose} aria-label="Close"><X size={19} /></button>
+          <button className="x" onClick={closeAndClear} aria-label="Close"><X size={19} /></button>
         </div>
 
         <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 20 }}>
@@ -307,7 +321,7 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
 
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end",
                         borderTop: "1px solid var(--rule)", paddingTop: 16 }}>
-            <button className="btn ghost" onClick={onClose}>Cancel</button>
+            <button className="btn ghost" onClick={closeAndClear}>Cancel</button>
             <button className="btn" disabled={!valid || saving} style={{ opacity: valid ? 1 : 0.4 }}
                     onClick={submit}>
               <Check size={14} />{saving ? "Saving…" : editing ? "Save changes" : "Log trade"}

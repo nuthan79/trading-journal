@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Plus, Settings2, LayoutGrid, Table2, LineChart, BookOpen, ClipboardList, LogOut } from "lucide-react";
@@ -15,6 +15,7 @@ import { derivePosition } from "@/lib/positions";
 import FirstRun from "@/components/journal/FirstRun";
 import TradeForm from "@/components/journal/TradeForm";
 import SettingsSheet from "@/components/journal/SettingsSheet";
+import { loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
 import { JournalContext } from "./JournalContext";
 
 /**
@@ -205,6 +206,34 @@ export default function AppLayout({ children }) {
 
   const openNewTrade = useCallback(() => { setEditing(null); setShowForm(true); }, []);
   const openEditTrade = useCallback((t) => { setEditing(t); setShowForm(true); }, []);
+
+  // These modals are local state, not routes — a cold-reload loses the fact
+  // that one was open at all, not just the fields inside it. Reopen the
+  // modal itself if TradeForm/SettingsSheet left an autosaved draft behind;
+  // each component restores its own field values from the same key once it
+  // mounts. `initial` only needs to carry an id here (see formIdOf in
+  // TradeForm) — the actual field values come from the persisted draft.
+  const restoredTradeRef = useRef(false);
+  useEffect(() => {
+    if (loading || restoredTradeRef.current) return;
+    restoredTradeRef.current = true;
+    const persisted = loadDraft(DRAFT_KEYS.trade);
+    if (persisted?.t) {
+      setEditing(persisted.formId && persisted.formId !== "new" ? { id: persisted.formId } : null);
+      setShowForm(true);
+      say("Restored an unsaved trade.");
+    }
+  }, [loading, say]);
+
+  const restoredSettingsRef = useRef(false);
+  useEffect(() => {
+    if (loading || restoredSettingsRef.current) return;
+    restoredSettingsRef.current = true;
+    if (loadDraft(DRAFT_KEYS.settings)) {
+      setShowSettings(true);
+      say("Restored unsaved setup changes.");
+    }
+  }, [loading, say]);
 
   // ---- gate states (no topbar/tabs — user isn't in the app yet) ---------
   if (!booted) {

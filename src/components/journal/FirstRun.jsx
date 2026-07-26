@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Check } from "lucide-react";
 import { rupee, pct } from "@/lib/format";
+import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
 
 /**
  * First run.
@@ -20,11 +21,15 @@ import { rupee, pct } from "@/lib/format";
 const PRESET_RISK = [0.5, 0.75, 1.0, 1.5];
 
 export default function FirstRun({ onComplete, initialName = "" }) {
-  const [name, setName] = useState(initialName || "");
-  const [capital, setCapital] = useState("");
-  const [risk, setRisk] = useState("0.75");
+  const persisted = loadDraft(DRAFT_KEYS.firstRun);
+
+  const [name, setName] = useState(persisted?.name ?? (initialName || ""));
+  const [capital, setCapital] = useState(persisted?.capital ?? "");
+  const [risk, setRisk] = useState(persisted?.risk ?? "0.75");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+
+  const { clear: clearDraft } = useAutosave(DRAFT_KEYS.firstRun, { name, capital, risk });
 
   const capitalNum = Number(String(capital).replace(/[^0-9.]/g, ""));
   const riskNum = Number(risk);
@@ -42,6 +47,7 @@ export default function FirstRun({ onComplete, initialName = "" }) {
         default_risk_pct: riskNum,
         onboarded_at: new Date().toISOString(),
       });
+      clearDraft();
     } catch (e) {
       setErr(e.message || "Could not save. Try again.");
       setBusy(false);
