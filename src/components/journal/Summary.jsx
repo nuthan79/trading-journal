@@ -65,11 +65,6 @@ export default function Summary({ closed, openingCapital, flows = [] }) {
           background: var(--card);
           border-radius: 3px;
           padding: 16px 20px 18px;
-          /* Hugs the paragraph's own max-width (660 + 20px padding each
-             side) instead of stretching to match the full-width cards
-             around it — otherwise the text stops at 660px but the bordered
-             box keeps going, leaving a dead gap that reads as misaligned. */
-          max-width: 700px;
         }
         .sum-head {
           display: flex; align-items: baseline; justify-content: space-between;
