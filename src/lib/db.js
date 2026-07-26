@@ -119,9 +119,13 @@ export async function saveDiary(entry, imageFile) {
   return data;
 }
 
-/** Charts live in a private bucket — this mints a short-lived viewing URL. */
+/** Charts live in a private bucket — this mints a short-lived viewing URL.
+ *  A pasted chart link (see resolveTradingViewChart) is stored as a full
+ *  external URL in the same column rather than a Storage path — pass it
+ *  through as-is instead of asking Storage to sign a path it doesn't own. */
 export async function chartUrl(path) {
   if (!path) return null;
+  if (/^https?:\/\//.test(path)) return path;
   const { data } = await supabase.storage.from("charts").createSignedUrl(path, 3600);
   return data?.signedUrl || null;
 }

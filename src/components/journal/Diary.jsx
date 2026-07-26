@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Plus, X, Trash2, Image as ImageIcon, Check } from "lucide-react";
+import { Plus, X, Trash2, Image as ImageIcon, Link2, Check } from "lucide-react";
 import { chartUrl } from "@/lib/db";
+import { resolveTradingViewChart } from "@/lib/charts";
 import { rfmt } from "@/lib/format";
 import { EMOTIONS } from "@/lib/constants";
 
@@ -12,7 +13,8 @@ function newDraft() {
   return {
     entry_date: new Date().toISOString().slice(0, 10),
     emotions: [], body: "", trade_id: "",
-    imageFile: null, imagePreview: null,
+    imageFile: null, imagePreview: null, imageUrl: null,
+    linkOpen: false, linkInput: "", linkError: "",
   };
 }
 
@@ -38,13 +40,28 @@ export default function Diary({ diary, trades, onSave, onDelete, say }) {
     if (!f) return;
     if (f.size > MAX_IMAGE_BYTES) { say("That image is too large — keep it under 8MB."); e.target.value = ""; return; }
     if (draft.imagePreview) URL.revokeObjectURL(draft.imagePreview);
-    setDraft((p) => ({ ...p, imageFile: f, imagePreview: URL.createObjectURL(f) }));
+    setDraft((p) => ({ ...p, imageFile: f, imagePreview: URL.createObjectURL(f), imageUrl: null, linkOpen: false }));
     e.target.value = "";
   };
 
   const removeImage = () => {
     if (draft.imagePreview) URL.revokeObjectURL(draft.imagePreview);
-    setDraft((p) => ({ ...p, imageFile: null, imagePreview: null }));
+    setDraft((p) => ({ ...p, imageFile: null, imagePreview: null, imageUrl: null }));
+  };
+
+  const openLink = () => setDraft((p) => ({ ...p, linkOpen: true, linkInput: "", linkError: "" }));
+
+  const useLink = () => {
+    const result = resolveTradingViewChart(draft.linkInput);
+    if (!result.ok) {
+      setDraft((p) => ({ ...p, linkError: result.error }));
+      return;
+    }
+    if (draft.imagePreview) URL.revokeObjectURL(draft.imagePreview);
+    setDraft((p) => ({
+      ...p, imageFile: null, imagePreview: null, imageUrl: result.url,
+      linkOpen: false, linkInput: "", linkError: "",
+    }));
   };
 
   const discard = () => {
@@ -53,7 +70,7 @@ export default function Diary({ diary, trades, onSave, onDelete, say }) {
   };
 
   const commit = async () => {
-    if (!draft.body.trim() && !draft.imageFile) { say("Write something or attach a chart first."); return; }
+    if (!draft.body.trim() && !draft.imageFile && !draft.imageUrl) { say("Write something or attach a chart first."); return; }
     setSaving(true);
     try {
       await onSave({
@@ -61,6 +78,7 @@ export default function Diary({ diary, trades, onSave, onDelete, say }) {
         emotions: draft.emotions,
         body: draft.body,
         trade_id: draft.trade_id || null,
+        ...(draft.imageUrl ? { image_path: draft.imageUrl } : {}),
       }, draft.imageFile);
       if (draft.imagePreview) URL.revokeObjectURL(draft.imagePreview);
       setDraft(null);
@@ -113,9 +131,9 @@ export default function Diary({ diary, trades, onSave, onDelete, say }) {
             onChange={(e) => setDraft((p) => ({ ...p, body: e.target.value }))}
             placeholder="What happened today. What you did and why. What you would do differently." />
 
-          {draft.imagePreview && (
+          {(draft.imagePreview || draft.imageUrl) && (
             <div style={{ marginTop: 12 }}>
-              <img src={draft.imagePreview} alt="Attached chart"
+              <img src={draft.imagePreview || draft.imageUrl} alt="Attached chart"
                    style={{ maxWidth: "100%", border: "1px solid var(--rule)", borderRadius: 2 }} />
               <button className="btn ghost sm" style={{ marginTop: 8 }} onClick={removeImage}>
                 <X size={12} />Remove chart
@@ -123,12 +141,33 @@ export default function Diary({ diary, trades, onSave, onDelete, say }) {
             </div>
           )}
 
+          {draft.linkOpen && (
+            <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
+              <input className="in" style={{ flex: 1, minWidth: 220 }}
+                     placeholder="https://www.tradingview.com/x/…"
+                     value={draft.linkInput}
+                     onChange={(e) => setDraft((p) => ({ ...p, linkInput: e.target.value, linkError: "" }))}
+                     onKeyDown={(e) => e.key === "Enter" && useLink()} />
+              <button className="btn ghost sm" onClick={useLink}>Use link</button>
+              <button className="btn ghost sm"
+                      onClick={() => setDraft((p) => ({ ...p, linkOpen: false, linkError: "" }))}>Cancel</button>
+              {draft.linkError && (
+                <div style={{ width: "100%", fontSize: 11.5, color: "var(--short)" }}>{draft.linkError}</div>
+              )}
+            </div>
+          )}
+
           <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={pickFile} />
 
           <div style={{ display: "flex", gap: 10, justifyContent: "space-between", marginTop: 16, flexWrap: "wrap" }}>
-            <button className="btn ghost" onClick={() => fileRef.current && fileRef.current.click()}>
-              <ImageIcon size={13} />{draft.imagePreview ? "Replace chart" : "Attach chart"}
-            </button>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="btn ghost" onClick={() => fileRef.current && fileRef.current.click()}>
+                <ImageIcon size={13} />{(draft.imagePreview || draft.imageUrl) ? "Replace chart" : "Attach chart"}
+              </button>
+              <button className="btn ghost" onClick={openLink}>
+                <Link2 size={13} />Paste link
+              </button>
+            </div>
             <div style={{ display: "flex", gap: 10 }}>
               <button className="btn ghost" onClick={discard}>Discard</button>
               <button className="btn" disabled={saving} onClick={commit}>
