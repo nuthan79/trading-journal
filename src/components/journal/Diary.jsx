@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Plus, X, Trash2, Image as ImageIcon, Link2, Check } from "lucide-react";
 import { chartUrl } from "@/lib/db";
 import { resolveTradingViewChart } from "@/lib/charts";
@@ -8,6 +8,7 @@ import { rfmt } from "@/lib/format";
 import { EMOTIONS } from "@/lib/constants";
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const DRAFT_KEY = "diary-draft-v1";
 
 function newDraft() {
   return {
@@ -18,11 +19,50 @@ function newDraft() {
   };
 }
 
+// imageFile/imagePreview can't survive a reload (a File object, and a blob:
+// URL that's already dead by the time we'd restore it) — only the text
+// fields and a pasted-link URL are worth persisting.
+function serializeDraft(d) {
+  if (!d) return null;
+  return {
+    entry_date: d.entry_date,
+    emotions: d.emotions,
+    body: d.body,
+    trade_id: d.trade_id,
+    imageUrl: d.imageUrl || null,
+  };
+}
+
+function hasContent(payload) {
+  return !!payload && (payload.body?.trim() || payload.emotions?.length || payload.imageUrl);
+}
+
+function loadPersistedDraft() {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw);
+    if (!hasContent(p)) return null;
+    return {
+      entry_date: p.entry_date || new Date().toISOString().slice(0, 10),
+      emotions: Array.isArray(p.emotions) ? p.emotions : [],
+      body: p.body || "",
+      trade_id: p.trade_id || "",
+      imageFile: null, imagePreview: null, imageUrl: p.imageUrl || null,
+      linkOpen: false, linkInput: "", linkError: "",
+    };
+  } catch {
+    return null;
+  }
+}
+
 export default function Diary({ diary, trades, onSave, onDelete, say }) {
   const [draft, setDraft] = useState(null);
   const [urls, setUrls] = useState({});
   const [saving, setSaving] = useState(false);
   const fileRef = useRef(null);
+  const draftRef = useRef(null);
+  const restoredRef = useRef(false);
 
   useEffect(() => {
     diary.forEach((e) => {
@@ -34,6 +74,56 @@ export default function Diary({ diary, trades, onSave, onDelete, say }) {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [diary]);
+
+  // Restore an in-progress draft left behind by a cold-reload (mobile
+  // backgrounding, tab discard) before it can be lost for good.
+  useEffect(() => {
+    if (restoredRef.current) return;
+    restoredRef.current = true;
+    const restored = loadPersistedDraft();
+    if (restored) {
+      setDraft(restored);
+      say("Restored an unsaved diary entry.");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => { draftRef.current = draft; }, [draft]);
+
+  const flushDraft = useCallback(() => {
+    const payload = serializeDraft(draftRef.current);
+    try {
+      if (hasContent(payload)) localStorage.setItem(DRAFT_KEY, JSON.stringify(payload));
+      else localStorage.removeItem(DRAFT_KEY);
+    } catch {
+      // localStorage unavailable (private browsing, quota) — nothing to do
+    }
+  }, []);
+
+  const clearPersistedDraft = useCallback(() => {
+    try { localStorage.removeItem(DRAFT_KEY); } catch {}
+  }, []);
+
+  // Autosave on every change, debounced so fast typing doesn't hammer
+  // localStorage on each keystroke.
+  useEffect(() => {
+    if (draft === null) return;
+    const t = setTimeout(flushDraft, 400);
+    return () => clearTimeout(t);
+  }, [draft, flushDraft]);
+
+  // beforeunload doesn't reliably fire on mobile (backgrounding isn't an
+  // unload) — visibilitychange + pagehide are what actually catch the app
+  // switch that kills this tab.
+  useEffect(() => {
+    const onVisibility = () => { if (document.visibilityState === "hidden") flushDraft(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", flushDraft);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", flushDraft);
+    };
+  }, [flushDraft]);
 
   const pickFile = (e) => {
     const f = e.target.files && e.target.files[0];
@@ -66,6 +156,7 @@ export default function Diary({ diary, trades, onSave, onDelete, say }) {
 
   const discard = () => {
     if (draft.imagePreview) URL.revokeObjectURL(draft.imagePreview);
+    clearPersistedDraft();
     setDraft(null);
   };
 
@@ -81,6 +172,7 @@ export default function Diary({ diary, trades, onSave, onDelete, say }) {
         ...(draft.imageUrl ? { image_path: draft.imageUrl } : {}),
       }, draft.imageFile);
       if (draft.imagePreview) URL.revokeObjectURL(draft.imagePreview);
+      clearPersistedDraft();
       setDraft(null);
     } finally {
       setSaving(false);
