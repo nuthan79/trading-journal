@@ -78,10 +78,10 @@ export default function Summary({ closed, openingCapital, flows = [] }) {
           line-height: 1.62;
           color: var(--ink);
           text-align: left;
-          /* A px measure, not ch. The ch unit is the width of the current
-             font's "0" — unstable in a variable font like Archivo, and it
-             changes again once the webfont loads, so the paragraph reflows. */
-          max-width: 660px;
+          /* No max-width here — the card itself is already bounded by
+             .jwrap's 1180px container, same as every other dashboard
+             section, so that's the readability limit. A tighter fixed
+             cap left a dead gap on the right at desktop widths. */
           /* Keeps the last line from orphaning a word or two */
           text-wrap: pretty;
         }
