@@ -1,6 +1,6 @@
 "use client";
 
-import { createBrowserClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
 
 /**
  * The whole storage layer. In the prototype this was window.storage; here it
@@ -8,9 +8,33 @@ import { createBrowserClient } from "@supabase/ssr";
  * why porting the interface across is mostly mechanical.
  */
 
-export const supabase = createBrowserClient(
+/**
+ * Plain supabase-js, not @supabase/ssr's createBrowserClient, and implicit
+ * flow rather than the default PKCE — both deliberate.
+ *
+ * PKCE binds a magic link to the browser that requested it: the exchange
+ * needs a code_verifier held in that browser's storage, so clicking the
+ * link from a phone's mail app (which opens its own in-app browser) always
+ * fails. The usual fix is a 6-digit code in the same email, but Supabase
+ * gates email-template customisation behind custom SMTP, so {{ .Token }}
+ * isn't available on the built-in sender.
+ *
+ * Implicit flow puts the session in the link's URL fragment instead, so it
+ * signs you in wherever you open it. createBrowserClient can't do this —
+ * it spreads your auth options and then hardcodes flowType: "pkce" over
+ * the top — hence going direct to createClient here. That moves session
+ * storage from cookies to localStorage, which is fine because nothing
+ * server-side reads the session: every screen gates on it client-side and
+ * the API routes are unauthenticated proxies.
+ *
+ * The cost is that tokens ride in the URL and can reach browser history —
+ * acceptable for a single-user personal journal. Worth moving back to
+ * @supabase/ssr + PKCE + the code fallback if custom SMTP is ever set up.
+ */
+export const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  { auth: { flowType: "implicit", detectSessionInUrl: true, persistSession: true } }
 );
 
 const uid = async () => (await supabase.auth.getUser()).data.user?.id;
@@ -176,7 +200,16 @@ export async function saveProfile(patch) {
 
 /* -------------------------------- auth ----------------------------- */
 
-export const signIn = (email, password) =>
+export const sendMagicLink = (email, emailRedirectTo) =>
+  supabase.auth.signInWithOtp({ email, options: { emailRedirectTo } });
+
+/**
+ * Kept alongside the magic link on purpose. Magic links depend on email
+ * delivery and Supabase's send-rate cap, so password sign-in is the way
+ * back in when a link is slow, rate-limited, or lands in a browser that
+ * can't reach this app.
+ */
+export const signInWithPassword = (email, password) =>
   supabase.auth.signInWithPassword({ email, password });
 
 export const signOut = () => supabase.auth.signOut();

@@ -8,7 +8,7 @@ import {
   supabase, getProfile, saveProfile as dbSaveProfile,
   listTrades, saveTrade as dbSaveTrade, deleteTrade as dbDeleteTrade,
   listDiary, saveDiary as dbSaveDiary, deleteDiary as dbDeleteDiary,
-  listFlows, markOpenPositions, signOut,
+  listFlows, markOpenPositions, sendMagicLink, signInWithPassword, signOut,
 } from "@/lib/db";
 import { stats } from "@/lib/calc";
 import { derivePosition } from "@/lib/positions";
@@ -50,8 +50,23 @@ export default function AppLayout({ children }) {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [authMode, setAuthMode] = useState("password");
   const [authErr, setAuthErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [linkSent, setLinkSent] = useState(false);
+
+  // Implicit flow reports a bad or expired link in the URL fragment
+  // (#error=...&error_description=...), not a query string — supabase-js
+  // strips the fragment once it has consumed a *successful* one, so
+  // anything left here is a failure worth showing.
+  useEffect(() => {
+    const hash = new URLSearchParams(window.location.hash.slice(1));
+    const description = hash.get("error_description");
+    if (hash.get("error")) {
+      setAuthErr(description || "That link didn't work — request a new one.");
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
 
   const [profile, setProfile] = useState(null);
   const [profileLoading, setProfileLoading] = useState(false);
@@ -73,11 +88,30 @@ export default function AppLayout({ children }) {
       .finally(() => setProfileLoading(false));
   }, [session]);
 
-  const signIn = async () => {
+  const signInPassword = async () => {
     setBusy(true); setAuthErr("");
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await signInWithPassword(email, password);
     if (error) setAuthErr(error.message);
     setBusy(false);
+  };
+
+  const sendLink = async () => {
+    setBusy(true); setAuthErr("");
+    // Straight back to the app root: implicit flow hands the session over in
+    // the URL fragment, which never reaches the server, so there's nothing
+    // for a callback route to do.
+    const { error } = await sendMagicLink(email, window.location.origin);
+    if (error) setAuthErr(error.message);
+    else setLinkSent(true);
+    setBusy(false);
+  };
+
+  const resetToEmailForm = () => {
+    setLinkSent(false); setAuthErr("");
+  };
+
+  const switchAuthMode = (mode) => {
+    setAuthMode(mode); setAuthErr(""); setLinkSent(false);
   };
 
   // ---- journal data + handlers (moved from the old Journal.jsx) ---------
@@ -246,26 +280,64 @@ export default function AppLayout({ children }) {
         <div className="eyebrow">Trading Journal</div>
         <h1 className="disp" style={{ fontSize: 22, margin: "6px 0 24px" }}>Sign in</h1>
 
-        <div className="card" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <label className="f"><span>Email</span>
-            <input className="in" type="email" value={email} autoComplete="username"
-                   onChange={(e) => setEmail(e.target.value)} /></label>
-          <label className="f"><span>Password</span>
-            <input className="in" type="password" value={password} autoComplete="current-password"
-                   onChange={(e) => setPassword(e.target.value)}
-                   onKeyDown={(e) => e.key === "Enter" && signIn()} /></label>
+        {linkSent ? (
+          <div className="card" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div>
+              <div className="disp" style={{ fontSize: 15 }}>Check your email</div>
+              <p style={{ fontSize: 13, color: "var(--ink2)", lineHeight: 1.6, margin: "6px 0 0" }}>
+                We sent a sign-in link to <b>{email}</b>. Open it from any browser or mail
+                app — it signs you in wherever you click it. The link expires shortly, so
+                request a new one if it's been a while.
+              </p>
+            </div>
 
-          {authErr && <div className="warn">{authErr}</div>}
+            {authErr && <div className="warn">{authErr}</div>}
 
-          <button className="btn" onClick={signIn} disabled={busy || !email || !password}>
-            {busy ? "Signing in…" : "Sign in"}
-          </button>
-
-          <div style={{ fontSize: 11.5, color: "var(--ink3)", lineHeight: 1.6 }}>
-            No account yet? Create one in Supabase under Authentication → Users →
-            Add user, and tick Auto Confirm User.
+            <button className="btn ghost" onClick={resetToEmailForm}>
+              Use a different email
+            </button>
           </div>
-        </div>
+        ) : (
+          <div className="card" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div className="seg">
+              <button type="button" data-on={authMode === "password" ? 1 : 0}
+                      onClick={() => switchAuthMode("password")}>Password</button>
+              <button type="button" data-on={authMode === "link" ? 1 : 0}
+                      onClick={() => switchAuthMode("link")}>Email link</button>
+            </div>
+
+            <label className="f"><span>Email</span>
+              <input className="in" type="email" value={email} autoComplete="username" autoFocus
+                     onChange={(e) => setEmail(e.target.value)}
+                     onKeyDown={(e) => e.key === "Enter" &&
+                       (authMode === "password" ? signInPassword() : sendLink())} /></label>
+
+            {authMode === "password" && (
+              <label className="f"><span>Password</span>
+                <input className="in" type="password" value={password} autoComplete="current-password"
+                       onChange={(e) => setPassword(e.target.value)}
+                       onKeyDown={(e) => e.key === "Enter" && signInPassword()} /></label>
+            )}
+
+            {authErr && <div className="warn">{authErr}</div>}
+
+            {authMode === "password" ? (
+              <button className="btn" onClick={signInPassword} disabled={busy || !email || !password}>
+                {busy ? "Signing in…" : "Sign in"}
+              </button>
+            ) : (
+              <button className="btn" onClick={sendLink} disabled={busy || !email}>
+                {busy ? "Sending…" : "Send magic link"}
+              </button>
+            )}
+
+            <div style={{ fontSize: 11.5, color: "var(--ink3)", lineHeight: 1.6 }}>
+              {authMode === "password"
+                ? "Your existing password still works. Email link is there for when you'd rather not type it."
+                : "We'll email you a link that signs you in — no password, and it works in whichever browser opens it."}
+            </div>
+          </div>
+        )}
       </div>
     );
   }
