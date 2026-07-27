@@ -3,11 +3,20 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 
 /**
- * Type three characters, pick a stock.
+ * Type three characters, pick a stock and an exchange.
  *
- * The whole NSE + BSE list loads once (a few hundred KB, cached by the
- * browser) and is searched in memory. No debounce needed, no network call
- * per keystroke, works on a flaky connection.
+ * The symbol file holds ONE row per company carrying the exchanges it trades
+ * on, so a dual-listed name doesn't sit in the data twice. Here that row is
+ * expanded back out into one line per exchange, because at the moment of
+ * logging a trade the exchange is a real choice you have to make — it decides
+ * which exchange fee applies, and which Yahoo ticker the price comes from.
+ *
+ * So typing INFY offers:
+ *     INFY   Infosys Limited        NSE
+ *     INFY   Infosys Limited        BSE
+ *
+ * The whole list loads once and is searched in memory — no network call per
+ * keystroke, and it works on a poor connection.
  */
 
 let LIST = null;
@@ -24,14 +33,23 @@ async function loadSymbols() {
   return LOADING;
 }
 
-/** Rank matches so that a symbol prefix beats a name prefix beats a substring. */
-function search(list, q, limit = 8) {
+/** Older files stored a single exchange string; treat that as a one-item list. */
+const exchangesOf = (item) =>
+  Array.isArray(item.x) && item.x.length ? item.x : [item.e || "NSE"];
+
+/**
+ * Rank matches: symbol prefix beats name prefix beats substring. Companies are
+ * matched first and expanded afterwards, so a dual-listed name never crowds a
+ * better match off the list by occupying two slots.
+ */
+function search(list, q, { maxCompanies = 6 } = {}) {
   const s = q.trim().toUpperCase();
   if (s.length < 2) return [];
-  const out = [];
+
+  const scored = [];
   for (const item of list) {
-    const sym = item.s.toUpperCase();
-    const name = item.n.toUpperCase();
+    const sym = (item.s || "").toUpperCase();
+    const name = (item.n || "").toUpperCase();
     let score = -1;
     if (sym === s) score = 0;
     else if (sym.startsWith(s)) score = 1;
@@ -39,22 +57,39 @@ function search(list, q, limit = 8) {
     else if (name.includes(" " + s)) score = 3;
     else if (sym.includes(s)) score = 4;
     else if (name.includes(s)) score = 5;
+
     if (score >= 0) {
-      // Nudge NSE above BSE when both match equally — it's where the liquidity is
-      out.push({ item, score: score * 10 + (item.e === "NSE" ? 0 : 1) });
-      if (out.length > 400) break;
+      scored.push({ item, score });
+      if (scored.length > 500) break;
     }
   }
-  out.sort((a, b) => a.score - b.score || a.item.s.length - b.item.s.length);
-  return out.slice(0, limit).map((x) => x.item);
+
+  scored.sort((a, b) => a.score - b.score || a.item.s.length - b.item.s.length);
+
+  const rows = [];
+  for (const { item } of scored.slice(0, maxCompanies)) {
+    for (const ex of exchangesOf(item)) {
+      rows.push({
+        symbol: item.s,
+        company: item.n,
+        exchange: ex,
+        bseCode: ex === "BSE" ? item.b || null : null,
+        // true when the same company is also available on the other exchange,
+        // so the UI can explain why a name appears twice
+        dual: exchangesOf(item).length > 1,
+      });
+    }
+  }
+  return rows;
 }
 
-export default function SymbolSearch({ value, exchange, onPick, autoFocus }) {
+export default function SymbolSearch({ value, onPick, autoFocus, exchange }) {
   const [q, setQ] = useState(value || "");
   const [list, setList] = useState(LIST || []);
   const [open, setOpen] = useState(false);
   const [hi, setHi] = useState(0);
   const boxRef = useRef(null);
+  const listRef = useRef(null);
 
   useEffect(() => { loadSymbols().then(setList); }, []);
   useEffect(() => { setQ(value || ""); }, [value]);
@@ -67,10 +102,16 @@ export default function SymbolSearch({ value, exchange, onPick, autoFocus }) {
 
   const results = useMemo(() => search(list, q), [list, q]);
 
-  const choose = useCallback((item) => {
-    setQ(item.s);
+  // keep the highlighted row in view when arrowing past the fold
+  useEffect(() => {
+    const el = listRef.current?.querySelector(`[data-i="${hi}"]`);
+    el?.scrollIntoView({ block: "nearest" });
+  }, [hi]);
+
+  const choose = useCallback((row) => {
+    setQ(row.symbol);
     setOpen(false);
-    onPick?.({ symbol: item.s, company: item.n, exchange: item.e });
+    onPick?.(row);
   }, [onPick]);
 
   const onKey = (e) => {
@@ -87,7 +128,7 @@ export default function SymbolSearch({ value, exchange, onPick, autoFocus }) {
         className="in"
         autoFocus={autoFocus}
         value={q}
-        placeholder="Type 3 letters — TATA, RELI, HDFC"
+        placeholder="Type 3 letters — INFY, TATA, RELI"
         autoComplete="off"
         spellCheck={false}
         onChange={(e) => { setQ(e.target.value.toUpperCase()); setOpen(true); setHi(0); }}
@@ -97,48 +138,68 @@ export default function SymbolSearch({ value, exchange, onPick, autoFocus }) {
         aria-expanded={open}
       />
 
+      {/* what's currently selected, once the dropdown is closed */}
+      {!open && value && exchange && (
+        <div className="ss-current">
+          trading on <b>{exchange}</b>
+        </div>
+      )}
+
       {open && q.trim().length >= 2 && (
-        <div className="ss-pop" role="listbox">
+        <div className="ss-pop" role="listbox" ref={listRef}>
           {results.length === 0 ? (
             <div className="ss-none">
               {list.length === 0
                 ? "Symbol list not built yet — run: node scripts/build-symbols.mjs"
-                : `Nothing matches “${q}”. You can still type the symbol by hand.`}
+                : `Nothing matches "${q}". You can still type the symbol by hand.`}
             </div>
           ) : (
-            results.map((item, i) => (
+            results.map((row, i) => (
               <button
-                key={`${item.e}:${item.s}`}
+                key={`${row.symbol}:${row.exchange}`}
+                type="button"
                 role="option"
                 aria-selected={i === hi}
                 className="ss-row"
+                data-i={i}
                 data-hi={i === hi ? 1 : 0}
                 onMouseEnter={() => setHi(i)}
-                onClick={() => choose(item)}
+                onClick={() => choose(row)}
               >
-                <span className="ss-sym">{item.s}</span>
-                <span className="ss-name">{item.n}</span>
-                <span className="ss-ex" data-ex={item.e}>{item.e}</span>
+                <span className="ss-sym">{row.symbol}</span>
+                <span className="ss-name">{row.company}</span>
+                <span className="ss-ex" data-ex={row.exchange}>{row.exchange}</span>
               </button>
             ))
+          )}
+          {results.some((r) => r.dual) && (
+            <div className="ss-foot">
+              Names listed twice trade on both exchanges — pick the one you dealt on.
+              It sets the exchange fee and where the price is fetched from.
+            </div>
           )}
         </div>
       )}
 
       <style jsx>{`
         .ss { position: relative; }
+        .ss-current {
+          font-size: 11px; color: var(--ink3); margin-top: 5px;
+        }
+        .ss-current b { color: var(--ink2); font-weight: 600; }
         .ss-pop {
           position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 40;
           background: #fff; border: 1px solid var(--rule); border-radius: 3px;
           box-shadow: 0 10px 28px rgba(19, 28, 26, 0.14);
-          max-height: 292px; overflow-y: auto;
+          max-height: 320px; overflow-y: auto;
         }
         .ss-row {
-          display: grid; grid-template-columns: 88px 1fr auto; gap: 10px; align-items: baseline;
-          width: 100%; text-align: left; padding: 9px 12px; background: none;
-          border: 0; border-bottom: 1px solid var(--rule); cursor: pointer;
+          display: grid; grid-template-columns: 92px 1fr auto; gap: 10px;
+          align-items: baseline; width: 100%; text-align: left;
+          padding: 9px 12px; background: none; border: 0;
+          border-bottom: 1px solid var(--rule); cursor: pointer;
         }
-        .ss-row:last-child { border-bottom: 0; }
+        .ss-row:last-of-type { border-bottom: 0; }
         .ss-row[data-hi="1"] { background: #F1F5F3; }
         .ss-sym {
           font-family: 'Spline Sans Mono', monospace; font-size: 13px;
@@ -150,11 +211,17 @@ export default function SymbolSearch({ value, exchange, onPick, autoFocus }) {
         }
         .ss-ex {
           font-size: 9px; font-weight: 700; letter-spacing: 0.09em;
-          padding: 2px 5px; border-radius: 2px; border: 1px solid var(--rule);
-          color: var(--ink3);
+          padding: 2px 6px; border-radius: 2px; border: 1px solid var(--rule);
+          color: var(--ink3); min-width: 34px; text-align: center;
         }
         .ss-ex[data-ex="NSE"] { color: var(--brass); border-color: var(--brass); }
+        .ss-ex[data-ex="BSE"] { color: var(--ink2); border-color: var(--ink3); }
         .ss-none { padding: 14px 12px; font-size: 12px; color: var(--ink3); }
+        .ss-foot {
+          padding: 9px 12px; font-size: 10.5px; color: var(--ink3);
+          border-top: 1px solid var(--rule); background: #F7F9F8;
+          line-height: 1.5; text-wrap: pretty;
+        }
       `}</style>
     </div>
   );

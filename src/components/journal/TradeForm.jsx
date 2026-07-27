@@ -159,8 +159,8 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                 <SymbolSearch
                   value={t.symbol}
                   exchange={t.exchange}
-                  onPick={({ symbol, company, exchange }) =>
-                    setT((p) => ({ ...p, symbol, company, exchange }))}
+                  onPick={({ symbol, company, exchange, bseCode }) =>
+                    setT((p) => ({ ...p, symbol, company, exchange, bse_code: bseCode || null }))}
                 />
                 {t.company && (
                   <div className="hint">{t.company} · {t.exchange}</div>

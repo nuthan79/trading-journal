@@ -36,10 +36,19 @@ const BROWSER_HEADERS = {
 
 const HOSTS = ["query1.finance.yahoo.com", "query2.finance.yahoo.com"];
 
-async function yahooOne({ symbol, exchange }) {
-  const ticker = symbol + (YAHOO_SUFFIX[exchange] || ".NS");
+async function yahooOne({ symbol, exchange, code }) {
+  // Yahoo resolves BSE listings by symbol for the well-known names, but many
+  // smaller BSE-only scrips only answer to their numeric scrip code. Try the
+  // symbol first, then the code, so dual-listed names keep working exactly as
+  // before while BSE-only ones stop silently returning nothing.
+  const candidates =
+    exchange === "BSE" && code
+      ? [`${symbol}.BO`, `${code}.BO`]
+      : [symbol + (YAHOO_SUFFIX[exchange] || ".NS")];
+
   let lastErr;
 
+  for (const ticker of candidates) {
   // query1 occasionally throttles where query2 does not, so try both.
   for (const host of HOSTS) {
     try {
@@ -57,7 +66,7 @@ async function yahooOne({ symbol, exchange }) {
       const change = price != null && prevClose != null ? price - prevClose : null;
 
       return {
-        symbol,
+        symbol,          // always the symbol we were asked about, never the ticker
         exchange,
         price,
         prevClose,
@@ -70,7 +79,8 @@ async function yahooOne({ symbol, exchange }) {
       lastErr = err;
     }
   }
-  throw new Error(`${ticker}: ${lastErr?.message || "unavailable"}`);
+  }
+  throw new Error(`${symbol} (${exchange}): ${lastErr?.message || "unavailable"}`);
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
