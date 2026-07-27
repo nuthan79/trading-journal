@@ -19,13 +19,8 @@ export async function GET(req) {
     .map((p) => p.trim())
     .filter(Boolean)
     .map((p) => {
-      // SYMBOL:EXCHANGE, or SYMBOL:EXCHANGE:BSECODE where the caller has it
-      const [symbol, exchange, code] = p.split(":");
-      return {
-        symbol: symbol.toUpperCase(),
-        exchange: (exchange || "NSE").toUpperCase(),
-        code: code || null,
-      };
+      const [symbol, exchange] = p.split(":");
+      return { symbol: symbol.toUpperCase(), exchange: (exchange || "NSE").toUpperCase() };
     })
     .slice(0, 60); // keep the upstream request sane
 

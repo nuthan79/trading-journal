@@ -78,17 +78,7 @@ export async function markOpenPositions(openTrades) {
   if (!openTrades?.length) return { marked: [], error: null };
 
   const key = (e, s) => `${e}:${s}`;
-  // SYMBOL:EXCHANGE, or SYMBOL:BSE:CODE where we know the numeric scrip code —
-  // Yahoo only answers to the code for the smaller BSE-only names. The
-  // two-part form stays valid, so a trade without a code is unaffected.
-  const q = openTrades
-    .map((t) => {
-      const code = t.bse_code || t.bseCode;
-      return t.exchange === "BSE" && code
-        ? `${t.symbol}:${t.exchange}:${code}`
-        : `${t.symbol}:${t.exchange}`;
-    })
-    .join(",");
+  const q = openTrades.map((t) => `${t.symbol}:${t.exchange}`).join(",");
 
   let quotes = [];
   try {
