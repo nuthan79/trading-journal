@@ -23,20 +23,33 @@ const GRAINS = [
   { id: "year", label: "Financial year" },
 ];
 
-export default function PeriodPerformance({ closed, openingCapital, flows = [] }) {
+export default function PeriodPerformance({ closed, openingCapital, flows = [], all = [] }) {
   const [grain, setGrain] = useState("month");
+  const [basis, setBasis] = useState("exit");
+  const byEntry = basis === "entry";
 
   const rows = useMemo(
-    () => byPeriod(closed, grain, { openingCapital, flows }),
-    [closed, grain, openingCapital, flows]
+    () => byPeriod(closed, grain, { openingCapital, flows, basis, universe: all }),
+    [closed, grain, openingCapital, flows, basis, all]
+  );
+
+  // Entries made in the period but not yet closed. They carry no R, so an
+  // entry-basis row is only ever a partial verdict until they finish.
+  const pending = useMemo(
+    () => rows.reduce((a, r) => a + Math.max(0, (r.started ?? 0) - (r.settled ?? 0)), 0),
+    [rows]
   );
 
   const totals = useMemo(() => {
     if (!rows.length) return null;
+    // Guarded: a period whose trades all lack a stop has no totalR, and one
+    // undefined turns the whole sum into NaN — so the footer read "—" while
+    // the tile above it reported a real figure from the trades that do have one.
+    const num = (v) => (isFinite(v) ? v : 0);
     return {
       trades: rows.reduce((a, r) => a + r.trades, 0),
-      pnl: rows.reduce((a, r) => a + r.pnl, 0),
-      totalR: rows.reduce((a, r) => a + r.totalR, 0),
+      pnl: rows.reduce((a, r) => a + num(r.pnl), 0),
+      totalR: rows.reduce((a, r) => a + num(r.totalR), 0),
       green: rows.filter((r) => r.pnl > 0).length,
     };
   }, [rows]);
@@ -50,7 +63,9 @@ export default function PeriodPerformance({ closed, openingCapital, flows = [] }
     );
   }
 
-  const maxAbsR = Math.max(...rows.map((r) => Math.abs(r.totalR)), 1);
+  // Math.max poisons to NaN if any input is, which would size every bar at
+  // NaN% the moment one period has no stop recorded.
+  const maxAbsR = Math.max(...rows.map((r) => Math.abs(r.totalR)).filter(isFinite), 1);
 
   return (
     <section>
@@ -63,23 +78,44 @@ export default function PeriodPerformance({ closed, openingCapital, flows = [] }
               : grain === "quarter"
               ? "Financial-year quarters — Q1 is April to June."
               : "Financial years, April to March."}
+            {byEntry
+              ? " Grouped by when each trade was entered — how the decisions taken then worked out."
+              : " Grouped by when each trade was closed — when the money was actually realised."}
           </div>
         </div>
-        <div className="seg">
-          {GRAINS.map((g) => (
-            <button key={g.id} data-on={grain === g.id ? 1 : 0} onClick={() => setGrain(g.id)}>
-              {g.label}
-            </button>
-          ))}
+        <div className="pp-controls">
+          <div className="seg">
+            <button data-on={basis === "exit" ? 1 : 0} onClick={() => setBasis("exit")}>By exit</button>
+            <button data-on={byEntry ? 1 : 0} onClick={() => setBasis("entry")}>By entry</button>
+          </div>
+          <div className="seg">
+            {GRAINS.map((g) => (
+              <button key={g.id} data-on={grain === g.id ? 1 : 0} onClick={() => setGrain(g.id)}>
+                {g.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
+
+      {byEntry && (
+        <div className="pp-note">
+          Return, drawdown and the capital walk are blank here — they describe money
+          arriving, and this view is grouped by when trades were started.
+          {pending > 0 && (
+            <> {pending} {pending === 1 ? "entry is" : "entries are"} still open, so the
+            most recent periods only reflect the trades that have finished — which
+            skews toward whichever you exit fastest.</>
+          )}
+        </div>
+      )}
 
       <div className="card scroll">
         <table className="t">
           <thead>
             <tr>
               <th>Period</th>
-              <th className="num">Trades</th>
+              <th className="num">{byEntry ? "Closed" : "Trades"}</th>
               <th className="num">Net P&amp;L</th>
               <th className="num">Return</th>
               <th className="num">Total R</th>
@@ -95,25 +131,36 @@ export default function PeriodPerformance({ closed, openingCapital, flows = [] }
             {rows.map((r) => (
               <tr key={r.key}>
                 <td><b style={{ fontWeight: 600 }}>{r.key}</b></td>
-                <td className="num">{r.trades}</td>
+                <td className="num"
+                    title={byEntry && r.started > r.settled
+                      ? `${r.started - r.settled} entered this period and still open`
+                      : undefined}>
+                  {byEntry ? <>{r.settled}<span className="pp-dim"> / {r.started}</span></> : r.trades}
+                </td>
                 <td className={`num ${r.pnl >= 0 ? "pos" : "neg"}`} style={{ fontWeight: 500 }}>
                   {rupee(r.pnl)}
                 </td>
                 <td className={`num ${r.returnPct >= 0 ? "pos" : "neg"}`}>
-                  {signedPct(r.returnPct)}
+                  {r.returnPct == null ? <span className="pp-dim">—</span> : signedPct(r.returnPct)}
                 </td>
                 <td className={`num ${r.totalR >= 0 ? "pos" : "neg"}`}>{rfmt(r.totalR, 1)}</td>
                 <td className={`num ${r.expectancy >= 0 ? "pos" : "neg"}`}>{rfmt(r.expectancy)}</td>
                 <td className="num">{pct(r.winRate, 0)}</td>
                 <td className="num">{rupee(r.avgValue)}</td>
-                <td className="num" title={`${pct(r.avgRiskPct, 2)} of capital`}>
+                <td className="num" title={r.avgRiskPct != null ? `${pct(r.avgRiskPct, 2)} of capital` : undefined}>
                   {rupee(r.avgRisk)}
-                  <span className="pp-dim"> · {pct(r.avgRiskPct, 2)}</span>
+                  {r.avgRiskPct != null && <span className="pp-dim"> · {pct(r.avgRiskPct, 2)}</span>}
                 </td>
-                <td className="num">{r.maxDD.toFixed(1)}R</td>
+                <td className="num">
+                  {r.maxDD == null ? <span className="pp-dim">—</span> : `${r.maxDD.toFixed(1)}R`}
+                </td>
                 <td>
                   <div className="pp-bar" data-side={r.totalR >= 0 ? "pos" : "neg"}>
-                    <div style={{ width: `${(Math.abs(r.totalR) / maxAbsR) * 100}%` }} />
+                    <div style={{
+                      width: isFinite(r.totalR)
+                        ? `${(Math.abs(r.totalR) / maxAbsR) * 100}%`
+                        : 0,
+                    }} />
                   </div>
                 </td>
               </tr>
@@ -149,8 +196,14 @@ export default function PeriodPerformance({ closed, openingCapital, flows = [] }
           display: flex; align-items: flex-end; justify-content: space-between;
           gap: 14px; flex-wrap: wrap; margin-bottom: 10px;
         }
-        .pp-sub { font-size: 12px; color: var(--ink2); margin-top: 3px; }
+        .pp-sub { font-size: 12px; color: var(--ink2); margin-top: 3px; max-width: 620px; }
         .pp-dim { color: var(--ink3); font-size: 11px; }
+        .pp-controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+        .pp-note {
+          font-size: 11.5px; color: var(--ink3); line-height: 1.6;
+          border-left: 2px solid var(--brass); padding: 2px 0 2px 10px;
+          margin-bottom: 10px; max-width: 700px; text-wrap: pretty;
+        }
         .pp-bar { display: flex; height: 7px; }
         .pp-bar[data-side="neg"] { justify-content: flex-end; }
         .pp-bar > div { border-radius: 1px; opacity: 0.75; }

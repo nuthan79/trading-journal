@@ -296,14 +296,53 @@ function periodStartOf(dateStr, grain) {
  * view for each. `openingCapital` lets each period report a return on the
  * capital it actually started with rather than on today's balance.
  */
-export function byPeriod(closed, grain, { openingCapital = 0, flows = [] } = {}) {
+/**
+ * `basis` decides what a period means.
+ *
+ *   "exit"  — when the money was realised. The accounting view: it matches
+ *             the equity curve, reconciles with a broker statement, and is
+ *             the only basis on which return %, drawdown and the capital
+ *             walk mean anything.
+ *
+ *   "entry" — when the decision was taken. The diagnostic view: it groups a
+ *             month's trades by the conditions you entered them in, which is
+ *             what setup quality and market regime are actually about. A
+ *             March entry closed in July belongs to March here.
+ *
+ * On the entry basis the equity walk is skipped rather than faked. Crediting
+ * March with money that arrived in July would make every percentage on the
+ * row a fiction, and drawdown computed over entry order isn't an equity path
+ * at all — both come back null so a caller can't render them by accident.
+ */
+export function byPeriod(
+  closed,
+  grain,
+  { openingCapital = 0, flows = [], basis = "exit", universe = null } = {}
+) {
   const label = grain === "month" ? monthLabel : grain === "quarter" ? quarterLabel : fyLabel;
-  const rows = chronological(closed);
+  const byEntry = basis === "entry";
+  const dateOf = byEntry ? (t) => t.entry_date : realisedOn;
+  const rows = byEntry
+    ? [...closed].sort((a, b) => new Date(a.entry_date) - new Date(b.entry_date))
+    : chronological(closed);
+
+  // How many trades were STARTED in each period, closed or not. Without this
+  // a recent month shows only the entries that have already finished, which
+  // skews toward whichever ones you exit fastest — and reads as a change in
+  // performance rather than the artefact it is.
+  const startedIn = new Map();
+  if (byEntry && universe) {
+    for (const t of universe) {
+      if (!t.entry_date) continue;
+      const k = label(t.entry_date);
+      startedIn.set(k, (startedIn.get(k) || 0) + 1);
+    }
+  }
 
   const buckets = new Map();
   for (const t of rows) {
-    const k = label(realisedOn(t));
-    if (!buckets.has(k)) buckets.set(k, { key: k, first: realisedOn(t), trades: [] });
+    const k = label(dateOf(t));
+    if (!buckets.has(k)) buckets.set(k, { key: k, first: dateOf(t), trades: [] });
     buckets.get(k).trades.push(t);
   }
 
@@ -338,17 +377,30 @@ export function byPeriod(closed, grain, { openingCapital = 0, flows = [] } = {})
     const risk = b.trades.reduce((a, t) => a + (isFinite(t.riskAmt) ? t.riskAmt : 0), 0);
     equity += pnl;
 
+    // Deliberately null rather than a number on the entry basis: these three
+    // describe money moving through the account, and this basis has grouped
+    // the trades by when they were decided, not when they paid out.
+    const accounting = !byEntry;
+
     out.push({
       ...s,
       key: b.key,
+      basis,
       trades: b.trades.length,
+      // Entries started in this period vs how many have finished. Only the
+      // closed ones can carry an R, so the gap is what the row can't see yet.
+      started: byEntry ? startedIn.get(b.key) ?? b.trades.length : null,
+      settled: byEntry ? b.trades.length : null,
       pnl,
-      opening,
-      capitalIn: inflow,
-      returnPct: opening > 0 ? (pnl / opening) * 100 : NaN,
+      opening: accounting ? opening : null,
+      capitalIn: accounting ? inflow : null,
+      returnPct: accounting && opening > 0 ? (pnl / opening) * 100 : null,
+      maxDD: accounting ? s.maxDD : null,
       avgValue: b.trades.length ? value / b.trades.length : NaN,
       avgRisk: b.trades.length ? risk / b.trades.length : NaN,
-      avgRiskPct: opening > 0 && b.trades.length ? (risk / b.trades.length / opening) * 100 : NaN,
+      avgRiskPct: accounting && opening > 0 && b.trades.length
+        ? (risk / b.trades.length / opening) * 100
+        : null,
     });
   }
   return out;

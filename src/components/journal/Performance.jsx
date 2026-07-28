@@ -8,7 +8,7 @@ import { rupee, rfmt, pct } from "@/lib/format";
 import Tile from "./Tile";
 import PeriodPerformance from "./PeriodPerformance";
 
-export default function Performance({ closed, S, accountSize, flows }) {
+export default function Performance({ closed, S, accountSize, flows, all = [] }) {
   const [dim, setDim] = useState("pattern");
   const D = DIMENSIONS.find((d) => d.id === dim) || DIMENSIONS[0];
 
@@ -45,7 +45,7 @@ export default function Performance({ closed, S, accountSize, flows }) {
       </div>
 
       <div className="sec">
-        <PeriodPerformance closed={closed} openingCapital={accountSize} flows={flows} />
+        <PeriodPerformance closed={closed} openingCapital={accountSize} flows={flows} all={all} />
       </div>
 
       <div className="sec">
