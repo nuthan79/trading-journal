@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X, Check } from "lucide-react";
+import { X, Check, Plus } from "lucide-react";
 import SymbolSearch from "@/components/SymbolSearch";
 import ChargesField from "./ChargesField";
 import { derivePosition } from "@/lib/positions";
@@ -11,12 +11,36 @@ import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
 
 const num = (v) => (v === "" || v === null || v === undefined ? NaN : Number(v));
 
-/** See Journal.jsx's withExits — same reasoning, applied to live form state. */
+/**
+ * The live tranche list, coerced for derivePosition. Half-typed rows are
+ * dropped rather than fed in as NaN, so the R readout stays quiet until a
+ * sell is actually complete instead of flickering nonsense as you type.
+ */
 function withExits(t) {
-  if (t.status === "closed" && t.exit_date && t.exit_price !== "") {
-    return { ...t, exits: [{ exit_date: t.exit_date, quantity: t.quantity, price: t.exit_price }] };
-  }
-  return { ...t, exits: [] };
+  const exits = (t.exits || [])
+    .filter((e) => e.exit_date && num(e.quantity) > 0 && num(e.price) > 0)
+    .map((e) => ({
+      exit_date: e.exit_date,
+      quantity: num(e.quantity),
+      price: num(e.price),
+      reason: e.reason || null,
+      charges: 0,   // the figure lives on t.charges; counting it twice would understate P&L
+    }));
+  return { ...t, exits };
+}
+
+const blankExit = (date) => ({
+  exit_date: date || new Date().toISOString().slice(0, 10),
+  quantity: "", price: "", reason: "",
+});
+
+/** What the database trigger will conclude, worked out here so the form agrees. */
+function statusFromExits(exits, quantity) {
+  const sold = (exits || []).reduce((a, e) => a + (num(e.quantity) || 0), 0);
+  const total = num(quantity);
+  if (!(sold > 0)) return "open";
+  if (isFinite(total) && sold < total - 1e-6) return "partial";
+  return "closed";
 }
 
 const blank = () => ({
@@ -26,6 +50,7 @@ const blank = () => ({
   pattern: "", pivot_price: "", vol_pct_avg: "", weinstein_stage: "", rs_rank: "",
   thesis: "",
   exit_date: "", exit_price: "", exit_reason: "",
+  exits: [],
   charges: "0", charges_auto: true, charges_breakdown: null,
   mistakes: [], notes: "",
 });
@@ -45,6 +70,24 @@ function fromInitial(row) {
     thesis: row.thesis || "",
     exit_date: row.exit_date || "", exit_price: str(row.exit_price),
     exit_reason: row.exit_reason || "",
+    // Real tranches when the row has them; otherwise the flat columns become
+    // the single equivalent sell, so an older trade opens as one editable row
+    // rather than looking as though its exit had been lost.
+    exits: row.exits?.length
+      ? row.exits.map((e) => ({
+          exit_date: e.exit_date || "",
+          quantity: str(e.quantity),
+          price: str(e.price),
+          reason: e.reason || "",
+        }))
+      : row.status === "closed" && row.exit_date
+      ? [{
+          exit_date: row.exit_date,
+          quantity: str(row.quantity),
+          price: str(row.exit_price),
+          reason: row.exit_reason || "",
+        }]
+      : [],
     // charges_auto comes straight off the row, never defaulted to true here —
     // an existing trade's figure was either computed or typed by the person
     // who logged it, and only that stored flag says which.
@@ -57,13 +100,26 @@ function fromInitial(row) {
 
 function toPayload(t) {
   const numOrNull = (v) => (v === "" || v === null || v === undefined ? null : Number(v));
+
+  // The tranches are the truth; these flat columns mirror them. Migration
+  // 007's trigger recomputes all three from trade_exits anyway, but sending
+  // the same answer keeps the row sane in the moment between the two writes,
+  // and keeps a single-exit trade correct if 007 hasn't been run.
+  const live = withExits(t).exits;
+  const sold = live.reduce((a, e) => a + e.quantity, 0);
+  const status = statusFromExits(t.exits, t.quantity);
+  const lastExit = live.length ? live[live.length - 1].exit_date : null;
+  const avgExit = sold > 0
+    ? live.reduce((a, e) => a + e.price * e.quantity, 0) / sold
+    : null;
+
   return {
     ...(t.id ? { id: t.id } : {}),
     symbol: t.symbol.trim().toUpperCase(),
     company: t.company || null,
     exchange: t.exchange,
     side: t.side,
-    status: t.status,
+    status,
     entry_date: t.entry_date,
     entry_price: Number(t.entry_price),
     quantity: Number(t.quantity),
@@ -76,9 +132,13 @@ function toPayload(t) {
     weinstein_stage: t.weinstein_stage ? Number(t.weinstein_stage) : null,
     rs_rank: numOrNull(t.rs_rank),
     thesis: t.thesis?.trim() || null,
-    exit_date: t.status === "closed" ? (t.exit_date || null) : null,
-    exit_price: t.status === "closed" ? numOrNull(t.exit_price) : null,
-    exit_reason: t.status === "closed" ? (t.exit_reason || null) : null,
+    exit_date: lastExit,
+    // Only meaningful once the position is fully out; a partial has no single
+    // exit price, and inventing one would misreport what's still running.
+    exit_price: status === "closed" ? avgExit : null,
+    exit_reason: status === "closed"
+      ? (live[live.length - 1]?.reason || null)
+      : null,
     // Whatever is in state is what ChargesField left there: unchanged from
     // the loaded row when charges_auto was already false (its own effect
     // refuses to touch the value in that case), or its latest proposal
@@ -116,6 +176,45 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
     setT((p) => ({ ...p, mistakes: p.mistakes.includes(m)
       ? p.mistakes.filter((x) => x !== m) : [...p.mistakes, m] }));
 
+  /* ---- exit tranches ----------------------------------------------- */
+
+  const qtySold = (t.exits || []).reduce((a, e) => a + (num(e.quantity) || 0), 0);
+  const qtyLeft = num(t.quantity) - qtySold;
+  const oversold = isFinite(qtyLeft) && qtyLeft < -1e-6;
+  const derivedStatus = statusFromExits(t.exits, t.quantity);
+
+  const setExit = (i, key) => (e) =>
+    setT((p) => ({
+      ...p,
+      exits: p.exits.map((x, j) => (j === i ? { ...x, [key]: e.target.value } : x)),
+    }));
+
+  // A new row is pre-filled with whatever is still unsold, since selling the
+  // rest is much the commoner case than typing a number in again.
+  const addExit = () =>
+    setT((p) => {
+      const sold = p.exits.reduce((a, e) => a + (num(e.quantity) || 0), 0);
+      const left = num(p.quantity) - sold;
+      return {
+        ...p,
+        exits: [...p.exits, {
+          ...blankExit(),
+          quantity: isFinite(left) && left > 0 ? String(left) : "",
+        }],
+      };
+    });
+
+  const removeExit = (i) =>
+    setT((p) => ({ ...p, exits: p.exits.filter((_, j) => j !== i) }));
+
+  const sellRemaining = () =>
+    setT((p) => {
+      const sold = p.exits.reduce((a, e) => a + (num(e.quantity) || 0), 0);
+      const left = num(p.quantity) - sold;
+      if (!(left > 0)) return p;
+      return { ...p, exits: [...p.exits, { ...blankExit(), quantity: String(left) }] };
+    });
+
   const sizeIt = () => {
     const rps = Math.abs(num(t.entry_price) - num(t.stop_loss));
     if (!(rps > 0) || !(accountSize > 0)) return;
@@ -128,9 +227,14 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
   // until it's filled in, which is honest rather than invented.
   const stopOk = t.stop_loss === "" || num(t.stop_loss) > 0;
 
+  // Every sell that's been started has to be finished, and you can't sell
+  // more than you hold. A position with no sells at all is simply still open.
+  const exitsOk =
+    !oversold &&
+    (t.exits || []).every((e) => e.exit_date && num(e.quantity) > 0 && num(e.price) > 0);
+
   const valid = t.symbol.trim() && num(t.entry_price) > 0 &&
-    num(t.quantity) > 0 && stopOk &&
-    (t.status === "open" || (isFinite(num(t.exit_price)) && t.exit_date));
+    num(t.quantity) > 0 && stopOk && exitsOk;
 
   const overRisk = isFinite(d.riskPct) && d.riskPct > 2;
 
@@ -138,7 +242,9 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
     if (!valid || saving) return;
     setSaving(true);
     try {
-      await onSave(toPayload(t));
+      // Tranches travel alongside the row, not in it — they belong to
+      // trade_exits and the trade has to exist before they can reference it.
+      await onSave(toPayload(t), withExits(t).exits);
       clearDraft();
     } finally {
       setSaving(false);
@@ -253,11 +359,11 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                 </select></label>
               <label className="f"><span>Why this trade</span>
                 <input className="in" value={t.thesis} onChange={set("thesis")}
-                       readOnly={t.status === "closed"}
-                       style={t.status === "closed" ? { color: "var(--ink2)", background: "var(--paper)" } : undefined}
+                       readOnly={derivedStatus === "closed"}
+                       style={derivedStatus === "closed" ? { color: "var(--ink2)", background: "var(--paper)" } : undefined}
                        placeholder="The one-line reason, written now — not reconstructed after you know the outcome." />
                 <div className="hint">
-                  {t.status === "closed"
+                  {derivedStatus === "closed"
                     ? "Locked once closed — this is what you thought at entry, not a rewrite after the fact."
                     : "Read back after the trade closes, this is often the most honest line in the journal."}
                 </div></label>
@@ -265,27 +371,66 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
           </div>
 
           <div>
-            <div className="eyebrow" style={{ marginBottom: 10 }}>Exit</div>
-            <div className="seg" style={{ marginBottom: 12 }}>
-              <button type="button" data-on={t.status === "open" ? 1 : 0}
-                      onClick={() => setT((p) => ({ ...p, status: "open" }))}>Still open</button>
-              <button type="button" data-on={t.status === "closed" ? 1 : 0}
-                      onClick={() => setT((p) => ({ ...p, status: "closed",
-                        exit_date: p.exit_date || new Date().toISOString().slice(0, 10) }))}>Closed</button>
+            <div className="ex-head">
+              <div className="eyebrow">Exit</div>
+              <div className="ex-state">
+                <span className="ex-badge" data-s={derivedStatus}>
+                  {derivedStatus === "open" ? "Still open"
+                    : derivedStatus === "partial" ? "Part sold" : "Closed"}
+                </span>
+                {qtySold > 0 && (
+                  <span className="ex-sold mono">
+                    {qtySold} of {t.quantity || "—"} sold
+                    {isFinite(qtyLeft) && qtyLeft > 0 && <> · {qtyLeft} left</>}
+                  </span>
+                )}
+              </div>
             </div>
-            {t.status === "closed" && (
-              <div className="grid3" style={{ gap: 12 }}>
-                <label className="f"><span>Exit price</span>
-                  <input className="in" inputMode="decimal" value={t.exit_price} onChange={set("exit_price")} /></label>
-                <label className="f"><span>Exit date</span>
-                  <input className="in" type="date" value={t.exit_date} onChange={set("exit_date")} /></label>
-                <label className="f"><span>Why you exited</span>
-                  <select className="in" value={t.exit_reason} onChange={set("exit_reason")}>
-                    <option value="">—</option>
-                    {EXIT_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
-                  </select></label>
+
+            {/* No open/closed toggle: status is settled by what's been sold,
+                and a switch that could disagree with the tranches — or with
+                the trigger that owns status in the database — is a way for
+                the two to drift apart. */}
+            {t.exits.length > 0 && (
+              <div className="ex-rows">
+                {t.exits.map((e, i) => (
+                  <div className="ex-row" key={i}>
+                    <label className="f"><span>{i === 0 ? "Sold on" : ""}</span>
+                      <input className="in" type="date" value={e.exit_date}
+                             onChange={setExit(i, "exit_date")} /></label>
+                    <label className="f"><span>{i === 0 ? "Quantity" : ""}</span>
+                      <input className="in" inputMode="numeric" value={e.quantity}
+                             onChange={setExit(i, "quantity")} /></label>
+                    <label className="f"><span>{i === 0 ? "Price" : ""}</span>
+                      <input className="in" inputMode="decimal" value={e.price}
+                             onChange={setExit(i, "price")} /></label>
+                    <label className="f"><span>{i === 0 ? "Why" : ""}</span>
+                      <select className="in" value={e.reason} onChange={setExit(i, "reason")}>
+                        <option value="">—</option>
+                        {EXIT_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                      </select></label>
+                    <button type="button" className="x ex-del" aria-label="Remove this sell"
+                            onClick={() => removeExit(i)}><X size={14} /></button>
+                  </div>
+                ))}
               </div>
             )}
+
+            <div className="ex-actions">
+              <button className="btn ghost sm" type="button" onClick={addExit}>
+                <Plus size={12} />{t.exits.length ? "Another sell" : "Record a sell"}
+              </button>
+              {isFinite(qtyLeft) && qtyLeft > 0 && t.exits.length > 0 && (
+                <button className="btn ghost sm" type="button" onClick={sellRemaining}>
+                  Sell the remaining {qtyLeft}
+                </button>
+              )}
+              {oversold && (
+                <span className="ex-warn">
+                  Sold {qtySold} of a {t.quantity} position — more than you hold.
+                </span>
+              )}
+            </div>
 
             <div style={{ marginTop: 12 }}>
               <ChargesField
@@ -298,14 +443,38 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
               />
             </div>
 
-            {t.status === "closed" && (
+            {derivedStatus !== "open" && (
               <>
-                {isFinite(d.r) && (
+                {(isFinite(d.r) || isFinite(d.realisedR)) && (
                   <div className="readout" style={{ marginTop: 12 }}>
-                    <div className="row"><span>Realised P&amp;L (net of charges)</span>
-                      <b className={d.pnl >= 0 ? "pos" : "neg"}>{rupee(d.pnl)}</b></div>
-                    <div className="row"><span>Outcome in R</span>
-                      <b className={d.r >= 0 ? "pos" : "neg"} style={{ fontSize: 15 }}>{d.r >= 0 ? "+" : ""}{d.r.toFixed(2)}R</b></div>
+                    {derivedStatus === "partial" ? (
+                      <>
+                        <div className="row"><span>Banked so far (net of charges)</span>
+                          <b className={d.realisedPnl >= 0 ? "pos" : "neg"}>{rupee(d.realisedPnl)}</b></div>
+                        <div className="row"><span>Banked in R</span>
+                          <b className={d.realisedR >= 0 ? "pos" : "neg"}>
+                            {isFinite(d.realisedR) ? `${d.realisedR >= 0 ? "+" : ""}${d.realisedR.toFixed(2)}R` : "—"}</b></div>
+                        <div className="row"><span>Still running</span>
+                          <b>{d.qtyOpen} of {t.quantity}</b></div>
+                        {isFinite(d.unrealisedR) && (
+                          <div className="row"><span>Open R on the rest</span>
+                            <b className={d.unrealisedR >= 0 ? "pos" : "neg"}>
+                              {d.unrealisedR >= 0 ? "+" : ""}{d.unrealisedR.toFixed(2)}R</b></div>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <div className="row"><span>Realised P&amp;L (net of charges)</span>
+                          <b className={d.pnl >= 0 ? "pos" : "neg"}>{rupee(d.pnl)}</b></div>
+                        <div className="row"><span>Outcome in R</span>
+                          <b className={d.r >= 0 ? "pos" : "neg"} style={{ fontSize: 15 }}>
+                            {isFinite(d.r) ? `${d.r >= 0 ? "+" : ""}${d.r.toFixed(2)}R` : "—"}</b></div>
+                        {d.exitsCount > 1 && (
+                          <div className="row"><span>Scaled out over</span>
+                            <b>{d.exitsCount} sells · avg {d.avgExitPrice?.toFixed(2)}</b></div>
+                        )}
+                      </>
+                    )}
                     {isFinite(d.heldDays) && (
                       <div className="row"><span>Held</span><b>{d.heldDays} days</b></div>)}
                   </div>
@@ -337,6 +506,37 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
           </div>
         </div>
       </div>
+
+      <style jsx>{`
+        .ex-head {
+          display: flex; align-items: baseline; justify-content: space-between;
+          gap: 12px; margin-bottom: 10px; flex-wrap: wrap;
+        }
+        .ex-state { display: flex; align-items: baseline; gap: 9px; }
+        .ex-badge {
+          font-size: 9px; font-weight: 700; letter-spacing: 0.09em;
+          text-transform: uppercase; padding: 2px 7px; border-radius: 2px;
+          border: 1px solid var(--rule); color: var(--ink3);
+        }
+        .ex-badge[data-s="partial"] { color: var(--brass); border-color: var(--brass); }
+        .ex-badge[data-s="closed"]  { color: var(--ink); border-color: var(--ink2); }
+        .ex-sold { font-size: 11.5px; color: var(--ink3); }
+        .ex-rows { display: flex; flex-direction: column; gap: 8px; }
+        .ex-row {
+          display: grid; grid-template-columns: 1.1fr 0.7fr 0.8fr 1.1fr auto;
+          gap: 9px; align-items: end;
+        }
+        .ex-del { align-self: end; margin-bottom: 5px; }
+        .ex-actions {
+          display: flex; align-items: center; gap: 9px;
+          margin-top: 11px; flex-wrap: wrap;
+        }
+        .ex-warn { font-size: 11.5px; color: var(--short); }
+        @media (max-width: 640px) {
+          .ex-row { grid-template-columns: 1fr 1fr; }
+          .ex-del { grid-column: 2; justify-self: end; }
+        }
+      `}</style>
     </div>
   );
 }

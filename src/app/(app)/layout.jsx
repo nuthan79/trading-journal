@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Plus, Settings2, LayoutGrid, Table2, LineChart, BookOpen, ClipboardList, LogOut } from "lucide-react";
 import {
   supabase, getProfile, saveProfile as dbSaveProfile,
-  listTrades, listExitsByTrade, saveTrade as dbSaveTrade, deleteTrade as dbDeleteTrade,
+  listTrades, listExitsByTrade, saveExits, saveTrade as dbSaveTrade, deleteTrade as dbDeleteTrade,
   listDiary, saveDiary as dbSaveDiary, deleteDiary as dbDeleteDiary,
   listFlows, markOpenPositions, sendMagicLink, signInWithPassword, signOut,
 } from "@/lib/db";
@@ -223,15 +223,33 @@ export default function AppLayout({ children }) {
   );
   const S = useMemo(() => stats(closed), [closed]);
 
-  const saveTrade = async (payload) => {
+  const saveTrade = async (payload, exits) => {
     try {
       const saved = await dbSaveTrade(payload);
-      setTrades((prev) => {
-        const exists = prev.some((x) => x.id === saved.id);
-        return exists ? prev.map((x) => (x.id === saved.id ? saved : x)) : [saved, ...prev];
-      });
+
+      // Written after the trade so they have an id to hang off. A single
+      // exit is fully described by the flat columns already, so if
+      // migration 007 hasn't run we let that case through rather than
+      // failing a save the user had no way to see coming — more than one
+      // tranche genuinely needs the table, and that does have to be said.
+      let savedExits = exits;
+      try {
+        await saveExits(saved.id, exits || []);
+      } catch (e) {
+        if ((exits?.length || 0) > 1) throw e;
+        savedExits = null;
+      }
+
+      const [t, ex] = await Promise.all([listTrades(), listExitsByTrade()]);
+      setTrades(t);
+      setExitsByTrade(ex);
+
       setShowForm(false); setEditing(null);
-      say(payload.id ? "Trade updated." : "Trade logged.");
+      say(
+        savedExits?.length > 1
+          ? `Trade saved with ${savedExits.length} sells.`
+          : payload.id ? "Trade updated." : "Trade logged."
+      );
     } catch (e) {
       say(e.message || "Could not save the trade.");
       throw e;
