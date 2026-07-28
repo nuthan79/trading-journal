@@ -123,7 +123,8 @@ export default function Trades({ all, onEdit, onDelete, onNew }) {
                   <td className="num" style={{ fontSize: 12 }}>{t.weinstein_stage || "—"}</td>
                   <td className="num" style={{ fontSize: 12 }}>{t.rs_rank || "—"}</td>
                   <td className="num">{Number(t.entry_price).toFixed(2)}</td>
-                  <td className="num">{Number(t.stop_loss).toFixed(2)}</td>
+                  <td className="num">
+                    {isFinite(num(t.stop_loss)) ? Number(t.stop_loss).toFixed(2) : "—"}</td>
                   <td className="num" style={{ fontSize: 12 }}>{isFinite(t.slPct) ? pct(t.slPct, 1) : "—"}</td>
                   <td className="num">{t.quantity}</td>
                   <td className="num" style={{ fontSize: 12 }}>{pct(t.riskPct, 2)}</td>

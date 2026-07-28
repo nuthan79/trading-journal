@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Plus, Settings2, LayoutGrid, Table2, LineChart, BookOpen, ClipboardList, LogOut } from "lucide-react";
 import {
   supabase, getProfile, saveProfile as dbSaveProfile,
@@ -42,7 +42,10 @@ const TABS = [
 
 export default function AppLayout({ children }) {
   const pathname = usePathname();
-  const activeTab = TABS.find((t) => t.href === pathname)?.id ?? "dash";
+  const router = useRouter();
+  // No fallback to "dash": /import and /stops match no tab, and defaulting
+  // would light up Dashboard while you're plainly somewhere else.
+  const activeTab = TABS.find((t) => t.href === pathname)?.id ?? null;
 
   // ---- auth + onboarding gate (moved from the old root page.jsx) --------
   const [session, setSession] = useState(null);
@@ -134,6 +137,17 @@ export default function AppLayout({ children }) {
     }));
   }, []);
 
+  /**
+   * Re-read the trades. An import writes hundreds of rows straight to the
+   * database rather than through saveTrade(), and filling stops updates rows
+   * in place, so neither shows up in the in-memory list without this.
+   */
+  const reloadTrades = useCallback(async () => {
+    const t = await listTrades();
+    setTrades(t);
+    return t;
+  }, []);
+
   useEffect(() => {
     if (!profile?.onboarded_at) return;
     (async () => {
@@ -173,6 +187,12 @@ export default function AppLayout({ children }) {
     [all]
   );
   const open = useMemo(() => all.filter((t) => t.status === "open"), [all]);
+  // Counted off the raw rows: a derived trade has stop_loss folded into NaN
+  // risk figures, so null is only distinguishable before derivation.
+  const needStopsCount = useMemo(
+    () => trades.filter((t) => t.stop_loss == null).length,
+    [trades]
+  );
   const S = useMemo(() => stats(closed), [closed]);
 
   const saveTrade = async (payload) => {
@@ -375,7 +395,7 @@ export default function AppLayout({ children }) {
         openNewTrade, openEditTrade,
         removeTrade,
         saveDiaryEntry, removeDiaryEntry,
-        mergeMarks,
+        mergeMarks, reloadTrades,
       }}
     >
       <div>
@@ -425,7 +445,13 @@ export default function AppLayout({ children }) {
         )}
 
         {showSettings && (
-          <SettingsSheet profile={profile} onSave={saveSettings} onClose={() => setShowSettings(false)} />
+          <SettingsSheet
+            profile={profile}
+            onSave={saveSettings}
+            onClose={() => setShowSettings(false)}
+            needStopsCount={needStopsCount}
+            onNavigate={(href) => { setShowSettings(false); router.push(href); }}
+          />
         )}
       </div>
     </JournalContext.Provider>

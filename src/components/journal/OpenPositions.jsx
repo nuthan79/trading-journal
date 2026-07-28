@@ -100,12 +100,15 @@ export default function OpenPositions({ open, onMarked, showRefresh = true }) {
           <tbody>
             {open.map((t) => {
               const entry = Number(t.entry_price);
-              const stop = Number(t.stop_loss);
+              // Null since the import migration — Number(null) is 0, which would
+              // read as a stop at zero: 100% away and never breached.
+              const stop = t.stop_loss == null ? NaN : Number(t.stop_loss);
+              const hasStop = isFinite(stop);
               const mark = t.mark;
               const live = isFinite(mark);
               const fromEntry = live ? ((mark - entry) / entry) * 100 : NaN;
-              const toStop = live ? ((mark - stop) / mark) * 100 : NaN;
-              const breached = live && (t.side === "short" ? mark >= stop : mark <= stop);
+              const toStop = live && hasStop ? ((mark - stop) / mark) * 100 : NaN;
+              const breached = live && hasStop && (t.side === "short" ? mark >= stop : mark <= stop);
 
               return (
                 <tr key={t.id} data-alert={breached ? 1 : 0}>
@@ -121,7 +124,7 @@ export default function OpenPositions({ open, onMarked, showRefresh = true }) {
                   <td className={`num ${fromEntry >= 0 ? "pos" : "neg"}`}>
                     {live ? signedPct(fromEntry) : "—"}
                   </td>
-                  <td className="num neg">{stop.toFixed(2)}</td>
+                  <td className="num neg">{hasStop ? stop.toFixed(2) : "—"}</td>
                   <td className="num op-dim">{isFinite(t.slPct) ? pct(t.slPct, 1) : "—"}</td>
                   <td className="num"
                       style={{ color: breached ? "var(--short)" : t.stopAboveEntry ? "var(--brass)" : undefined,

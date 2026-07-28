@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { X, Check } from "lucide-react";
+import { X, Check, Upload, Ruler } from "lucide-react";
 import { BROKER_PRESETS, mergeConfig } from "@/lib/charges";
 import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
 
@@ -31,7 +31,7 @@ const fromDraftCfg = (cfg) => ({
   brokerageCap: cfg.brokerageCap === UNCAPPED ? Infinity : cfg.brokerageCap,
 });
 
-export default function SettingsSheet({ profile, onSave, onClose }) {
+export default function SettingsSheet({ profile, onSave, onClose, onNavigate, needStopsCount = 0 }) {
   const persisted = loadDraft(DRAFT_KEYS.settings);
 
   const [s, setS] = useState(persisted?.s ?? {
@@ -131,6 +131,27 @@ export default function SettingsSheet({ profile, onSave, onClose }) {
                   <div className="hint">{f.hint}</div>
                 </label>
               ))}
+            </div>
+          </div>
+
+          <div style={{ borderTop: "1px solid var(--rule)", paddingTop: 18 }}>
+            <div className="eyebrow" style={{ marginBottom: 4 }}>Trades</div>
+            <div className="hint" style={{ marginTop: 0, marginBottom: 12 }}>
+              Bring in closed trades from a Zerodha Tax P&amp;L export. Charges come
+              from the file itself rather than an estimate.
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="btn ghost" onClick={() => onNavigate?.("/import")}>
+                <Upload size={13} />Import from Zerodha
+              </button>
+              {/* Filling stops is a chore done over several sittings, so it needs
+                  its own way in rather than living only at the end of an import. */}
+              <button className="btn ghost" onClick={() => onNavigate?.("/stops")}
+                      disabled={!needStopsCount}
+                      style={{ opacity: needStopsCount ? 1 : 0.45 }}>
+                <Ruler size={13} />
+                {needStopsCount ? `Add ${needStopsCount} missing stop${needStopsCount === 1 ? "" : "s"}` : "No stops missing"}
+              </button>
             </div>
           </div>
 

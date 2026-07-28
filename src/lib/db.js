@@ -116,6 +116,64 @@ export async function markOpenPositions(openTrades) {
   return { marked, error: marked.length ? null : "Nothing could be marked" };
 }
 
+/* -------------------------------- import --------------------------- */
+
+/**
+ * Keys for everything already in the journal, so an overlapping file can be
+ * re-imported safely. Each tax report covers one financial year, so a position
+ * entered in March and exited in April appears in two of them.
+ */
+export async function listTradeKeys() {
+  const { data, error } = await supabase.rpc("my_trade_keys");
+  if (error) throw error;
+  return (data || []).map((r) => r.dedupe_key);
+}
+
+/**
+ * Writes the batch row first so every trade can carry its id — that's what
+ * makes an import reviewable and undoable as a unit. If the trades fail, the
+ * batch row is removed again rather than left pointing at nothing.
+ *
+ * `_preview` is display-only scaffolding from the parser and is stripped here;
+ * sending it would fail on a column that doesn't exist.
+ */
+export async function importTrades({ trades, meta }) {
+  const user_id = await uid();
+
+  const { data: batch, error: batchErr } = await supabase
+    .from("import_batches")
+    .insert({ ...meta, user_id })
+    .select()
+    .single();
+  if (batchErr) throw batchErr;
+
+  const rows = trades.map(({ _preview, ...t }) => ({
+    ...t,
+    user_id,
+    import_batch: batch.id,
+  }));
+
+  const { data, error } = await supabase.from("trades").insert(rows).select("id");
+  if (error) {
+    await supabase.from("import_batches").delete().eq("id", batch.id);
+    throw error;
+  }
+
+  return { inserted: data?.length ?? rows.length, batchId: batch.id };
+}
+
+/** Fill in stops one batch at a time — StopFill is built to be done in sittings. */
+export async function saveStops(rows) {
+  for (const { id, stop_loss } of rows) {
+    const { error } = await supabase
+      .from("trades")
+      .update({ stop_loss })
+      .eq("id", id);
+    if (error) throw error;
+  }
+  return rows.length;
+}
+
 /* -------------------------------- diary ---------------------------- */
 
 export async function listDiary() {

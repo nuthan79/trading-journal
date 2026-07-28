@@ -67,7 +67,9 @@ function toPayload(t) {
     entry_date: t.entry_date,
     entry_price: Number(t.entry_price),
     quantity: Number(t.quantity),
-    stop_loss: Number(t.stop_loss),
+    // Nullable since the import migration. Number("") is 0, which would record
+    // a stop at zero and hand the trade a nonsense 1R.
+    stop_loss: numOrNull(t.stop_loss),
     pattern: t.pattern || null,
     pivot_price: numOrNull(t.pivot_price),
     vol_pct_avg: numOrNull(t.vol_pct_avg),
@@ -120,8 +122,14 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
     setT((p) => ({ ...p, quantity: String(Math.floor((accountSize * (riskPct / 100)) / rps)) }));
   };
 
+  // A blank stop is allowed — imported trades genuinely have none, and
+  // requiring one here would make every imported trade uneditable. A stop
+  // that IS given still has to be a positive number. R stays uncomputable
+  // until it's filled in, which is honest rather than invented.
+  const stopOk = t.stop_loss === "" || num(t.stop_loss) > 0;
+
   const valid = t.symbol.trim() && num(t.entry_price) > 0 &&
-    num(t.quantity) > 0 && num(t.stop_loss) > 0 &&
+    num(t.quantity) > 0 && stopOk &&
     (t.status === "open" || (isFinite(num(t.exit_price)) && t.exit_date));
 
   const overRisk = isFinite(d.riskPct) && d.riskPct > 2;
