@@ -48,6 +48,66 @@ export async function listTrades() {
   return data;
 }
 
+/**
+ * Exit tranches, keyed by trade id.
+ *
+ * Fetched as one query and joined client-side rather than as a nested select,
+ * so the shape stays identical to what derivePosition() already expects and
+ * the trades query is left alone.
+ *
+ * Returns an empty map rather than throwing if the table isn't there — this
+ * ships ahead of migration 007, and a missing table should degrade to the old
+ * single-exit behaviour instead of blanking the whole journal.
+ */
+export async function listExitsByTrade() {
+  const { data, error } = await supabase
+    .from("trade_exits")
+    .select("*")
+    .order("exit_date", { ascending: true });
+
+  if (error) {
+    if (isMissingTable(error)) return {};
+    throw error;
+  }
+
+  const byTrade = {};
+  for (const e of data || []) (byTrade[e.trade_id] ||= []).push(e);
+  return byTrade;
+}
+
+// 42P01 is Postgres "undefined_table"; PostgREST also reports an unknown
+// relation as PGRST205 before it has reloaded its schema cache.
+const isMissingTable = (error) =>
+  error?.code === "42P01" ||
+  error?.code === "PGRST205" ||
+  /does not exist|schema cache/i.test(error?.message || "");
+
+export async function saveExits(tradeId, exits) {
+  const user_id = await uid();
+
+  // Replace wholesale: the form hands back the full tranche list, and
+  // diffing it row by row would be more code for the same result.
+  const { error: delErr } = await supabase
+    .from("trade_exits").delete().eq("trade_id", tradeId);
+  if (delErr) throw delErr;
+
+  if (!exits?.length) return [];
+
+  const rows = exits.map((e) => ({
+    trade_id: tradeId,
+    user_id,
+    exit_date: e.exit_date,
+    quantity: Number(e.quantity),
+    price: Number(e.price),
+    reason: e.reason || null,
+    charges: Number(e.charges) || 0,
+  }));
+
+  const { data, error } = await supabase.from("trade_exits").insert(rows).select();
+  if (error) throw error;
+  return data;
+}
+
 export async function saveTrade(t) {
   const user_id = await uid();
   const row = { ...t, user_id };
@@ -147,7 +207,9 @@ export async function importTrades({ trades, meta }) {
     .single();
   if (batchErr) throw batchErr;
 
-  const rows = trades.map(({ _preview, ...t }) => ({
+  // `exits` is the tranche list; it rides alongside the trade rather than in
+  // them, so strip it here and write it to trade_exits once ids come back.
+  const rows = trades.map(({ _preview, exits, ...t }) => ({
     ...t,
     user_id,
     import_batch: batch.id,
@@ -159,7 +221,61 @@ export async function importTrades({ trades, meta }) {
     throw error;
   }
 
-  return { inserted: data?.length ?? rows.length, batchId: batch.id };
+  // insert() returns rows in the order sent, which is what lets a tranche
+  // list be matched back to the trade it came from.
+  const exitRows = [];
+  (data || []).forEach((saved, i) => {
+    for (const e of trades[i]?.exits || []) {
+      exitRows.push({
+        trade_id: saved.id,
+        user_id,
+        exit_date: e.exit_date,
+        quantity: Number(e.quantity),
+        price: Number(e.price),
+        reason: e.reason || null,
+        charges: Number(e.charges) || 0,
+      });
+    }
+  });
+
+  if (exitRows.length) {
+    const { error: exitErr } = await supabase.from("trade_exits").insert(exitRows);
+    if (exitErr) {
+      // Undo the whole thing rather than leave positions with no exits —
+      // they would read as open, with the wrong R, and be hard to spot.
+      await supabase.from("trades").delete().eq("import_batch", batch.id);
+      await supabase.from("import_batches").delete().eq("id", batch.id);
+      throw new Error(
+        isMissingTable(exitErr)
+          ? "Migration 007 hasn't been run — supabase/007_partial_exits.sql creates the " +
+            "trade_exits table this import needs. Nothing was saved."
+          : exitErr.message
+      );
+    }
+  }
+
+  return {
+    inserted: data?.length ?? rows.length,
+    tranches: exitRows.length,
+    batchId: batch.id,
+  };
+}
+
+/** Removes a batch and everything it wrote. trade_exits cascades off trades. */
+export async function undoImport(batchId) {
+  const { data, error } = await supabase.rpc("undo_import", { p_batch: batchId });
+  if (error) throw error;
+  return data;
+}
+
+export async function listImportBatches() {
+  const { data, error } = await supabase
+    .from("import_batches").select("*").order("created_at", { ascending: false });
+  if (error) {
+    if (isMissingTable(error)) return [];
+    throw error;
+  }
+  return data;
 }
 
 /** Fill in stops one batch at a time — StopFill is built to be done in sittings. */

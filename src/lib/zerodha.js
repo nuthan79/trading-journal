@@ -209,38 +209,81 @@ export function parseTradewiseRows(rows) {
 /*  Group into trades                                                  */
 /* ------------------------------------------------------------------ */
 
+/**
+ * One position per symbol + entry date; every distinct exit date under it
+ * becomes a tranche.
+ *
+ * The report lists a row per matched lot, so a holding sold down over three
+ * days arrives as three rows sharing an entry date. Recorded flat they read
+ * as three separate trades, each claiming the full entry — which triples the
+ * trade count and gives each fragment its own R against a position that was
+ * really scaled out of once.
+ *
+ * Lots sharing an entry AND exit date still merge into a single tranche at
+ * the weighted-average price; that pair of days is one decision.
+ */
 export function groupLots(lots) {
-  const groups = new Map();
+  const positions = new Map();
 
   for (const l of lots) {
-    const k = `${l.symbol}|${l.entryDate}|${l.exitDate}`;
-    if (!groups.has(k)) {
-      groups.set(k, {
+    const pk = `${l.symbol}|${l.entryDate}`;
+    if (!positions.has(pk)) {
+      positions.set(pk, {
         symbol: l.symbol, isin: l.isin, section: l.section,
-        entryDate: l.entryDate, exitDate: l.exitDate,
+        entryDate: l.entryDate,
         quantity: 0, buyValue: 0, sellValue: 0, profit: 0, charges: 0,
         lots: 0, holdingDays: l.holdingDays,
+        byExit: new Map(),
       });
     }
-    const g = groups.get(k);
-    g.quantity += l.quantity;
-    g.buyValue += l.buyValue;
-    g.sellValue += l.sellValue;
-    g.profit += l.profit;
-    g.charges += l.charges;
-    g.lots += 1;
+    const p = positions.get(pk);
+    p.quantity += l.quantity;
+    p.buyValue += l.buyValue;
+    p.sellValue += l.sellValue;
+    p.profit += l.profit;
+    p.charges += l.charges;
+    p.lots += 1;
+
+    const t = p.byExit.get(l.exitDate) || { quantity: 0, sellValue: 0, charges: 0 };
+    t.quantity += l.quantity;
+    t.sellValue += l.sellValue;
+    t.charges += l.charges;
+    p.byExit.set(l.exitDate, t);
   }
 
-  return [...groups.values()]
-    .map((g) => ({
-      ...g,
-      entryPrice: g.quantity > 0 ? g.buyValue / g.quantity : NaN,
-      exitPrice: g.quantity > 0 ? g.sellValue / g.quantity : NaN,
-      netProfit: g.profit - g.charges,
-      pnlPct: g.buyValue > 0 ? (g.profit / g.buyValue) * 100 : NaN,
-      intraday: g.section === "equity - intraday",
-      dedupeKey: `${g.symbol}|${g.entryDate}|${g.exitDate}|${g.quantity}`,
-    }))
+  return [...positions.values()]
+    .map((p) => {
+      const tranches = [...p.byExit.entries()]
+        .map(([exitDate, t]) => ({
+          exit_date: exitDate,
+          quantity: t.quantity,
+          price: t.quantity > 0 ? round2(t.sellValue / t.quantity) : NaN,
+          charges: round2(t.charges),
+        }))
+        .sort((a, b) => (a.exit_date < b.exit_date ? -1 : a.exit_date > b.exit_date ? 1 : 0));
+
+      const lastExit = tranches.length ? tranches[tranches.length - 1].exit_date : null;
+
+      return {
+        symbol: p.symbol, isin: p.isin, section: p.section,
+        entryDate: p.entryDate,
+        exitDate: lastExit,          // the date the position finished
+        quantity: p.quantity,
+        buyValue: p.buyValue, sellValue: p.sellValue,
+        profit: p.profit, charges: p.charges,
+        lots: p.lots,
+        holdingDays: p.holdingDays,
+        tranches,
+        entryPrice: p.quantity > 0 ? p.buyValue / p.quantity : NaN,
+        exitPrice: p.quantity > 0 ? p.sellValue / p.quantity : NaN,
+        netProfit: p.profit - p.charges,
+        pnlPct: p.buyValue > 0 ? (p.profit / p.buyValue) * 100 : NaN,
+        intraday: p.section === "equity - intraday",
+        // Keyed on the position, not a fragment of it, so re-importing an
+        // overlapping year still recognises what's already here.
+        dedupeKey: `${p.symbol}|${p.entryDate}|${lastExit || ""}|${p.quantity}`,
+      };
+    })
     .sort((a, b) => (a.exitDate < b.exitDate ? -1 : a.exitDate > b.exitDate ? 1 : 0));
 }
 
@@ -275,8 +318,14 @@ export function toTradeRows(groups, { batchId, exchange = "NSE" } = {}) {
     imported: true,
     import_batch: batchId,
 
+    // Written to trade_exits, not to the trade row. The database trigger
+    // recomputes status, exit_date and exit_price from these, so the flat
+    // columns above are a starting value rather than the final word.
+    exits: g.tranches,
+
     _preview: {
       lots: g.lots,
+      tranches: g.tranches.length,
       grossProfit: round2(g.profit),
       netProfit: round2(g.netProfit),
       pnlPct: g.pnlPct,
@@ -297,6 +346,8 @@ export function importSummary(groups, { skipped = 0 } = {}) {
   return {
     trades: groups.length,
     lots: groups.reduce((a, g) => a + g.lots, 0),
+    tranches: groups.reduce((a, g) => a + (g.tranches?.length || 1), 0),
+    scaledOut: groups.filter((g) => (g.tranches?.length || 1) > 1).length,
     symbols: new Set(groups.map((g) => g.symbol)).size,
     intraday: groups.filter((g) => g.intraday).length,
     winRate: groups.length ? (wins.length / groups.length) * 100 : NaN,

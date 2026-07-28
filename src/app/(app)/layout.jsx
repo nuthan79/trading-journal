@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Plus, Settings2, LayoutGrid, Table2, LineChart, BookOpen, ClipboardList, LogOut } from "lucide-react";
 import {
   supabase, getProfile, saveProfile as dbSaveProfile,
-  listTrades, saveTrade as dbSaveTrade, deleteTrade as dbDeleteTrade,
+  listTrades, listExitsByTrade, saveTrade as dbSaveTrade, deleteTrade as dbDeleteTrade,
   listDiary, saveDiary as dbSaveDiary, deleteDiary as dbDeleteDiary,
   listFlows, markOpenPositions, sendMagicLink, signInWithPassword, signOut,
 } from "@/lib/db";
@@ -19,13 +19,18 @@ import { loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
 import { JournalContext } from "./JournalContext";
 
 /**
- * Our schema stores one exit per trade (exit_price/exit_date/quantity), not
- * a tranche list. derivePosition() reads a t.exits array, so this builds the
- * single-exit equivalent for a closed trade. Charges live on t.charges alone
- * here (not per-exit), so the synthesized exit omits charges — derivePosition
- * would otherwise add it a second time via its own entry-side charges field.
+ * Attach a trade's exit tranches.
+ *
+ * Real tranches from trade_exits when they're there. The fallback synthesises
+ * the single-exit equivalent from the flat columns, which covers the window
+ * before migration 007 is applied and any row the backfill hasn't reached.
+ * Charges are omitted from a synthesised tranche because the figure still
+ * sits on t.charges and derivePosition sums both — putting it in one place
+ * only is what keeps the total honest.
  */
-function withExits(t) {
+function withExits(t, exitsByTrade) {
+  const real = exitsByTrade?.[t.id];
+  if (real?.length) return { ...t, exits: real };
   if (t.status === "closed" && t.exit_date) {
     return { ...t, exits: [{ exit_date: t.exit_date, quantity: t.quantity, price: t.exit_price }] };
   }
@@ -120,6 +125,7 @@ export default function AppLayout({ children }) {
   // ---- journal data + handlers (moved from the old Journal.jsx) ---------
   const [loading, setLoading] = useState(true);
   const [trades, setTrades] = useState([]);
+  const [exitsByTrade, setExitsByTrade] = useState({});
   const [diary, setDiary] = useState([]);
   const [flows, setFlows] = useState([]);
   const [editing, setEditing] = useState(null);
@@ -143,8 +149,9 @@ export default function AppLayout({ children }) {
    * in place, so neither shows up in the in-memory list without this.
    */
   const reloadTrades = useCallback(async () => {
-    const t = await listTrades();
+    const [t, x] = await Promise.all([listTrades(), listExitsByTrade()]);
     setTrades(t);
+    setExitsByTrade(x);
     return t;
   }, []);
 
@@ -152,12 +159,16 @@ export default function AppLayout({ children }) {
     if (!profile?.onboarded_at) return;
     (async () => {
       try {
-        const [t, d, fl] = await Promise.all([listTrades(), listDiary(), listFlows()]);
+        const [t, d, fl, ex] = await Promise.all([
+          listTrades(), listDiary(), listFlows(), listExitsByTrade(),
+        ]);
         setTrades(t);
         setDiary(d);
         setFlows(fl);
+        setExitsByTrade(ex);
 
-        const openNow = t.filter((x) => x.status === "open");
+        // A partial still has size running, so it wants a mark like any open one.
+        const openNow = t.filter((x) => x.status === "open" || x.status === "partial");
         if (openNow.length) {
           markOpenPositions(openNow).then(({ marked }) => {
             if (marked.length) mergeMarks(marked);
@@ -176,17 +187,22 @@ export default function AppLayout({ children }) {
   const all = useMemo(
     () => trades.map((t) => ({
       ...t,
-      ...derivePosition(withExits(t), accountSize),
-      status: t.status, // authoritative from the DB; derivePosition recomputes it from exits
+      ...derivePosition(withExits(t, exitsByTrade), accountSize),
+      status: t.status, // authoritative from the DB; a trigger keeps it in step with the tranches
     })),
-    [trades, accountSize]
+    [trades, exitsByTrade, accountSize]
   );
   const closed = useMemo(
     () => all.filter((t) => t.status === "closed" && isFinite(t.r))
              .sort((a, b) => new Date(a.exit_date || a.entry_date) - new Date(b.exit_date || b.entry_date)),
     [all]
   );
-  const open = useMemo(() => all.filter((t) => t.status === "open"), [all]);
+  // 'partial' counts as open: there is still size on the table, still risk
+  // running, and it still wants a mark-to-market.
+  const open = useMemo(
+    () => all.filter((t) => t.status === "open" || t.status === "partial"),
+    [all]
+  );
   // Counted off the raw rows: a derived trade has stop_loss folded into NaN
   // risk figures, so null is only distinguishable before derivation.
   const needStopsCount = useMemo(
@@ -198,7 +214,11 @@ export default function AppLayout({ children }) {
     [trades]
   );
   const openCount = useMemo(
-    () => trades.filter((t) => t.status === "open").length,
+    () => trades.filter((t) => t.status === "open" || t.status === "partial").length,
+    [trades]
+  );
+  const partialCount = useMemo(
+    () => trades.filter((t) => t.status === "partial").length,
     [trades]
   );
   const S = useMemo(() => stats(closed), [closed]);
@@ -419,6 +439,7 @@ export default function AppLayout({ children }) {
                     statistics is right; hiding them from a plain count is not. */}
                 <span className="eyebrow" style={{ position: "relative", top: -1 }}>
                   {closedCount} closed · {openCount} open
+                  {partialCount > 0 && ` (${partialCount} part-sold)`}
                   {needStopsCount > 0 && (
                     <>
                       {" · "}

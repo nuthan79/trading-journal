@@ -216,10 +216,15 @@ export default function ImportTrades({ existingKeys = [], onImport, onDone }) {
       </div>
 
       <p className="im-note">
-        The report lists one row per matched lot, so {s.lots} rows become {s.trades} trades —
-        fills sharing an entry and exit date are one position. Charges come from the file
-        itself, not an estimate: {pct(s.chargesPctOfTurnover, 3)} of turnover.
-        Covering {s.from} to {s.to}.
+        The report lists one row per matched lot, so {s.lots} rows become {s.trades} positions —
+        fills sharing an entry date are one position, and each distinct exit date under it
+        becomes a tranche.
+        {s.scaledOut > 0 && (
+          <> {s.scaledOut} of them {s.scaledOut === 1 ? "was" : "were"} scaled out of
+          across {s.tranches - (s.trades - s.scaledOut)} sells rather than closed in one go.</>
+        )}
+        {" "}Charges come from the file itself, not an estimate:{" "}
+        {pct(s.chargesPctOfTurnover, 3)} of turnover. Covering {s.from} to {s.to}.
       </p>
 
       {(parsed.skippedSections.length > 0 || parsed.duplicates.length > 0) && (
@@ -249,7 +254,7 @@ export default function ImportTrades({ existingKeys = [], onImport, onDone }) {
               <th className="num">Exit</th>
               <th className="num">Net P&amp;L</th>
               <th className="num">Stop</th>
-              <th className="num">Rows</th>
+              <th className="num">Sells</th>
             </tr>
           </thead>
           <tbody>
@@ -268,7 +273,15 @@ export default function ImportTrades({ existingKeys = [], onImport, onDone }) {
                   {rupee(t._preview.netProfit)}
                 </td>
                 <td className="num im-dim">—</td>
-                <td className="num im-dim">{t._preview.lots}</td>
+                <td className="num" title={
+                  t._preview.tranches > 1
+                    ? t.exits.map((e) => `${e.exit_date}  ${e.quantity} @ ${e.price}`).join("\n")
+                    : undefined
+                }>
+                  {t._preview.tranches > 1
+                    ? <b className="im-scaled">{t._preview.tranches}</b>
+                    : <span className="im-dim">1</span>}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -324,6 +337,9 @@ export default function ImportTrades({ existingKeys = [], onImport, onDone }) {
         }
         .im-table { max-height: 380px; overflow-y: auto; }
         .im-dim { color: var(--ink3); font-size: 11.5px; }
+        /* Worth spotting at a glance: these are the positions the old flat
+           grouping would have split into several trades. */
+        .im-scaled { color: var(--brass); font-weight: 600; cursor: help; }
         .im-tag {
           font-size: 8.5px; font-weight: 700; letter-spacing: 0.08em;
           text-transform: uppercase; color: var(--brass);
