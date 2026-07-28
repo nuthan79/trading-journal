@@ -193,6 +193,14 @@ export default function AppLayout({ children }) {
     () => trades.filter((t) => t.stop_loss == null).length,
     [trades]
   );
+  const closedCount = useMemo(
+    () => trades.filter((t) => t.status === "closed").length,
+    [trades]
+  );
+  const openCount = useMemo(
+    () => trades.filter((t) => t.status === "open").length,
+    [trades]
+  );
   const S = useMemo(() => stats(closed), [closed]);
 
   const saveTrade = async (payload) => {
@@ -404,8 +412,21 @@ export default function AppLayout({ children }) {
             <div style={{ flex: "1 1 240px" }}>
               <div className="brand">
                 <h1 className="disp">{profile?.journal_name || "Breakout Ledger"}</h1>
+                {/* Counted off the raw rows, not `closed` — that list filters on
+                    isFinite(r), so a trade with no stop yet belongs to neither
+                    side and a freshly imported journal read "1 closed · 0 open"
+                    with 27 trades sitting in the sheet. Keeping them out of the
+                    statistics is right; hiding them from a plain count is not. */}
                 <span className="eyebrow" style={{ position: "relative", top: -1 }}>
-                  {closed.length} closed · {open.length} open
+                  {closedCount} closed · {openCount} open
+                  {needStopsCount > 0 && (
+                    <>
+                      {" · "}
+                      <Link href="/stops" className="brand-todo">
+                        {needStopsCount} need a stop
+                      </Link>
+                    </>
+                  )}
                 </span>
               </div>
               <div className="tabs">
