@@ -192,8 +192,13 @@ export default function AppLayout({ children }) {
     })),
     [trades, exitsByTrade, accountSize]
   );
+  // Every closed trade, whether or not its R is computable. Filtering on
+  // isFinite(r) here made a trade with no stop vanish from the money figures
+  // too — net P&L, win rate by count, hold time — which are perfectly
+  // knowable without one. The R calculations downstream drop non-finite
+  // values themselves, so they stay honest either way.
   const closed = useMemo(
-    () => all.filter((t) => t.status === "closed" && isFinite(t.r))
+    () => all.filter((t) => t.status === "closed")
              .sort((a, b) => new Date(a.exit_date || a.entry_date) - new Date(b.exit_date || b.entry_date)),
     [all]
   );

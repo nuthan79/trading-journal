@@ -185,8 +185,12 @@ export function bestWorst(closed, limit = 8) {
  * back apart.
  */
 export function summaryParts(closed, { openingCapital = 0, flows = [] } = {}) {
+  // Gated on having closed something, not on being able to compute R for it.
+  // The paragraph has a money-only form for when stops are still missing;
+  // returning null there hid the record of 20 real trades behind "close your
+  // first trade and the record starts here".
+  if (!closed?.length) return null;
   const s = stats(closed);
-  if (!s.n) return null;
 
   const rows = chronological(closed);
   const from = rows[0].entry_date;
@@ -201,9 +205,18 @@ export function summaryParts(closed, { openingCapital = 0, flows = [] } = {}) {
   const months = greenCount(closed, "month", { openingCapital, flows });
   const quarters = greenCount(closed, "quarter", { openingCapital, flows });
 
+  const decided = closed.filter((t) => isNum(t.pnl));
+  const won = decided.filter((t) => t.pnl > 0).length;
+
   return {
     from, to,
-    trades: s.n,
+    trades: closed.length,
+    // How much of the record R can actually speak for.
+    withR: s.n || 0,
+    needStop: closed.length - (s.n || 0),
+    hasR: (s.n || 0) > 0,
+    netPnl: eq.netPnl,
+    winRateByCount: decided.length ? (won / decided.length) * 100 : NaN,
     monthsSpan,
     expectancy: s.expectancy,
     winRate: s.winRate,

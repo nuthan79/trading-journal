@@ -21,7 +21,12 @@ export default function MonthlyReturns({ closed }) {
     return (
       <section className="mr-card mr-empty">
         <div className="eyebrow">Monthly returns in R</div>
-        <p>Close a trade and its month appears here.</p>
+        <p>
+          {closed?.length
+            ? `Each month's total is measured in R, so it waits on a stop for the
+               ${closed.length} closed trade${closed.length === 1 ? "" : "s"} below.`
+            : "Close a trade and its month appears here."}
+        </p>
         <style jsx>{`
           .mr-card { border:1px solid var(--rule); background:var(--card);
                      border-radius:3px; padding:30px 20px; text-align:center; }

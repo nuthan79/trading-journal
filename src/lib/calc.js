@@ -364,17 +364,45 @@ export function greenCount(closed, grain, opts) {
  * Everything the dashboard headline block shows, in one pass.
  */
 export function headline(closed, { openingCapital = 0, flows = [] } = {}) {
-  const s = stats(closed);
-  if (!s.n) return { n: 0 };
+  const rows = closed || [];
+  // Gate on having closed anything at all, not on having a stop for it.
+  // Money, win rate by count, hold time and the rest are all knowable
+  // without one — dropping them because R is missing hides real facts and
+  // makes a freshly imported journal look empty when it isn't.
+  if (!rows.length) return { n: 0 };
 
-  const eq = equityCurve(closed, { openingCapital, flows });
-  const holds = closed.map((t) => t.heldDays).filter(isFinite);
+  const s = stats(rows);                       // R figures, over whatever has a stop
+  const eq = equityCurve(rows, { openingCapital, flows });
+  const holds = rows.map((t) => t.heldDays).filter(isFinite);
 
   // Return on the capital that was actually committed, not on today's balance
   const capitalBase = eq.base + eq.capitalIn || Number(openingCapital) || NaN;
 
+  // Percentage return per trade — the honest stand-in for R while stops are
+  // missing. Unlike R it says nothing about risk taken, only about outcome.
+  const pcts = rows
+    .map((t) => {
+      const cost = n(t.entry_price) * n(t.quantity);
+      return cost > 0 && isFinite(t.pnl) ? (t.pnl / cost) * 100 : NaN;
+    })
+    .filter(isFinite);
+  const gains = pcts.filter((p) => p > 0);
+  const drops = pcts.filter((p) => p <= 0);
+
+  const decided = rows.filter((t) => isFinite(t.pnl));
+  const wonByCount = decided.filter((t) => t.pnl > 0).length;
+
   return {
     ...s,
+    // Overrides the count stats() reports, which only counts what had a stop.
+    n: rows.length,
+    nWithR: s.n || 0,
+    nNeedStop: rows.length - (s.n || 0),
+
+    winRateByCount: decided.length ? (wonByCount / decided.length) * 100 : NaN,
+    avgGainPct: gains.length ? gains.reduce((a, b) => a + b, 0) / gains.length : NaN,
+    avgLossPct: drops.length ? drops.reduce((a, b) => a + b, 0) / drops.length : NaN,
+
     netPnl: eq.netPnl,
     charges: eq.charges,
     returnOnCapital: capitalBase > 0 ? (eq.netPnl / capitalBase) * 100 : NaN,

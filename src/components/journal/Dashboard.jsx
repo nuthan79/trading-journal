@@ -13,6 +13,11 @@ import { rupee, rfmt, pct } from "@/lib/format";
 import { EXCHANGES } from "@/lib/constants";
 
 export default function Dashboard({ S, closed, open, accountSize, diary, flows, onMarked }) {
+  const needStop = closed.filter((t) => !isFinite(t.r)).length;
+  const noR = needStop
+    ? `${needStop} trade${needStop === 1 ? "" : "s"} need a stop`
+    : "log a closed trade";
+
   const pnlByExchange = useMemo(() => {
     const g = { NSE: 0, BSE: 0 };
     closed.forEach((t) => { if (isFinite(t.pnl)) g[t.exchange] += t.pnl; });
@@ -43,13 +48,16 @@ export default function Dashboard({ S, closed, open, accountSize, diary, flows, 
       </div>
 
       <div className="sec grid4">
+        {/* These three are all R, so they wait on a stop. Saying "log a closed
+            trade" while twenty sit in the sheet reads as though the import
+            failed; name what's actually missing instead. */}
         <Tile label="Expectancy" value={S.n ? rfmt(S.expectancy) : "—"}
               tone={S.n && S.expectancy >= 0 ? "pos" : S.n ? "neg" : ""}
-              sub={S.n ? `across ${S.n} closed trades` : "log a closed trade"} />
+              sub={S.n ? `across ${S.n} closed trades` : noR} />
         <Tile label="Win rate" value={S.n ? pct(S.winRate, 0) : "—"}
-              sub={S.n ? `payoff ${isFinite(S.payoff) ? S.payoff.toFixed(1) : "∞"} : 1` : "—"} />
+              sub={S.n ? `payoff ${isFinite(S.payoff) ? S.payoff.toFixed(1) : "∞"} : 1` : noR} />
         <Tile label="Profit factor" value={S.n ? (isFinite(S.profitFactor) ? S.profitFactor.toFixed(2) : "∞") : "—"}
-              sub={S.n ? `max drawdown ${S.maxDD.toFixed(1)}R` : "—"} />
+              sub={S.n ? `max drawdown ${S.maxDD.toFixed(1)}R` : noR} />
         <Tile label="Open risk" value={pct(openRiskR, 2)}
               tone={openRiskR > 6 ? "neg" : ""}
               sub={`${open.length} position${open.length === 1 ? "" : "s"} live`} />

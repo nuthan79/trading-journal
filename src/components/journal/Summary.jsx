@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { summaryParts } from "@/lib/dashboard";
-import { rfmt, pct } from "@/lib/format";
+import { rfmt, pct, rupee } from "@/lib/format";
 
 /**
  * The whole record in one paragraph.
@@ -47,17 +47,36 @@ export default function Summary({ closed, openingCapital, flows = [] }) {
         <span className="sum-range mono">{s.from} → {s.to}</span>
       </div>
 
-      <p className="sum-body">
-        {s.trades} closed trades over {s.monthsSpan} months. Expectancy{" "}
-        <Fig tone={s.expectancy >= 0 ? "up" : "down"}>{rfmt(s.expectancy)}</Fig>{" "}
-        per trade at a {pct(s.winRate)} win rate, for{" "}
-        <Fig tone={s.totalR >= 0 ? "up" : "down"}>{rfmt(s.totalR)}</Fig> total.
-        {" "}Deepest drawdown <Fig tone="risk">{s.maxDD.toFixed(2)}R</Fig>
-        {isFinite(s.maxDDPct) && <> ({pct(s.maxDDPct)} of capital)</>}, worst
-        losing run <Fig tone="risk">{s.worstStreak}</Fig> trades.
-        {" "}{s.greenMonths} of {s.totalMonths} months and {s.greenQuarters} of{" "}
-        {s.totalQuarters} quarters finished green.
-      </p>
+      {s.hasR ? (
+        <p className="sum-body">
+          {s.trades} closed trades over {s.monthsSpan} months. Expectancy{" "}
+          <Fig tone={s.expectancy >= 0 ? "up" : "down"}>{rfmt(s.expectancy)}</Fig>{" "}
+          per trade at a {pct(s.winRate)} win rate, for{" "}
+          <Fig tone={s.totalR >= 0 ? "up" : "down"}>{rfmt(s.totalR)}</Fig> total.
+          {" "}Deepest drawdown <Fig tone="risk">{s.maxDD.toFixed(2)}R</Fig>
+          {isFinite(s.maxDDPct) && <> ({pct(s.maxDDPct)} of capital)</>}, worst
+          losing run <Fig tone="risk">{s.worstStreak}</Fig> trades.
+          {" "}{s.greenMonths} of {s.totalMonths} months and {s.greenQuarters} of{" "}
+          {s.totalQuarters} quarters finished green.
+          {s.needStop > 0 && (
+            <> Measured across the {s.withR} with a stop recorded;{" "}
+            <Fig tone="risk">{s.needStop}</Fig> more are waiting on one.</>
+          )}
+        </p>
+      ) : (
+        // Nothing here has a stop yet, so there is no risk to divide by and no
+        // honest R to quote. What the money did is still worth stating plainly.
+        <p className="sum-body">
+          {s.trades} closed trades over {s.monthsSpan} months, for{" "}
+          <Fig tone={s.netPnl >= 0 ? "up" : "down"}>{rupee(s.netPnl)}</Fig>{" "}
+          at a {pct(s.winRateByCount, 0)} win rate.
+          {" "}{s.greenMonths} of {s.totalMonths} months and {s.greenQuarters} of{" "}
+          {s.totalQuarters} quarters finished green.
+          {" "}Expectancy and everything measured in R stay blank until these
+          trades have a stop recorded — without one there's no risk to divide by,
+          and a guess would quietly rewrite every figure built on it.
+        </p>
+      )}
 
       <style jsx>{`
         .sum-card {

@@ -20,17 +20,29 @@ export default function LedgerPlot({ rows }) {
   const curveH = 168, barsH = 74;
   const innerW = Math.max(120, w - PL - PR);
 
+  // Only trades with a computable R can be plotted. Without the filter a
+  // single stop-less trade turns the running total into NaN from that point
+  // on, and the whole curve silently disappears while the axes stay drawn.
   const pts = useMemo(() => {
     let cum = 0;
-    return rows.map((t, i) => { cum += t.r; return { ...t, i, cum }; });
+    return rows
+      .filter((t) => isFinite(t.r))
+      .map((t, i) => { cum += t.r; return { ...t, i, cum }; });
   }, [rows]);
 
   if (!pts.length) {
+    const waiting = rows.length;
     return (
       <div ref={box} className="card empty" style={{ minHeight: 220 }}>
         <div className="eyebrow">The plot</div>
-        <p>Once you close your first trade, its R-multiple lands here — the running
-          curve on top, every individual outcome as a bar below it.</p>
+        <p>
+          {waiting
+            ? `This plots R, and R needs a stop to measure against. Add one to your
+               ${waiting} closed trade${waiting === 1 ? "" : "s"} and the running curve
+               appears here, with every individual outcome as a bar below it.`
+            : `Once you close your first trade, its R-multiple lands here — the running
+               curve on top, every individual outcome as a bar below it.`}
+        </p>
       </div>
     );
   }
