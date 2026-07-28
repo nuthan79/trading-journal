@@ -7,6 +7,7 @@ import ChargesField from "./ChargesField";
 import { derivePosition } from "@/lib/positions";
 import { rupee, pct } from "@/lib/format";
 import { PATTERNS, EXIT_REASONS, MISTAKES, STAGES, slBand } from "@/lib/constants";
+import { entryCharges, mergeConfig } from "@/lib/charges";
 import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
 
 const num = (v) => (v === "" || v === null || v === undefined ? NaN : Number(v));
@@ -27,6 +28,59 @@ function withExits(t) {
       charges: 0,   // the figure lives on t.charges; counting it twice would understate P&L
     }));
   return { ...t, exits };
+}
+
+/**
+ * Split the charge figure between the entry and the individual sells.
+ *
+ * Buy-side costs — stamp duty, half the STT, the buy brokerage — are incurred
+ * the moment the position is opened, so they stay on the trade. Sell-side
+ * costs belong to the sell that incurred them, apportioned by size. That is
+ * what stops a part-sold position being charged for exits that haven't
+ * happened yet: sell a third and only a third of the exit cost is counted.
+ *
+ * The total never changes, so a figure typed by hand is still respected in
+ * full — it is only attributed more precisely.
+ */
+function splitCharges(t, exits, config) {
+  const total = num(t.charges) || 0;
+  if (!(total > 0) || !exits.length) {
+    return { tradeCharges: total, exits };
+  }
+
+  let entrySide = total;
+  if (config) {
+    const buy = entryCharges(
+      { exchange: t.exchange, entry_price: num(t.entry_price), quantity: num(t.quantity) },
+      mergeConfig(config)
+    );
+    if (isFinite(buy?.total)) entrySide = Math.min(total, buy.total);
+  }
+
+  const exitSide = Math.max(0, total - entrySide);
+  const soldQty = exits.reduce((a, e) => a + e.quantity, 0);
+  if (!(soldQty > 0)) return { tradeCharges: total, exits };
+
+  // Apportioned against the size of the position, not the size of what has
+  // been sold. Dividing by the latter would hand a single 40-of-100 sell the
+  // entire exit bill — the whole thing this is meant to avoid.
+  const posQty = num(t.quantity);
+  const denom = isFinite(posQty) && posQty > 0 ? posQty : soldQty;
+  const fullyOut = soldQty >= denom - 1e-6;
+
+  let allocated = 0;
+  const withCharges = exits.map((e, i) => {
+    // Only once the position is fully out does the last sell absorb the
+    // rounding remainder; while it's part sold there is genuinely cost still
+    // to come, and forcing it in early is the same overstatement again.
+    const share = i === exits.length - 1 && fullyOut
+      ? Math.round((exitSide - allocated) * 100) / 100
+      : Math.round((exitSide * (e.quantity / denom)) * 100) / 100;
+    allocated += share;
+    return { ...e, charges: share };
+  });
+
+  return { tradeCharges: Math.round(entrySide * 100) / 100, exits: withCharges };
 }
 
 const blankExit = (date) => ({
@@ -165,7 +219,14 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
   const [riskPct, setRiskPct] = useState(restored?.riskPct ?? defaultRiskPct ?? 0.75);
   const [saving, setSaving] = useState(false);
   const set = (k) => (e) => setT((p) => ({ ...p, [k]: e.target.value }));
-  const d = derivePosition(withExits(t), accountSize);
+
+  // Charges are attributed the same way here as on save, so the R the form
+  // shows is the R that gets stored rather than a slightly different one.
+  const split = splitCharges(t, withExits(t).exits, chargeConfig);
+  const d = derivePosition(
+    { ...t, charges: split.tradeCharges, exits: split.exits },
+    accountSize
+  );
   const editing = !!t.id;
   const slBandLabel = slBand(d.slPct);
 
@@ -244,7 +305,9 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
     try {
       // Tranches travel alongside the row, not in it — they belong to
       // trade_exits and the trade has to exist before they can reference it.
-      await onSave(toPayload(t), withExits(t).exits);
+      // The charge figure is attributed across the two on the way out, so a
+      // part-sold position isn't billed for sells that haven't happened.
+      await onSave({ ...toPayload(t), charges: split.tradeCharges }, split.exits);
       clearDraft();
     } finally {
       setSaving(false);

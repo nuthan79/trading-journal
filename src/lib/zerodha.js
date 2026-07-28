@@ -313,7 +313,12 @@ export function toTradeRows(groups, { batchId, exchange = "NSE" } = {}) {
     exit_date: g.exitDate,
     exit_price: round2(g.exitPrice),
     exit_reason: null,
-    charges: round2(g.charges),
+    // Zero, not the total: the same money is itemised per sell in `exits`
+    // below, and derivePosition adds trades.charges to the tranche charges.
+    // Putting the figure in both places deducts it twice. Attributing it to
+    // the sells is also what makes a part-sold position honest — only the
+    // costs of sells that have actually happened get counted.
+    charges: 0,
 
     imported: true,
     import_batch: batchId,
