@@ -14,6 +14,14 @@ import { rupee, pct } from "@/lib/format";
  * in the file, and you should be able to check it before it lands.
  */
 
+const COLUMN_LABEL = {
+  buyValue: "Buy Value",
+  sellValue: "Sell Value",
+  quantity: "Quantity",
+  entryDate: "Entry Date",
+  exitDate: "Exit Date",
+};
+
 const SECTION_LABEL = {
   "equity - intraday": "Equity — intraday",
   "equity - short term": "Equity — short term",
@@ -227,7 +235,20 @@ export default function ImportTrades({ existingKeys = [], onImport, onDone }) {
         {pct(s.chargesPctOfTurnover, 3)} of turnover. Covering {s.from} to {s.to}.
       </p>
 
-      {(parsed.skippedSections.length > 0 || parsed.duplicates.length > 0) && (
+      {/* A column the parser couldn't find zeroes the price on every row under
+          it, so this is a parsing failure and not a data one — worth saying
+          loudly, because the fix is a code change rather than a bad cell. */}
+      {parsed.missingColumns?.length > 0 && (
+        <div className="warn im-cols">
+          Couldn&apos;t find {parsed.missingColumns.map((c) => COLUMN_LABEL[c] || c).join(", ")} in
+          this file&apos;s header row. Anything relying on {parsed.missingColumns.length === 1 ? "it" : "them"} will
+          be held back below. If the report looks normal when you open it, the column has
+          probably been renamed — tell me what the header says and I&apos;ll match it.
+        </div>
+      )}
+
+      {(parsed.skippedSections.length > 0 || parsed.duplicates.length > 0 ||
+        parsed.rejected?.length > 0) && (
         <div className="im-skips">
           {parsed.skippedSections.map((x) => (
             <div key={x.section}>
@@ -238,6 +259,27 @@ export default function ImportTrades({ existingKeys = [], onImport, onDone }) {
             <div>
               <AlertTriangle size={11} /> {parsed.duplicates.length} already in your journal — not imported again
             </div>
+          )}
+          {parsed.rejected?.length > 0 && (
+            <details className="im-rejected">
+              <summary>
+                <AlertTriangle size={11} /> {parsed.rejected.length} held back —
+                the journal needs a positive entry price and quantity
+              </summary>
+              <div className="im-rejlist">
+                {parsed.rejected.slice(0, 40).map((g, i) => (
+                  <div key={i}>
+                    <b>{g.symbol}</b> {g.entryDate} → {g.exitDate}
+                    <span className="im-dim">
+                      {" "}qty {g.quantity} · buy {g.buyValue} · sell {g.sellValue} — {g.reason}
+                    </span>
+                  </div>
+                ))}
+                {parsed.rejected.length > 40 && (
+                  <div className="im-dim">…and {parsed.rejected.length - 40} more</div>
+                )}
+              </div>
+            </details>
           )}
         </div>
       )}
@@ -337,6 +379,15 @@ export default function ImportTrades({ existingKeys = [], onImport, onDone }) {
         }
         .im-table { max-height: 380px; overflow-y: auto; }
         .im-dim { color: var(--ink3); font-size: 11.5px; }
+        .im-cols { margin-bottom: 11px; }
+        .im-rejected summary {
+          display: flex; align-items: center; gap: 6px;
+          cursor: pointer; font-size: 11.5px; color: var(--ink3);
+        }
+        .im-rejlist {
+          margin: 7px 0 0 17px; max-height: 190px; overflow-y: auto;
+          font-size: 11.5px; line-height: 1.75;
+        }
         /* Worth spotting at a glance: these are the positions the old flat
            grouping would have split into several trades. */
         .im-scaled { color: var(--brass); font-weight: 600; cursor: help; }

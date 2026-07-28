@@ -153,6 +153,10 @@ export function parseTradewiseRows(rows) {
   const lots = [];
   const warnings = [];
   const sectionCounts = {};
+  // Columns the header row didn't yield. Distinguishing this from bad data
+  // matters: an unmatched "Buy Value" header zeroes the price on every row
+  // beneath it, and skipping those quietly would discard a whole good file.
+  const missingColumns = new Set();
 
   let section = null;
   let map = null;
@@ -164,7 +168,15 @@ export function parseTradewiseRows(rows) {
     if (heading) { section = heading; map = null; continue; }
 
     // A header row resets the column mapping for the section beneath it
-    if (row.some((c) => key(c) === "symbol")) { map = headerMap(row); continue; }
+    if (row.some((c) => key(c) === "symbol")) {
+      map = headerMap(row);
+      if (INCLUDED_SECTIONS.includes(section)) {
+        for (const col of ["buyValue", "sellValue", "quantity", "entryDate", "exitDate"]) {
+          if (map[col] === undefined) missingColumns.add(col);
+        }
+      }
+      continue;
+    }
 
     if (!section || !map || map.symbol === undefined) continue;
 
@@ -202,7 +214,7 @@ export function parseTradewiseRows(rows) {
     });
   }
 
-  return { lots, warnings, sectionCounts };
+  return { lots, warnings, sectionCounts, missingColumns: [...missingColumns] };
 }
 
 /* ------------------------------------------------------------------ */
@@ -394,10 +406,32 @@ export const dedupeKeyFor = (t) =>
 /*  One call                                                           */
 /* ------------------------------------------------------------------ */
 
+/**
+ * A position the journal can't record. `trades` requires a positive entry
+ * price and quantity, so a group that can't produce one has to be held back —
+ * the insert is a single statement and one bad row rolls back the entire
+ * file, which is a miserable way to find out about a blank cell.
+ */
+function rejectReason(g) {
+  if (!(g.quantity > 0)) return "no quantity";
+  if (!(g.entryPrice > 0)) return "no buy value in the file, so no entry price";
+  if (!(g.exitPrice > 0)) return "no sell value in the file, so no exit price";
+  if (!g.entryDate || !g.exitDate) return "missing a date";
+  return null;
+}
+
 export function parseZerodhaTaxPnl(rows, { existingKeys, batchId, exchange } = {}) {
-  const { lots, warnings, sectionCounts } = parseTradewiseRows(rows);
+  const { lots, warnings, sectionCounts, missingColumns } = parseTradewiseRows(rows);
   const grouped = groupLots(lots);
-  const { fresh, duplicates } = dedupe(grouped, existingKeys);
+  const { fresh: deduped, duplicates } = dedupe(grouped, existingKeys);
+
+  const fresh = [];
+  const rejected = [];
+  for (const g of deduped) {
+    const reason = rejectReason(g);
+    if (reason) rejected.push({ ...g, reason });
+    else fresh.push(g);
+  }
 
   const skippedSections = Object.entries(sectionCounts)
     .filter(([s]) => !INCLUDED_SECTIONS.includes(s))
@@ -407,6 +441,10 @@ export function parseZerodhaTaxPnl(rows, { existingKeys, batchId, exchange } = {
     trades: toTradeRows(fresh, { batchId, exchange }),
     groups: fresh,
     duplicates,
+    rejected,
+    // Named separately from `rejected` because the remedy is different: this
+    // is the parser failing to find a column, not the file lacking a value.
+    missingColumns,
     summary: importSummary(fresh, { skipped: duplicates.length }),
     sectionCounts,
     skippedSections,
