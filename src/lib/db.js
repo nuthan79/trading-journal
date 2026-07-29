@@ -39,13 +39,45 @@ export const supabase = createClient(
 
 const uid = async () => (await supabase.auth.getUser()).data.user?.id;
 
+/**
+ * PostgREST caps a select at `max-rows` — 1000 on Supabase by default — and
+ * says nothing when it truncates. A journal of 1200 trades simply appeared to
+ * lose the oldest 200, and worse things happened quietly: exit tranches past
+ * the cap went missing so positions fell back to their flat columns, and the
+ * dedupe key list came back short, which would let a re-imported file write
+ * duplicates.
+ *
+ * So every list here pages through instead of trusting one round trip.
+ *
+ * `build` has to construct a fresh query each call — a PostgREST builder is
+ * single-use. The caller must also order by something unique (id works as a
+ * tiebreaker); paging over a non-unique sort lets rows shuffle between pages,
+ * which drops some and repeats others.
+ */
+const PAGE = 1000;
+
+async function fetchAllPages(build) {
+  const out = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await build().range(from, from + PAGE - 1);
+    if (error) throw error;
+    out.push(...(data || []));
+    // A short page means we've reached the end. An exactly-full one is
+    // ambiguous, so it costs one extra empty request to be sure.
+    if (!data || data.length < PAGE) return out;
+  }
+}
+
 /* ------------------------------- trades ---------------------------- */
 
 export async function listTrades() {
-  const { data, error } = await supabase
-    .from("trades").select("*").order("entry_date", { ascending: false });
-  if (error) throw error;
-  return data;
+  return fetchAllPages(() =>
+    supabase
+      .from("trades")
+      .select("*")
+      .order("entry_date", { ascending: false })
+      .order("id", { ascending: true })
+  );
 }
 
 /**
@@ -60,18 +92,22 @@ export async function listTrades() {
  * single-exit behaviour instead of blanking the whole journal.
  */
 export async function listExitsByTrade() {
-  const { data, error } = await supabase
-    .from("trade_exits")
-    .select("*")
-    .order("exit_date", { ascending: true });
-
-  if (error) {
+  let rows;
+  try {
+    rows = await fetchAllPages(() =>
+      supabase
+        .from("trade_exits")
+        .select("*")
+        .order("exit_date", { ascending: true })
+        .order("id", { ascending: true })
+    );
+  } catch (error) {
     if (isMissingTable(error)) return {};
     throw error;
   }
 
   const byTrade = {};
-  for (const e of data || []) (byTrade[e.trade_id] ||= []).push(e);
+  for (const e of rows) (byTrade[e.trade_id] ||= []).push(e);
   return byTrade;
 }
 
@@ -184,9 +220,13 @@ export async function markOpenPositions(openTrades) {
  * entered in March and exited in April appears in two of them.
  */
 export async function listTradeKeys() {
-  const { data, error } = await supabase.rpc("my_trade_keys");
-  if (error) throw error;
-  return (data || []).map((r) => r.dedupe_key);
+  // Paged like the rest: a set-returning function is capped just the same, and
+  // a short list here is the worst failure of the three — the importer would
+  // believe trades past the cap weren't in the journal and write them again.
+  const rows = await fetchAllPages(() =>
+    supabase.rpc("my_trade_keys").select("*").order("dedupe_key", { ascending: true })
+  );
+  return rows.map((r) => r.dedupe_key);
 }
 
 /**
@@ -320,10 +360,13 @@ export async function saveStops(rows) {
 /* -------------------------------- diary ---------------------------- */
 
 export async function listDiary() {
-  const { data, error } = await supabase
-    .from("diary_entries").select("*").order("entry_date", { ascending: false });
-  if (error) throw error;
-  return data;
+  return fetchAllPages(() =>
+    supabase
+      .from("diary_entries")
+      .select("*")
+      .order("entry_date", { ascending: false })
+      .order("id", { ascending: true })
+  );
 }
 
 export async function saveDiary(entry, imageFile) {
@@ -364,10 +407,13 @@ export async function deleteDiary(entry) {
 /* ---------------------------- capital flows ------------------------ */
 
 export async function listFlows() {
-  const { data, error } = await supabase
-    .from("capital_flows").select("*").order("flow_date");
-  if (error) throw error;
-  return data;
+  return fetchAllPages(() =>
+    supabase
+      .from("capital_flows")
+      .select("*")
+      .order("flow_date")
+      .order("id", { ascending: true })
+  );
 }
 
 export async function saveFlow(flow) {
