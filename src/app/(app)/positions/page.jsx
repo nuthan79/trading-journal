@@ -6,7 +6,7 @@ import { markOpenPositions, moveStopToEntry } from "@/lib/db";
 import { useJournal } from "../JournalContext";
 
 export default function PositionsPage() {
-  const { open, closed, mergeMarks, say, reloadTrades } = useJournal();
+  const { open, closed, mergeMarks, say, reloadTrades, openEditTrade, removeTrade } = useJournal();
   const [refreshing, setRefreshing] = useState(false);
 
   const refresh = async () => {
@@ -45,6 +45,8 @@ export default function PositionsPage() {
       onRefresh={refresh}
       refreshing={refreshing}
       onMarkRiskFree={markRiskFree}
+      onEditTrade={openEditTrade}
+      onDeleteTrade={removeTrade}
     />
   );
 }

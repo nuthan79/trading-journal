@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { RefreshCw, Flag } from "lucide-react";
 import { rupee, rfmt, pct, signedPct } from "@/lib/format";
 import { fyStartYear, fyLabel } from "@/lib/calc";
+import PositionDetail from "./PositionDetail";
 
 /**
  * What is on the table right now.
@@ -140,9 +141,12 @@ function BreakevenFlag({ c, busy, onMark }) {
   );
 }
 
-export default function Positions({ open, closed, onRefresh, refreshing, onMarkRiskFree }) {
+export default function Positions({
+  open, closed, onRefresh, refreshing, onMarkRiskFree, onEditTrade, onDeleteTrade,
+}) {
   const [marked, setMarked] = useState([]);
   const [busyId, setBusyId] = useState(null);
+  const [detailId, setDetailId] = useState(null);
 
   const rows = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -240,6 +244,11 @@ export default function Positions({ open, closed, onRefresh, refreshing, onMarkR
       setBusyId(null);
     }
   };
+
+  // Resolved by id, not held as an object: a price refresh or a stop moved
+  // from inside the panel replaces the row, and a captured copy would go on
+  // showing the figures as they were when it opened.
+  const detailAt = detailId == null ? -1 : rows.findIndex((r) => r.id === detailId);
 
   if (!rows.length) {
     return (
@@ -347,7 +356,10 @@ export default function Positions({ open, closed, onRefresh, refreshing, onMarkR
                 <tr key={r.id} data-alert={r.stopAboveEntry ? 1 : 0}>
                   <td className="num ps-dim">{i + 1}</td>
                   <td>
-                    <b className="disp">{r.symbol}</b>
+                    <button className="ps-sym" onClick={() => setDetailId(r.id)}
+                            title={`Open ${r.symbol}`}>
+                      <b className="disp">{r.symbol}</b>
+                    </button>
                     <span className="ps-dim"> {r.exchange}</span>
                     {flagged.has(r.id) && (
                       <BreakevenFlag c={flagged.get(r.id)} busy={busyId === r.id}
@@ -414,6 +426,19 @@ export default function Positions({ open, closed, onRefresh, refreshing, onMarkR
           </tbody>
         </table>
       </div>
+
+      {detailAt >= 0 && (
+        <PositionDetail
+          row={rows[detailAt]}
+          onClose={() => setDetailId(null)}
+          onEdit={(r) => { setDetailId(null); onEditTrade?.(r); }}
+          onDelete={async (r) => { setDetailId(null); await onDeleteTrade?.(r.id); }}
+          // Step through the list without going back to it. Undefined rather
+          // than a no-op at the ends, so the arrows can show they're spent.
+          onPrev={detailAt > 0 ? () => setDetailId(rows[detailAt - 1].id) : undefined}
+          onNext={detailAt < rows.length - 1 ? () => setDetailId(rows[detailAt + 1].id) : undefined}
+        />
+      )}
 
       <div className="ps-foot">
         Trading days count weekdays only — exchange holidays aren&apos;t known here.
@@ -534,6 +559,14 @@ export default function Positions({ open, closed, onRefresh, refreshing, onMarkR
         .ps-sum-v.pos { color: var(--long); }
         .ps-sum-v.neg { color: var(--short); }
         .ps-sum-s { font-size: 11px; color: var(--ink3); margin-top: 3px; }
+        /* Reads as text until you go near it — the row is a table row, not a
+           list of links, and underlining every symbol would say otherwise. */
+        .ps-sym {
+          background: none; border: 0; padding: 0; cursor: pointer;
+          font: inherit; color: inherit; text-align: left;
+          border-bottom: 1px solid transparent;
+        }
+        .ps-sym:hover { border-bottom-color: var(--brass); }
         .ps-dim { color: var(--ink3); font-size: 11.5px; }
         .ps-locked { color: var(--brass); font-weight: 600; }
         .ps-tag {
