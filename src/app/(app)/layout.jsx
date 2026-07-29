@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Plus, Settings2, LayoutGrid, Table2, LineChart, BookOpen, ClipboardList, LogOut } from "lucide-react";
+import { Plus, Settings2, LayoutGrid, Layers, Table2, LineChart, BookOpen, ClipboardList, LogOut } from "lucide-react";
 import {
   supabase, getProfile, saveProfile as dbSaveProfile,
   listTrades, listExitsByTrade, saveExits, saveTrade as dbSaveTrade, deleteTrade as dbDeleteTrade,
@@ -39,6 +39,7 @@ function withExits(t, exitsByTrade) {
 
 const TABS = [
   { id: "dash", href: "/", label: "Dashboard", icon: LayoutGrid },
+  { id: "positions", href: "/positions", label: "Positions", icon: Layers },
   { id: "trades", href: "/trades", label: "Trades", icon: Table2 },
   { id: "perf", href: "/performance", label: "Performance", icon: LineChart },
   { id: "diary", href: "/diary", label: "Diary", icon: BookOpen },

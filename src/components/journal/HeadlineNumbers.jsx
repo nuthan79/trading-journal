@@ -92,7 +92,9 @@ export default function HeadlineNumbers({ closed, openingCapital, flows = [] }) 
       <div className="eyebrow" style={{ marginBottom: 9 }}>Headline numbers</div>
 
       <div className="hn-grid">
-        {cells.map((c) => <Cell key={c.label} {...c} />)}
+        {/* Keyed by position, not label: "Avg loss" appears twice on purpose —
+            once as a percentage of position size, once in R. */}
+        {cells.map((c, i) => <Cell key={i} {...c} />)}
       </div>
 
       {h.nNeedStop > 0 && (

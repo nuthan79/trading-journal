@@ -100,7 +100,8 @@ function statusFromExits(exits, quantity) {
 const blank = () => ({
   status: "open", symbol: "", company: "", exchange: "NSE", side: "long",
   entry_date: new Date().toISOString().slice(0, 10),
-  entry_price: "", quantity: "", stop_loss: "",
+  // Blank on a new trade: toPayload() pins it to the opening stop on first save.
+  entry_price: "", quantity: "", stop_loss: "", initial_stop_loss: "",
   pattern: "", pivot_price: "", vol_pct_avg: "", weinstein_stage: "", rs_rank: "",
   thesis: "",
   exit_date: "", exit_price: "", exit_reason: "",
@@ -118,6 +119,9 @@ function fromInitial(row) {
     exchange: row.exchange, side: row.side,
     entry_date: row.entry_date, entry_price: str(row.entry_price),
     quantity: str(row.quantity), stop_loss: str(row.stop_loss),
+    // Carried, never edited — the form has no field for it. Without this an
+    // edit would re-pin 1R to whatever the stop has since been trailed to.
+    initial_stop_loss: str(row.initial_stop_loss),
     pattern: row.pattern || "", pivot_price: str(row.pivot_price),
     vol_pct_avg: str(row.vol_pct_avg), weinstein_stage: str(row.weinstein_stage),
     rs_rank: str(row.rs_rank),
@@ -180,6 +184,12 @@ function toPayload(t) {
     // Nullable since the import migration. Number("") is 0, which would record
     // a stop at zero and hand the trade a nonsense 1R.
     stop_loss: numOrNull(t.stop_loss),
+    // 1R is whatever the stop was when the position was opened, and it has to
+    // survive every later trail — otherwise `derivePosition` falls back to the
+    // current stop and the trade's R quietly rebases each time you move it.
+    // Migration 007 backfilled the rows that existed then; new rows have to
+    // set it here, and an edit must never move it once it's set.
+    initial_stop_loss: numOrNull(t.initial_stop_loss) ?? numOrNull(t.stop_loss),
     pattern: t.pattern || null,
     pivot_price: numOrNull(t.pivot_price),
     vol_pct_avg: numOrNull(t.vol_pct_avg),

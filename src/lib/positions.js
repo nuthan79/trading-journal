@@ -121,8 +121,10 @@ export function derivePosition(t, accountSize) {
   /* ---- risk still live --------------------------------------------- */
   // Once you've banked profit and trailed the stop, what remains at risk is
   // not the original 1R. This is the number that belongs in "open risk".
+  // A stop trailed past entry isn't risk, it's a floor under a gain, so the
+  // distance to it must not be counted as money still on the line.
   const openRiskAmt =
-    qtyOpen > 0 ? Math.abs(entry - currentStop) * qtyOpen : 0;
+    qtyOpen > 0 && !stopAboveEntry ? Math.abs(entry - currentStop) * qtyOpen : 0;
   const bankedAgainstRisk =
     riskAmt > 0 && isFinite(realisedPnl) ? realisedPnl / riskAmt : 0;
   // Negative means the remainder can no longer produce a losing trade overall

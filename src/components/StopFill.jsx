@@ -84,7 +84,14 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
     const rows = slice
       .map((t) => ({ t, p: preview(t) }))
       .filter(({ p }) => p && !p.invalid)
-      .map(({ t }) => ({ id: t.id, stop_loss: Number(values[t.id]) }));
+      // The trade's existing 1R rides along so saveStops can tell "never had a
+      // stop" from "already has one". These rows are all the former today, but
+      // sending it means re-filling a stop can never re-base an existing 1R.
+      .map(({ t }) => ({
+        id: t.id,
+        stop_loss: Number(values[t.id]),
+        initial_stop_loss: t.initial_stop_loss ?? null,
+      }));
 
     if (!rows.length) return;
     setBusy(true); setErr("");
