@@ -215,6 +215,33 @@ export async function importTrades({ trades, meta }) {
     import_batch: batch.id,
   }));
 
+  // Last line of defence, and a diagnostic. The insert is one statement, so a
+  // single row Postgres won't take rejects the whole file — and it reports the
+  // constraint without saying which row tripped it. Checking here turns that
+  // into something you can act on.
+  const offenders = rows
+    .map((r, i) => ({ r, i }))
+    .filter(({ r }) =>
+      !(Number(r.entry_price) > 0) ||
+      !(Number(r.quantity) > 0) ||
+      (r.exit_price != null && !(Number(r.exit_price) > 0))
+    );
+
+  if (offenders.length) {
+    await supabase.from("import_batches").delete().eq("id", batch.id);
+    const list = offenders
+      .slice(0, 5)
+      .map(({ r }) =>
+        `${r.symbol} ${r.entry_date}→${r.exit_date} qty ${r.quantity} entry ${r.entry_price} exit ${r.exit_price}`
+      )
+      .join("; ");
+    throw new Error(
+      `${offenders.length} row${offenders.length === 1 ? "" : "s"} can't be saved — ` +
+      `the journal needs a positive entry price, quantity and exit price. ${list}` +
+      `${offenders.length > 5 ? ` (+${offenders.length - 5} more)` : ""}. Nothing was saved.`
+    );
+  }
+
   const { data, error } = await supabase.from("trades").insert(rows).select("id");
   if (error) {
     await supabase.from("import_batches").delete().eq("id", batch.id);
