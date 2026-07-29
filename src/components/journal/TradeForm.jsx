@@ -309,6 +309,14 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
 
   const overRisk = isFinite(d.riskPct) && d.riskPct > 2;
 
+  // The stop this trade's 1R is already pinned to, when that isn't simply the
+  // stop showing in the field. A new trade has none, and one that hasn't been
+  // trailed has nothing worth pointing out.
+  const pinnedStop = (() => {
+    const pinned = num(t.initial_stop_loss);
+    return isFinite(pinned) && pinned !== num(t.stop_loss) ? pinned : null;
+  })();
+
   const submit = async () => {
     if (!valid || saving) return;
     setSaving(true);
@@ -349,8 +357,18 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                   onPick={({ symbol, company, exchange }) =>
                     setT((p) => ({ ...p, symbol, company, exchange }))}
                 />
-                {t.company && (
-                  <div className="hint">{t.company} · {t.exchange}</div>
+                {/* Always say what's going to be recorded — showing nothing
+                    for a hand-typed symbol made the field look like it hadn't
+                    taken. No claim about the symbol list here: a missing
+                    company only means nobody looked one up, which is true of
+                    every imported trade. SymbolSearch owns the list and says
+                    so there, where it has actually checked. */}
+                {t.symbol && (
+                  <div className="hint">
+                    {t.company
+                      ? `${t.company} · ${t.exchange}`
+                      : `Recording as ${t.symbol.trim().toUpperCase()} · ${t.exchange}`}
+                  </div>
                 )}
               </label>
               <label className="f"><span>Direction</span>
@@ -384,7 +402,19 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
             </div>
             <div className="row"><span>Risk per share</span>
               <b>{isFinite(d.riskPerShare) ? d.riskPerShare.toFixed(2) : "—"}</b></div>
-            <div className="row"><span>1R — total risk</span>
+            <div className="row">
+              <span>
+                1R — total risk
+                {/* On a trade that already has one, 1R is measured against the
+                    stop it was opened with, not the one in the box above —
+                    that's the whole point of pinning it. Say which, or the two
+                    numbers look like they disagree. */}
+                {pinnedStop !== null && (
+                  <i className="hint" style={{ display: "block", fontStyle: "normal", marginTop: 2 }}>
+                    against the {pinnedStop.toFixed(2)} stop it was opened with
+                  </i>
+                )}
+              </span>
               <b>{rupee(d.riskAmt)}</b></div>
             <div className="row"><span>Risk as % of account</span>
               <b style={{ color: overRisk ? "var(--short)" : "inherit" }}>{pct(d.riskPct, 2)}</b></div>

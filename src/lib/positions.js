@@ -20,6 +20,23 @@ const n = (v) => (v === "" || v == null ? NaN : Number(v));
 const sum = (a) => a.reduce((x, y) => x + y, 0);
 
 /**
+ * First of these that is a usable number.
+ *
+ * Not `a ?? b`: that falls through only on null and undefined, so an empty
+ * string sails past it and lands in n(), which returns NaN — and the fallback
+ * never runs. The trade form carries "" for a field the user hasn't filled,
+ * so a stop chain written with `??` silently produced a NaN 1R and blanked
+ * the risk preview while the position value beside it went on working.
+ */
+const firstNum = (...vals) => {
+  for (const v of vals) {
+    const x = n(v);
+    if (isFinite(x)) return x;
+  }
+  return NaN;
+};
+
+/**
  * Full picture of a position, open, partial or closed.
  *
  * `t.exits` is an array of { exit_date, quantity, price, reason, charges }.
@@ -30,8 +47,8 @@ export function derivePosition(t, accountSize) {
   const dir = t.side === "short" ? -1 : 1;
   const entry = n(t.entry_price);
   const qty = n(t.quantity);                                    // original size
-  const initialStop = n(t.initial_stop_loss ?? t.stop_loss);    // defines 1R
-  const currentStop = n(t.stop_loss ?? t.initial_stop_loss);    // for live distance
+  const initialStop = firstNum(t.initial_stop_loss, t.stop_loss);  // defines 1R
+  const currentStop = firstNum(t.stop_loss, t.initial_stop_loss);  // live distance
 
   // Exit tranches, oldest first.
   //

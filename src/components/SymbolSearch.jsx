@@ -8,6 +8,14 @@ import { useState, useEffect, useRef, useMemo, useCallback } from "react";
  * The whole NSE + BSE list loads once (a few hundred KB, cached by the
  * browser) and is searched in memory. No debounce needed, no network call
  * per keystroke, works on a flaky connection.
+ *
+ * What's typed is reported upward on every keystroke, not only when a
+ * suggestion is taken. The list is a snapshot: tickers get renamed, delisted
+ * and re-listed between rebuilds — TATAMOTORS is absent today because the
+ * demerger left TMPV in its place — so a symbol missing from it is an ordinary
+ * thing to be recording, not a mistake to be blocked on. Reporting only on
+ * pick left the parent holding an empty symbol while the box plainly showed
+ * one, which reads as a form that has stopped working for no stated reason.
  */
 
 let LIST = null;
@@ -49,6 +57,19 @@ function search(list, q, limit = 8) {
   return out.slice(0, limit).map((x) => x.item);
 }
 
+/** An exact symbol match, NSE first when both exchanges carry the same ticker. */
+function exact(list, text) {
+  const s = text.trim().toUpperCase();
+  if (!s) return null;
+  let hit = null;
+  for (const item of list) {
+    if (item.s.toUpperCase() !== s) continue;
+    if (item.e === "NSE") return item;
+    hit = hit || item;
+  }
+  return hit;
+}
+
 export default function SymbolSearch({ value, exchange, onPick, autoFocus }) {
   const [q, setQ] = useState(value || "");
   const [list, setList] = useState(LIST || []);
@@ -73,12 +94,34 @@ export default function SymbolSearch({ value, exchange, onPick, autoFocus }) {
     onPick?.({ symbol: item.s, company: item.n, exchange: item.e });
   }, [onPick]);
 
+  // Typed, not picked. Typing a ticker out in full is as good as choosing it
+  // from the list, so an exact match is adopted whole — otherwise a listed
+  // symbol would sit there with no company name and get described as unlisted.
+  //
+  // Everything else really has no name behind it, and `company: null` says so.
+  // Keeping the last one would leave the wrong company under the right symbol.
+  // Exchange stays as the parent has it: there's no field for it, and guessing
+  // is worse than leaving the last known answer alone.
+  const type = (text) => {
+    setQ(text);
+    setOpen(true);
+    setHi(0);
+    const m = exact(list, text);
+    onPick?.(m
+      ? { symbol: m.s, company: m.n, exchange: m.e }
+      : { symbol: text, company: null, exchange });
+  };
+
   const onKey = (e) => {
-    if (!open || !results.length) return;
+    if (e.key === "Escape") { setOpen(false); return; }
+    if (!open || !results.length) {
+      // Nothing to choose from, so Enter accepts what's already been typed.
+      if (e.key === "Enter") { e.preventDefault(); setOpen(false); }
+      return;
+    }
     if (e.key === "ArrowDown") { e.preventDefault(); setHi((i) => (i + 1) % results.length); }
     else if (e.key === "ArrowUp") { e.preventDefault(); setHi((i) => (i - 1 + results.length) % results.length); }
     else if (e.key === "Enter") { e.preventDefault(); choose(results[hi]); }
-    else if (e.key === "Escape") setOpen(false);
   };
 
   return (
@@ -90,7 +133,7 @@ export default function SymbolSearch({ value, exchange, onPick, autoFocus }) {
         placeholder="Type 3 letters — TATA, RELI, HDFC"
         autoComplete="off"
         spellCheck={false}
-        onChange={(e) => { setQ(e.target.value.toUpperCase()); setOpen(true); setHi(0); }}
+        onChange={(e) => type(e.target.value.toUpperCase())}
         onFocus={() => setOpen(true)}
         onKeyDown={onKey}
         aria-autocomplete="list"
@@ -103,7 +146,7 @@ export default function SymbolSearch({ value, exchange, onPick, autoFocus }) {
             <div className="ss-none">
               {list.length === 0
                 ? "Symbol list not built yet — run: node scripts/build-symbols.mjs"
-                : `Nothing matches “${q}”. You can still type the symbol by hand.`}
+                : <>Nothing matches <b>{q}</b> — it will be recorded exactly as typed.</>}
             </div>
           ) : (
             results.map((item, i) => (
