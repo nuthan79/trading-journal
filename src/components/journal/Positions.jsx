@@ -158,12 +158,23 @@ export default function Positions({
         const changePct = isFinite(t.mark) && Number(t.entry_price) > 0
           ? ((t.mark - Number(t.entry_price)) / Number(t.entry_price)) * 100 * (t.side === "short" ? -1 : 1)
           : NaN;
+        // How far CMP has to fall before the stop is hit, as a share of CMP —
+        // the same reading the dashboard's open positions give. Breached means
+        // price is already through it and the position is running on borrowed
+        // time; for a short that's price rising into the stop instead.
+        const stop = t.currentStop;
+        const canRead = isFinite(t.mark) && isFinite(stop);
+        const toStop = canRead ? ((t.mark - stop) / t.mark) * 100 : NaN;
+        const breached = canRead && (t.side === "short" ? t.mark >= stop : t.mark <= stop);
+
         return {
           ...t,
           qtyOpen,
           openPct,
           liveExposure,
           changePct,
+          toStop,
+          breached,
           days: isFinite(t.heldDays) ? t.heldDays : NaN,
           tdays: tradingDays(t.entry_date, today),
         };
@@ -339,6 +350,7 @@ export default function Positions({
               <th className="num">Initial SL</th>
               <th className="num">SL %</th>
               <th className="num">Current SL</th>
+              <th className="num">To stop</th>
               <th className="num">Exposure</th>
               <th className="num">Open risk</th>
               <th className="num">Open risk R</th>
@@ -353,7 +365,7 @@ export default function Positions({
             {rows.map((r, i) => {
               const riskFree = r.isRiskFree || !(r.openRiskAmt > 0);
               return (
-                <tr key={r.id} data-alert={r.stopAboveEntry ? 1 : 0}>
+                <tr key={r.id} data-alert={r.breached ? 1 : 0}>
                   <td className="num ps-dim">{i + 1}</td>
                   <td>
                     <button className="ps-sym" onClick={() => setDetailId(r.id)}
@@ -392,6 +404,18 @@ export default function Positions({
                   <td className={`num ${r.stopAboveEntry ? "ps-locked" : ""}`}
                       title={r.stopAboveEntry ? "Stop is past entry — this position can no longer lose" : undefined}>
                     {isFinite(r.currentStop) ? r.currentStop.toFixed(2) : "—"}
+                  </td>
+                  <td className="num ps-tostop"
+                      data-state={r.breached ? "breached" : r.stopAboveEntry ? "locked" : "live"}
+                      title={r.breached
+                        ? "CMP is through the stop — this should already be out"
+                        : r.stopAboveEntry
+                        ? "Stop is past entry, so what's left can only be given back, not lost"
+                        : undefined}>
+                    {!isFinite(r.toStop) ? "—"
+                      : r.breached ? "breached"
+                      : r.stopAboveEntry ? `locked ${pct(Math.abs(r.toStop))}`
+                      : pct(Math.abs(r.toStop))}
                   </td>
                   <td className="num">{rupee(r.liveExposure)}</td>
                   <td className={`num ${riskFree ? "ps-dim" : "neg"}`}>
@@ -584,7 +608,12 @@ export default function Positions({
         .ps-riskbar > i { background: var(--short); opacity: 0.7; }
         .ps-riskbar[data-free="1"] > i { background: var(--long); opacity: 0.5; }
         .ps-riskbar[data-free="1"] span { color: var(--ink3); }
-        tr[data-alert="1"] .ps-locked { color: var(--brass); }
+        /* Matches the dashboard's open positions, where data-alert has always
+           meant breached. It read as stop-above-entry here — the opposite kind
+           of news — against a rule that only restated .ps-locked's own colour. */
+        tr[data-alert="1"] { background: #FDF3F0; }
+        .ps-tostop[data-state="breached"] { color: var(--short); font-weight: 600; }
+        .ps-tostop[data-state="locked"] { color: var(--brass); font-weight: 600; }
       `}</style>
     </div>
   );
