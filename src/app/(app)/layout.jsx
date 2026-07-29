@@ -131,6 +131,8 @@ export default function AppLayout({ children }) {
   const [flows, setFlows] = useState([]);
   const [editing, setEditing] = useState(null);
   const [showForm, setShowForm] = useState(false);
+  // Opened via Exit rather than Edit: the form starts on a fresh sell row.
+  const [selling, setSelling] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [flash, setFlash] = useState("");
 
@@ -310,8 +312,18 @@ export default function AppLayout({ children }) {
     }
   };
 
-  const openNewTrade = useCallback(() => { setEditing(null); setShowForm(true); }, []);
-  const openEditTrade = useCallback((t) => { setEditing(t); setShowForm(true); }, []);
+  const openNewTrade = useCallback(() => {
+    setEditing(null); setSelling(false); setShowForm(true);
+  }, []);
+  const openEditTrade = useCallback((t) => {
+    setEditing(t); setSelling(false); setShowForm(true);
+  }, []);
+  // Same form, opened on the sell rather than the setup. "Exit" is the word
+  // that's in mind when a position is being closed, and hunting for it under
+  // Edit is a step nobody asked for.
+  const openExitTrade = useCallback((t) => {
+    setEditing(t); setSelling(true); setShowForm(true);
+  }, []);
 
   // These modals are local state, not routes — a cold-reload loses the fact
   // that one was open at all, not just the fields inside it. Reopen the
@@ -444,7 +456,7 @@ export default function AppLayout({ children }) {
         trades, diary, flows, profile, accountSize,
         all, closed, open, S,
         say,
-        openNewTrade, openEditTrade,
+        openNewTrade, openEditTrade, openExitTrade,
         removeTrade,
         saveDiaryEntry, removeDiaryEntry,
         mergeMarks, reloadTrades,
@@ -506,8 +518,9 @@ export default function AppLayout({ children }) {
 
         {showForm && (
           <TradeForm initial={editing} accountSize={accountSize} defaultRiskPct={profile?.default_risk_pct}
-                     chargeConfig={profile?.charge_config}
-                     onSave={saveTrade} onClose={() => { setShowForm(false); setEditing(null); }} />
+                     chargeConfig={profile?.charge_config} startSelling={selling}
+                     onSave={saveTrade}
+                     onClose={() => { setShowForm(false); setEditing(null); setSelling(false); }} />
         )}
 
         {showSettings && (

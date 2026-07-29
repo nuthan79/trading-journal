@@ -142,7 +142,7 @@ function BreakevenFlag({ c, busy, onMark }) {
 }
 
 export default function Positions({
-  open, closed, onRefresh, refreshing, onMarkRiskFree, onEditTrade, onDeleteTrade,
+  open, closed, onRefresh, refreshing, onMarkRiskFree, onEditTrade, onExitTrade, onDeleteTrade,
 }) {
   const [marked, setMarked] = useState([]);
   const [busyId, setBusyId] = useState(null);
@@ -267,7 +267,7 @@ export default function Positions({
         <div>
           <div className="eyebrow">Positions</div>
           <div className="ps-sub">
-            {rows.length} live · marked against the last price fetched, so P&amp;L moves with the market
+            {rows.length} live · valued at the last CMP fetched, so P&amp;L moves with the market
             {flagged.size > 0 && (
               <>
                 {" · "}
@@ -302,7 +302,7 @@ export default function Positions({
         </div>
 
         <div className="ps-strip">
-          <Summary label="Exposure" value={rupee(totals.exposure)} sub="at the mark" />
+            <Summary label="Exposure" value={rupee(totals.exposure)} sub="at CMP" />
           <Summary
             label="Unrealised"
             value={rupee(totals.unrealised)}
@@ -432,6 +432,7 @@ export default function Positions({
           row={rows[detailAt]}
           onClose={() => setDetailId(null)}
           onEdit={(r) => { setDetailId(null); onEditTrade?.(r); }}
+          onExit={(r) => { setDetailId(null); onExitTrade?.(r); }}
           onDelete={async (r) => { setDetailId(null); await onDeleteTrade?.(r.id); }}
           // Step through the list without going back to it. Undefined rather
           // than a no-op at the ends, so the arrows can show they're spent.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { X, Check, Plus } from "lucide-react";
 import SymbolSearch from "@/components/SymbolSearch";
 import ChargesField from "./ChargesField";
@@ -220,7 +220,7 @@ function toPayload(t) {
 // an in-progress edit on trade A could leak into trade B's form.
 const formIdOf = (initial) => initial?.id ?? "new";
 
-export default function TradeForm({ initial, accountSize, defaultRiskPct, chargeConfig, onSave, onClose }) {
+export default function TradeForm({ initial, accountSize, defaultRiskPct, chargeConfig, startSelling, onSave, onClose }) {
   const formId = formIdOf(initial);
   const persisted = loadDraft(DRAFT_KEYS.trade);
   const restored = persisted?.formId === formId ? persisted : null;
@@ -277,6 +277,19 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
 
   const removeExit = (i) =>
     setT((p) => ({ ...p, exits: p.exits.filter((_, j) => j !== i) }));
+
+  // Opened through Exit: land on a sell that's ready to fill instead of on the
+  // setup. Once only, and never when a restored draft already has the row —
+  // reopening after switching apps shouldn't quietly grow a second one.
+  const exitRef = useRef(null);
+  const openedSelling = useRef(false);
+  useEffect(() => {
+    if (!startSelling || openedSelling.current || restored) return;
+    openedSelling.current = true;
+    const sold = t.exits.reduce((a, e) => a + (num(e.quantity) || 0), 0);
+    if (num(t.quantity) - sold > 0) addExit();
+    exitRef.current?.scrollIntoView({ block: "center" });
+  }, [startSelling]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sellRemaining = () =>
     setT((p) => {
@@ -473,7 +486,7 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
             </div>
           </div>
 
-          <div>
+          <div ref={exitRef}>
             <div className="ex-head">
               <div className="eyebrow">Exit</div>
               <div className="ex-state">

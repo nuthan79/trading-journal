@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { Pencil, Trash2, X, ChevronUp, ChevronDown } from "lucide-react";
+import { Pencil, Trash2, X, ChevronUp, ChevronDown, LogOut } from "lucide-react";
 import { rupee, rfmt, pct, signedPct } from "@/lib/format";
 
 /**
@@ -28,7 +28,7 @@ const daysBetween = (a, b) => {
   return isFinite(x) && isFinite(y) ? Math.round((y - x) / 86400000) : NaN;
 };
 
-export default function PositionDetail({ row, onClose, onEdit, onDelete, onPrev, onNext }) {
+export default function PositionDetail({ row, onClose, onEdit, onExit, onDelete, onPrev, onNext }) {
   useEffect(() => {
     const key = (e) => {
       if (e.key === "Escape") onClose();
@@ -74,6 +74,12 @@ export default function PositionDetail({ row, onClose, onEdit, onDelete, onPrev,
       <div className="sheet pd" onMouseDown={(e) => e.stopPropagation()}>
         <div className="sheethead">
           <div className="pd-acts">
+            {/* Same form as Edit, opened on a fresh sell. It's the word in mind
+                when a position is being closed, so it gets its own button
+                rather than being something to find inside Edit. */}
+            <button className="btn ghost sm" onClick={() => onExit(row)}>
+              <LogOut size={13} />Exit
+            </button>
             <button className="btn ghost sm" onClick={() => onEdit(row)}>
               <Pencil size={13} />Edit
             </button>
@@ -123,19 +129,19 @@ export default function PositionDetail({ row, onClose, onEdit, onDelete, onPrev,
 
           {/* The numbers the position was built on */}
           <div className="pd-grid">
-            {stat("Avg entry", entry.toFixed(2), ` × ${qty}`)}
+            {stat("Avg entry", entry.toFixed(2), `${qty} shares`)}
             {stat("Avg exit",
               isFinite(row.avgExitPrice) ? row.avgExitPrice.toFixed(2) : "—",
-              isFinite(row.avgExitPrice) ? ` (${signedPct(gainPct(row.avgExitPrice))})` : null)}
-            {stat("Mark",
+              isFinite(row.avgExitPrice) ? signedPct(gainPct(row.avgExitPrice)) : null)}
+            {stat("CMP",
               isFinite(row.mark) ? Number(row.mark).toFixed(2) : "—",
-              isFinite(row.mark) ? ` (${signedPct(gainPct(row.mark))})` : null)}
+              isFinite(row.mark) ? signedPct(gainPct(row.mark)) : null)}
             {stat("Stop now",
               isFinite(row.currentStop) ? row.currentStop.toFixed(2) : "—",
-              isFinite(row.slPctCurrent) ? ` (${pct(Math.abs(row.slPctCurrent))} away)` : null)}
+              isFinite(row.slPctCurrent) ? `${pct(Math.abs(row.slPctCurrent))} away` : null)}
             {stat("Stop at entry",
               isFinite(row.initialStop) ? row.initialStop.toFixed(2) : "—",
-              isFinite(row.slPct) ? ` (${pct(row.slPct)})` : null)}
+              isFinite(row.slPct) ? `${pct(row.slPct)} — sets 1R` : null)}
             {stat("1R — risk taken",
               isFinite(row.riskAmt) ? rupee(row.riskAmt) : "—",
               isFinite(row.riskPct) ? `${pct(row.riskPct, 2)} of account` : null)}
@@ -182,16 +188,16 @@ export default function PositionDetail({ row, onClose, onEdit, onDelete, onPrev,
                       </td>
                       <td className="num">
                         {Number(e.price).toFixed(2)}
-                        <i className="pd-dim"> {signedPct(gainPct(Number(e.price)))}</i>
+                        <i className="pd-dim">{signedPct(gainPct(Number(e.price)))}</i>
                       </td>
                       <td className="num">
                         −{e.quantity}
-                        <i className="pd-dim"> {qty > 0 ? pct((e.quantity / qty) * 100, 0) : ""}</i>
+                        <i className="pd-dim">{qty > 0 ? `${pct((e.quantity / qty) * 100, 0)} of it` : ""}</i>
                       </td>
                       <td className="num pd-dim">{rupee(Number(e.charges) || 0)}</td>
                       <td className={`num ${net >= 0 ? "pos" : "neg"}`}>
                         {rupee(net)}
-                        <i className="pd-dim"> at {rfmt(atR(Number(e.price)))}</i>
+                        <i className="pd-dim">at {rfmt(atR(Number(e.price)))}</i>
                       </td>
                     </tr>
                   );
@@ -208,13 +214,13 @@ export default function PositionDetail({ row, onClose, onEdit, onDelete, onPrev,
                     </td>
                     <td className="num">
                       {row.qtyOpen}
-                      <i className="pd-dim"> {qty > 0 ? pct((row.qtyOpen / qty) * 100, 0) : ""}</i>
+                      <i className="pd-dim">{qty > 0 ? `${pct((row.qtyOpen / qty) * 100, 0)} of it` : ""}</i>
                     </td>
                     <td className="num pd-dim">—</td>
                     <td className={`num ${row.unrealisedPnl >= 0 ? "pos" : "neg"}`}>
                       {isFinite(row.unrealisedPnl) ? rupee(row.unrealisedPnl) : "—"}
                       {isFinite(row.mark) && (
-                        <i className="pd-dim"> at {rfmt(atR(Number(row.mark)))}</i>
+                        <i className="pd-dim">at {rfmt(atR(Number(row.mark)))}</i>
                       )}
                     </td>
                   </tr>
@@ -228,7 +234,7 @@ export default function PositionDetail({ row, onClose, onEdit, onDelete, onPrev,
                   <td className="num">{isFinite(row.charges) ? rupee(row.charges) : "—"}</td>
                   <td className={`num ${row.pnl >= 0 ? "pos" : "neg"}`}>
                     {isFinite(row.pnl) ? rupee(row.pnl) : "—"}
-                    {isFinite(row.r) && <i className="pd-dim"> {rfmt(row.r)}</i>}
+                    {isFinite(row.r) && <i className="pd-dim">{rfmt(row.r)} overall</i>}
                   </td>
                 </tr>
               </tfoot>
@@ -271,10 +277,14 @@ export default function PositionDetail({ row, onClose, onEdit, onDelete, onPrev,
           .pd-big i { font-style: normal; font-size: 14px; font-weight: 500; }
           .pd-split { font-size: 11.5px; color: var(--ink2); margin-top: 5px; }
 
+          /* 1px gap over a ruled background draws the separators: with eight
+             cells on two rows, borders on the cells themselves leave the wrap
+             seam undrawn and need nth-child arithmetic that breaks the moment
+             the column count changes. */
           .pd-grid {
             display: grid; grid-template-columns: repeat(4, 1fr);
-            border: 1px solid var(--rule); border-radius: 3px;
-            background: var(--card); overflow: hidden;
+            gap: 1px; background: var(--rule);
+            border: 1px solid var(--rule); border-radius: 3px; overflow: hidden;
           }
           @media (max-width: 640px) { .pd-grid { grid-template-columns: repeat(2, 1fr); } }
 
@@ -303,8 +313,7 @@ export default function PositionDetail({ row, onClose, onEdit, onDelete, onPrev,
             `stat` helper and inside table cells, and scoped styled-jsx does
             not reach past the element it is attached to reliably here. */}
         <style jsx global>{`
-          .pd-stat { padding: 11px 13px; border-right: 1px solid var(--rule); min-width: 0; }
-          .pd-stat:last-child { border-right: 0; }
+          .pd-stat { padding: 11px 13px; background: var(--card); min-width: 0; }
           .pd-stat-l {
             font-size: 9px; font-weight: 600; letter-spacing: 0.1em;
             text-transform: uppercase; color: var(--ink3);
@@ -319,6 +328,12 @@ export default function PositionDetail({ row, onClose, onEdit, onDelete, onPrev,
             color: var(--ink3); margin-top: 2px; line-height: 1.4;
           }
           .pd-dim { color: var(--ink3); font-size: 10.5px; font-style: normal; }
+          /* Suffixes go under the figure, not beside it. Inline, every "+12.0%"
+             and "of it" shoved its own number left by a different amount, so a
+             right-aligned column of prices came out ragged. */
+          .pd-table td > i.pd-dim { display: block; margin-top: 2px; line-height: 1.3; }
+          .pd-table td, .pd-table th { vertical-align: top; }
+          .pd-table td:first-child i.pd-dim { display: inline; }
           .pd-table tfoot td {
             border-top: 1px solid var(--ink3); font-weight: 600; font-size: 12px;
           }
