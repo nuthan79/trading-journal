@@ -120,23 +120,26 @@ export default function HeadlineNumbers({ closed, openingCapital, flows = [] }) 
       )}
 
       <style jsx global>{`
+        /* Separators are drawn by the cells, not by a ruled background showing
+           through the gaps: twenty cells never fill the last row, and a ruled
+           background turns that leftover into a grey slab. A 1px spread over a
+           1px gap means neighbouring cells share one line, so the grid can
+           reflow to any column count without nth-child arithmetic. */
         .hn-grid {
           display: grid;
           grid-template-columns: repeat(9, minmax(0, 1fr));
-          border: 1px solid rgba(124, 139, 135, 0.45);
+          gap: 1px;
+          background: #FFFFFF;
+          border: 1px solid var(--rule);
           border-radius: 3px;
-          background: transparent;
           overflow: hidden;
         }
         .hn-cell {
           padding: 13px 12px 12px;
-          border-right: 1px solid rgba(124, 139, 135, 0.45);
-          border-bottom: 1px solid rgba(124, 139, 135, 0.45);
+          background: #FFFFFF;
+          box-shadow: 0 0 0 1px var(--rule);
           min-width: 0;
         }
-        /* Right edge of each row, and the whole last row */
-        .hn-cell:nth-child(9n) { border-right: 0; }
-        .hn-cell:nth-last-child(-n + 9) { border-bottom: 0; }
 
         .hn-v {
           font-size: 19px;
@@ -182,17 +185,13 @@ export default function HeadlineNumbers({ closed, openingCapital, flows = [] }) 
           max-width: 340px; margin: 8px auto 0;
         }
 
-        @media (max-width: 1120px) { .hn-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-          .hn-cell:nth-child(9n) { border-right: 1px solid rgba(124, 139, 135, 0.45); }
-          .hn-cell:nth-child(6n) { border-right: 0; }
-          .hn-cell:nth-last-child(-n + 9) { border-bottom: 1px solid rgba(124, 139, 135, 0.45); }
-          .hn-cell:nth-last-child(-n + 6) { border-bottom: 0; }
+        /* Only the column count changes now — the separators follow by
+           themselves, whatever the grid reflows to. */
+        @media (max-width: 1120px) {
+          .hn-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
         }
-        @media (max-width: 720px) { .hn-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-          .hn-cell:nth-child(6n) { border-right: 1px solid rgba(124, 139, 135, 0.45); }
-          .hn-cell:nth-child(3n) { border-right: 0; }
-          .hn-cell:nth-last-child(-n + 6) { border-bottom: 1px solid rgba(124, 139, 135, 0.45); }
-          .hn-cell:nth-last-child(-n + 3) { border-bottom: 0; }
+        @media (max-width: 720px) {
+          .hn-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
           .hn-v { font-size: 17px; }
         }
       `}</style>

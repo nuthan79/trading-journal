@@ -1,34 +1,20 @@
 "use client";
 
-import { useMemo } from "react";
 import LedgerPlot from "./LedgerPlot";
 import Distribution from "./Distribution";
-import Tile from "./Tile";
 import Summary from "./Summary";
 import HeadlineNumbers from "./HeadlineNumbers";
 import MonthlyReturns from "./MonthlyReturns";
 import ProfitConcentration from "./ProfitConcentration";
-import OpenPositions from "./OpenPositions";
-import { rupee, rfmt, pct } from "@/lib/format";
-import { EXCHANGES } from "@/lib/constants";
 
-export default function Dashboard({ S, closed, open, accountSize, diary, flows, onMarked }) {
-  const needStop = closed.filter((t) => !isFinite(t.r)).length;
-  const noR = needStop
-    ? `${needStop} trade${needStop === 1 ? "" : "s"} need a stop`
-    : "log a closed trade";
-
-  const pnlByExchange = useMemo(() => {
-    const g = { NSE: 0, BSE: 0 };
-    closed.forEach((t) => { if (isFinite(t.pnl)) g[t.exchange] += t.pnl; });
-    return g;
-  }, [closed]);
-
-  const openRiskR = useMemo(
-    () => open.reduce((a, t) => a + (isFinite(t.riskPct) ? t.riskPct : 0), 0),
-    [open]
-  );
-
+/**
+ * How the system has done. What it is exposed to right now lives on Positions,
+ * which is why the open-positions table isn't repeated here — nor the four
+ * tiles that restated Headline Numbers, disagreeing with it as they did:
+ * win rate there counted every closed trade, the tile weighted the twelve with
+ * a stop, and two different 'win rate's on one screen is worse than one.
+ */
+export default function Dashboard({ closed, accountSize, diary, flows }) {
   const lastEntry = diary[0];
 
   return (
@@ -43,53 +29,7 @@ export default function Dashboard({ S, closed, open, accountSize, diary, flows, 
 
       <div className="sec"><ProfitConcentration closed={closed} /></div>
 
-      <div className="sec">
-        <OpenPositions open={open} onMarked={onMarked} />
-      </div>
-
-      <div className="sec grid4">
-        {/* These three are all R, so they wait on a stop. Saying "log a closed
-            trade" while twenty sit in the sheet reads as though the import
-            failed; name what's actually missing instead. */}
-        <Tile label="Expectancy" value={S.n ? rfmt(S.expectancy) : "—"}
-              tone={S.n && S.expectancy >= 0 ? "pos" : S.n ? "neg" : ""}
-              sub={S.n ? `across ${S.n} closed trades` : noR} />
-        <Tile label="Win rate" value={S.n ? pct(S.winRate, 0) : "—"}
-              sub={S.n ? `payoff ${isFinite(S.payoff) ? S.payoff.toFixed(1) : "∞"} : 1` : noR} />
-        <Tile label="Profit factor" value={S.n ? (isFinite(S.profitFactor) ? S.profitFactor.toFixed(2) : "∞") : "—"}
-              sub={S.n ? `max drawdown ${S.maxDD.toFixed(1)}R` : noR} />
-        <Tile label="Open risk" value={pct(openRiskR, 2)}
-              tone={openRiskR > 6 ? "neg" : ""}
-              sub={`${open.length} position${open.length === 1 ? "" : "s"} live`} />
-      </div>
-
-      <div className="sec grid2">
-        <Distribution rows={closed} />
-        <div className="card">
-          <div className="eyebrow" style={{ marginBottom: 14 }}>Realised P&amp;L by exchange</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {EXCHANGES.map((ex) => (
-              <div key={ex} style={{ display: "flex", justifyContent: "space-between",
-                                    alignItems: "baseline", borderBottom: "1px solid var(--rule)", paddingBottom: 12 }}>
-                <div>
-                  <div className="disp" style={{ fontSize: 13 }}>{ex}</div>
-                  <div style={{ fontSize: 11, color: "var(--ink3)", marginTop: 2 }}>
-                    {closed.filter((t) => t.exchange === ex).length} closed
-                  </div>
-                </div>
-                <div className={`mono ${pnlByExchange[ex] >= 0 ? "pos" : "neg"}`} style={{ fontSize: 19 }}>
-                  {rupee(pnlByExchange[ex])}
-                </div>
-              </div>
-            ))}
-            <div style={{ fontSize: 11.5, color: "var(--ink3)", lineHeight: 1.6 }}>
-              Account size {rupee(accountSize)}. Every performance number in this
-              journal is measured in R, which keeps setups comparable regardless of
-              position size.
-            </div>
-          </div>
-        </div>
-      </div>
+      <div className="sec"><Distribution rows={closed} /></div>
 
       {lastEntry && (
         <div className="sec">
