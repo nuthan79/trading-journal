@@ -475,18 +475,51 @@ export async function moveStopToEntry({ id, entry, initialStop }) {
  * way in. Rows that already carry one are left alone: re-filling a stop must
  * not re-base the risk the trade was actually taken with.
  */
-export async function saveStops(rows) {
-  for (const { id, stop_loss, initial_stop_loss, stop_source } of rows) {
-    const patch = initial_stop_loss == null
+const STOP_CHUNK = 25;
+
+export async function saveStops(rows, onProgress) {
+  /**
+   * Chunks in parallel rather than one at a time.
+   *
+   * Each row needs its own stop, so this can't be one statement — but a
+   * thousand round trips in series is minutes of staring at a button, and
+   * filling every stop at once is now something the app offers.
+   *
+   * allSettled rather than all: a single row Postgres won't take shouldn't
+   * discard the nine hundred that saved beside it. Failures are counted and
+   * reported at the end, and the rows that worked stay saved.
+   */
+  const patchFor = ({ stop_loss, initial_stop_loss, stop_source }) =>
+    initial_stop_loss == null
       ? { stop_loss, initial_stop_loss: stop_loss, stop_source: stop_source || "recorded" }
       : { stop_loss, stop_source: stop_source || "recorded" };
-    const { error } = await supabase
-      .from("trades")
-      .update(patch)
-      .eq("id", id);
-    if (error) throw new Error(migrationHint(error) || error.message);
+
+  let done = 0;
+  const failures = [];
+
+  for (let i = 0; i < rows.length; i += STOP_CHUNK) {
+    const chunk = rows.slice(i, i + STOP_CHUNK);
+    const results = await Promise.allSettled(
+      chunk.map((r) =>
+        supabase.from("trades").update(patchFor(r)).eq("id", r.id)
+          .then(({ error }) => { if (error) throw error; })
+      )
+    );
+    results.forEach((res, j) => {
+      if (res.status === "rejected") failures.push({ row: chunk[j], error: res.reason });
+      else done++;
+    });
+    onProgress?.(Math.min(i + STOP_CHUNK, rows.length), rows.length);
   }
-  return rows.length;
+
+  if (failures.length) {
+    const first = failures[0].error;
+    throw new Error(
+      (migrationHint(first) || first?.message || "Some rows could not be saved") +
+      ` — ${done} of ${rows.length} saved, ${failures.length} failed.`
+    );
+  }
+  return done;
 }
 
 /* -------------------------------- diary ---------------------------- */

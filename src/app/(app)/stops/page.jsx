@@ -22,10 +22,11 @@ export default function StopsPage() {
     <div className="sec">
       <StopFill
         trades={needStops}
-        onSave={async (rows) => {
-          await saveStops(rows);
+        onSave={async (rows, onProgress) => {
+          const n = await saveStops(rows, onProgress);
           await reloadTrades();
-          say(`${rows.length} stop${rows.length === 1 ? "" : "s"} saved.`);
+          const assumed = rows.length > 0 && rows.every((r) => r.stop_source === "assumed");
+          say(`${n} stop${n === 1 ? "" : "s"} saved${assumed ? ", marked assumed" : ""}.`);
         }}
         onDone={() => router.push("/trades")}
       />

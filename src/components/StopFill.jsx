@@ -26,6 +26,11 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const inputs = useRef({});
+  // The bulk fill. Typing a thousand stops one at a time is not going to
+  // happen, and until they exist the journal shows nothing at all.
+  const [bulkPct, setBulkPct] = useState("7");
+  const [confirming, setConfirming] = useState(false);
+  const [progress, setProgress] = useState(null);
 
   const pending = useMemo(
     () => trades.filter((t) => !saved[t.id]),
@@ -112,6 +117,51 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
     setBusy(false);
   };
 
+  const pctNum = Number(bulkPct);
+  const pctOk = pctNum > 0 && pctNum < 100;
+
+  /**
+   * Give every remaining trade the same stop, as a percentage from its entry.
+   *
+   * Marked assumed, not recorded — the same flag the importer sets. This is one
+   * number applied to a thousand trades, which is a what-if about consistent
+   * risk, not a record of where the stops were. Anything filled in by hand
+   * afterwards overwrites both the number and the label.
+   */
+  const fillAll = async () => {
+    if (!pctOk || busy) return;
+    setBusy(true); setErr(""); setConfirming(false);
+
+    const rows = pending
+      .map((t) => {
+        const entry = Number(t.entry_price);
+        if (!(entry > 0)) return null;
+        // A short's stop sits above entry; everything imported is long, but
+        // this screen is not only for imports.
+        const dir = t.side === "short" ? -1 : 1;
+        const stop = Math.round(entry * (1 - (dir * pctNum) / 100) * 100) / 100;
+        return stop > 0
+          ? { id: t.id, stop_loss: stop, initial_stop_loss: t.initial_stop_loss ?? null,
+              stop_source: "assumed" }
+          : null;
+      })
+      .filter(Boolean);
+
+    try {
+      await onSave(rows, (n, total) => setProgress({ n, total }));
+      setSaved((s) => {
+        const next = { ...s };
+        rows.forEach((r) => (next[r.id] = true));
+        return next;
+      });
+      setPage(0);
+    } catch (e) {
+      setErr(e.message || "Could not fill them. Nothing was changed.");
+    }
+    setProgress(null);
+    setBusy(false);
+  };
+
   /* Enter moves to the next row rather than submitting — this is a data
      entry screen and you want to keep your hands where they are. */
   const onKey = (e, i) => {
@@ -159,6 +209,48 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
           </div>
         </div>
         <button className="btn ghost sm" onClick={() => onDone?.()}>Do this later</button>
+      </div>
+
+      <div className="sf-bulk">
+        {confirming ? (
+          <>
+            <div className="sf-bulk-ask">
+              Give all {pending.length} of them a stop {pctNum}% from entry?
+              They&apos;ll be marked assumed, and the R figures they produce describe a
+              steady {pctNum}% risk rather than what you actually took. Replace any of
+              them by typing over it.
+            </div>
+            <div className="sf-bulk-acts">
+              <button className="btn" onClick={fillAll} disabled={busy}>
+                {busy
+                  ? progress ? `Filling ${progress.n} of ${progress.total}…` : "Filling…"
+                  : `Yes, fill all ${pending.length}`}
+              </button>
+              <button className="btn ghost" onClick={() => setConfirming(false)} disabled={busy}>
+                Cancel
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="sf-bulk-pct">
+              <span>Fill them all at</span>
+              <input className="in" inputMode="decimal" value={bulkPct}
+                     aria-label="Percent below entry"
+                     onChange={(e) => setBulkPct(e.target.value)} />
+              <span>% from entry</span>
+            </div>
+            <button className="btn ghost sm" onClick={() => setConfirming(true)} disabled={!pctOk}>
+              Fill the remaining {pending.length}
+            </button>
+            <div className="sf-bulk-note">
+              {pctOk
+                ? "A starting point, so R and the plots work at all. Marked assumed — " +
+                  "type over any of them as you work out what you really used."
+                : "That needs to be a percentage between 0 and 100."}
+            </div>
+          </>
+        )}
       </div>
 
       <div className="card scroll">
@@ -248,6 +340,19 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
       </div>
 
       <style jsx>{`
+        .sf-bulk {
+          display: grid; grid-template-columns: auto auto 1fr; gap: 10px 16px;
+          align-items: center; margin-bottom: 12px; padding: 12px 14px;
+          border: 1px solid var(--brass); border-radius: 3px; background: #FDFAF3;
+        }
+        .sf-bulk-pct { display: flex; align-items: center; gap: 7px; font-size: 13px; }
+        .sf-bulk-pct .in { width: 62px; padding: 5px 8px; font-size: 13px; }
+        .sf-bulk-note, .sf-bulk-ask {
+          font-size: 11px; color: var(--ink3); line-height: 1.55; text-wrap: pretty;
+        }
+        .sf-bulk-ask { grid-column: 1 / -1; color: #6B4E13; font-size: 12px; }
+        .sf-bulk-acts { grid-column: 1 / -1; display: flex; gap: 8px; }
+        @media (max-width: 640px) { .sf-bulk { grid-template-columns: 1fr; } }
         .sf-head {
           display: flex; align-items: flex-end; justify-content: space-between;
           gap: 14px; margin-bottom: 11px; flex-wrap: wrap;
