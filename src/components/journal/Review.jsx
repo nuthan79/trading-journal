@@ -1,16 +1,21 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Sparkles } from "lucide-react";
 import { reviewFindings } from "@/lib/analysis";
 import { classifyRegime, regimeIndex, REGIME_LABEL } from "@/lib/market";
 import { signedPct } from "@/lib/format";
 
 /**
  * Behavioural review — arithmetic findings from the trader's own closed
- * trades, plus an optional model-written summary layered on top. The model
- * never sees raw trades; it only ever weighs findings computed in
- * src/lib/analysis.js, which is what keeps it from inventing statistics.
+ * trades: stop discipline, sizing, entries, exits, and how the trading
+ * tracked the market regime. Every figure here is computed in
+ * src/lib/analysis.js, so the page owes nothing to a third party and costs
+ * nothing to run.
+ *
+ * A model-written summary used to sit on top of this. It was removed along
+ * with its route: the endpoint spent an API key on every call and had no
+ * authentication, which is fine for a private tool and untenable for a paid
+ * one. The findings below were always the substance; the prose was a layer.
  */
 
 const SEVERITY = {
@@ -50,7 +55,6 @@ function FindingCard({ f }) {
 
 export default function Review({ closed, stats }) {
   const [market, setMarket] = useState({ loading: true, error: null, classified: [] });
-  const [written, setWritten] = useState({ loading: false, review: null, note: null, error: null });
 
   useEffect(() => {
     let alive = true;
@@ -83,27 +87,6 @@ export default function Review({ closed, stats }) {
     result.findings.forEach((f) => { if (by[f.severity]) by[f.severity].push(f); });
     return by;
   }, [result]);
-
-  const generate = async () => {
-    setWritten({ loading: true, review: null, note: null, error: null });
-    try {
-      const res = await fetch("/api/review", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          findings: result.findings,
-          sample: result.sample,
-          provisional: result.provisional,
-          stats,
-        }),
-      });
-      const json = await res.json();
-      if (json.error) setWritten({ loading: false, review: null, note: json.error, error: null });
-      else setWritten({ loading: false, review: json.review, note: null, error: null });
-    } catch (err) {
-      setWritten({ loading: false, review: null, note: null, error: err.message || "Could not reach the review service." });
-    }
-  };
 
   const last = market.classified[market.classified.length - 1];
   const pos50 = last?.ma50 ? ((last.close - last.ma50) / last.ma50) * 100 : null;
@@ -166,49 +149,6 @@ export default function Review({ closed, stats }) {
         )
       )}
 
-      <div className="rv-write">
-        <button className="btn" onClick={generate} disabled={written.loading || !result.findings.length}>
-          <Sparkles size={14} />{written.loading ? "Writing…" : "Generate written review"}
-        </button>
-
-        {written.note && <div className="hint" style={{ marginTop: 10 }}>{written.note}</div>}
-        {written.error && <div className="warn" style={{ marginTop: 10 }}>{written.error}</div>}
-
-        {written.review && (
-          <div className="card" style={{ marginTop: 16 }}>
-            <div className="eyebrow" style={{ marginBottom: 8 }}>Verdict</div>
-            <p className="rv-p">{written.review.verdict}</p>
-
-            {written.review.priorities?.length > 0 && (
-              <>
-                <div className="eyebrow" style={{ margin: "18px 0 4px" }}>Priorities</div>
-                {written.review.priorities.map((p, i) => (
-                  <div key={i} className="rv-priority">
-                    <b>{p.title}</b>
-                    <p className="rv-p">{p.why}</p>
-                    <p className="rv-action">{p.action}</p>
-                  </div>
-                ))}
-              </>
-            )}
-
-            {written.review.working && (
-              <>
-                <div className="eyebrow" style={{ margin: "18px 0 4px" }}>Working</div>
-                <p className="rv-p">{written.review.working}</p>
-              </>
-            )}
-
-            {written.review.next && (
-              <>
-                <div className="eyebrow" style={{ margin: "18px 0 4px" }}>Next</div>
-                <p className="rv-p">{written.review.next}</p>
-              </>
-            )}
-          </div>
-        )}
-      </div>
-
       <style jsx global>{`
         .rv-strip {
           display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
@@ -246,13 +186,6 @@ export default function Review({ closed, stats }) {
           overflow-x: auto; color: var(--ink2);
         }
 
-        .rv-write { margin-top: 10px; padding-top: 22px; border-top: 1px solid var(--rule); }
-        .rv-p { font-size: 13.5px; line-height: 1.65; color: var(--ink2); margin: 0; }
-        .rv-priority { padding: 10px 0; border-bottom: 1px solid var(--rule); }
-        .rv-priority:last-child { border-bottom: 0; }
-        .rv-priority b { font-size: 13.5px; }
-        .rv-priority .rv-p { margin-top: 4px; }
-        .rv-action { font-size: 12.5px; color: var(--brass); font-weight: 600; margin-top: 6px !important; }
       `}</style>
     </div>
   );
