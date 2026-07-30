@@ -51,48 +51,71 @@ export default function HeadlineNumbers({ closed, openingCapital, flows = [] }) 
   // be read, and nothing downstream computes with it.
   const assumed = closed.filter((t) => t.stop_source === "assumed").length;
 
-  const cells = [
-    { label: "Net P&L", value: rupee(h.netPnl), tone: sign(h.netPnl),
-      hint: `After ${rupee(h.charges)} of charges` },
-    // Its own cell rather than only a footnote on Net P&L: brokerage, STT and
-    // the rest are a real cost of the strategy, and one worth seeing beside
-    // what the strategy made rather than tucked under it.
-    { label: "Charges", value: rupee(h.charges), tone: "neg",
-      hint: isFinite(h.netPnl) && h.netPnl + h.charges > 0
-        ? `${pct((h.charges / (h.netPnl + h.charges)) * 100, 1)} of gross profit`
-        : "Brokerage, STT, exchange, SEBI, stamp, GST, DP" },
-    { label: "Return on capital", value: pct(h.returnOnCapital), tone: sign(h.returnOnCapital),
-      hint: "Cumulative, not annualised" },
-    { label: "Win rate", value: pct(h.winRateByCount, 0),
-      hint: `${h.n} closed trade${h.n === 1 ? "" : "s"}, counted` },
-    { label: "Avg gain", value: pct(h.avgGainPct), tone: "pos",
-      hint: "On the winners, as a percentage of position size" },
-    { label: "Avg loss", value: pct(h.avgLossPct), tone: "neg",
-      hint: "On the losers, as a percentage of position size" },
-    { label: "Avg hold", value: days(h.avgHold) },
-    { label: "Max DD (%)", value: pct(h.maxDDPct), tone: "neg",
-      hint: `${rupee(h.maxDDAmt)} at the worst point — what you actually had to sit through` },
-    { label: "Green months", value: `${h.months.green}/${h.months.total}` },
-    { label: "Green quarters", value: `${h.quarters.green}/${h.quarters.total}` },
-
-    rCell("Total R", rfmt(h.totalR), { tone: sign(h.totalR) }),
-    rCell("Expectancy", rfmt(h.expectancy), {
-      tone: sign(h.expectancy),
-      hint: "Average R per trade — the number that travels between traders",
-    }),
-    rCell("Profit factor", isFinite(h.profitFactor) ? h.profitFactor.toFixed(2) : "∞"),
-    rCell("Avg win", rfmt(h.avgWin), { tone: "pos" }),
-    rCell("Avg loss", rfmt(-h.avgLoss), { tone: "neg" }),
-    rCell("Payoff ratio", isFinite(h.payoff) ? h.payoff.toFixed(2) : "∞", {
-      hint: "Average win divided by average loss",
-    }),
-    rCell("Max DD (R)", hasR ? `${h.maxDD.toFixed(2)}R` : "—", {
-      tone: "neg", hint: "Deepest peak-to-trough run in risk units",
-    }),
-    rCell("Win streak", h.bestW),
-    rCell("Loss streak", h.worstL, { tone: h.worstL >= 6 ? "neg" : "" }),
-    rCell("Best trade", rfmt(h.best), { tone: "pos" }),
-    rCell("Worst trade", rfmt(h.worst), { tone: "neg" }),
+  /**
+   * Three bands, because these numbers answer three different questions and
+   * reading them as one wall of twenty-one invites comparing figures that
+   * don't belong together.
+   *
+   * Money and percent is what happened. R is the same story told against the
+   * risk taken, and is the only band an assumed stop can move. The last one is
+   * neither — what the trading cost and how consistent it was.
+   *
+   * It also settles "Avg loss" appearing twice: once as a share of position
+   * size and once in R. Same word, different question, and now visibly so.
+   */
+  const bands = [
+    {
+      label: "In money and percent",
+      cells: [
+        { label: "Net P&L", value: rupee(h.netPnl), tone: sign(h.netPnl),
+          hint: `After ${rupee(h.charges)} of charges` },
+        { label: "Return on capital", value: pct(h.returnOnCapital), tone: sign(h.returnOnCapital),
+          hint: "Cumulative, not annualised" },
+        { label: "Win rate", value: pct(h.winRateByCount, 0),
+          hint: `${h.n} closed trade${h.n === 1 ? "" : "s"}, counted` },
+        { label: "Avg gain", value: pct(h.avgGainPct), tone: "pos",
+          hint: "On the winners, as a percentage of position size" },
+        { label: "Avg loss", value: pct(h.avgLossPct), tone: "neg",
+          hint: "On the losers, as a percentage of position size" },
+        { label: "Max DD (%)", value: pct(h.maxDDPct), tone: "neg",
+          hint: `${rupee(h.maxDDAmt)} at the worst point — what you actually had to sit through` },
+        { label: "Avg hold", value: days(h.avgHold) },
+      ],
+    },
+    {
+      label: assumed > 0 ? "In R — against an assumed stop" : "In R",
+      cells: [
+        rCell("Total R", rfmt(h.totalR), { tone: sign(h.totalR) }),
+        rCell("Expectancy", rfmt(h.expectancy), {
+          tone: sign(h.expectancy),
+          hint: "Average R per trade — the number that travels between traders",
+        }),
+        rCell("Profit factor", isFinite(h.profitFactor) ? h.profitFactor.toFixed(2) : "∞"),
+        rCell("Payoff ratio", isFinite(h.payoff) ? h.payoff.toFixed(2) : "∞", {
+          hint: "Average win divided by average loss",
+        }),
+        rCell("Avg win", rfmt(h.avgWin), { tone: "pos" }),
+        rCell("Avg loss", rfmt(-h.avgLoss), { tone: "neg" }),
+        rCell("Max DD (R)", hasR ? `${h.maxDD.toFixed(2)}R` : "—", {
+          tone: "neg", hint: "Deepest peak-to-trough run in risk units",
+        }),
+        rCell("Best trade", rfmt(h.best), { tone: "pos" }),
+        rCell("Worst trade", rfmt(h.worst), { tone: "neg" }),
+      ],
+    },
+    {
+      label: "What it cost, and how steady",
+      cells: [
+        { label: "Charges", value: rupee(h.charges), tone: "neg",
+          hint: isFinite(h.netPnl) && h.netPnl + h.charges > 0
+            ? `${pct((h.charges / (h.netPnl + h.charges)) * 100, 1)} of gross profit`
+            : "Brokerage, STT, exchange, SEBI, stamp, GST, DP" },
+        { label: "Green months", value: `${h.months.green}/${h.months.total}` },
+        { label: "Green quarters", value: `${h.quarters.green}/${h.quarters.total}` },
+        rCell("Win streak", h.bestW),
+        rCell("Loss streak", h.worstL, { tone: h.worstL >= 6 ? "neg" : "" }),
+      ],
+    },
   ];
 
   // The honest quality measure: return earned per unit of drawdown endured
@@ -102,11 +125,16 @@ export default function HeadlineNumbers({ closed, openingCapital, flows = [] }) 
     <section>
       <div className="eyebrow" style={{ marginBottom: 9 }}>Headline numbers</div>
 
-      <div className="hn-grid">
-        {/* Keyed by position, not label: "Avg loss" appears twice on purpose —
-            once as a percentage of position size, once in R. */}
-        {cells.map((c, i) => <Cell key={i} {...c} />)}
-      </div>
+      {bands.map((band) => (
+        <div key={band.label} className="hn-band">
+          <div className="hn-band-l">{band.label}</div>
+          {/* Its own column count, so each band is one clean row on a wide
+              screen instead of wrapping around whatever the widest needs. */}
+          <div className="hn-grid" style={{ "--n": band.cells.length }}>
+            {band.cells.map((c, i) => <Cell key={i} {...c} />)}
+          </div>
+        </div>
+      ))}
 
       {/* Said once, near the numbers it qualifies. Every R above is a straight
           rescaling of percentage return when the stop was assumed — worth
@@ -149,9 +177,16 @@ export default function HeadlineNumbers({ closed, openingCapital, flows = [] }) 
            background turns that leftover into a grey slab. A 1px spread over a
            1px gap means neighbouring cells share one line, so the grid can
            reflow to any column count without nth-child arithmetic. */
+        .hn-band { margin-bottom: 12px; }
+        .hn-band:last-of-type { margin-bottom: 0; }
+        .hn-band-l {
+          font-family: 'Archivo', sans-serif; font-size: 9px; font-weight: 600;
+          letter-spacing: 0.11em; text-transform: uppercase; color: var(--ink3);
+          margin-bottom: 5px;
+        }
         .hn-grid {
           display: grid;
-          grid-template-columns: repeat(9, minmax(0, 1fr));
+          grid-template-columns: repeat(var(--n, 9), minmax(0, 1fr));
           gap: 1px;
           background: #FFFFFF;
           border: 1px solid var(--rule);
@@ -209,10 +244,12 @@ export default function HeadlineNumbers({ closed, openingCapital, flows = [] }) 
           max-width: 340px; margin: 8px auto 0;
         }
 
-        /* Only the column count changes now — the separators follow by
-           themselves, whatever the grid reflows to. */
+        /* Below full width the bands stop trying to hold their own shape and
+           all reflow to the same count. Separators follow by themselves, and a
+           part-filled last row is white rather than a gap, because the cells
+           draw their own edges. */
         @media (max-width: 1120px) {
-          .hn-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+          .hn-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
         }
         @media (max-width: 720px) {
           .hn-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
