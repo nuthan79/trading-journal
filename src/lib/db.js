@@ -231,7 +231,7 @@ export async function listImportTargets() {
   const [trades, exits] = await Promise.all([
     fetchAllPages(() =>
       supabase.from("trades")
-        .select("id,symbol,entry_date,quantity,status")
+        .select("id,symbol,entry_date,quantity,status,imported")
         .order("id")),
     fetchAllPages(() =>
       supabase.from("trade_exits")
@@ -333,6 +333,25 @@ export async function importTrades({ trades, completions = [], meta }) {
     for (const e of c.tranches) exitRows.push(tranche(c.tradeId, e));
   }
 
+  // An earlier import could only see the lots matched inside its own period,
+  // so it may have recorded a smaller position than was really held. Where a
+  // later file shows more, correct the size before the sells land — the status
+  // trigger reads trades.quantity to decide partial from closed, and against a
+  // stale figure it would call a half-sold position finished. Only ever
+  // applied to imported rows; reconcile() refuses to touch a hand-typed size.
+  for (const c of completions) {
+    if (!c.grow) continue;
+    const { error: growErr } = await supabase
+      .from("trades")
+      .update({ quantity: c.grow.quantity, entry_price: c.grow.entry_price })
+      .eq("id", c.tradeId);
+    if (growErr) {
+      await supabase.from("trades").delete().eq("import_batch", batch.id);
+      await supabase.from("import_batches").delete().eq("id", batch.id);
+      throw new Error(`Could not correct the size of ${c.group.symbol}: ${growErr.message}. Nothing was saved.`);
+    }
+  }
+
   if (exitRows.length) {
     const { error: exitErr } = await supabase.from("trade_exits").insert(exitRows);
     if (exitErr) {
@@ -351,6 +370,7 @@ export async function importTrades({ trades, completions = [], meta }) {
 
   return {
     inserted: data?.length ?? rows.length,
+    completed: completions.length,
     tranches: exitRows.length,
     batchId: batch.id,
   };

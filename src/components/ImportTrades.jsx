@@ -34,12 +34,23 @@ const SECTION_LABEL = {
   commodity: "Commodity",
 };
 
-/** "Import 12 trades", "Complete 3 positions", or both. */
+/** A file can bring new trades, finish ones already here, or both. */
 function importLabel(newCount, completeCount) {
-  const parts = [];
-  if (newCount) parts.push(`${newCount} trade${newCount === 1 ? "" : "s"}`);
-  if (completeCount) parts.push(`complete ${completeCount}`);
-  return parts.length ? `Import ${parts.join(" · ")}` : "Nothing to import";
+  const trades = `${newCount} trade${newCount === 1 ? "" : "s"}`;
+  const done = `${completeCount} position${completeCount === 1 ? "" : "s"}`;
+  if (newCount && completeCount) return `Import ${trades}, complete ${done}`;
+  if (newCount) return `Import ${trades}`;
+  if (completeCount) return `Complete ${done}`;
+  return "Nothing to import";
+}
+
+/** What actually happened, which is not always "n trades imported". */
+function doneHeadline({ inserted = 0, completed = 0 }) {
+  const trades = `${inserted} trade${inserted === 1 ? "" : "s"}`;
+  const done = `${completed} position${completed === 1 ? "" : "s"}`;
+  if (inserted && completed) return `${trades} imported, ${done} completed`;
+  if (completed) return `${done} completed`;
+  return `${trades} imported`;
 }
 
 export default function ImportTrades({ targets = [], onImport, onDone }) {
@@ -107,7 +118,7 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
           date_to: parsed.summary.to,
         },
       });
-      setResult(res || { inserted: parsed.trades.length });
+      setResult(res || { inserted: parsed.trades.length, completed: parsed.completions.length });
     } catch (e) {
       setError(e.message || "Import failed. Nothing was saved.");
     }
@@ -120,11 +131,16 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
     return (
       <section className="im-card im-done">
         <div className="im-tick"><Check size={20} /></div>
-        <h2 className="disp im-h">{result.inserted} trades imported</h2>
+        <h2 className="disp im-h">{doneHeadline(result)}</h2>
         <p className="im-lede">
-          Every one is missing a stop loss, so R, expectancy and the review page
-          stay blank for them until you add one. It's a single column to fill and
-          you can do it in batches.
+          {result.inserted > 0 ? (
+            <>Every new one is missing a stop loss, so R, expectancy and the review
+              page stay blank for them until you add one. It&apos;s a single column
+              to fill and you can do it in batches.</>
+          ) : (
+            <>Nothing new was created — the sells went onto positions you already had,
+              which keeps their stops and notes intact.</>
+          )}
         </p>
         <div className="im-actions">
           <button className="btn" onClick={() => onDone?.("fill-stops")}>
@@ -269,7 +285,8 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
               <div key={i}>
                 <b>{c.group.symbol}</b> {c.group.entryDate}
                 <span className="im-dim">
-                  {" "}· holding {c.holding}, {c.already} already sold
+                  {" "}· holding {c.grow ? `${c.holding} → ${c.grow.quantity}` : c.holding}
+                  , {c.already} already sold
                   {" "}· adding {c.tranches.length} sell{c.tranches.length === 1 ? "" : "s"} ({c.adding})
                   {c.skipped > 0 && ` · ${c.skipped} already recorded`}
                   {" "}· {c.already + c.adding >= c.holding ? "closes it" : "stays part-sold"}

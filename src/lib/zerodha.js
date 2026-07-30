@@ -438,17 +438,32 @@ export function reconcile(groups, targets) {
 
     if (missing.length === 0) { duplicates.push(g); continue; }
 
-    // What the journal thinks the position was, against what the file is now
-    // asking to have sold out of it. Over that and the numbers disagree about
-    // something more fundamental than a missing sell.
     const already = (target.exits || []).reduce((a, e) => a + Number(e.quantity || 0), 0);
     const adding = missing.reduce((a, t) => a + Number(t.quantity || 0), 0);
-    if (already + adding > Number(target.quantity) + 1e-6) {
-      conflicts.push({
-        ...g,
-        reason: `file sells ${already + adding} but the journal holds ${target.quantity}`,
-      });
-      continue;
+    const held = Number(target.quantity);
+    let grow = null;
+
+    // More sold than the journal thinks was ever held. For an imported row
+    // that is normal rather than wrong: a Tax P&L file reports only the lots
+    // matched within its own period, so July's file recorded a 900-share
+    // position as 300 because that is all it could see. October's file, with
+    // both sells in it, is simply the fuller account — take its numbers.
+    //
+    // For a position entered by hand the same sum means something else
+    // entirely: the file disagrees with a size the trader typed deliberately.
+    // Growing that silently would rewrite their record, so it goes to them.
+    if (already + adding > held + 1e-6) {
+      if (!target.imported) {
+        conflicts.push({
+          ...g,
+          reason: `file sells ${already + adding} but you recorded ${held} — check which is right`,
+        });
+        continue;
+      }
+      grow = {
+        quantity: Math.max(held, already + adding, Number(g.quantity) || 0),
+        entry_price: g.entryPrice,
+      };
     }
 
     claimed.add(target.id);
@@ -456,10 +471,12 @@ export function reconcile(groups, targets) {
       group: g,
       tradeId: target.id,
       tranches: missing,
+      // Set only when the earlier import under-recorded the position size.
+      grow,
       // For the preview: what is being added, and to what.
       already,
       adding,
-      holding: Number(target.quantity),
+      holding: held,
       status: target.status,
       skipped: g.tranches.length - missing.length,
     });
