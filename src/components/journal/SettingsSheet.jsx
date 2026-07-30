@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { X, Check, Upload, Ruler } from "lucide-react";
 import { BROKER_PRESETS, mergeConfig } from "@/lib/charges";
-import { supabase, reauthenticate, updatePassword, sendPasswordReset } from "@/lib/db";
 import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
 
 const STATUTORY_FIELDS = [
@@ -31,97 +30,6 @@ const fromDraftCfg = (cfg) => ({
   ...cfg,
   brokerageCap: cfg.brokerageCap === UNCAPPED ? Infinity : cfg.brokerageCap,
 });
-
-const MIN_PASSWORD = 8;
-
-/**
- * Change the password without leaving the journal.
- *
- * Its own component so the settings form's autosaved draft never touches it:
- * everything else on this sheet is persisted to localStorage as you type, and
- * a password has no business being written there.
- *
- * An account that has only ever used magic links has no current password to
- * check, so the failure is routed to email recovery rather than presented as
- * a wrong answer.
- */
-function PasswordChange() {
-  // Read from the session rather than passed in: it's the address the password
-  // belongs to, and re-authenticating needs the one Supabase actually has, not
-  // whatever a parent happened to be holding.
-  const [email, setEmail] = useState("");
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setEmail(data?.user?.email || ""));
-  }, []);
-
-  const [current, setCurrent] = useState("");
-  const [next, setNext] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
-  const [done, setDone] = useState(false);
-
-  const tooShort = next.length > 0 && next.length < MIN_PASSWORD;
-  const mismatch = confirm.length > 0 && next !== confirm;
-  const valid = email && current && next.length >= MIN_PASSWORD && next === confirm;
-
-  const submit = async () => {
-    if (!valid || busy) return;
-    setBusy(true); setErr(""); setDone(false);
-
-    if (!(await reauthenticate(email, current))) {
-      setErr("That current password isn't right. If you've only ever signed in with an " +
-             "email link, use the reset link below to set one.");
-      setBusy(false);
-      return;
-    }
-
-    const { error } = await updatePassword(next);
-    if (error) setErr(error.message);
-    else {
-      setDone(true);
-      setCurrent(""); setNext(""); setConfirm("");
-    }
-    setBusy(false);
-  };
-
-  const emailInstead = async () => {
-    setBusy(true); setErr("");
-    const { error } = await sendPasswordReset(email, `${window.location.origin}/reset`);
-    setErr(error ? error.message : "");
-    if (!error) setDone(true);
-    setBusy(false);
-  };
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 320 }}>
-      <label className="f"><span>Current password</span>
-        <input className="in" type="password" value={current} autoComplete="current-password"
-               onChange={(e) => { setCurrent(e.target.value); setDone(false); }} /></label>
-      <label className="f"><span>New password</span>
-        <input className="in" type="password" value={next} autoComplete="new-password"
-               onChange={(e) => { setNext(e.target.value); setDone(false); }} /></label>
-      <label className="f"><span>Again</span>
-        <input className="in" type="password" value={confirm} autoComplete="new-password"
-               onChange={(e) => { setConfirm(e.target.value); setDone(false); }}
-               onKeyDown={(e) => e.key === "Enter" && submit()} /></label>
-
-      {tooShort && <div className="hint">At least {MIN_PASSWORD} characters.</div>}
-      {mismatch && <div className="hint">Those two don&apos;t match.</div>}
-      {err && <div className="warn">{err}</div>}
-      {done && !err && <div className="hint" style={{ color: "var(--long)" }}>Password updated.</div>}
-
-      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        <button className="btn ghost sm" onClick={submit} disabled={!valid || busy}>
-          {busy ? "Saving…" : "Change password"}
-        </button>
-        <button type="button" className="lnk" onClick={emailInstead} disabled={busy || !email}>
-          Email me a reset link instead
-        </button>
-      </div>
-    </div>
-  );
-}
 
 export default function SettingsSheet({ profile, onSave, onClose, onNavigate, needStopsCount = 0 }) {
   const persisted = loadDraft(DRAFT_KEYS.settings);
@@ -245,15 +153,6 @@ export default function SettingsSheet({ profile, onSave, onClose, onNavigate, ne
                 {needStopsCount ? `Add ${needStopsCount} missing stop${needStopsCount === 1 ? "" : "s"}` : "No stops missing"}
               </button>
             </div>
-          </div>
-
-          <div style={{ borderTop: "1px solid var(--rule)", paddingTop: 18 }}>
-            <div className="eyebrow" style={{ marginBottom: 4 }}>Password</div>
-            <div className="hint" style={{ marginTop: 0, marginBottom: 12 }}>
-              The current one is asked for because a session on its own would let
-              anyone who found this screen open lock you out of your own journal.
-            </div>
-            <PasswordChange />
           </div>
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 10,

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Plus, Settings2, LayoutGrid, Layers, Table2, LineChart, BookOpen, ClipboardList, LogOut } from "lucide-react";
+import { Plus, LayoutGrid, Layers, Table2, LineChart, BookOpen, ClipboardList } from "lucide-react";
 import {
   supabase, getProfile, saveProfile as dbSaveProfile,
   listTrades, listExitsByTrade, saveExits, saveTrade as dbSaveTrade, deleteTrade as dbDeleteTrade,
@@ -16,6 +16,8 @@ import { derivePosition } from "@/lib/positions";
 import FirstRun from "@/components/journal/FirstRun";
 import TradeForm from "@/components/journal/TradeForm";
 import SettingsSheet from "@/components/journal/SettingsSheet";
+import ProfileSheet from "@/components/journal/ProfileSheet";
+import AccountMenu from "@/components/journal/AccountMenu";
 import { loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
 import { JournalContext } from "./JournalContext";
 
@@ -149,6 +151,8 @@ export default function AppLayout({ children }) {
   // Opened via Exit rather than Edit: the form starts on a fresh sell row.
   const [selling, setSelling] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  // null when closed; "account" or "password" for which part to land on.
+  const [showProfile, setShowProfile] = useState(null);
   const [flash, setFlash] = useState("");
 
   const say = useCallback((m) => { setFlash(m); setTimeout(() => setFlash(""), 2600); }, []);
@@ -529,16 +533,18 @@ export default function AppLayout({ children }) {
                 })}
               </div>
             </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", paddingBottom: 12 }}>
-              <button className="btn ghost sm" onClick={() => setShowSettings(true)} aria-label="Settings">
-                <Settings2 size={13} />Setup
-              </button>
-              <button className="btn ghost sm" onClick={() => signOut()} aria-label="Sign out">
-                <LogOut size={13} />Sign out
-              </button>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", paddingBottom: 12 }}>
               <button className="btn" onClick={openNewTrade}>
                 <Plus size={14} />New trade
               </button>
+              <AccountMenu
+                profile={profile}
+                email={session?.user?.email}
+                onProfile={() => setShowProfile("account")}
+                onPassword={() => setShowProfile("password")}
+                onSetup={() => setShowSettings(true)}
+                onSignOut={() => signOut()}
+              />
             </div>
           </div>
         </div>
@@ -553,6 +559,15 @@ export default function AppLayout({ children }) {
                      chargeConfig={profile?.charge_config} startSelling={selling}
                      onSave={saveTrade}
                      onClose={() => { setShowForm(false); setEditing(null); setSelling(false); }} />
+        )}
+
+        {showProfile && (
+          <ProfileSheet
+            profile={profile}
+            counts={{ total: trades.length }}
+            focusPassword={showProfile === "password"}
+            onClose={() => setShowProfile(null)}
+          />
         )}
 
         {showSettings && (
