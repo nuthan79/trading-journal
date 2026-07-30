@@ -563,3 +563,38 @@ export const signInWithPassword = (email, password) =>
   supabase.auth.signInWithPassword({ email, password });
 
 export const signOut = () => supabase.auth.signOut();
+
+/**
+ * Send the "set a new password" email.
+ *
+ * Recovery rides the same implicit flow as the magic link: the session comes
+ * back in the URL fragment, so the link works in whichever browser opens it —
+ * which matters, because the one place people read email is rarely the one
+ * they were locked out of.
+ *
+ * `/reset` sits outside the app's auth gate. Landing there already signs the
+ * visitor in, and dropping them straight into the journal would leave them
+ * with the password they came to change.
+ */
+export const sendPasswordReset = (email, redirectTo) =>
+  supabase.auth.resetPasswordForEmail(email, { redirectTo });
+
+/** Set the password on the signed-in account. */
+export const updatePassword = (password) =>
+  supabase.auth.updateUser({ password });
+
+/**
+ * Prove the person at the keyboard knows the current password.
+ *
+ * Supabase treats the session alone as sufficient to change a password, which
+ * would let anyone who found an unlocked laptop lock the owner out of their
+ * own trading history. Signing in again with the old password costs one round
+ * trip and closes that.
+ *
+ * Returns false for an account that has only ever used magic links, since
+ * there is no password to check — the caller sends those to email recovery.
+ */
+export async function reauthenticate(email, password) {
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  return !error;
+}

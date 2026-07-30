@@ -83,6 +83,15 @@ label.f > span {
 }
 .hint { font-size: 11px; color: var(--ink3); margin-top: 5px; }
 
+/* A button that reads as a link — for actions that sit inside a form and
+   shouldn't compete with its primary control. */
+.lnk { background: none; border: 0; padding: 0; cursor: pointer;
+       font: inherit; font-size: 11.5px; color: var(--ink3);
+       text-align: left; align-self: flex-start;
+       border-bottom: 1px solid transparent; }
+.lnk:hover:not(:disabled) { color: var(--ink2); border-bottom-color: var(--brass); }
+.lnk:disabled { opacity: 0.5; cursor: default; }
+
 /* ------------------------------------------------------------------ */
 /*  Journal app                                                        */
 /* ------------------------------------------------------------------ */

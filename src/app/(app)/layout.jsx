@@ -9,6 +9,7 @@ import {
   listTrades, listExitsByTrade, saveExits, saveTrade as dbSaveTrade, deleteTrade as dbDeleteTrade,
   listDiary, saveDiary as dbSaveDiary, deleteDiary as dbDeleteDiary,
   listFlows, markOpenPositions, sendMagicLink, signInWithPassword, signOut,
+  sendPasswordReset,
 } from "@/lib/db";
 import { stats } from "@/lib/calc";
 import { derivePosition } from "@/lib/positions";
@@ -63,6 +64,9 @@ export default function AppLayout({ children }) {
   const [authErr, setAuthErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [linkSent, setLinkSent] = useState(false);
+  // "link" is a sign-in link, "reset" is a set-a-new-password link. Both end
+  // in the same "check your email" panel, which needs to say which was sent.
+  const [sentKind, setSentKind] = useState("link");
 
   // Implicit flow reports a bad or expired link in the URL fragment
   // (#error=...&error_description=...), not a query string — supabase-js
@@ -111,7 +115,18 @@ export default function AppLayout({ children }) {
     // for a callback route to do.
     const { error } = await sendMagicLink(email, window.location.origin);
     if (error) setAuthErr(error.message);
-    else setLinkSent(true);
+    else { setSentKind("link"); setLinkSent(true); }
+    setBusy(false);
+  };
+
+  const sendReset = async () => {
+    setBusy(true); setAuthErr("");
+    const { error } = await sendPasswordReset(email, `${window.location.origin}/reset`);
+    // Deliberately the same panel whether or not that address has an account.
+    // Telling a stranger "no such user" turns this form into a way to find out
+    // who has one.
+    if (error) setAuthErr(error.message);
+    else { setSentKind("reset"); setLinkSent(true); }
     setBusy(false);
   };
 
@@ -369,9 +384,19 @@ export default function AppLayout({ children }) {
             <div>
               <div className="disp" style={{ fontSize: 15 }}>Check your email</div>
               <p style={{ fontSize: 13, color: "var(--ink2)", lineHeight: 1.6, margin: "6px 0 0" }}>
-                We sent a sign-in link to <b>{email}</b>. Open it from any browser or mail
-                app — it signs you in wherever you click it. The link expires shortly, so
-                request a new one if it's been a while.
+                {sentKind === "reset" ? (
+                  <>
+                    If <b>{email}</b> has an account, a link to set a new password is on its
+                    way. Open it from any browser or mail app. It works once and expires
+                    shortly, so ask again if it&apos;s been a while.
+                  </>
+                ) : (
+                  <>
+                    We sent a sign-in link to <b>{email}</b>. Open it from any browser or mail
+                    app — it signs you in wherever you click it. The link expires shortly, so
+                    request a new one if it&apos;s been a while.
+                  </>
+                )}
               </p>
             </div>
 
@@ -401,6 +426,13 @@ export default function AppLayout({ children }) {
                 <input className="in" type="password" value={password} autoComplete="current-password"
                        onChange={(e) => setPassword(e.target.value)}
                        onKeyDown={(e) => e.key === "Enter" && signInPassword()} /></label>
+            )}
+
+            {authMode === "password" && (
+              <button type="button" className="lnk" onClick={sendReset} disabled={busy || !email}
+                      title={email ? "" : "Enter your email first"}>
+                Forgot your password?
+              </button>
             )}
 
             {authErr && <div className="warn">{authErr}</div>}
