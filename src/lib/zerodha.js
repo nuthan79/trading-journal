@@ -382,25 +382,91 @@ export function importSummary(groups, { skipped = 0 } = {}) {
 }
 
 /**
- * Drop anything already in the journal.
+ * Work out what each group in the file means against the journal as it stands.
  *
- * The report only covers one financial year, so importing several files is
- * normal and overlap is expected — a position entered in March and exited in
- * April appears in both years' reports.
+ * Matching is on the POSITION — symbol and entry date — not on the whole of
+ * symbol|entry_date|exit_date|quantity. Those last two describe how much of it
+ * had been sold when a particular file was generated, which is precisely the
+ * part that changes between one download and the next. Keying on them meant a
+ * position that had been scaled out further since the last import looked like
+ * a different trade, so the file inserted a second copy carrying the sells
+ * already recorded on the first. That double-counted the P&L, silently.
+ *
+ * So: find the position, add the sells it hasn't got, leave everything else
+ * alone. A hand-entered trade keeps its stop, its thesis and its pattern and
+ * simply gets completed. Four outcomes, and only the first two write anything:
+ *
+ *   fresh        no such position — insert it, as before
+ *   completions  it's here, and these sells are missing from it
+ *   duplicates   it's here and every sell is already recorded
+ *   conflicts    the file and the journal disagree; a human decides
  */
-export function dedupe(groups, existingKeys) {
-  const seen = new Set(existingKeys || []);
-  const fresh = [];
-  const duplicates = [];
-  for (const g of groups) {
-    if (seen.has(g.dedupeKey)) duplicates.push(g);
-    else { seen.add(g.dedupeKey); fresh.push(g); }
+export function reconcile(groups, targets) {
+  const byPosition = new Map();
+  for (const t of targets || []) {
+    const k = `${t.symbol}|${t.entry_date}`;
+    if (!byPosition.has(k)) byPosition.set(k, []);
+    byPosition.get(k).push(t);
   }
-  return { fresh, duplicates };
-}
 
-export const dedupeKeyFor = (t) =>
-  `${t.symbol}|${t.entry_date}|${t.exit_date}|${t.quantity}`;
+  const fresh = [];        // no such position here yet — insert
+  const completions = [];  // position is here, these sells are not
+  const duplicates = [];   // every sell already recorded
+  const conflicts = [];    // needs a human; nothing written
+
+  // Positions this same file has already claimed, so two groups in one file
+  // can't both attach to the same journal row.
+  const claimed = new Set();
+
+  for (const g of groups) {
+    const key = `${g.symbol}|${g.entryDate}`;
+    const found = (byPosition.get(key) || []).filter((t) => !claimed.has(t.id));
+
+    if (found.length === 0) { fresh.push(g); continue; }
+
+    if (found.length > 1) {
+      // Two positions opened in the same symbol on the same day. Guessing
+      // which one these sells belong to could put them on the wrong trade,
+      // and that is worse than doing nothing.
+      conflicts.push({ ...g, reason: `${found.length} trades already start on this date — pick one by hand` });
+      continue;
+    }
+
+    const target = found[0];
+    const have = new Set((target.exits || []).map((e) => e.exit_date));
+    const missing = g.tranches.filter((t) => !have.has(t.exit_date));
+
+    if (missing.length === 0) { duplicates.push(g); continue; }
+
+    // What the journal thinks the position was, against what the file is now
+    // asking to have sold out of it. Over that and the numbers disagree about
+    // something more fundamental than a missing sell.
+    const already = (target.exits || []).reduce((a, e) => a + Number(e.quantity || 0), 0);
+    const adding = missing.reduce((a, t) => a + Number(t.quantity || 0), 0);
+    if (already + adding > Number(target.quantity) + 1e-6) {
+      conflicts.push({
+        ...g,
+        reason: `file sells ${already + adding} but the journal holds ${target.quantity}`,
+      });
+      continue;
+    }
+
+    claimed.add(target.id);
+    completions.push({
+      group: g,
+      tradeId: target.id,
+      tranches: missing,
+      // For the preview: what is being added, and to what.
+      already,
+      adding,
+      holding: Number(target.quantity),
+      status: target.status,
+      skipped: g.tranches.length - missing.length,
+    });
+  }
+
+  return { fresh, completions, duplicates, conflicts };
+}
 
 /* ------------------------------------------------------------------ */
 /*  One call                                                           */
@@ -420,14 +486,14 @@ function rejectReason(g) {
   return null;
 }
 
-export function parseZerodhaTaxPnl(rows, { existingKeys, batchId, exchange } = {}) {
+export function parseZerodhaTaxPnl(rows, { targets, batchId, exchange } = {}) {
   const { lots, warnings, sectionCounts, missingColumns } = parseTradewiseRows(rows);
   const grouped = groupLots(lots);
-  const { fresh: deduped, duplicates } = dedupe(grouped, existingKeys);
+  const { fresh: matched, completions, duplicates, conflicts } = reconcile(grouped, targets);
 
   const fresh = [];
-  const rejected = [];
-  for (const g of deduped) {
+  const rejected = [...conflicts];
+  for (const g of matched) {
     const reason = rejectReason(g);
     if (reason) rejected.push({ ...g, reason });
     else fresh.push(g);
@@ -440,6 +506,9 @@ export function parseZerodhaTaxPnl(rows, { existingKeys, batchId, exchange } = {
   return {
     trades: toTradeRows(fresh, { batchId, exchange }),
     groups: fresh,
+    // Sells to attach to positions already here. Carries the trade id, so
+    // these never travel through toTradeRows — there is no new trade to make.
+    completions,
     duplicates,
     rejected,
     // Named separately from `rejected` because the remedy is different: this

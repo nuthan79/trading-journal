@@ -3,20 +3,22 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import ImportTrades from "@/components/ImportTrades";
-import { listTradeKeys, importTrades } from "@/lib/db";
+import { listImportTargets, importTrades } from "@/lib/db";
 import { useJournal } from "../JournalContext";
 
 export default function ImportPage() {
   const router = useRouter();
   const { reloadTrades, say } = useJournal();
-  const [existingKeys, setExistingKeys] = useState(null);
+  const [targets, setTargets] = useState(null);
   const [keysErr, setKeysErr] = useState("");
 
-  // Loaded before the picker is usable: without these, an overlapping file
-  // would import duplicates rather than skip them.
+  // Loaded before the picker is usable. Without the positions already here,
+  // an overlapping file can't tell a trade it has never seen from one that
+  // has simply been scaled out further since the last import — and would
+  // insert a second copy carrying sells the first already holds.
   useEffect(() => {
-    listTradeKeys()
-      .then(setExistingKeys)
+    listImportTargets()
+      .then(setTargets)
       .catch((e) => setKeysErr(e.message || "Could not read existing trades."));
   }, []);
 
@@ -31,7 +33,7 @@ export default function ImportPage() {
     );
   }
 
-  if (!existingKeys) {
+  if (!targets) {
     return (
       <div className="sec">
         <div className="eyebrow">Checking what's already here</div>
@@ -42,7 +44,7 @@ export default function ImportPage() {
   return (
     <div className="sec">
       <ImportTrades
-        existingKeys={existingKeys}
+        targets={targets}
         onImport={async (payload) => {
           const res = await importTrades(payload);
           await reloadTrades();

@@ -34,7 +34,15 @@ const SECTION_LABEL = {
   commodity: "Commodity",
 };
 
-export default function ImportTrades({ existingKeys = [], onImport, onDone }) {
+/** "Import 12 trades", "Complete 3 positions", or both. */
+function importLabel(newCount, completeCount) {
+  const parts = [];
+  if (newCount) parts.push(`${newCount} trade${newCount === 1 ? "" : "s"}`);
+  if (completeCount) parts.push(`complete ${completeCount}`);
+  return parts.length ? `Import ${parts.join(" · ")}` : "Nothing to import";
+}
+
+export default function ImportTrades({ targets = [], onImport, onDone }) {
   const [file, setFile] = useState(null);
   const [parsed, setParsed] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -68,8 +76,8 @@ export default function ImportTrades({ existingKeys = [], onImport, onDone }) {
         throw new Error("Expected an .xlsx or .csv file.");
       }
 
-      const out = parseZerodhaTaxPnl(rows, { existingKeys });
-      if (!out.trades.length && !out.duplicates.length) {
+      const out = parseZerodhaTaxPnl(rows, { targets });
+      if (!out.trades.length && !out.completions.length && !out.duplicates.length) {
         throw new Error(
           "No equity trades found. This report may cover a period with no closed positions."
         );
@@ -81,14 +89,15 @@ export default function ImportTrades({ existingKeys = [], onImport, onDone }) {
       setFile(null);
     }
     setBusy(false);
-  }, [existingKeys]);
+  }, [targets]);
 
   const confirm = async () => {
-    if (!parsed?.trades.length) return;
+    if (!parsed?.trades.length && !parsed?.completions.length) return;
     setBusy(true); setError("");
     try {
       const res = await onImport({
         trades: parsed.trades,
+        completions: parsed.completions,
         meta: {
           filename: file?.name,
           source: "zerodha-taxpnl",
@@ -247,6 +256,33 @@ export default function ImportTrades({ existingKeys = [], onImport, onDone }) {
         </div>
       )}
 
+      {parsed.completions?.length > 0 && (
+        <details className="im-completes" open>
+          <summary>
+            <Check size={11} /> {parsed.completions.length} position
+            {parsed.completions.length === 1 ? "" : "s"} already in your journal will be
+            completed, not duplicated — the sells below get added to the trade you already
+            have, keeping its stop and notes
+          </summary>
+          <div className="im-rejlist">
+            {parsed.completions.slice(0, 40).map((c, i) => (
+              <div key={i}>
+                <b>{c.group.symbol}</b> {c.group.entryDate}
+                <span className="im-dim">
+                  {" "}· holding {c.holding}, {c.already} already sold
+                  {" "}· adding {c.tranches.length} sell{c.tranches.length === 1 ? "" : "s"} ({c.adding})
+                  {c.skipped > 0 && ` · ${c.skipped} already recorded`}
+                  {" "}· {c.already + c.adding >= c.holding ? "closes it" : "stays part-sold"}
+                </span>
+              </div>
+            ))}
+            {parsed.completions.length > 40 && (
+              <div className="im-dim">…and {parsed.completions.length - 40} more</div>
+            )}
+          </div>
+        </details>
+      )}
+
       {(parsed.skippedSections.length > 0 || parsed.duplicates.length > 0 ||
         parsed.rejected?.length > 0) && (
         <div className="im-skips">
@@ -336,12 +372,20 @@ export default function ImportTrades({ existingKeys = [], onImport, onDone }) {
         <span className="im-dim">
           Stops are left empty — the report doesn't record them. You'll be asked next.
         </span>
-        <button className="btn" onClick={confirm} disabled={busy}>
-          <Upload size={13} /> {busy ? "Importing…" : `Import ${s.trades} trades`}
+        <button className="btn" onClick={confirm}
+                disabled={busy || (!parsed.trades.length && !parsed.completions?.length)}>
+          <Upload size={13} />{" "}
+          {busy ? "Importing…" : importLabel(s.trades, parsed.completions?.length || 0)}
         </button>
       </div>
 
       <style jsx>{`
+        .im-completes {
+          border: 1px solid var(--long); border-radius: 3px;
+          background: #F2F7F5; padding: 9px 12px; margin-bottom: 12px;
+          font-size: 11.5px; color: var(--ink2); line-height: 1.6;
+        }
+        .im-completes summary { cursor: pointer; color: #0B6B58; }
         .im-head {
           display: flex; align-items: flex-end; justify-content: space-between;
           gap: 12px; margin-bottom: 12px; flex-wrap: wrap;

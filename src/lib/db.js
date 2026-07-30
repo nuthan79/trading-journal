@@ -219,14 +219,32 @@ export async function markOpenPositions(openTrades) {
  * re-imported safely. Each tax report covers one financial year, so a position
  * entered in March and exited in April appears in two of them.
  */
-export async function listTradeKeys() {
-  // Paged like the rest: a set-returning function is capped just the same, and
-  // a short list here is the worst failure of the three — the importer would
-  // believe trades past the cap weren't in the journal and write them again.
-  const rows = await fetchAllPages(() =>
-    supabase.rpc("my_trade_keys").select("*").order("dedupe_key", { ascending: true })
-  );
-  return rows.map((r) => r.dedupe_key);
+/**
+ * Every position already in the journal, with the sells recorded against it.
+ *
+ * What the importer matches a file against. Deliberately more than the old key
+ * list: to tell "this position has moved on since the last import" from "this
+ * is a different trade", it needs the position's identity, how big it is and
+ * which sells it already holds — not a string that folds all of that together.
+ */
+export async function listImportTargets() {
+  const [trades, exits] = await Promise.all([
+    fetchAllPages(() =>
+      supabase.from("trades")
+        .select("id,symbol,entry_date,quantity,status")
+        .order("id")),
+    fetchAllPages(() =>
+      supabase.from("trade_exits")
+        .select("trade_id,exit_date,quantity")
+        .order("id")),
+  ]);
+
+  const byTrade = new Map();
+  for (const e of exits) {
+    if (!byTrade.has(e.trade_id)) byTrade.set(e.trade_id, []);
+    byTrade.get(e.trade_id).push(e);
+  }
+  return trades.map((t) => ({ ...t, exits: byTrade.get(t.id) || [] }));
 }
 
 /**
@@ -237,7 +255,7 @@ export async function listTradeKeys() {
  * `_preview` is display-only scaffolding from the parser and is stripped here;
  * sending it would fail on a column that doesn't exist.
  */
-export async function importTrades({ trades, meta }) {
+export async function importTrades({ trades, completions = [], meta }) {
   const user_id = await uid();
 
   const { data: batch, error: batchErr } = await supabase
@@ -291,19 +309,29 @@ export async function importTrades({ trades, meta }) {
   // insert() returns rows in the order sent, which is what lets a tranche
   // list be matched back to the trade it came from.
   const exitRows = [];
-  (data || []).forEach((saved, i) => {
-    for (const e of trades[i]?.exits || []) {
-      exitRows.push({
-        trade_id: saved.id,
-        user_id,
-        exit_date: e.exit_date,
-        quantity: Number(e.quantity),
-        price: Number(e.price),
-        reason: e.reason || null,
-        charges: Number(e.charges) || 0,
-      });
-    }
+  const tranche = (trade_id, e) => ({
+    trade_id,
+    user_id,
+    exit_date: e.exit_date,
+    quantity: Number(e.quantity),
+    price: Number(e.price),
+    reason: e.reason || null,
+    charges: Number(e.charges) || 0,
+    import_batch: batch.id,
   });
+
+  (data || []).forEach((saved, i) => {
+    for (const e of trades[i]?.exits || []) exitRows.push(tranche(saved.id, e));
+  });
+
+  // Sells for positions that were already here. No trade is created; these
+  // attach to the row the user already has, so their stop, thesis and pattern
+  // survive and the status trigger closes the position off the tranches.
+  // Tagged with the batch like any other, which is what lets undo take them
+  // back out again.
+  for (const c of completions) {
+    for (const e of c.tranches) exitRows.push(tranche(c.tradeId, e));
+  }
 
   if (exitRows.length) {
     const { error: exitErr } = await supabase.from("trade_exits").insert(exitRows);
