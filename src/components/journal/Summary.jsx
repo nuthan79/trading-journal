@@ -55,7 +55,7 @@ export default function Summary({ closed, openingCapital, flows = [] }) {
           <Fig tone={s.totalR >= 0 ? "up" : "down"}>{rfmt(s.totalR)}</Fig> total.
           {" "}Deepest drawdown <Fig tone="risk">{s.maxDD.toFixed(2)}R</Fig>
           {isFinite(s.maxDDPct) && <> ({pct(s.maxDDPct)} of capital)</>}, worst
-          losing run <Fig tone="risk">{s.worstStreak}</Fig> trades.
+          losing run <Fig tone="risk">{s.worstStreak}</Fig> trading day{s.worstStreak === 1 ? "" : "s"}.
           {" "}{s.greenMonths} of {s.totalMonths} months and {s.greenQuarters} of{" "}
           {s.totalQuarters} quarters finished green.
           {s.needStop > 0 && (

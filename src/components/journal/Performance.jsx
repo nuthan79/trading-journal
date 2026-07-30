@@ -41,7 +41,7 @@ export default function Performance({ closed, S, accountSize, flows, all = [] })
         <Tile label="Average loss" value={rfmt(-S.avgLoss)} tone="neg"
               sub={`worst ${rfmt(S.worst)}`} />
         <Tile label="Max drawdown" value={`${S.maxDD.toFixed(1)}R`}
-              sub={`longest losing run ${S.worstL}`} />
+              sub={`longest losing run ${S.worstL} day${S.worstL === 1 ? "" : "s"}`} />
       </div>
 
       <div className="sec">

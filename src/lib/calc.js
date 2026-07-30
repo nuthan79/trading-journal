@@ -61,9 +61,35 @@ export function stats(rows) {
   let cum = 0, peak = 0, maxDD = 0;
   for (const x of rs) { cum += x; peak = Math.max(peak, cum); maxDD = Math.max(maxDD, peak - cum); }
 
+  /**
+   * Streaks counted by day, not by row.
+   *
+   * Per-row, this measured nothing. Positions routinely close in batches —
+   * going to cash across twenty-five names is one decision that lands as
+   * seventy rows — and rows sharing an exit date have no inherent order, so
+   * the answer moved with the tiebreak. On a real journal the same data gave
+   * a worst run of 50, 53, 67 or 71 depending only on how ties happened to
+   * sort. A number that changes with the sort is not a measurement.
+   *
+   * By day it is stable and means what people think it means: how many
+   * sessions in a row went against you. A day counts as a loss when the day's
+   * total R is at or below zero, so one bad exit among good ones doesn't break
+   * a run and a mass liquidation is the single event it actually was.
+   *
+   * Rows with no exit date — an open position should never be here, but the
+   * caller decides that — fall back to entry date rather than being dropped.
+   */
+  const byDay = new Map();
+  for (const t of rows) {
+    if (!isFinite(t.r)) continue;
+    const day = t.exit_date || t.entry_date || "";
+    byDay.set(day, (byDay.get(day) || 0) + t.r);
+  }
+  const days = [...byDay.entries()].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+
   let cw = 0, cl = 0, bestW = 0, worstL = 0;
-  for (const x of rs) {
-    if (x > 0) { cw++; cl = 0; bestW = Math.max(bestW, cw); }
+  for (const [, dayR] of days) {
+    if (dayR > 0) { cw++; cl = 0; bestW = Math.max(bestW, cw); }
     else { cl++; cw = 0; worstL = Math.max(worstL, cl); }
   }
 

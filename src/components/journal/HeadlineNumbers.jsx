@@ -112,8 +112,14 @@ export default function HeadlineNumbers({ closed, openingCapital, flows = [] }) 
             : "Brokerage, STT, exchange, SEBI, stamp, GST, DP" },
         { label: "Green months", value: `${h.months.green}/${h.months.total}` },
         { label: "Green quarters", value: `${h.quarters.green}/${h.quarters.total}` },
-        rCell("Win streak", h.bestW),
-        rCell("Loss streak", h.worstL, { tone: h.worstL >= 6 ? "neg" : "" }),
+        rCell("Best run", h.bestW ? `${h.bestW}d` : "—", {
+          hint: "Trading days in a row that finished up — days, not trades, " +
+                "because several positions often close together",
+        }),
+        rCell("Worst run", h.worstL ? `${h.worstL}d` : "—", {
+          tone: h.worstL >= 6 ? "neg" : "",
+          hint: "Trading days in a row that finished down",
+        }),
       ],
     },
   ];
