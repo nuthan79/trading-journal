@@ -9,7 +9,7 @@ import {
   listTrades, listExitsByTrade, saveExits, saveTrade as dbSaveTrade, deleteTrade as dbDeleteTrade,
   listDiary, saveDiary as dbSaveDiary, deleteDiary as dbDeleteDiary,
   listFlows, markOpenPositions, sendMagicLink, signInWithPassword, signOut,
-  sendPasswordReset,
+  sendPasswordReset, avatarUrl,
 } from "@/lib/db";
 import { stats } from "@/lib/calc";
 import { derivePosition } from "@/lib/positions";
@@ -102,6 +102,22 @@ export default function AppLayout({ children }) {
       .then(setProfile)
       .finally(() => setProfileLoading(false));
   }, [session]);
+
+  /**
+   * A viewing URL for the profile picture.
+   *
+   * The bucket is private, so what's stored is a path and this signs it. Held
+   * here rather than fetched by each component that draws a face: the menu and
+   * the profile sheet would otherwise sign the same object twice, and the two
+   * would expire at different moments.
+   */
+  const [avatar, setAvatar] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    if (!profile?.avatar_path) { setAvatar(null); return; }
+    avatarUrl(profile.avatar_path).then((u) => { if (alive) setAvatar(u); });
+    return () => { alive = false; };
+  }, [profile?.avatar_path]);
 
   const signInPassword = async () => {
     setBusy(true); setAuthErr("");
@@ -540,6 +556,7 @@ export default function AppLayout({ children }) {
               <AccountMenu
                 profile={profile}
                 email={session?.user?.email}
+                avatar={avatar}
                 onProfile={() => setShowProfile("account")}
                 onPassword={() => setShowProfile("password")}
                 onSetup={() => setShowSettings(true)}
@@ -564,8 +581,10 @@ export default function AppLayout({ children }) {
         {showProfile && (
           <ProfileSheet
             profile={profile}
+            avatar={avatar}
             counts={{ total: trades.length }}
             focusPassword={showProfile === "password"}
+            onProfileChange={setProfile}
             onClose={() => setShowProfile(null)}
           />
         )}

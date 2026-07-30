@@ -19,7 +19,7 @@ const initials = (name, email) => {
   return (words.length > 1 ? words[0][0] + words[1][0] : src.slice(0, 2)).toUpperCase();
 };
 
-export default function AccountMenu({ profile, email, onProfile, onPassword, onSetup, onSignOut }) {
+export default function AccountMenu({ profile, email, avatar, onProfile, onPassword, onSetup, onSignOut }) {
   const [open, setOpen] = useState(false);
   const boxRef = useRef(null);
 
@@ -41,14 +41,21 @@ export default function AccountMenu({ profile, email, onProfile, onPassword, onS
     <div className="am" ref={boxRef}>
       <button className="am-avatar" onClick={() => setOpen((o) => !o)}
               aria-haspopup="menu" aria-expanded={open} aria-label="Account">
-        {initials(profile?.journal_name, email)}
+        {/* Initials until there's a picture, rather than a grey silhouette —
+            they identify the account, which is the job here. */}
+        {avatar
+          ? <img src={avatar} alt="" />
+          : initials(profile?.journal_name, email)}
       </button>
 
       {open && (
         <div className="am-pop" role="menu">
           <div className="am-who">
-            <div className="disp">{profile?.journal_name || "Breakout Ledger"}</div>
-            <div className="am-email mono">{email || "—"}</div>
+            {avatar && <img className="am-face" src={avatar} alt="" />}
+            <div style={{ minWidth: 0 }}>
+              <div className="disp">{profile?.journal_name || "Breakout Ledger"}</div>
+              <div className="am-email mono">{email || "—"}</div>
+            </div>
           </div>
 
           <button className="am-item" role="menuitem" onClick={pick(onProfile)}>
@@ -85,6 +92,10 @@ export default function AccountMenu({ profile, email, onProfile, onPassword, onS
           justify-content: center; padding: 0;
         }
         .am-avatar:hover { border-color: var(--brass); color: var(--ink); }
+        .am-avatar :global(img) {
+          width: 100%; height: 100%; border-radius: 50%;
+          object-fit: cover; display: block;
+        }
         .am-pop {
           position: absolute; top: calc(100% + 8px); right: 0; z-index: 50;
           min-width: 232px; background: #fff;
@@ -92,7 +103,14 @@ export default function AccountMenu({ profile, email, onProfile, onPassword, onS
           box-shadow: 0 12px 30px rgba(19, 28, 26, 0.16);
           overflow: hidden; padding: 4px 0;
         }
-        .am-who { padding: 11px 14px 10px; border-bottom: 1px solid var(--rule); }
+        .am-who {
+          display: flex; align-items: center; gap: 10px;
+          padding: 11px 14px 10px; border-bottom: 1px solid var(--rule);
+        }
+        .am-face {
+          width: 34px; height: 34px; border-radius: 50%;
+          object-fit: cover; flex: none; border: 1px solid var(--rule);
+        }
         .am-who .disp { font-size: 13.5px; }
         .am-email {
           font-size: 11px; color: var(--ink3); margin-top: 2px;

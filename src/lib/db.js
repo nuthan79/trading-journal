@@ -507,6 +507,96 @@ export async function deleteDiary(entry) {
   if (error) throw error;
 }
 
+/* -------------------------------- avatar --------------------------- */
+
+const AVATAR_PX = 256;
+
+/**
+ * Square the image and shrink it before it ever leaves the browser.
+ *
+ * A photo straight off a phone is several megabytes and thousands of pixels
+ * wide, to be drawn at 32. Uploading that would cost the user their data, cost
+ * the storage bill, and look no better. Cropped to a square from the centre so
+ * a portrait doesn't arrive squashed.
+ */
+function squareToBlob(file, px = AVATAR_PX) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const side = Math.min(img.width, img.height);
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = px;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(
+        img,
+        (img.width - side) / 2, (img.height - side) / 2, side, side,
+        0, 0, px, px
+      );
+      canvas.toBlob(
+        (b) => (b ? resolve(b) : reject(new Error("Could not read that image."))),
+        "image/jpeg",
+        0.9
+      );
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("That file isn't an image this browser can read."));
+    };
+    img.src = url;
+  });
+}
+
+/**
+ * Replace the account's picture. Returns the stored path.
+ *
+ * The old file is removed after the new one is recorded, not before: if the
+ * upload fails the account keeps the picture it had, and an orphaned object
+ * costs a few kilobytes where a broken profile costs trust.
+ */
+export async function uploadAvatar(file) {
+  const user_id = await uid();
+  const blob = await squareToBlob(file);
+  const path = `${user_id}/${crypto.randomUUID()}.jpg`;
+
+  const { error } = await supabase.storage
+    .from("avatars").upload(path, blob, { contentType: "image/jpeg", upsert: false });
+  if (error) throw error;
+
+  const { data: prev } = await supabase
+    .from("profiles").select("avatar_path").eq("id", user_id).single();
+
+  const { data, error: saveErr } = await supabase
+    .from("profiles").update({ avatar_path: path }).eq("id", user_id).select().single();
+  if (saveErr) throw saveErr;
+
+  if (prev?.avatar_path && prev.avatar_path !== path) {
+    await supabase.storage.from("avatars").remove([prev.avatar_path]);
+  }
+  return data;
+}
+
+export async function removeAvatar() {
+  const user_id = await uid();
+  const { data: prev } = await supabase
+    .from("profiles").select("avatar_path").eq("id", user_id).single();
+
+  const { data, error } = await supabase
+    .from("profiles").update({ avatar_path: null }).eq("id", user_id).select().single();
+  if (error) throw error;
+
+  if (prev?.avatar_path) await supabase.storage.from("avatars").remove([prev.avatar_path]);
+  return data;
+}
+
+/** A viewing URL for a stored avatar. Private bucket, so it expires. */
+export async function avatarUrl(path) {
+  if (!path) return null;
+  const { data } = await supabase.storage.from("avatars").createSignedUrl(path, 3600);
+  return data?.signedUrl || null;
+}
+
 /* ---------------------------- capital flows ------------------------ */
 
 export async function listFlows() {
