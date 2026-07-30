@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { fetchIndexHistory, classifyRegime, INDEX_TICKERS } from "@/lib/market";
+import { userFromRequest } from "@/lib/apiAuth";
 
 /**
  * GET /api/market?index=NIFTY500&range=3y
@@ -12,6 +13,10 @@ import { fetchIndexHistory, classifyRegime, INDEX_TICKERS } from "@/lib/market";
 export const runtime = "nodejs";
 
 export async function GET(req) {
+  if (!(await userFromRequest(req))) {
+    return NextResponse.json({ error: "Sign in first." }, { status: 401, headers: { "Cache-Control": "no-store" } });
+  }
+
   const p = req.nextUrl.searchParams;
   const name = (p.get("index") || "NIFTY500").toUpperCase();
   const ticker = INDEX_TICKERS[name] || name;

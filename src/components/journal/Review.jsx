@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { apiFetch } from "@/lib/db";
 import { reviewFindings } from "@/lib/analysis";
 import { classifyRegime, regimeIndex, REGIME_LABEL } from "@/lib/market";
 import { signedPct } from "@/lib/format";
@@ -60,7 +61,7 @@ export default function Review({ closed, stats }) {
     let alive = true;
     (async () => {
       try {
-        const res = await fetch("/api/market?index=NIFTY500&range=3y");
+        const res = await apiFetch("/api/market?index=NIFTY500&range=3y");
         const json = await res.json();
         if (!alive) return;
         const classified = classifyRegime(json.history || []);

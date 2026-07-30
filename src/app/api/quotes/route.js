@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getQuotes } from "@/lib/quotes";
+import { userFromRequest } from "@/lib/apiAuth";
 
 /**
  * GET /api/quotes?s=RELIANCE:NSE,TATAMOTORS:NSE
@@ -13,6 +14,13 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(req) {
+  // Signed-in callers only. Left open, this hands anyone the deployment's
+  // Yahoo quota, and an outsider's traffic getting this IP rate-limited is
+  // what would leave paying users with no CMP.
+  if (!(await userFromRequest(req))) {
+    return NextResponse.json({ quotes: [], error: "Sign in first." }, { status: 401, headers: { "Cache-Control": "no-store" } });
+  }
+
   const raw = req.nextUrl.searchParams.get("s") || "";
   const items = raw
     .split(",")
@@ -32,7 +40,7 @@ export async function GET(req) {
     const quotes = await getQuotes(items);
     return NextResponse.json(
       { quotes, at: new Date().toISOString() },
-      { headers: { "Cache-Control": "s-maxage=60, stale-while-revalidate=300" } }
+      { headers: { "Cache-Control": "private, max-age=30" } }
     );
   } catch (err) {
     // Fail soft: the journal is fully usable without prices.

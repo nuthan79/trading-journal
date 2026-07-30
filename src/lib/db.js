@@ -40,6 +40,25 @@ export const supabase = createClient(
 const uid = async () => (await supabase.auth.getUser()).data.user?.id;
 
 /**
+ * fetch() for this app's own API routes, carrying the access token.
+ *
+ * The session is in localStorage rather than a cookie, so nothing rides along
+ * on its own — the routes can only know who is calling if the token is put on
+ * the request. Exported because Review.jsx calls /api/market directly.
+ */
+export async function apiFetch(path, init = {}) {
+  const { data } = await supabase.auth.getSession();
+  const token = data?.session?.access_token;
+  return fetch(path, {
+    ...init,
+    headers: {
+      ...(init.headers || {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+}
+
+/**
  * PostgREST caps a select at `max-rows` — 1000 on Supabase by default — and
  * says nothing when it truncates. A journal of 1200 trades simply appeared to
  * lose the oldest 200, and worse things happened quietly: exit tranches past
@@ -178,7 +197,7 @@ export async function markOpenPositions(openTrades) {
 
   let quotes = [];
   try {
-    const res = await fetch(`/api/quotes?s=${encodeURIComponent(q)}`);
+    const res = await apiFetch(`/api/quotes?s=${encodeURIComponent(q)}`);
     const json = await res.json();
     quotes = json.quotes || [];
     if (!quotes.length) {
