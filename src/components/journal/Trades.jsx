@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Plus, Pencil, Trash2, Download } from "lucide-react";
 import { rupee, rfmt, pct } from "@/lib/format";
+import PositionDetail from "./PositionDetail";
 
 const num = (v) => (v === "" || v === null || v === undefined ? NaN : Number(v));
 
@@ -21,10 +22,11 @@ function exportCsv(all) {
   a.click(); URL.revokeObjectURL(a.href);
 }
 
-export default function Trades({ all, onEdit, onDelete, onNew }) {
+export default function Trades({ all, onEdit, onExit, onDelete, onNew }) {
   const [filter, setFilter] = useState("all");
   const [q, setQ] = useState("");
   const [sort, setSort] = useState({ k: "entry_date", dir: -1 });
+  const [detailId, setDetailId] = useState(null);
 
   const rows = useMemo(() => {
     let r = all;
@@ -44,6 +46,11 @@ export default function Trades({ all, onEdit, onDelete, onNew }) {
       return String(av || "").localeCompare(String(bv || "")) * sort.dir;
     });
   }, [all, filter, q, sort]);
+
+  // Resolved by id against the filtered list, not held as an object: change
+  // the filter or the sort while it's open and the panel follows the row,
+  // or closes if that row is no longer on screen.
+  const detailAt = detailId == null ? -1 : rows.findIndex((t) => t.id === detailId);
 
   const th = (k, label, cls) => {
     const active = sort.k === k;
@@ -103,7 +110,10 @@ export default function Trades({ all, onEdit, onDelete, onNew }) {
               {rows.map((t) => (
                 <tr key={t.id}>
                   <td className="fz fz-last">
-                    <b className="disp">{t.symbol}</b>
+                    <button className="tr-sym" onClick={() => setDetailId(t.id)}
+                            title={`Open ${t.symbol}`}>
+                      <b className="disp">{t.symbol}</b>
+                    </button>
                     <span style={{ color: "var(--ink3)", fontSize: 11 }}> {t.exchange}</span>
                     {t.side === "short" && <span style={{ color: "var(--short)", fontSize: 10 }}> ▾</span>}
                     {(t.mistakes || []).length > 0 && (
@@ -144,9 +154,35 @@ export default function Trades({ all, onEdit, onDelete, onNew }) {
       </div>
       {rows.length > 0 && (
         <div className="hint" style={{ marginTop: 8 }}>
-          ▲ marks a trade where you tagged a mistake · ▾ marks a short · click any column to sort
+          ▲ marks a trade where you tagged a mistake · ▾ marks a short · click a symbol to open it
+          · click any column to sort
         </div>
       )}
+
+      {detailAt >= 0 && (
+        <PositionDetail
+          row={rows[detailAt]}
+          onClose={() => setDetailId(null)}
+          onEdit={(t) => { setDetailId(null); onEdit(t); }}
+          onExit={onExit ? (t) => { setDetailId(null); onExit(t); } : undefined}
+          onDelete={async (t) => { setDetailId(null); await onDelete(t.id); }}
+          // Steps through the list as filtered and sorted on screen, so the
+          // order under the arrows is the order being looked at.
+          onPrev={detailAt > 0 ? () => setDetailId(rows[detailAt - 1].id) : undefined}
+          onNext={detailAt < rows.length - 1 ? () => setDetailId(rows[detailAt + 1].id) : undefined}
+        />
+      )}
+
+      <style jsx>{`
+        /* Reads as text until you go near it — a sheet of rows, not a list
+           of links. Same affordance as the Positions table. */
+        .tr-sym {
+          background: none; border: 0; padding: 0; cursor: pointer;
+          font: inherit; color: inherit; text-align: left;
+          border-bottom: 1px solid transparent;
+        }
+        .tr-sym:hover { border-bottom-color: var(--brass); }
+      `}</style>
     </div>
   );
 }

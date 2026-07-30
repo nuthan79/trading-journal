@@ -46,6 +46,10 @@ export default function PositionDetail({ row, onClose, onEdit, onExit, onDelete,
   const qty = Number(row.quantity);
   const perShare = row.riskPerShare;
   const exits = row.exits || [];
+  // Everything sold. The panel keeps its shape either way — same legs, same
+  // arithmetic — but stops offering a mark, a live risk or a sell to record,
+  // none of which mean anything once there's nothing left on the table.
+  const closed = row.status === "closed" || !(row.qtyOpen > 0);
 
   // derivePosition returns `charges` as entry-side plus every sell, and that
   // total shadows the trade row's own figure once the two are spread together.
@@ -76,10 +80,13 @@ export default function PositionDetail({ row, onClose, onEdit, onExit, onDelete,
           <div className="pd-acts">
             {/* Same form as Edit, opened on a fresh sell. It's the word in mind
                 when a position is being closed, so it gets its own button
-                rather than being something to find inside Edit. */}
-            <button className="btn ghost sm" onClick={() => onExit(row)}>
-              <LogOut size={13} />Exit
-            </button>
+                rather than being something to find inside Edit. Nothing left
+                to sell on a closed trade, so it isn't offered. */}
+            {!closed && onExit && (
+              <button className="btn ghost sm" onClick={() => onExit(row)}>
+                <LogOut size={13} />Exit
+              </button>
+            )}
             <button className="btn ghost sm" onClick={() => onEdit(row)}>
               <Pencil size={13} />Edit
             </button>
@@ -107,8 +114,10 @@ export default function PositionDetail({ row, onClose, onEdit, onExit, onDelete,
             </div>
             <div className="pd-when mono">
               {day(row.entry_date)}
+              {closed && row.lastExit && ` → ${day(row.lastExit)}`}
               {isFinite(row.heldDays) && ` · ${row.heldDays} days`}
-              {` · ${isFinite(row.pctClosed) ? row.pctClosed.toFixed(1) : "0"}% sold`}
+              {!closed && ` · ${isFinite(row.pctClosed) ? row.pctClosed.toFixed(1) : "0"}% sold`}
+              {closed && exits.length > 1 && ` · ${exits.length} sells`}
             </div>
             <div className={`pd-big mono ${row.pnl >= 0 ? "pos" : "neg"}`}>
               {isFinite(row.pnl) ? rupee(row.pnl) : "—"}
@@ -120,10 +129,14 @@ export default function PositionDetail({ row, onClose, onEdit, onExit, onDelete,
               </i>
             </div>
             <div className="pd-split mono">
-              banked {isFinite(row.realisedPnl) && row.qtyExited > 0 ? rupee(row.realisedPnl) : "—"}
-              {row.qtyOpen > 0 && (
-                <> · still running {isFinite(row.unrealisedPnl) ? rupee(row.unrealisedPnl) : "no mark"}</>
-              )}
+              {closed
+                ? `after ${rupee(row.charges)} of charges`
+                : <>
+                    banked {isFinite(row.realisedPnl) && row.qtyExited > 0 ? rupee(row.realisedPnl) : "—"}
+                    {row.qtyOpen > 0 && (
+                      <> · still running {isFinite(row.unrealisedPnl) ? rupee(row.unrealisedPnl) : "no mark"}</>
+                    )}
+                  </>}
             </div>
           </div>
 
@@ -133,12 +146,20 @@ export default function PositionDetail({ row, onClose, onEdit, onExit, onDelete,
             {stat("Avg exit",
               isFinite(row.avgExitPrice) ? row.avgExitPrice.toFixed(2) : "—",
               isFinite(row.avgExitPrice) ? signedPct(gainPct(row.avgExitPrice)) : null)}
-            {stat("CMP",
-              isFinite(row.mark) ? Number(row.mark).toFixed(2) : "—",
-              isFinite(row.mark) ? signedPct(gainPct(row.mark)) : null)}
-            {stat("Stop now",
-              isFinite(row.currentStop) ? row.currentStop.toFixed(2) : "—",
-              isFinite(row.slPctCurrent) ? `${pct(Math.abs(row.slPctCurrent))} away` : null)}
+            {closed
+              ? stat("Held",
+                  isFinite(row.heldDays) ? `${row.heldDays}d` : "—",
+                  exits.length > 1 ? `over ${exits.length} sells` : "one sell")
+              : stat("CMP",
+                  isFinite(row.mark) ? Number(row.mark).toFixed(2) : "—",
+                  isFinite(row.mark) ? signedPct(gainPct(row.mark)) : null)}
+            {closed
+              ? stat("Charges", isFinite(row.charges) ? rupee(row.charges) : "—",
+                  isFinite(row.exposure) && row.exposure > 0
+                    ? `${pct((row.charges / row.exposure) * 100, 2)} of size` : null)
+              : stat("Stop now",
+                  isFinite(row.currentStop) ? row.currentStop.toFixed(2) : "—",
+                  isFinite(row.slPctCurrent) ? `${pct(Math.abs(row.slPctCurrent))} away` : null)}
             {stat("Stop at entry",
               isFinite(row.initialStop) ? row.initialStop.toFixed(2) : "—",
               isFinite(row.slPct) ? `${pct(row.slPct)} — sets 1R` : null)}
@@ -146,9 +167,14 @@ export default function PositionDetail({ row, onClose, onEdit, onExit, onDelete,
               isFinite(row.riskAmt) ? rupee(row.riskAmt) : "—",
               isFinite(row.riskPct) ? `${pct(row.riskPct, 2)} of account` : null)}
             {stat("Position size", isFinite(row.exposure) ? rupee(row.exposure) : "—")}
-            {stat("Open risk",
-              row.isRiskFree || !(row.openRiskAmt > 0) ? "nil" : rupee(-Math.abs(row.openRiskAmt)),
-              row.isRiskFree || !(row.openRiskAmt > 0) ? "nothing left to lose" : null)}
+            {closed
+              ? stat("Result",
+                  isFinite(row.r) ? rfmt(row.r) : "—",
+                  isFinite(row.pnl) && isFinite(row.exposure) && row.exposure > 0
+                    ? signedPct((row.pnl / row.exposure) * 100) : null)
+              : stat("Open risk",
+                  row.isRiskFree || !(row.openRiskAmt > 0) ? "nil" : rupee(-Math.abs(row.openRiskAmt)),
+                  row.isRiskFree || !(row.openRiskAmt > 0) ? "nothing left to lose" : null)}
           </div>
 
           {/* Every leg, in order */}
@@ -185,6 +211,8 @@ export default function PositionDetail({ row, onClose, onEdit, onExit, onDelete,
                         <span className="mono">{day(e.exit_date)}</span>
                         <span className="pd-leg" data-kind="out">sold</span>
                         {isFinite(held) && <i className="pd-dim"> {held}d in</i>}
+                        {/* Why it went. The whole point of recording it. */}
+                        {e.reason && <i className="pd-why"> {e.reason}</i>}
                       </td>
                       <td className="num">
                         {Number(e.price).toFixed(2)}
@@ -248,6 +276,24 @@ export default function PositionDetail({ row, onClose, onEdit, onExit, onDelete,
             </div>
           )}
 
+          {/* What you decided afterwards. Only ever written on a trade that's
+              finished, and the reason to open a closed one back up at all. */}
+          {(row.mistakes || []).length > 0 && (
+            <div className="pd-mistakes">
+              <div className="pd-stat-l">Tagged on this trade</div>
+              <div className="chips" style={{ marginTop: 6 }}>
+                {row.mistakes.map((m) => <span key={m} className="chip">{m}</span>)}
+              </div>
+            </div>
+          )}
+
+          {row.notes && (
+            <div className="pd-notes">
+              <div className="pd-stat-l">Notes</div>
+              <p>{row.notes}</p>
+            </div>
+          )}
+
           <div className="pd-foot">
             The R beside each sell is where price stood against your 1R at that moment, not that
             leg&apos;s share of the result — sizes differ, so those don&apos;t add up to the
@@ -304,6 +350,10 @@ export default function PositionDetail({ row, onClose, onEdit, onExit, onDelete,
             padding: 10px 13px; border-radius: 2px;
           }
           .pd-thesis p { font-size: 12.5px; margin: 4px 0 0; line-height: 1.55; }
+          .pd-notes p {
+            font-size: 12.5px; margin: 5px 0 0; line-height: 1.6;
+            white-space: pre-wrap; color: var(--ink2);
+          }
           .pd-foot {
             font-size: 11px; color: var(--ink3); line-height: 1.6; text-wrap: pretty;
           }
@@ -328,6 +378,10 @@ export default function PositionDetail({ row, onClose, onEdit, onExit, onDelete,
             color: var(--ink3); margin-top: 2px; line-height: 1.4;
           }
           .pd-dim { color: var(--ink3); font-size: 10.5px; font-style: normal; }
+          .pd-why {
+            color: var(--brass); font-size: 10.5px; font-style: normal;
+            display: inline; margin-left: 6px;
+          }
           /* Suffixes go under the figure, not beside it. Inline, every "+12.0%"
              and "of it" shoved its own number left by a different amount, so a
              right-aligned column of prices came out ragged. */
