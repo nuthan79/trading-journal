@@ -8,8 +8,8 @@ import MonthlyReturns from "./MonthlyReturns";
 import ProfitConcentration from "./ProfitConcentration";
 
 /**
- * How the system has done. What it is exposed to right now lives on Positions,
- * which is why the open-positions table isn't repeated here — nor the four
+ * How the system has done. What it is exposed to right now lives on Holdings,
+ * which is why the open-holdings table isn't repeated here — nor the four
  * tiles that restated Headline Numbers, disagreeing with it as they did:
  * win rate there counted every closed trade, the tile weighted the twelve with
  * a stop, and two different 'win rate's on one screen is worse than one.

@@ -175,7 +175,7 @@ export default function Trades({ all, onEdit, onExit, onDelete, onNew }) {
 
       <style jsx>{`
         /* Reads as text until you go near it — a sheet of rows, not a list
-           of links. Same affordance as the Positions table. */
+           of links. Same affordance as the Holdings table. */
         .tr-sym {
           background: none; border: 0; padding: 0; cursor: pointer;
           font: inherit; color: inherit; text-align: left;

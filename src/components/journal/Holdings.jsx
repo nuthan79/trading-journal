@@ -14,8 +14,8 @@ import PositionDetail from "./PositionDetail";
  * running, and what each position is worth against the mark.
  *
  * Open risk is the number the page is built around, read against a 5R line.
- * That line is a warning, not a cap — nothing here limits how many positions
- * you can hold or refuses anything past it. An open-risk figure just means
+ * That line is a warning, not a cap — nothing here limits how many holdings
+ * you can carry or refuses anything past it. An open-risk figure just means
  * very little without something to read it against.
  */
 
@@ -216,7 +216,7 @@ function BreakevenFlag({ c, busy, onMark }) {
   );
 }
 
-export default function Positions({
+export default function Holdings({
   open, closed, onRefresh, refreshing, onMarkRiskFree, onEditTrade, onExitTrade, onDeleteTrade,
 }) {
   const [marked, setMarked] = useState([]);
@@ -358,8 +358,8 @@ export default function Positions({
     return (
       <div className="sec">
         <div className="card empty">
-          <div className="eyebrow">Positions</div>
-          <p>Nothing open. Flat is a position — this fills in when something is running.</p>
+          <div className="eyebrow">Holdings</div>
+          <p>Nothing held. Flat is a position — this fills in when something is running.</p>
         </div>
       </div>
     );
@@ -369,9 +369,9 @@ export default function Positions({
     <div className="sec">
       <div className="ps-head">
         <div>
-          <div className="eyebrow">Positions</div>
+          <div className="eyebrow">Holdings</div>
           <div className="ps-sub">
-            {rows.length} live · valued at the last CMP fetched, so P&amp;L moves with the market
+            {rows.length} held · valued at the last CMP fetched, so P&amp;L moves with the market
             {flagged.size > 0 && (
               <>
                 {" · "}
@@ -397,7 +397,7 @@ export default function Positions({
             <div className="ps-sum-l">Open risk</div>
             <div className="ps-sum-v mono neg">{rupee(-Math.abs(totals.openRisk))}</div>
             <div className="ps-sum-s mono">
-              across {rows.length} position{rows.length === 1 ? "" : "s"}
+              across {rows.length} holding{rows.length === 1 ? "" : "s"}
             </div>
             <div className="ps-riskfig-note">
               {RISK_WARN_R}R is a warning line, not a limit — hold as many as you like.
@@ -577,7 +577,7 @@ export default function Positions({
         Trading days count weekdays only — exchange holidays aren&apos;t known here.
         Open risk is what the current stop still exposes, so a stop moved past entry reads zero.
         The {RISK_WARN_R}R dial is there to be read, not obeyed: there&apos;s no cap on how many
-        positions you can hold, and nothing is blocked past the line.
+        holdings you can carry at once, and nothing is blocked past the line.
         A flag means the trade is up past {FREE_AT_R}R and its stop could go to breakeven — move it
         at your broker first, then click the flag to record it here and take that risk off the dial.
       </div>

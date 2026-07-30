@@ -42,7 +42,7 @@ function withExits(t, exitsByTrade) {
 
 const TABS = [
   { id: "dash", href: "/", label: "Dashboard", icon: LayoutGrid },
-  { id: "positions", href: "/positions", label: "Positions", icon: Layers },
+  { id: "holdings", href: "/holdings", label: "Holdings", icon: Layers },
   { id: "trades", href: "/trades", label: "Trades", icon: Table2 },
   { id: "perf", href: "/performance", label: "Performance", icon: LineChart },
   { id: "diary", href: "/diary", label: "Diary", icon: BookOpen },
@@ -583,7 +583,7 @@ export default function AppLayout({ children }) {
             profile={profile}
             avatar={avatar}
             counts={{ total: trades.length }}
-            focusPassword={showProfile === "password"}
+            onlyPassword={showProfile === "password"}
             onProfileChange={setProfile}
             onClose={() => setShowProfile(null)}
           />

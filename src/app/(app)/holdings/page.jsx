@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import Positions from "@/components/journal/Positions";
+import Holdings from "@/components/journal/Holdings";
 import { markOpenPositions, moveStopToEntry } from "@/lib/db";
 import { useJournal } from "../JournalContext";
 
-export default function PositionsPage() {
+export default function HoldingsPage() {
   const {
     open, closed, mergeMarks, say, reloadTrades,
     openEditTrade, openExitTrade, removeTrade,
@@ -42,7 +42,7 @@ export default function PositionsPage() {
   };
 
   return (
-    <Positions
+    <Holdings
       open={open}
       closed={closed}
       onRefresh={refresh}

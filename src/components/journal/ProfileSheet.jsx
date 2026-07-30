@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { X, LogOut, Camera, Trash2 } from "lucide-react";
+import { X, LogOut, Camera, Trash2, Crown } from "lucide-react";
 import {
   supabase, reauthenticate, updatePassword, sendPasswordReset, signOut,
   uploadAvatar, removeAvatar,
@@ -110,6 +110,46 @@ function PasswordChange({ autoFocus }) {
 }
 
 
+/**
+ * The plan, and the way to extend it.
+ *
+ * Everything here is honest about not existing yet. The button is real and
+ * says what it will do rather than pretending to do it — a control that
+ * silently no-ops is worse than one that explains itself, and this is the
+ * place people will look for renewal once there is something to renew.
+ */
+function Subscription() {
+  const [asked, setAsked] = useState(false);
+
+  return (
+    <div>
+      <div className="eyebrow" style={{ marginBottom: 8 }}>Subscription</div>
+      <div className="pf-card">
+        <div className="pf-row"><span>Plan</span><b className="mono">Free</b></div>
+        <div className="pf-row"><span>Status</span><b className="mono pf-ok">Active</b></div>
+        <div className="pf-row"><span>Renews</span><b className="mono">—</b></div>
+      </div>
+
+      <div className="pf-plan">
+        <Crown size={14} />
+        <div style={{ flex: "1 1 auto", minWidth: 0 }}>
+          <b>Free while this is being built</b>
+          <div className="pf-plan-sub">
+            {asked
+              ? "Billing isn't live yet. When it is, renewal happens here and " +
+                "nothing you've logged is ever locked behind it — an expired " +
+                "plan still reads and exports."
+              : "Nothing to pay for yet."}
+          </div>
+        </div>
+        <button className="btn ghost sm" onClick={() => setAsked(true)} disabled={asked}>
+          Extend subscription
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const fmtDate = (d) => {
   const x = new Date(d);
   return isFinite(x)
@@ -188,7 +228,7 @@ function AvatarPicker({ profile, avatar, onChanged }) {
   );
 }
 
-export default function ProfileSheet({ profile, avatar, counts, onClose, focusPassword, onProfileChange }) {
+export default function ProfileSheet({ profile, avatar, counts, onClose, onlyPassword, onProfileChange }) {
   const [email, setEmail] = useState("");
   const [joined, setJoined] = useState(null);
 
@@ -217,33 +257,41 @@ export default function ProfileSheet({ profile, avatar, counts, onClose, focusPa
       <div className="sheet" style={{ maxWidth: 460 }} onMouseDown={(e) => e.stopPropagation()}>
         <div className="sheethead">
           <div>
-            <div className="eyebrow">Account</div>
+            <div className="eyebrow">{onlyPassword ? "Password" : "My profile"}</div>
             <div className="disp" style={{ fontSize: 17, marginTop: 2 }}>
-              {profile?.journal_name || "Breakout Ledger"}
+              {onlyPassword ? "Change your password" : profile?.journal_name || "Breakout Ledger"}
             </div>
           </div>
           <button className="x" onClick={onClose} aria-label="Close"><X size={19} /></button>
         </div>
 
+        {/* Two entries in the menu, so two screens. Showing the same sheet for
+            both left the password form sitting under the profile and made the
+            second entry look like it had done nothing. */}
         <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 20 }}>
-          <AvatarPicker profile={profile} avatar={avatar} onChanged={onProfileChange} />
+          {onlyPassword ? (
+            <>
+              <div className="hint" style={{ marginTop: 0 }}>
+                The current one is asked for because a session on its own would let
+                anyone who found this screen open lock you out of your own journal.
+              </div>
+              <PasswordChange autoFocus />
+            </>
+          ) : (
+            <>
+              <AvatarPicker profile={profile} avatar={avatar} onChanged={onProfileChange} />
 
-          <div className="pf-card">
-            {row("Signed in as", email || "—")}
-            {row("Member since", joined ? fmtDate(joined) : "—")}
-            {row("Account size", rupee(profile?.account_size))}
-            {row("Default risk", `${profile?.default_risk_pct ?? "—"}%`)}
-            {row("Trades logged", `${counts?.total ?? 0}`)}
-          </div>
+              <div className="pf-card">
+                {row("Signed in as", email || "—")}
+                {row("Member since", joined ? fmtDate(joined) : "—")}
+                {row("Account size", rupee(profile?.account_size))}
+                {row("Default risk", `${profile?.default_risk_pct ?? "—"}%`)}
+                {row("Trades logged", `${counts?.total ?? 0}`)}
+              </div>
 
-          <div>
-            <div className="eyebrow" style={{ marginBottom: 4 }}>Password</div>
-            <div className="hint" style={{ marginTop: 0, marginBottom: 12 }}>
-              The current one is asked for because a session on its own would let
-              anyone who found this screen open lock you out of your own journal.
-            </div>
-            <PasswordChange autoFocus={focusPassword} />
-          </div>
+              <Subscription />
+            </>
+          )}
 
           <div style={{ borderTop: "1px solid var(--rule)", paddingTop: 16,
                         display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -290,6 +338,15 @@ export default function ProfileSheet({ profile, avatar, counts, onClose, focusPa
           }
           .pf-av-img:hover .pf-av-over { opacity: 1; }
           .pf-av-img:disabled { opacity: 0.6; cursor: default; }
+          .pf-ok { color: var(--long); }
+          .pf-plan {
+            display: flex; align-items: flex-start; gap: 10px; margin-top: 10px;
+            padding: 11px 13px; border: 1px solid var(--brass); border-radius: 3px;
+            background: #FDFAF3; font-size: 12px; color: #6B4E13;
+          }
+          .pf-plan > svg { color: var(--brass); flex: none; margin-top: 1px; }
+          .pf-plan-sub { color: var(--ink2); margin-top: 3px; line-height: 1.55; }
+          .pf-plan button { flex: none; align-self: center; }
           .pf-row {
             display: flex; justify-content: space-between; align-items: baseline;
             gap: 14px; padding: 10px 14px; font-size: 12.5px; color: var(--ink2);
