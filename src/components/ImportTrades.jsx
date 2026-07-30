@@ -156,7 +156,11 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
         <div className="im-tick"><Check size={20} /></div>
         <h2 className="disp im-h">{doneHeadline(result)}</h2>
         <p className="im-lede">
-          {result.inserted > 0 ? (
+          {result.inserted > 0 && assume ? (
+            <>Each one got a stop {stopPct}% below its entry, marked as assumed — so R,
+              expectancy and the plots all read. Replace them with what you actually
+              used whenever you work it out; the trade sheet shows which are which.</>
+          ) : result.inserted > 0 ? (
             <>Every new one is missing a stop loss, so R, expectancy and the review
               page stay blank for them until you add one. It&apos;s a single column
               to fill and you can do it in batches.</>
@@ -167,7 +171,7 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
         </p>
         <div className="im-actions">
           <button className="btn" onClick={() => onDone?.("fill-stops")}>
-            Add stops now
+            {assume && result.inserted > 0 ? "Review the stops" : "Add stops now"}
           </button>
           <button className="btn ghost" onClick={() => onDone?.("later")}>
             Later
@@ -390,7 +394,13 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
                 <td className={`num ${t._preview.netProfit >= 0 ? "pos" : "neg"}`}>
                   {rupee(t._preview.netProfit)}
                 </td>
-                <td className="num im-dim">—</td>
+                {/* Hardcoded to a dash back when a tax report could only ever
+                    produce a stopless trade. Left that way it now contradicts
+                    the line underneath saying stops are being set. */}
+                <td className={`num ${t.stop_loss == null ? "im-dim" : ""}`}>
+                  {t.stop_loss == null ? "—" : t.stop_loss.toFixed(2)}
+                  {t.stop_source === "assumed" && <i className="im-assumed">assumed</i>}
+                </td>
                 <td className="num" title={
                   t._preview.tranches > 1
                     ? t.exits.map((e) => `${e.exit_date}  ${e.quantity} @ ${e.price}`).join("\n")
@@ -511,6 +521,10 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
           text-transform: uppercase; color: var(--brass);
           border: 1px solid var(--brass); border-radius: 2px;
           padding: 1px 4px; margin-left: 6px;
+        }
+        .im-assumed {
+          display: block; font-style: normal; font-size: 9px;
+          letter-spacing: 0.06em; text-transform: uppercase; color: var(--brass);
         }
         .im-assume {
           display: grid; grid-template-columns: auto auto 1fr; gap: 10px 16px;

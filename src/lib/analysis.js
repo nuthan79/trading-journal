@@ -132,7 +132,18 @@ function stopDiscipline(closed) {
 /* ==================================================================== */
 
 function riskConsistency(closed) {
-  const rows = chron(closed).filter((t) => isFinite(t.riskPct) && t.riskPct > 0);
+  /**
+   * Recorded stops only, for the same reason as stop discipline above.
+   *
+   * riskPct is 1R as a share of the account, and 1R comes from the stop. Give
+   * every trade the same assumed percentage and riskPct becomes position size
+   * wearing risk's name — so "risk per trade is climbing" would really be
+   * saying "your positions got bigger", which is a different claim and one the
+   * trader may already have decided on.
+   */
+  const rows = chron(closed)
+    .filter((t) => t.stop_source !== "assumed")
+    .filter((t) => isFinite(t.riskPct) && t.riskPct > 0);
   if (rows.length < 12) return null;
 
   const risks = rows.map((t) => t.riskPct);
