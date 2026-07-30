@@ -82,7 +82,7 @@ export default function Trades({ all, onEdit, onDelete, onNew }) {
         ) : (
           <table className="t">
             <thead><tr>
-              {th("symbol", "Symbol")}
+              {th("symbol", "Symbol", "fz fz-last")}
               {th("entry_date", "In")}
               {th("exit_date", "Out")}
               {th("pattern", "Pattern")}
@@ -102,7 +102,7 @@ export default function Trades({ all, onEdit, onDelete, onNew }) {
             <tbody>
               {rows.map((t) => (
                 <tr key={t.id}>
-                  <td>
+                  <td className="fz fz-last">
                     <b className="disp">{t.symbol}</b>
                     <span style={{ color: "var(--ink3)", fontSize: 11 }}> {t.exchange}</span>
                     {t.side === "short" && <span style={{ color: "var(--short)", fontSize: 10 }}> ▾</span>}

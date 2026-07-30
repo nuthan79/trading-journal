@@ -91,7 +91,10 @@ function RiskDial({ riskR }) {
                     fill="none" strokeWidth={DIAL_SW} strokeLinecap="butt"
                     strokeDasharray={`${arc} ${DIAL_C - arc}`} />
           </g>
-          {[1, 2, 3, 4].map((n) => <line key={n} className="ps-dial-mark" {...mark(n)} />)}
+          {/* Includes the mark at 5R, which is also 0R — twelve o'clock. Without
+              it a full ring runs the last segment straight into the first and
+              five positions read as one unbroken band. */}
+          {[1, 2, 3, 4, 5].map((n) => <line key={n} className="ps-dial-mark" {...mark(n)} />)}
         </svg>
         <div className="ps-dial-mid">
           <span className="ps-dial-v mono">{magnitude.toFixed(2)}<i>R</i></span>
@@ -439,11 +442,13 @@ export default function Positions({
       </div>
 
       <div className="card scroll ps-table">
-        <table className="t">
+        <table className="t ps-t">
           <thead>
             <tr>
-              <th className="num">#</th>
-              <th>Symbol</th>
+              {/* The index is pinned with the symbol rather than left behind
+                  it — on its own it would slide under and disappear. */}
+              <th className="num fz">#</th>
+              <th className="fz2 fz-last">Symbol</th>
               <th>Entered</th>
               <th className="num">Days</th>
               <th className="num">Trading</th>
@@ -469,8 +474,8 @@ export default function Positions({
               const riskFree = r.isRiskFree || !(r.openRiskAmt > 0);
               return (
                 <tr key={r.id} data-alert={r.breached ? 1 : 0}>
-                  <td className="num ps-dim">{i + 1}</td>
-                  <td>
+                  <td className="num ps-dim fz">{i + 1}</td>
+                  <td className="fz2 fz-last">
                     <button className="ps-sym" onClick={() => setDetailId(r.id)}
                             title={`Open ${r.symbol}`}>
                       <b className="disp">{r.symbol}</b>
@@ -628,33 +633,44 @@ export default function Positions({
           BreakevenFlag are their own functions — a scoped rule never
           touches them. */}
       <style jsx global>{`
-        .ps-dial { flex: 0 0 auto; }
+        /* Two dials, two hue families, so a glance tells them apart. Open risk
+           runs a heat scale — it is a warning. Give-back holds in indigo, a
+           colour that means nothing else here, and spends only gold and
+           crimson on the part that has actually been handed back. */
+        .ps-dial {
+          flex: 0 0 auto;
+          --d-track: #E4E9E7;
+          --d-calm:  #0F8A6E;
+          --d-warm:  #D9A125;
+          --d-hot:   #C6402B;
+          --d-held:  #3F5E8C;
+        }
         .ps-dial-ring { position: relative; width: 118px; height: 118px; }
         .ps-dial-ring svg { width: 100%; height: 100%; display: block; }
-        .ps-dial-track { stroke: #EDEFEE; }
-        .ps-dial-mark { stroke: var(--card); stroke-width: 2; }
+        .ps-dial-track { stroke: var(--d-track); }
+        .ps-dial-mark { stroke: var(--card); stroke-width: 2.5; }
         .ps-dial-arc {
-          stroke: var(--long);
+          stroke: var(--d-calm);
           transition: stroke-dasharray 0.4s ease, stroke 0.3s ease;
         }
-        .ps-dial[data-level="warm"] .ps-dial-arc { stroke: var(--brass); }
-        .ps-dial[data-level="hot"]  .ps-dial-arc { stroke: var(--short); }
+        .ps-dial[data-level="warm"] .ps-dial-arc { stroke: var(--d-warm); }
+        .ps-dial[data-level="hot"]  .ps-dial-arc { stroke: var(--d-hot); }
 
         /* Give-back ring: what's held, then what's been handed back. */
-        .ps-gb-held { stroke: var(--long); transition: stroke-dasharray 0.4s ease; }
+        .ps-gb-held { stroke: var(--d-held); transition: stroke-dasharray 0.4s ease; }
         .ps-gb-lost {
-          stroke: var(--brass);
+          stroke: var(--d-warm);
           transition: stroke-dasharray 0.4s ease, stroke 0.3s ease;
         }
-        .ps-dial[data-level="deep"] .ps-gb-lost { stroke: var(--short); }
+        .ps-dial[data-level="deep"] .ps-gb-lost { stroke: var(--d-hot); }
         .ps-dial[data-level="high"] .ps-gb-lost { stroke: none; }
         .ps-dial[data-level="none"] .ps-gb-held,
         .ps-dial[data-level="none"] .ps-gb-lost { stroke: none; }
-        .ps-dial[data-kind="giveback"] .ps-dial-v { color: var(--brass); }
-        .ps-dial[data-kind="giveback"][data-level="high"] .ps-dial-v { color: var(--long); }
-        .ps-dial[data-kind="giveback"][data-level="deep"] .ps-dial-v { color: var(--short); }
+        .ps-dial[data-kind="giveback"] .ps-dial-v { color: var(--d-warm); }
+        .ps-dial[data-kind="giveback"][data-level="high"] .ps-dial-v { color: var(--d-held); }
+        .ps-dial[data-kind="giveback"][data-level="deep"] .ps-dial-v { color: var(--d-hot); }
         .ps-dial[data-kind="giveback"][data-level="none"] .ps-dial-v { color: var(--ink3); }
-        .ps-dial[data-kind="giveback"][data-level="deep"] .ps-dial-note { color: var(--short); }
+        .ps-dial[data-kind="giveback"][data-level="deep"] .ps-dial-note { color: var(--d-hot); }
         .ps-dial-mid {
           position: absolute; inset: 0; display: flex;
           flex-direction: column; align-items: center; justify-content: center;
@@ -662,17 +678,17 @@ export default function Positions({
         }
         .ps-dial-v {
           font-size: 21px; font-weight: 600; line-height: 1;
-          font-variant-numeric: tabular-nums; color: var(--long);
+          font-variant-numeric: tabular-nums; color: var(--d-calm);
         }
         .ps-dial-v i { font-style: normal; font-size: 13px; margin-left: 1px; }
-        .ps-dial[data-level="warm"] .ps-dial-v { color: var(--brass); }
-        .ps-dial[data-level="hot"]  .ps-dial-v { color: var(--short); }
+        .ps-dial[data-level="warm"] .ps-dial-v { color: var(--d-warm); }
+        .ps-dial[data-level="hot"]  .ps-dial-v { color: var(--d-hot); }
         .ps-dial-s { font-size: 10px; color: var(--ink3); }
         .ps-dial-note {
           font-size: 10px; color: var(--ink3); text-align: center;
           margin-top: 7px; max-width: 118px; line-height: 1.45; text-wrap: pretty;
         }
-        .ps-dial[data-level="hot"] .ps-dial-note { color: var(--short); }
+        .ps-dial[data-level="hot"] .ps-dial-note { color: var(--d-hot); }
 
         /* Small on purpose — a note beside the symbol, not an alarm. The
            actionable one is filled and nudges on hover; the settled one is a
@@ -734,10 +750,18 @@ export default function Positions({
         .ps-riskbar > i { background: var(--short); opacity: 0.7; }
         .ps-riskbar[data-free="1"] > i { background: var(--long); opacity: 0.5; }
         .ps-riskbar[data-free="1"] span { color: var(--ink3); }
+        /* The index column is pinned, so its width has to be a known number
+           for the symbol beside it to know where to sit. Fixing it also stops
+           the column twitching between one digit and two. */
+        .ps-t { --fz-1: 46px; }
+        .ps-t th.fz, .ps-t td.fz { width: 46px; min-width: 46px; max-width: 46px; }
+
         /* Matches the dashboard's open positions, where data-alert has always
            meant breached. It read as stop-above-entry here — the opposite kind
-           of news — against a rule that only restated .ps-locked's own colour. */
-        tr[data-alert="1"] { background: #FDF3F0; }
+           of news — against a rule that only restated .ps-locked's own colour.
+           Qualified past the table.t tbody tr rule, which now sets the row
+           background the pinned cells inherit and would otherwise win. */
+        table.t tbody tr[data-alert="1"] { background: #FDF3F0; }
         .ps-tostop[data-state="breached"] { color: var(--short); font-weight: 600; }
         .ps-tostop[data-state="locked"] { color: var(--brass); font-weight: 600; }
       `}</style>

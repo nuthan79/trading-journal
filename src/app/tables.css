@@ -135,6 +135,39 @@ table.t tfoot td {
 .card > table.t:first-child th:last-child,
 .card > table.t:first-child td:last-child  { padding-right: 14px; }
 
+/* ---- frozen leading columns -------------------------------------- */
+
+/* A wide sheet stops being readable the moment the symbol scrolls off:
+   every remaining figure belongs to a row you can no longer name. Pin the
+   leading columns so the identity stays put while the numbers move.
+
+   The row carries the background and the pinned cells inherit it, which is
+   what keeps hover and the breached tint working underneath them — give a
+   pinned cell its own colour and it punches a hole through both. Stating
+   the row default here does mean any rule colouring a row has to be at
+   least as specific as `table.t tbody tr`. */
+table.t tbody tr { background: var(--card); }
+
+table.t th.fz,
+table.t td.fz,
+table.t th.fz2,
+table.t td.fz2 { position: sticky; }
+
+table.t th.fz,  table.t td.fz  { left: 0; }
+table.t th.fz2, table.t td.fz2 { left: var(--fz-1, 46px); }
+
+/* Above the rows they cover; the headings are above both, since they are
+   already sticky on the other axis and the corner belongs to them. */
+table.t td.fz, table.t td.fz2 { z-index: 1; background: inherit; }
+table.t th.fz, table.t th.fz2 { z-index: 3; background: var(--card); }
+
+/* The edge of the pinned block. The hairline keeps it separate when there
+   is nothing to scroll; the shadow only shows once something is under it. */
+table.t th.fz-last,
+table.t td.fz-last {
+  box-shadow: 1px 0 0 var(--rule), 7px 0 8px -7px rgba(19, 28, 26, 0.22);
+}
+
 /* ---- narrow screens ---------------------------------------------- */
 
 @media (max-width: 720px) {
