@@ -137,6 +137,35 @@ const isMissingTable = (error) =>
   error?.code === "PGRST205" ||
   /does not exist|schema cache/i.test(error?.message || "");
 
+/**
+ * A write that named a column the database doesn't have — which here always
+ * means a migration hasn't been run yet.
+ *
+ * PostgREST reports it as PGRST204 with a message naming the column, and left
+ * alone that message reaches the user as "Could not find the 'stop_source'
+ * column of 'trades' in the schema cache" — accurate, and no help at all to
+ * someone deciding what to do next. Every other migration-gated path in this
+ * file names the file to run; this makes the column ones do the same.
+ */
+const MIGRATION_FOR_COLUMN = {
+  stop_source: "011_stop_source.sql",
+  initial_stop_loss: "007_partial_exits.sql",
+  avatar_path: "010_avatars.sql",
+  import_batch: "009_import_reconcile.sql",
+};
+
+function migrationHint(error) {
+  const msg = error?.message || "";
+  if (error?.code !== "PGRST204" && !/could not find the .* column/i.test(msg)) return null;
+  const column = msg.match(/'([^']+)' column/)?.[1];
+  const file = MIGRATION_FOR_COLUMN[column];
+  return file
+    ? `Migration ${file.slice(0, 3)} hasn't been run — supabase/${file} adds the ` +
+      `${column} column this needs. Nothing was saved.`
+    : `The database is missing a column this version expects (${column || "unknown"}). ` +
+      `Check for an unrun file in supabase/. Nothing was saved.`;
+}
+
 export async function saveExits(tradeId, exits) {
   const user_id = await uid();
 
@@ -169,7 +198,7 @@ export async function saveTrade(t) {
   delete row.created_at; delete row.updated_at;
   const { data, error } = await supabase
     .from("trades").upsert(row).select().single();
-  if (error) throw error;
+  if (error) throw new Error(migrationHint(error) || error.message);
   return data;
 }
 
@@ -322,7 +351,7 @@ export async function importTrades({ trades, completions = [], meta }) {
   const { data, error } = await supabase.from("trades").insert(rows).select("id");
   if (error) {
     await supabase.from("import_batches").delete().eq("id", batch.id);
-    throw error;
+    throw new Error(migrationHint(error) || error.message);
   }
 
   // insert() returns rows in the order sent, which is what lets a tranche
@@ -455,7 +484,7 @@ export async function saveStops(rows) {
       .from("trades")
       .update(patch)
       .eq("id", id);
-    if (error) throw error;
+    if (error) throw new Error(migrationHint(error) || error.message);
   }
   return rows.length;
 }
