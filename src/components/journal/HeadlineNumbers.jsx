@@ -47,9 +47,20 @@ export default function HeadlineNumbers({ closed, openingCapital, flows = [] }) 
   const rCell = (label, value, extra = {}) =>
     hasR ? { label, value, ...extra } : { label, value: "—", hint: needStop };
 
+  // Counted here rather than in calc.js: it qualifies how these numbers should
+  // be read, and nothing downstream computes with it.
+  const assumed = closed.filter((t) => t.stop_source === "assumed").length;
+
   const cells = [
     { label: "Net P&L", value: rupee(h.netPnl), tone: sign(h.netPnl),
       hint: `After ${rupee(h.charges)} of charges` },
+    // Its own cell rather than only a footnote on Net P&L: brokerage, STT and
+    // the rest are a real cost of the strategy, and one worth seeing beside
+    // what the strategy made rather than tucked under it.
+    { label: "Charges", value: rupee(h.charges), tone: "neg",
+      hint: isFinite(h.netPnl) && h.netPnl + h.charges > 0
+        ? `${pct((h.charges / (h.netPnl + h.charges)) * 100, 1)} of gross profit`
+        : "Brokerage, STT, exchange, SEBI, stamp, GST, DP" },
     { label: "Return on capital", value: pct(h.returnOnCapital), tone: sign(h.returnOnCapital),
       hint: "Cumulative, not annualised" },
     { label: "Win rate", value: pct(h.winRateByCount, 0),
@@ -96,6 +107,19 @@ export default function HeadlineNumbers({ closed, openingCapital, flows = [] }) 
             once as a percentage of position size, once in R. */}
         {cells.map((c, i) => <Cell key={i} {...c} />)}
       </div>
+
+      {/* Said once, near the numbers it qualifies. Every R above is a straight
+          rescaling of percentage return when the stop was assumed — worth
+          knowing before anyone reads expectancy as a measurement. */}
+      {assumed > 0 && (
+        <div className="hn-foot">
+          <b>{assumed} of {h.n}</b> trade{assumed === 1 ? " uses" : "s use"} an assumed stop,
+          so the R figures above show what your record would look like at that risk
+          rather than what you actually risked.{" "}
+          <a href="/stops" className="hn-link">Replace them</a> as you work out what
+          you really used.
+        </div>
+      )}
 
       {h.nNeedStop > 0 && (
         <div className="hn-foot">

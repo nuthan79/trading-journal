@@ -101,7 +101,7 @@ const blank = () => ({
   status: "open", symbol: "", company: "", exchange: "NSE", side: "long",
   entry_date: new Date().toISOString().slice(0, 10),
   // Blank on a new trade: toPayload() pins it to the opening stop on first save.
-  entry_price: "", quantity: "", stop_loss: "", initial_stop_loss: "",
+  entry_price: "", quantity: "", stop_loss: "", initial_stop_loss: "", stop_source: "",
   pattern: "", pivot_price: "", vol_pct_avg: "", weinstein_stage: "", rs_rank: "",
   thesis: "",
   exit_date: "", exit_price: "", exit_reason: "",
@@ -122,6 +122,10 @@ function fromInitial(row) {
     // Carried, never edited — the form has no field for it. Without this an
     // edit would re-pin 1R to whatever the stop has since been trailed to.
     initial_stop_loss: str(row.initial_stop_loss),
+    // Carried so toPayload can tell an untouched assumed stop from one the
+    // trader has just replaced with the real thing.
+    stop_source: row.stop_source || "",
+    _loadedStop: str(row.stop_loss),
     pattern: row.pattern || "", pivot_price: str(row.pivot_price),
     vol_pct_avg: str(row.vol_pct_avg), weinstein_stage: str(row.weinstein_stage),
     rs_rank: str(row.rs_rank),
@@ -190,6 +194,14 @@ function toPayload(t) {
     // Migration 007 backfilled the rows that existed then; new rows have to
     // set it here, and an edit must never move it once it's set.
     initial_stop_loss: numOrNull(t.initial_stop_loss) ?? numOrNull(t.stop_loss),
+    // An assumed stop stays assumed until someone actually changes it. Saving
+    // the form for an unrelated field — a note, a pattern — shouldn't quietly
+    // promote a number this app invented into one the trader stands behind.
+    stop_source: numOrNull(t.stop_loss) == null
+      ? null
+      : t.stop_source !== "assumed" || String(t.stop_loss) !== String(t._loadedStop ?? "")
+      ? "recorded"
+      : "assumed",
     pattern: t.pattern || null,
     pivot_price: numOrNull(t.pivot_price),
     vol_pct_avg: numOrNull(t.vol_pct_avg),

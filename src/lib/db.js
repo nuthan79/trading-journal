@@ -447,10 +447,10 @@ export async function moveStopToEntry({ id, entry, initialStop }) {
  * not re-base the risk the trade was actually taken with.
  */
 export async function saveStops(rows) {
-  for (const { id, stop_loss, initial_stop_loss } of rows) {
+  for (const { id, stop_loss, initial_stop_loss, stop_source } of rows) {
     const patch = initial_stop_loss == null
-      ? { stop_loss, initial_stop_loss: stop_loss }
-      : { stop_loss };
+      ? { stop_loss, initial_stop_loss: stop_loss, stop_source: stop_source || "recorded" }
+      : { stop_loss, stop_source: stop_source || "recorded" };
     const { error } = await supabase
       .from("trades")
       .update(patch)

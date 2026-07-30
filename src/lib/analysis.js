@@ -61,8 +61,31 @@ const F = (severity, id, title, detail, evidence) =>
 /* ==================================================================== */
 
 function stopDiscipline(closed) {
-  const losers = closed.filter((t) => isFinite(t.r) && t.r <= 0);
-  if (losers.length < 8) return null;
+  /**
+   * Only trades whose stop was actually set.
+   *
+   * This check calls a loss worse than −1.15R a stop that wasn't honoured. Run
+   * against an assumed stop it accuses the trader of indiscipline over a line
+   * they never drew — and with one flat percentage across every trade, the
+   * "overruns" are just the trades that happened to fall further than that
+   * percentage, which says nothing about discipline at all.
+   */
+  const measured = closed.filter((t) => t.stop_source !== "assumed");
+  const losers = measured.filter((t) => isFinite(t.r) && t.r <= 0);
+  if (losers.length < 8) {
+    const assumed = closed.length - measured.length;
+    if (assumed > 0) {
+      return F("watch", "stop-discipline-unknown",
+        "Stop discipline can't be judged yet",
+        `${assumed} of these trades carry an assumed stop rather than one you set, and ` +
+        `there are too few with a real stop to read anything from. This check asks whether ` +
+        `losses ran past where you said you'd get out — a question an assumed stop can't ` +
+        `answer, since it was placed after the fact and every trade got the same one. ` +
+        `Replace the assumed stops with what you actually used and this starts working.`,
+        { assumed, withRealStop: measured.length });
+    }
+    return null;
+  }
 
   const rs = losers.map((t) => t.r);
   const med = median(rs);

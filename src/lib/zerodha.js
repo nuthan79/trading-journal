@@ -20,9 +20,17 @@
  * the difference was 57.7% versus 57.9% win rate on identical P&L — not worth
  * the complexity.
  *
- * Stops are left empty. A tax report cannot know them, and inventing one from
- * the losses would make every loser land near -1R by construction, which would
- * then report false discipline back at you.
+ * Stops are left empty unless asked for. A tax report cannot know them, and
+ * deriving one from each trade's own loss would put every loser at −1R by
+ * construction and report false discipline back at you.
+ *
+ * What the importer will do, on request, is assume one fixed percentage below
+ * entry for every trade. That is a different claim — not "this was your stop"
+ * but "here is your record as if you had risked this much each time" — and it
+ * is what makes a freshly imported journal show anything at all, since every
+ * R figure is blank without a stop. Those rows are written with
+ * stop_source: 'assumed' so nothing downstream mistakes the assumption for a
+ * measurement; see migration 011.
  */
 
 /* ------------------------------------------------------------------ */
@@ -310,8 +318,20 @@ const round2 = (v) => Math.round(v * 100) / 100;
  * in, which is honest — the report doesn't know what you risked, and a guess
  * would quietly corrupt every statistic built on R.
  */
-export function toTradeRows(groups, { batchId, exchange = "NSE" } = {}) {
-  return groups.map((g) => ({
+/**
+ * Stop assumed at a fixed distance below entry, or null.
+ *
+ * Longs only, which is all the equity delivery sections carry. The same figure
+ * goes to both columns because at import there is no history of trailing — the
+ * stop it opened with is the stop it had.
+ */
+const assumedStop = (entryPrice, pct) =>
+  pct > 0 && entryPrice > 0 ? round2(entryPrice * (1 - pct / 100)) : null;
+
+export function toTradeRows(groups, { batchId, exchange = "NSE", assumeStopPct = 0 } = {}) {
+  return groups.map((g) => {
+    const stop = assumedStop(round2(g.entryPrice), assumeStopPct);
+    return {
     symbol: g.symbol,
     exchange,
     side: "long",
@@ -320,7 +340,11 @@ export function toTradeRows(groups, { batchId, exchange = "NSE" } = {}) {
     entry_date: g.entryDate,
     entry_price: round2(g.entryPrice),
     quantity: g.quantity,
-    stop_loss: null,
+    // Null unless the importer was told to assume one. Inventing a stop by
+    // default would make every R figure a guess wearing a measurement's face.
+    stop_loss: stop,
+    initial_stop_loss: stop,
+    stop_source: stop == null ? null : "assumed",
 
     exit_date: g.exitDate,
     exit_price: round2(g.exitPrice),
@@ -349,8 +373,10 @@ export function toTradeRows(groups, { batchId, exchange = "NSE" } = {}) {
       intraday: g.intraday,
       holdingDays: g.holdingDays,
       dedupeKey: g.dedupeKey,
+      assumedStop: stop,
     },
-  }));
+  };
+  });
 }
 
 /** Headline figures for the preview screen, before anything is written. */
@@ -503,7 +529,7 @@ function rejectReason(g) {
   return null;
 }
 
-export function parseZerodhaTaxPnl(rows, { targets, batchId, exchange } = {}) {
+export function parseZerodhaTaxPnl(rows, { targets, batchId, exchange, assumeStopPct } = {}) {
   const { lots, warnings, sectionCounts, missingColumns } = parseTradewiseRows(rows);
   const grouped = groupLots(lots);
   const { fresh: matched, completions, duplicates, conflicts } = reconcile(grouped, targets);
@@ -521,7 +547,7 @@ export function parseZerodhaTaxPnl(rows, { targets, batchId, exchange } = {}) {
     .map(([s, n]) => ({ section: s, rows: n }));
 
   return {
-    trades: toTradeRows(fresh, { batchId, exchange }),
+    trades: toTradeRows(fresh, { batchId, exchange, assumeStopPct }),
     groups: fresh,
     // Sells to attach to positions already here. Carries the trade id, so
     // these never travel through toTradeRows — there is no new trade to make.

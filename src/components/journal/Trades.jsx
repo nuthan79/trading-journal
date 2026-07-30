@@ -133,8 +133,11 @@ export default function Trades({ all, onEdit, onExit, onDelete, onNew }) {
                   <td className="num" style={{ fontSize: 12 }}>{t.weinstein_stage || "—"}</td>
                   <td className="num" style={{ fontSize: 12 }}>{t.rs_rank || "—"}</td>
                   <td className="num">{Number(t.entry_price).toFixed(2)}</td>
-                  <td className="num">
-                    {isFinite(num(t.stop_loss)) ? Number(t.stop_loss).toFixed(2) : "—"}</td>
+                  <td className="num" title={t.stop_source === "assumed"
+                        ? "Assumed at import, not a stop you set — every R on this row follows from it"
+                        : undefined}>
+                    {isFinite(num(t.stop_loss)) ? Number(t.stop_loss).toFixed(2) : "—"}
+                    {t.stop_source === "assumed" && <i className="tr-assumed">assumed</i>}</td>
                   <td className="num" style={{ fontSize: 12 }}>{isFinite(t.slPct) ? pct(t.slPct, 1) : "—"}</td>
                   <td className="num">{t.quantity}</td>
                   <td className="num" style={{ fontSize: 12 }}>{pct(t.riskPct, 2)}</td>
@@ -182,6 +185,12 @@ export default function Trades({ all, onEdit, onExit, onDelete, onNew }) {
           border-bottom: 1px solid transparent;
         }
         .tr-sym:hover { border-bottom-color: var(--brass); }
+        /* Small, but never absent. Reading an R off a stop this app invented
+           without knowing that is the one mistake this column can cause. */
+        .tr-assumed {
+          display: block; font-style: normal; font-size: 9px;
+          letter-spacing: 0.06em; text-transform: uppercase; color: var(--brass);
+        }
       `}</style>
     </div>
   );

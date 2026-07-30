@@ -162,7 +162,9 @@ export default function PositionDetail({ row, onClose, onEdit, onExit, onDelete,
                   isFinite(row.slPctCurrent) ? `${pct(Math.abs(row.slPctCurrent))} away` : null)}
             {stat("Stop at entry",
               isFinite(row.initialStop) ? row.initialStop.toFixed(2) : "—",
-              isFinite(row.slPct) ? `${pct(row.slPct)} — sets 1R` : null)}
+              row.stop_source === "assumed"
+                ? `${isFinite(row.slPct) ? pct(row.slPct) : ""} — assumed, not set`
+                : isFinite(row.slPct) ? `${pct(row.slPct)} — sets 1R` : null)}
             {stat("1R — risk taken",
               isFinite(row.riskAmt) ? rupee(row.riskAmt) : "—",
               isFinite(row.riskPct) ? `${pct(row.riskPct, 2)} of account` : null)}

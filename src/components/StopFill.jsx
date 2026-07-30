@@ -91,6 +91,9 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
         id: t.id,
         stop_loss: Number(values[t.id]),
         initial_stop_loss: t.initial_stop_loss ?? null,
+        // Typed in here by hand, whatever the row started as. Filling one over
+        // an assumed stop is the act that turns it into a real one.
+        stop_source: "recorded",
       }));
 
     if (!rows.length) return;

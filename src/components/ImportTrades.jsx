@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Upload, Check, AlertTriangle, X, FileSpreadsheet } from "lucide-react";
 import { parseZerodhaTaxPnl, findTradewiseSheet, INCLUDED_SECTIONS } from "@/lib/zerodha";
 import { rupee, pct } from "@/lib/format";
@@ -60,7 +60,17 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
   const [error, setError] = useState("");
   const [drag, setDrag] = useState(false);
   const [result, setResult] = useState(null);
+  const [rawRows, setRawRows] = useState(null);
+  // A tax report has no stops, so without one every R figure stays blank and a
+  // freshly imported journal looks broken. Assuming a single percentage is the
+  // difference between a page of dashes and something you can read — as long
+  // as it stays labelled an assumption, which stop_source does.
+  const [assume, setAssume] = useState(true);
+  const [assumePct, setAssumePct] = useState("7");
   const inputRef = useRef(null);
+
+  const stopPct = assume ? Number(assumePct) : 0;
+  const stopPctOk = !assume || (stopPct > 0 && stopPct < 100);
 
   const read = useCallback(async (f) => {
     setError(""); setParsed(null); setResult(null); setBusy(true);
@@ -87,20 +97,33 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
         throw new Error("Expected an .xlsx or .csv file.");
       }
 
-      const out = parseZerodhaTaxPnl(rows, { targets });
+      const out = parseZerodhaTaxPnl(rows, { targets, assumeStopPct: stopPct });
       if (!out.trades.length && !out.completions.length && !out.duplicates.length) {
         throw new Error(
           "No equity trades found. This report may cover a period with no closed positions."
         );
       }
       setFile(f);
+      setRawRows(rows);
       setParsed(out);
     } catch (e) {
       setError(e.message || "Could not read that file.");
       setFile(null);
+      setRawRows(null);
     }
     setBusy(false);
-  }, [targets]);
+  }, [targets, stopPct]);
+
+  /**
+   * Re-parse when the assumption changes, rather than patching the stop in at
+   * the last moment. The preview table has a Stop column and a summary built
+   * off these rows; applying the percentage anywhere later would leave the
+   * screen describing an import different from the one about to happen.
+   */
+  useEffect(() => {
+    if (!rawRows) return;
+    setParsed(parseZerodhaTaxPnl(rawRows, { targets, assumeStopPct: stopPct }));
+  }, [rawRows, targets, stopPct]);
 
   const confirm = async () => {
     if (!parsed?.trades.length && !parsed?.completions.length) return;
@@ -385,12 +408,43 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
 
       {error && <div className="warn im-err">{error}</div>}
 
+      {/* The one decision on this screen. A tax report has no stops in it, so
+          without an assumption every R figure lands blank and the journal looks
+          broken; with one, the whole thing reads — as a what-if, which is what
+          the note underneath is for. */}
+      <div className="im-assume">
+        <label className="im-assume-on">
+          <input type="checkbox" checked={assume}
+                 onChange={(e) => setAssume(e.target.checked)} />
+          <span>Assume a stop</span>
+        </label>
+        <div className="im-assume-pct">
+          <input className="in" inputMode="decimal" value={assumePct}
+                 disabled={!assume} aria-label="Assumed stop percent"
+                 onChange={(e) => setAssumePct(e.target.value)} />
+          <span>% below entry</span>
+        </div>
+        <div className="im-assume-note">
+          {assume && !stopPctOk
+            ? "That needs to be a percentage between 0 and 100."
+            : assume
+            ? "The report doesn't record stops. This fills them in so R, expectancy and " +
+              "the plots work — it says what your record would look like at a steady " +
+              `${stopPct}% risk, not what you actually risked. Marked as assumed, and ` +
+              "you can replace any of them later."
+            : "Stops stay empty, so R and everything built on it stays blank until you " +
+              "fill them in yourself."}
+        </div>
+      </div>
+
       <div className="im-confirm">
         <span className="im-dim">
-          Stops are left empty — the report doesn't record them. You'll be asked next.
+          {assume
+            ? `Stops set ${stopPct}% below entry, flagged as assumed.`
+            : "Stops are left empty — you'll be asked next."}
         </span>
         <button className="btn" onClick={confirm}
-                disabled={busy || (!parsed.trades.length && !parsed.completions?.length)}>
+                disabled={busy || !stopPctOk || (!parsed.trades.length && !parsed.completions?.length)}>
           <Upload size={13} />{" "}
           {busy ? "Importing…" : importLabel(s.trades, parsed.completions?.length || 0)}
         </button>
@@ -457,6 +511,20 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
           text-transform: uppercase; color: var(--brass);
           border: 1px solid var(--brass); border-radius: 2px;
           padding: 1px 4px; margin-left: 6px;
+        }
+        .im-assume {
+          display: grid; grid-template-columns: auto auto 1fr; gap: 10px 16px;
+          align-items: center; margin-top: 14px; padding: 12px 14px;
+          border: 1px solid var(--rule); border-radius: 3px; background: var(--card);
+        }
+        .im-assume-on { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+        .im-assume-pct { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ink2); }
+        .im-assume-pct .in { width: 62px; padding: 5px 8px; font-size: 13px; }
+        .im-assume-note {
+          font-size: 11px; color: var(--ink3); line-height: 1.55; text-wrap: pretty;
+        }
+        @media (max-width: 640px) {
+          .im-assume { grid-template-columns: 1fr; }
         }
         .im-confirm {
           display: flex; align-items: center; justify-content: space-between;
