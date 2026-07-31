@@ -2,15 +2,17 @@
 
 import { useMemo, useState } from "react";
 import { Plus, Pencil, Trash2, Download } from "lucide-react";
-import { rupee, rfmt, pct } from "@/lib/format";
+import { rupee, rfmt, pct, signedPct } from "@/lib/format";
 import PositionDetail from "./PositionDetail";
 
 const num = (v) => (v === "" || v === null || v === undefined ? NaN : Number(v));
 
 function exportCsv(all) {
   const cols = ["symbol", "exchange", "side", "entry_date", "entry_price", "quantity", "stop_loss",
-    "riskAmt", "riskPct", "pattern", "pivot_price", "distPivot", "vol_pct_avg", "weinstein_stage", "rs_rank",
-    "exit_date", "exit_price", "exit_reason", "charges", "pnl", "r", "heldDays", "mistakes", "notes"];
+    "exposure", "riskAmt", "riskPct", "pattern", "pivot_price", "distPivot", "vol_pct_avg",
+    "weinstein_stage", "rs_rank",
+    "exit_date", "exit_price", "avgExitPrice", "exitPct", "exit_reason", "charges", "pnl", "r",
+    "heldDays", "mistakes", "notes"];
   const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const lines = [cols.join(",")].concat(all.map((t) =>
     cols.map((c) => esc(Array.isArray(t[c]) ? t[c].join(" | ") :
@@ -93,13 +95,20 @@ export default function Trades({ all, onEdit, onExit, onDelete, onNew }) {
               {th("entry_date", "In")}
               {th("exit_date", "Out")}
               {th("heldDays", "Held", "num")}
+              {/* Left to right, the life of the trade: what went on, how it
+                  came off, what it came to. Risk sits after R because it is
+                  the denominator R was measured against — useful once you
+                  have seen the multiple, noise before it. */}
               {th("entry_price", "Entry", "num")}
               {th("stop_loss", "Stop", "num")}
               {th("slPct", "SL %", "num")}
               {th("quantity", "Qty", "num")}
-              {th("riskPct", "Risk", "num")}
+              {th("exposure", "Size", "num")}
+              {th("avgExitPrice", "Exit", "num")}
+              {th("exitPct", "Exit %", "num")}
               {th("pnl", "P&L", "num")}
               {th("r", "R", "num")}
+              {th("riskAmt", "Risk", "num")}
               {/* The setup — what the chart looked like going in. Behind the
                   outcome because most rows have none of it recorded, and a
                   block of dashes shouldn't sit between a symbol and its P&L. */}
@@ -144,11 +153,27 @@ export default function Trades({ all, onEdit, onExit, onDelete, onNew }) {
                     {t.stop_source === "assumed" && <i className="tr-assumed">assumed</i>}</td>
                   <td className="num" style={{ fontSize: 12 }}>{isFinite(t.slPct) ? pct(t.slPct, 1) : "—"}</td>
                   <td className="num">{t.quantity}</td>
-                  <td className="num" style={{ fontSize: 12 }}>{pct(t.riskPct, 2)}</td>
+                  <td className="num" style={{ fontSize: 12 }}
+                      title="Entry price × quantity — what the position cost">
+                    {isFinite(t.exposure) ? rupee(t.exposure) : "—"}</td>
+                  <td className="num" title={t.status === "partial"
+                        ? "Average of the sells so far — the rest is still open"
+                        : undefined}>
+                    {isFinite(t.avgExitPrice) ? t.avgExitPrice.toFixed(2) : "—"}
+                    {t.status === "partial" && <i className="tr-part">part</i>}</td>
+                  <td className={`num ${isFinite(t.exitPct) ? (t.exitPct >= 0 ? "pos" : "neg") : ""}`}
+                      style={{ fontSize: 12 }}
+                      title="Price move from entry to the average exit, before charges">
+                    {isFinite(t.exitPct) ? signedPct(t.exitPct) : "—"}</td>
                   <td className={`num ${isFinite(t.pnl) ? (t.pnl >= 0 ? "pos" : "neg") : ""}`}>
                     {isFinite(t.pnl) ? rupee(t.pnl) : "—"}</td>
                   <td className={`num ${isFinite(t.r) ? (t.r >= 0 ? "pos" : "neg") : ""}`}
                       style={{ fontWeight: 500 }}>{isFinite(t.r) ? rfmt(t.r) : "—"}</td>
+                  <td className="num" style={{ fontSize: 12 }}
+                      title={isFinite(t.riskPct)
+                        ? `${pct(t.riskPct, 2)} of the account — the 1R every R above divides by`
+                        : "No stop, so no 1R to divide by"}>
+                    {isFinite(t.riskAmt) ? rupee(t.riskAmt) : "—"}</td>
                   <td style={{ fontSize: 12, color: "var(--ink2)" }}>{t.pattern || "—"}</td>
                   <td className="num" style={{ fontSize: 12,
                         color: t.distPivot > 5 ? "var(--short)" : "inherit" }}>
@@ -207,6 +232,13 @@ export default function Trades({ all, onEdit, onExit, onDelete, onNew }) {
         /* Reads as a word rather than a price, because 0.00 in this column
            looks like a broken row and that is exactly the confusion that
            started all this. */
+        /* An average of the sells so far reads as a final price unless it
+           says otherwise, and a half-sold position's average is not where
+           the trade ended. */
+        .tr-part {
+          display: block; font-style: normal; font-size: 9px;
+          letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink3);
+        }
         .tr-free {
           font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
           color: var(--ink3);

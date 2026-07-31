@@ -113,6 +113,23 @@ export function derivePosition(t, accountSize) {
     ? sum(exits.map((e) => n(e.price) * n(e.quantity))) / qtyExited
     : NaN;
 
+  /**
+   * How far the price moved between entry and the average exit, signed so a
+   * short that fell is positive.
+   *
+   * The price move, not the return: charges are not in it, and neither is the
+   * part of the position still open. Sitting beside the exit price that is
+   * what it is read as — "sold at 902.50, which was eighteen percent up" —
+   * where the money question is already answered by P&L two columns over.
+   *
+   * Guarded on entry, because shares that arrived free have an entry of zero
+   * and every percentage against nothing is infinite.
+   */
+  const exitPct =
+    entry > 0 && isFinite(avgExitPrice)
+      ? ((avgExitPrice - entry) / entry) * 100 * dir
+      : NaN;
+
   /* ---- unrealised on whatever is left ------------------------------ */
   const mark = n(t.last_price);
   const hasMark = isFinite(mark);
@@ -167,7 +184,7 @@ export function derivePosition(t, accountSize) {
     // state
     status, qtyExited, qtyOpen, pctClosed, exitsCount: exits.length,
     // money
-    realisedPnl, realisedR, avgExitPrice, charges,
+    realisedPnl, realisedR, avgExitPrice, exitPct, charges,
     unrealisedPnl, unrealisedR, mark, hasMark,
     pnl, r,
     // live risk
