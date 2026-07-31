@@ -452,32 +452,6 @@ export async function listImportBatches() {
   return data;
 }
 
-/**
- * Trail a stop up to entry, taking the position's risk off the table.
- *
- * `initial_stop_loss` is written alongside because it is nullable: migration
- * 007 backfilled the rows that existed then, and `derivePosition` falls back
- * to `stop_loss` when it's missing. Move the stop without pinning it and a
- * trade whose column is still null gets a 1R of zero — every R it has ever
- * recorded divides by nothing. Passing the initial stop the caller already
- * derived repairs a null row and is a no-op on a row that has one.
- */
-export async function moveStopToEntry({ id, entry, initialStop }) {
-  const { data, error } = await supabase
-    .from("trades")
-    .update({ stop_loss: entry, initial_stop_loss: initialStop })
-    // Only ever a live position. The caller reads from the open list, so this
-    // is a guard against a stale screen — a trade closed in another tab, or
-    // between the page loading and the button being pressed. A closed trade's
-    // stop is history and moving it would silently restate a recorded R.
-    .in("status", ["open", "partial"])
-    .eq("id", id)
-    .select("id");
-  if (error) throw error;
-  if (!data?.length) {
-    throw new Error("That position isn't open any more — reload and try again.");
-  }
-}
 
 /**
  * Fill in stops one batch at a time — StopFill is built to be done in sittings.

@@ -185,42 +185,38 @@ function GiveBackDial({ curve }) {
 }
 
 /**
- * The flag beside a symbol: this trade has run far enough that its stop can go
- * to breakeven.
+ * The flag beside a symbol: this trade has run far enough that its stop can
+ * go to breakeven.
  *
- * It's a notice, not an instruction the app carries out — the stop that matters
- * lives at the broker. Clicking records that you've moved it, which is what
- * lets the dial stop counting this position's risk.
+ * A reminder, and only that. It used to be a button that wrote entry into the
+ * stop while keeping the original as a hidden second stop, so the dial could
+ * stop counting the position — which meant a trade carried a stop it was
+ * opened with and a stop it has now, and that pair went on to make a typo
+ * unfixable everywhere else in the app.
  *
- * Deliberately the same click for both. Releasing R on the noticing alone would
- * let the dial read zero while a wide stop was still genuinely exposed, and the
- * dial is the one number on this page that can't be allowed to flatter you.
+ * The stop that matters is at the broker. This says move it; it does not
+ * pretend to know whether you did.
  */
-function BreakevenFlag({ c, busy, onMark }) {
+function BreakevenFlag({ c }) {
   return (
-    <button
+    <span
       className="ps-flag"
-      disabled={busy}
-      onClick={() => onMark(c)}
-      aria-label={`${c.symbol} can go to breakeven`}
+      role="img"
+      aria-label={`${c.symbol} is up ${c.gainR.toFixed(2)}R — its stop can go to breakeven`}
       title={
         `${c.symbol} is up ${c.gainR.toFixed(2)}R.\n\n` +
-        `Move its stop to ${c.entry.toFixed(2)} at your broker, then click this ` +
-        `to record it here — that takes ${c.releasesR.toFixed(2)}R off the open-risk dial.\n\n` +
-        `Nothing else changes: 1R stays ${isFinite(c.initialStop) ? c.initialStop.toFixed(2) : "—"}, ` +
-        `so P&L and every R already recorded stay exactly as they are.`
+        `Its stop can go to ${c.entry.toFixed(2)} — breakeven — at your broker. ` +
+        `Nothing here changes when you do; this is a reminder, not a record.`
       }
     >
       <Flag size={11} />
-    </button>
+    </span>
   );
 }
 
 export default function Holdings({
-  open, closed, onRefresh, refreshing, onMarkRiskFree, onEditTrade, onExitTrade, onDeleteTrade,
+  open, closed, onRefresh, refreshing, onEditTrade, onExitTrade, onDeleteTrade,
 }) {
-  const [marked, setMarked] = useState([]);
-  const [busyId, setBusyId] = useState(null);
   const [detailId, setDetailId] = useState(null);
 
   const rows = useMemo(() => {
@@ -314,9 +310,7 @@ export default function Holdings({
    */
   const flagged = useMemo(() => {
     const m = new Map();
-    if (!onMarkRiskFree) return m;
     for (const r of rows) {
-      if (marked.includes(r.id)) continue;
       const entry = Number(r.entry_price);
       const dir = r.side === "short" ? -1 : 1;
       const perShare = Math.abs(entry - r.initialStop);
@@ -327,27 +321,12 @@ export default function Holdings({
       const releasesR = Math.max(0, isFinite(r.netRiskR) ? r.netRiskR : 0);
       if (gainR >= FREE_AT_R && releasesR > 0
           && isFinite(r.currentStop) && isFinite(r.initialStop)) {
-        m.set(r.id, {
-          id: r.id, symbol: r.symbol, entry, gainR, releasesR,
-          // Sent back on save so the 1R shown here is the 1R that gets pinned.
-          initialStop: r.initialStop,
-        });
+        m.set(r.id, { id: r.id, symbol: r.symbol, entry, gainR, releasesR });
       }
     }
     return m;
-  }, [rows, marked, onMarkRiskFree]);
+  }, [rows]);
 
-  const markRiskFree = async (c) => {
-    setBusyId(c.id);
-    try {
-      await onMarkRiskFree(c);
-      // Drop the flag straight away. The reload that follows clears it anyway
-      // once the new stop is in, but this keeps the row from flickering back.
-      setMarked((d) => [...d, c.id]);
-    } finally {
-      setBusyId(null);
-    }
-  };
 
   // Resolved by id, not held as an object: a price refresh or a stop moved
   // from inside the panel replaces the row, and a captured copy would go on
@@ -482,8 +461,7 @@ export default function Holdings({
                     </button>
                     <span className="ps-dim"> {r.exchange}</span>
                     {flagged.has(r.id) && (
-                      <BreakevenFlag c={flagged.get(r.id)} busy={busyId === r.id}
-                                     onMark={markRiskFree} />
+                      <BreakevenFlag c={flagged.get(r.id)} />
                     )}
                     {riskFree && (
                       <span className="ps-flag done" title="Risk-free — the stop is at or past entry, so this position has nothing left to lose">
@@ -578,8 +556,9 @@ export default function Holdings({
         Open risk is what the current stop still exposes, so a stop moved past entry reads zero.
         The {RISK_WARN_R}R dial is there to be read, not obeyed: there&apos;s no cap on how many
         holdings you can carry at once, and nothing is blocked past the line.
-        A flag means the trade is up past {FREE_AT_R}R and its stop could go to breakeven — move it
-        at your broker first, then click the flag to record it here and take that risk off the dial.
+        A flag means the trade is up past {FREE_AT_R}R and its stop could go to breakeven at your
+        broker. It is a reminder and nothing more — the dial keeps counting the stop you recorded,
+        because that is the only stop this journal knows about.
       </div>
 
       <style jsx>{`

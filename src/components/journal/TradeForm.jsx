@@ -175,25 +175,6 @@ function toPayload(t) {
     ? live.reduce((a, e) => a + e.price * e.quantity, 0) / sold
     : null;
 
-  /**
-   * The trader has replaced a stop this app invented with the one they
-   * actually used.
-   *
-   * One fact, and two decisions used to read it separately: whether the stop
-   * is still "assumed", and whether 1R may move. They disagreed. The label
-   * came off — telling the reader the number was now theirs — while every R
-   * on the trade went on dividing by the invented figure. A stop corrected
-   * from 258.26 to 269 on a 277.70 entry kept reporting -0.28R where the truth
-   * was -0.61R, and the sheet said 7% next to a stop that was 3.1% away.
-   *
-   * Deriving both from one expression is the point, not tidiness: they cannot
-   * drift apart again.
-   */
-  const correctingAssumed =
-    t.stop_source === "assumed" &&
-    numOrNull(t.stop_loss) != null &&
-    String(t.stop_loss) !== String(t._loadedStop ?? "");
-
   return {
     ...(t.id ? { id: t.id } : {}),
     symbol: t.symbol.trim().toUpperCase(),
@@ -207,24 +188,27 @@ function toPayload(t) {
     // Nullable since the import migration. Number("") is 0, which would record
     // a stop at zero and hand the trade a nonsense 1R.
     stop_loss: numOrNull(t.stop_loss),
-    // 1R is whatever the stop was when the position was opened, and it has to
-    // survive every later trail — otherwise `derivePosition` falls back to the
-    // current stop and the trade's R quietly rebases each time you move it.
-    // Migration 007 backfilled the rows that existed then; new rows have to
-    // set it here, and a trail must never move it.
-    //
-    // Correcting an assumed stop is not a trail. There was no 1R to preserve —
-    // the app picked that number, not the trader — so the correction becomes
-    // the 1R, which is the entire point of replacing it.
-    initial_stop_loss: correctingAssumed
-      ? numOrNull(t.stop_loss)
-      : numOrNull(t.initial_stop_loss) ?? numOrNull(t.stop_loss),
+    /**
+     * One stop. The one in the field is the one R divides by, always.
+     *
+     * This used to keep a second, hidden stop — the one the trade "was opened
+     * with" — so that trailing could never rebase R. It made a typo
+     * unfixable: correct 260 to 269 and the form answered that the stop at
+     * entry was 260 and the stop now is 269, when the trader meant there had
+     * only ever been one and they had mistyped it.
+     *
+     * The distinction was solving a problem this journal does not have.
+     * Trailing happens at the broker; the stop recorded here is the risk that
+     * was taken, and the only reason to change it is that it was wrong.
+     */
+    initial_stop_loss: numOrNull(t.stop_loss),
     // An assumed stop stays assumed until someone actually changes it. Saving
     // the form for an unrelated field — a note, a pattern — shouldn't quietly
     // promote a number this app invented into one the trader stands behind.
     stop_source: numOrNull(t.stop_loss) == null
       ? null
-      : t.stop_source !== "assumed" || correctingAssumed
+      : t.stop_source !== "assumed" ||
+        String(t.stop_loss) !== String(t._loadedStop ?? "")
       ? "recorded"
       : "assumed",
     pattern: t.pattern || null,
@@ -359,13 +343,6 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
 
   const overRisk = isFinite(d.riskPct) && d.riskPct > 2;
 
-  // The stop this trade's 1R is already pinned to, when that isn't simply the
-  // stop showing in the field. A new trade has none, and one that hasn't been
-  // trailed has nothing worth pointing out.
-  const pinnedStop = (() => {
-    const pinned = num(t.initial_stop_loss);
-    return isFinite(pinned) && pinned !== num(t.stop_loss) ? pinned : null;
-  })();
 
   const submit = async () => {
     if (!valid || saving) return;
@@ -459,11 +436,6 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                     stop it was opened with, not the one in the box above —
                     that's the whole point of pinning it. Say which, or the two
                     numbers look like they disagree. */}
-                {pinnedStop !== null && (
-                  <i className="hint" style={{ display: "block", fontStyle: "normal", marginTop: 2 }}>
-                    against the {pinnedStop.toFixed(2)} stop it was opened with
-                  </i>
-                )}
               </span>
               <b>{rupee(d.riskAmt)}</b></div>
             <div className="row"><span>Risk as % of account</span>
