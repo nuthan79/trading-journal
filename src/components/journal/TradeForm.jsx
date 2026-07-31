@@ -175,6 +175,25 @@ function toPayload(t) {
     ? live.reduce((a, e) => a + e.price * e.quantity, 0) / sold
     : null;
 
+  /**
+   * The trader has replaced a stop this app invented with the one they
+   * actually used.
+   *
+   * One fact, and two decisions used to read it separately: whether the stop
+   * is still "assumed", and whether 1R may move. They disagreed. The label
+   * came off — telling the reader the number was now theirs — while every R
+   * on the trade went on dividing by the invented figure. A stop corrected
+   * from 258.26 to 269 on a 277.70 entry kept reporting -0.28R where the truth
+   * was -0.61R, and the sheet said 7% next to a stop that was 3.1% away.
+   *
+   * Deriving both from one expression is the point, not tidiness: they cannot
+   * drift apart again.
+   */
+  const correctingAssumed =
+    t.stop_source === "assumed" &&
+    numOrNull(t.stop_loss) != null &&
+    String(t.stop_loss) !== String(t._loadedStop ?? "");
+
   return {
     ...(t.id ? { id: t.id } : {}),
     symbol: t.symbol.trim().toUpperCase(),
@@ -192,14 +211,20 @@ function toPayload(t) {
     // survive every later trail — otherwise `derivePosition` falls back to the
     // current stop and the trade's R quietly rebases each time you move it.
     // Migration 007 backfilled the rows that existed then; new rows have to
-    // set it here, and an edit must never move it once it's set.
-    initial_stop_loss: numOrNull(t.initial_stop_loss) ?? numOrNull(t.stop_loss),
+    // set it here, and a trail must never move it.
+    //
+    // Correcting an assumed stop is not a trail. There was no 1R to preserve —
+    // the app picked that number, not the trader — so the correction becomes
+    // the 1R, which is the entire point of replacing it.
+    initial_stop_loss: correctingAssumed
+      ? numOrNull(t.stop_loss)
+      : numOrNull(t.initial_stop_loss) ?? numOrNull(t.stop_loss),
     // An assumed stop stays assumed until someone actually changes it. Saving
     // the form for an unrelated field — a note, a pattern — shouldn't quietly
     // promote a number this app invented into one the trader stands behind.
     stop_source: numOrNull(t.stop_loss) == null
       ? null
-      : t.stop_source !== "assumed" || String(t.stop_loss) !== String(t._loadedStop ?? "")
+      : t.stop_source !== "assumed" || correctingAssumed
       ? "recorded"
       : "assumed",
     pattern: t.pattern || null,
