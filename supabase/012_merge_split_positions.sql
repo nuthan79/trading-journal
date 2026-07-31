@@ -42,11 +42,68 @@
 --  a merged group no longer has two rows to find. Running it twice is
 --  harmless; the second run reports zero.
 --
---  Run PART 1 on its own first and read what it says. Run PART 2 when
---  you are happy with it. Take a backup before PART 2.
+--  HOW TO RUN IT
+--
+--  PART 0 first — it copies the affected rows somewhere you can put
+--  them back from. Then PART 1, which writes nothing and shows you what
+--  PART 2 would do. Then PART 2.
+--
+--  The arithmetic here was checked against the real journal before this
+--  was written: 1098 trades becoming 1068, net P&L and charges identical
+--  to the rupee. The SQL itself has not been executed anywhere — there
+--  is no Postgres to rehearse it against outside your project. That is
+--  what PART 0 and PART 1 are for. Do not skip them.
 --
 --  Supabase → SQL Editor → New query → Run.
 -- ===================================================================
+
+
+-- -------------------------------------------------------------------
+--  PART 0 — the backup. Run this first, and read the count it prints.
+--
+--  Not a whole-database dump: this copies the exact rows PART 2 will
+--  touch into two tables, and restores from them with the block at the
+--  very bottom of this file. Small, instant, and reversible — which
+--  matters more than size, because a backup nobody has restored is a
+--  rumour.
+--
+--  They go in their own schema, not in `public`. PostgREST serves the
+--  public schema, so a copy of the trades table there would be readable
+--  through the API by anyone holding the anon key. `backup` is not
+--  exposed, and the grants below make sure it stays that way even if
+--  someone adds it to the exposed list later.
+--
+--  Keep them until you have looked at the merged trades and are happy.
+--  Dropping them later is two lines, also at the bottom.
+-- -------------------------------------------------------------------
+create schema if not exists backup;
+revoke all on schema backup from anon, authenticated;
+
+drop table if exists backup.trades_012;
+drop table if exists backup.exits_012;
+
+create table backup.trades_012 as
+select t.*
+  from public.trades t
+  join (
+    select user_id, symbol, entry_date, side
+      from public.trades
+     group by user_id, symbol, entry_date, side
+    having count(*) > 1
+  ) g using (user_id, symbol, entry_date, side);
+
+create table backup.exits_012 as
+select x.*
+  from public.trade_exits x
+ where x.trade_id in (select id from backup.trades_012);
+
+revoke all on all tables in schema backup from anon, authenticated;
+
+-- Expect one row per trade about to be merged, and one per sell beneath
+-- them. If either is zero, stop — there is nothing to restore from.
+select
+  (select count(*) from backup.trades_012) as trades_backed_up,
+  (select count(*) from backup.exits_012)  as sells_backed_up;
 
 
 -- -------------------------------------------------------------------
@@ -230,3 +287,43 @@ commit;
 --   from public.trades
 --  group by symbol, entry_date, side
 -- having count(*) > 1;
+
+
+-- -------------------------------------------------------------------
+--  RESTORE — puts everything back exactly as PART 0 found it.
+--
+--  Uncomment and run as one block. It deletes the merged survivors and
+--  reinserts the originals under their original ids, so nothing that
+--  points at a trade is left pointing at a row that no longer exists.
+--
+--  Try this once on purpose, before you need it. A backup you have
+--  restored is a backup; one you have only taken is a hope.
+-- -------------------------------------------------------------------
+-- begin;
+--
+-- -- The survivors kept their ids, so this clears the merged rows and
+-- -- anything still hanging off them.
+-- delete from public.trade_exits
+--  where trade_id in (select id from backup.trades_012);
+-- delete from public.trades
+--  where id in (select id from backup.trades_012);
+--
+-- insert into public.trades      select * from backup.trades_012;
+-- insert into public.trade_exits select * from backup.exits_012;
+--
+-- commit;
+--
+-- -- Should print the same two numbers PART 0 did.
+-- select
+--   (select count(*) from public.trades t
+--      join backup.trades_012 b on b.id = t.id) as trades_restored,
+--   (select count(*) from public.trade_exits x
+--      join backup.exits_012  b on b.id = x.id) as sells_restored;
+
+
+-- -------------------------------------------------------------------
+--  When you are satisfied, the backup tables go.
+-- -------------------------------------------------------------------
+-- drop table if exists backup.exits_012;
+-- drop table if exists backup.trades_012;
+-- drop schema if exists backup;
