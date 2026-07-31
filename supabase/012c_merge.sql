@@ -33,7 +33,12 @@
 --  Supabase → SQL Editor → New query → paste all of this → Run.
 --
 --  EXPECT: one row — positions_merged 29, rows_removed 30, and
---          sells_moved matching the tranches that changed hands.
+--          sells_now_on_survivors matching the tranches that moved.
+--
+--  A SECOND RUN IS REFUSED, not repeated. Zero merged reads like a
+--  failure and means the same thing as success once the account is
+--  already clean, so the file will not let you get that answer twice
+--  without saying so. 012_state.sql tells you which state you are in.
 -- ===================================================================
 
 do $$
@@ -77,6 +82,21 @@ begin
   --  The plan: which row survives, which rows fold into it.
   --  A real table, not a temporary one — see the header.
   -- ---------------------------------------------------------------
+  --
+  --  Refuses to overwrite a plan that already has rows in it. Running
+  --  this file twice is otherwise harmless — the second pass finds no
+  --  split positions and merges nothing — but it rebuilds the plan
+  --  empty on its way there, destroying the only record of which row
+  --  absorbed which. That record is what makes the merge auditable
+  --  afterwards, so a re-run has to be deliberate.
+  if to_regclass('backup.merge_plan_012') is not null
+     and (select count(*) from backup.merge_plan_012) > 0 then
+    raise exception
+      '012c has already run — its plan is in backup.merge_plan_012 (% rows). '
+      'Drop that table first if you really mean to run it again.',
+      (select count(*) from backup.merge_plan_012);
+  end if;
+
   drop table if exists backup.merge_plan_012;
 
   create table backup.merge_plan_012 as
