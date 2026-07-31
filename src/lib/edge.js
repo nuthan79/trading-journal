@@ -67,7 +67,26 @@ const fmtNum = (v, dp) => {
  * table reads as a progression instead of a leaderboard.
  */
 export function adaptiveBander(values, { k, unit = "", dp = 1 } = {}) {
-  const clean = values.filter((v) => isFinite(v)).sort((a, b) => a - b);
+  const scale = Math.pow(10, dp);
+  const step = 1 / scale;
+  /**
+   * Band on the values as they are shown, not as they are stored.
+   *
+   * A stop filled at 18% of entry is stored as a price rounded to the paisa,
+   * so 1070 trades meant to share one stop width actually spread from 17.9758
+   * to 18.0236. Quantile cuts then landed at 17.999, 18.000, 18.001 and 18.002
+   * — four boundaries inside a twentieth of a percent, indistinguishable once
+   * printed at one decimal. They collapsed to the same label and the groups
+   * merged behind it, which is how a band reading "2.2-17.9%" came to hold 216
+   * trades: twelve real stops and two hundred assumed ones that rounded a hair
+   * low. The table looked like a finding and was an artefact of float noise.
+   *
+   * Rounding first makes the bands mean what the labels say. Differences
+   * below display precision are not differences a reader can act on.
+   */
+  const shown = (v) => Math.round(v * scale) / scale;
+
+  const clean = values.filter((v) => isFinite(v)).map(shown).sort((a, b) => a - b);
   if (clean.length < 2) {
     return { label: () => NOT_RECORDED, order: () => 0, bands: [] };
   }
@@ -91,13 +110,6 @@ export function adaptiveBander(values, { k, unit = "", dp = 1 } = {}) {
    * one number dominates the column, as an assumed stop does. "18-18%" reads
    * like a bug; "18%" is what it is.
    */
-  const scale = Math.pow(10, dp);
-  const step = 1 / scale;
-  // Stepping back in display space, not real space: hi and hi-step can round
-  // to the same printed value when hi doesn't sit on a step boundary, which
-  // put "3.25" at the top of one band and the bottom of the next again.
-  const shown = (v) => Math.round(v * scale) / scale;
-
   const bands = [];
   for (let i = 0; i < edges.length - 1; i++) {
     const lo = shown(edges[i]);
@@ -123,8 +135,11 @@ export function adaptiveBander(values, { k, unit = "", dp = 1 } = {}) {
     bands,
     label(v) {
       if (!isFinite(v)) return NOT_RECORDED;
+      // Rounded the same way the edges were, or a value a hair under a cut
+      // lands in the band below the one its printed form belongs to.
+      const r = shown(v);
       let i = 0;
-      while (i < cuts.length && v >= cuts[i]) i++;
+      while (i < cuts.length && r >= cuts[i]) i++;
       return bands[Math.min(i, bands.length - 1)].label;
     },
     order(label) {
