@@ -6,8 +6,9 @@
 --
 --  Supabase → SQL Editor → New query → paste all of this → Run.
 --
---  EXPECT: 29 rows on the Zerodha Testing account, every one of them
---          reading `will merge` in the last column.
+--  EXPECT: 29 rows, every one reading `will merge` in the last
+--          column. If you changed the account below, expect its own
+--          count instead.
 --
 --  READ THE `verdict` COLUMN.
 --    will merge   — this position gets folded into one row
@@ -22,9 +23,24 @@
 --  do not run 012c.
 -- ===================================================================
 
-with grp as (
+-- -------------------------------------------------------------------
+--  WHICH ACCOUNT.  Edit the eight characters below to repair a
+--  different one; 012_scope_check.sql lists them. 3af0f255 is the
+--  account measured through the app — 29 split positions, 59 trades.
+--
+--  Everything past this point is confined to that account. The other
+--  account holding split positions (fa6d145f, 91 trades) is untouched
+--  until you come back and change this line.
+-- -------------------------------------------------------------------
+with target as (
+  select distinct user_id
+    from public.trades
+   where left(user_id::text, 8) = '3af0f255'
+),
+grp as (
   select user_id, symbol, entry_date, side
     from public.trades
+   where user_id in (select user_id from target)
    group by user_id, symbol, entry_date, side
   having count(*) > 1
 ),

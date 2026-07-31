@@ -14,15 +14,45 @@
 --
 --  Supabase → SQL Editor → New query → paste all of this → Run.
 --
+--  Scoped to ONE account — see the block below. It will not touch the
+--  other account that has split positions.
+--
 --  EXPECT: "Success. No rows returned." Then run 012d_check.sql.
 -- ===================================================================
 
 begin;
 
+-- -------------------------------------------------------------------
+--  WHICH ACCOUNT.  Edit the eight characters below to repair a
+--  different one; 012_scope_check.sql lists them. 3af0f255 is the
+--  account measured through the app — 29 split positions, 59 trades.
+--
+--  Everything past this point is confined to that account. The other
+--  account holding split positions (fa6d145f, 91 trades) is untouched
+--  until you come back and change this line.
+-- -------------------------------------------------------------------
+create temporary table target on commit drop as
+select distinct user_id
+  from public.trades
+ where left(user_id::text, 8) = '3af0f255';
+
+-- Refuses to go on unless that matched exactly one account. A prefix
+-- that matches none would merge nothing; one that matched two would
+-- quietly widen the blast radius, which is the whole thing this scoping
+-- exists to prevent.
+do $$
+begin
+  if (select count(*) from target) <> 1 then
+    raise exception 'expected exactly one account, matched %',
+      (select count(*) from target);
+  end if;
+end $$;
+
 create temporary table merge_plan on commit drop as
 with grp as (
   select user_id, symbol, entry_date, side
     from public.trades
+   where user_id in (select user_id from target)
    group by user_id, symbol, entry_date, side
   having count(*) > 1
 ),
