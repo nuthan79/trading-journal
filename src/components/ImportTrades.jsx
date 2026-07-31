@@ -53,6 +53,28 @@ function doneHeadline({ inserted = 0, completed = 0 }) {
   return `${trades} imported`;
 }
 
+/** One held-back list. The heading says why; each row says which. */
+function HeldBack({ rows, children }) {
+  return (
+    <details className="im-rejected">
+      <summary><AlertTriangle size={11} /> {children}</summary>
+      <div className="im-rejlist">
+        {rows.slice(0, 40).map((g, i) => (
+          <div key={i}>
+            <b>{g.symbol}</b> {g.entryDate} → {g.exitDate}
+            <span className="im-dim">
+              {" "}qty {g.quantity} · buy {g.buyValue} · sell {g.sellValue} — {g.reason}
+            </span>
+          </div>
+        ))}
+        {rows.length > 40 && (
+          <div className="im-dim">…and {rows.length - 40} more</div>
+        )}
+      </div>
+    </details>
+  );
+}
+
 export default function ImportTrades({ targets = [], onImport, onDone }) {
   const [file, setFile] = useState(null);
   const [parsed, setParsed] = useState(null);
@@ -328,7 +350,8 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
       )}
 
       {(parsed.skippedSections.length > 0 || parsed.duplicates.length > 0 ||
-        parsed.rejected?.length > 0) && (
+        parsed.conflicts?.length > 0 || parsed.rejected?.length > 0 ||
+        parsed.warnings?.length > 0) && (
         <div className="im-skips">
           {parsed.skippedSections.map((x) => (
             <div key={x.section}>
@@ -340,23 +363,39 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
               <AlertTriangle size={11} /> {parsed.duplicates.length} already in your journal — not imported again
             </div>
           )}
+          {/* Two lists, because the remedies are different. A conflict has
+              perfectly good numbers and is waiting on a decision; a rejected
+              row has a value the journal can't store. Under one heading the
+              conflicts read as though their prices were missing, which they
+              plainly weren't. */}
+          {parsed.conflicts?.length > 0 && (
+            <HeldBack rows={parsed.conflicts}>
+              {parsed.conflicts.length} left for you to decide — importing these
+              could attach the sells to the wrong trade
+            </HeldBack>
+          )}
           {parsed.rejected?.length > 0 && (
+            <HeldBack rows={parsed.rejected}>
+              {parsed.rejected.length} held back —
+              the journal needs a positive entry price and quantity
+            </HeldBack>
+          )}
+          {/* These were dropped before grouping, so they never reach a bucket
+              above. They were being counted and then thrown away unread,
+              which meant a file could lose rows without saying so. */}
+          {parsed.warnings?.length > 0 && (
             <details className="im-rejected">
               <summary>
-                <AlertTriangle size={11} /> {parsed.rejected.length} held back —
-                the journal needs a positive entry price and quantity
+                <AlertTriangle size={11} /> {parsed.warnings.length}{" "}
+                {parsed.warnings.length === 1 ? "row" : "rows"} unreadable in the
+                file itself — skipped before anything was matched
               </summary>
               <div className="im-rejlist">
-                {parsed.rejected.slice(0, 40).map((g, i) => (
-                  <div key={i}>
-                    <b>{g.symbol}</b> {g.entryDate} → {g.exitDate}
-                    <span className="im-dim">
-                      {" "}qty {g.quantity} · buy {g.buyValue} · sell {g.sellValue} — {g.reason}
-                    </span>
-                  </div>
+                {parsed.warnings.slice(0, 40).map((w, i) => (
+                  <div key={i} className="im-dim">{w}</div>
                 ))}
-                {parsed.rejected.length > 40 && (
-                  <div className="im-dim">…and {parsed.rejected.length - 40} more</div>
+                {parsed.warnings.length > 40 && (
+                  <div className="im-dim">…and {parsed.warnings.length - 40} more</div>
                 )}
               </div>
             </details>
@@ -460,6 +499,18 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
         </button>
       </div>
 
+      <style jsx global>{`
+        .im-dim { color: var(--ink3); font-size: 11.5px; }
+        .im-rejected summary {
+          display: flex; align-items: center; gap: 6px;
+          cursor: pointer; font-size: 11.5px; color: var(--ink3);
+        }
+        .im-rejlist {
+          margin: 7px 0 0 17px; max-height: 190px; overflow-y: auto;
+          font-size: 11.5px; line-height: 1.75;
+        }
+      `}</style>
+
       <style jsx>{`
         .im-completes {
           border: 1px solid var(--long); border-radius: 3px;
@@ -503,16 +554,7 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
           font-size: 11.5px; color: var(--ink3);
         }
         .im-table { max-height: 380px; overflow-y: auto; }
-        .im-dim { color: var(--ink3); font-size: 11.5px; }
         .im-cols { margin-bottom: 11px; }
-        .im-rejected summary {
-          display: flex; align-items: center; gap: 6px;
-          cursor: pointer; font-size: 11.5px; color: var(--ink3);
-        }
-        .im-rejlist {
-          margin: 7px 0 0 17px; max-height: 190px; overflow-y: auto;
-          font-size: 11.5px; line-height: 1.75;
-        }
         /* Worth spotting at a glance: these are the positions the old flat
            grouping would have split into several trades. */
         .im-scaled { color: var(--brass); font-weight: 600; cursor: help; }

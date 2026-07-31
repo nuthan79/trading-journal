@@ -534,8 +534,12 @@ export function parseZerodhaTaxPnl(rows, { targets, batchId, exchange, assumeSto
   const grouped = groupLots(lots);
   const { fresh: matched, completions, duplicates, conflicts } = reconcile(grouped, targets);
 
+  // Kept apart from `conflicts`, which the UI reports separately: a rejected
+  // group has a value the journal can't store, and the fix is in the file or
+  // in a hand-entered trade. A conflict's numbers are fine — what's missing is
+  // a decision only the trader can make.
   const fresh = [];
-  const rejected = [...conflicts];
+  const rejected = [];
   for (const g of matched) {
     const reason = rejectReason(g);
     if (reason) rejected.push({ ...g, reason });
@@ -554,6 +558,7 @@ export function parseZerodhaTaxPnl(rows, { targets, batchId, exchange, assumeSto
     completions,
     duplicates,
     rejected,
+    conflicts,
     // Named separately from `rejected` because the remedy is different: this
     // is the parser failing to find a column, not the file lacking a value.
     missingColumns,
