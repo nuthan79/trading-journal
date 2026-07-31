@@ -592,24 +592,36 @@ function duplicatePositions(all) {
   groups.sort((a, b) => b.length - a.length || (a[0].symbol < b[0].symbol ? -1 : 1));
   const trades = groups.reduce((a, g) => a + g.length, 0);
 
-  // Identical size as well as identical day. A position genuinely built in two
-  // orders rarely splits into equal halves, so this is the shape that usually
-  // means one trade was recorded twice.
-  const sameQty = groups.filter(
-    (g) => new Set(g.map((t) => Number(t.quantity))).size === 1
-  ).length;
-
-  // Imported alongside hand-entered is the other tell: the file re-created
-  // something already there rather than recognising it.
-  const mixed = groups.filter(
-    (g) => g.some((t) => t.imported) && g.some((t) => !t.imported)
-  ).length;
+  /**
+   * The one measurement that separates the two causes.
+   *
+   * If the rows sell on entirely different dates, nothing has been counted
+   * twice: it is one position scaled out over time, arriving through two
+   * files that each saw only their own financial year. The money is right and
+   * the position is merely fragmented.
+   *
+   * If the same sell date appears on both rows, the same exit may have been
+   * recorded twice, and the P&L really is inflated. Rarer, and much worse.
+   */
+  const overlapping = groups.filter((g) => {
+    const seen = new Set();
+    for (const t of g) {
+      const dates = new Set((t.exits || []).map((e) => e.exit_date).filter(Boolean));
+      if (!dates.size && t.exit_date) dates.add(t.exit_date);
+      for (const d of dates) {
+        if (seen.has(d)) return true;
+        seen.add(d);
+      }
+    }
+    return false;
+  }).length;
+  const split = groups.length - overlapping;
 
   const ev = {
     groups: groups.length,
     trades,
-    sameQuantity: sameQty,
-    importedAndManual: mixed,
+    sharingASellDate: overlapping,
+    scaledOutAcrossFiles: split,
     positions: groups.slice(0, 20).map((g) => ({
       symbol: g[0].symbol,
       entry_date: g[0].entry_date,
@@ -624,19 +636,29 @@ function duplicatePositions(all) {
     })),
   };
 
-  const tells = [];
-  if (sameQty) tells.push(`${sameQty} of them hold the same quantity on both sides`);
-  if (mixed) tells.push(`${mixed} mix an imported trade with one you entered yourself`);
+  const parts = [];
+  if (split) {
+    parts.push(
+      `${split} sell on entirely different dates, so nothing has been counted twice — that is one ` +
+      `position scaled out over time, arriving through two files that each saw only their own ` +
+      `financial year. The money is right; the position is split, so each half carries its own R ` +
+      `against a fraction of the risk you actually took.`
+    );
+  }
+  if (overlapping) {
+    parts.push(
+      `${overlapping} share a sell date across both rows, which can mean the same exit was recorded ` +
+      `twice. Worth opening ${overlapping === 1 ? "that one" : "those"} before anything else — if it ` +
+      `is a genuine double, your P&L is overstated by it.`
+    );
+  }
 
   return F("watch", "duplicate-positions",
-    "The same position is recorded twice",
+    "One position recorded as two trades",
     `${groups.length} symbol-and-date pair${groups.length === 1 ? "" : "s"} open more than once — ` +
-    `${trades} trades between them` +
-    (tells.length ? `, and ${tells.join(", ")}` : "") + `. ` +
-    `Some of these are real, a position built through two orders. The rest are one trade recorded twice, ` +
-    `which double-counts the position and splits its R across two rows. ` +
-    `Either way an import can't tell which of the pair a sell belongs to, so it holds those rows back ` +
-    `instead of guessing — and will keep doing that on every future file until the pair is resolved.`,
+    `${trades} trades between them. ${parts.join(" ")} ` +
+    `Either way an import can't tell which of the pair a later sell belongs to, so it holds those ` +
+    `rows back instead of guessing, and will keep doing that on every future file until they are merged.`,
     ev);
 }
 
