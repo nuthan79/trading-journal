@@ -47,7 +47,12 @@ function windowFor(id, custom) {
 export default function LedgerPlot({ rows }) {
   const box = useRef(null);
   const [w, setW] = useState(900);
-  const [hov, setHov] = useState(null);
+  // The hovered trade is held by id and looked up in whatever is currently
+  // plotted, rather than kept as a copy of the point. Keeping the object let
+  // it outlive its window: pick a trade, narrow the range, and the footer went
+  // on describing a trade no longer on the chart while the crosshair drew
+  // itself at an index that had ceased to exist.
+  const [hovId, setHovId] = useState(null);
   const [range, setRange] = useState("all");
   const [custom, setCustom] = useState({ from: "", to: "" });
 
@@ -112,6 +117,51 @@ export default function LedgerPlot({ rows }) {
     };
   }, [pts]);
 
+  /**
+   * Global, not scoped, and every selector prefixed `lp-`.
+   *
+   * The range bar is built as its own JSX root above — a variable, so that
+   * both the empty branch and the plotted one can render it — and a scoped
+   * <style jsx> never reaches elements outside the tree it sits in. The bar
+   * came out unstyled: display:block where it asked for flex, and date inputs
+   * at the app's default full width, which pushed the total onto its own line.
+   *
+   * The prefix is what keeps `global` honest. Same trick the rest of the app
+   * uses wherever markup is rendered through a helper.
+   */
+  const styles = (
+    <style jsx global>{`
+      .lp-head {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 0 6px 8px; flex-wrap: wrap; gap: 10px;
+      }
+      .lp-total { font-size: 20px; margin-left: auto; }
+      .lp-range { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+      .lp-dates { display: flex; align-items: center; gap: 6px; }
+      .lp-dates .in { padding: 4px 7px; font-size: 12px; width: auto; min-width: 0; }
+      .lp-to { font-size: 11px; color: var(--ink3); }
+
+      .lp-foot {
+        display: grid; grid-template-columns: 1fr auto 1fr;
+        align-items: baseline; gap: 12px;
+        padding: 2px 6px 4px; min-height: 22px;
+        font-size: 11.5px; color: var(--ink2);
+      }
+      .lp-c { text-align: center; white-space: nowrap; }
+      .lp-r { text-align: right; }
+      .lp-l, .lp-r { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .lp-dim { color: var(--ink3); }
+
+      /* The date keeps the middle; the ends give way first, since one is a
+         symbol the crosshair also points at and the other a number the
+         header already carries. */
+      @media (max-width: 620px) {
+        .lp-foot { grid-template-columns: 1fr auto; }
+        .lp-r { display: none; }
+      }
+    `}</style>
+  );
+
   const rangeBar = (
     <div className="lp-range">
       <div className="seg">
@@ -158,12 +208,7 @@ export default function LedgerPlot({ rows }) {
                  curve on top, every individual outcome as a bar below it.`}
           </p>
         </div>
-        <style jsx>{`
-          .lp-head {
-            display: flex; justify-content: space-between; align-items: center;
-            padding: 0 6px 10px; flex-wrap: wrap; gap: 10px;
-          }
-        `}</style>
+        {styles}
       </div>
     );
   }
@@ -191,6 +236,7 @@ export default function LedgerPlot({ rows }) {
   for (let v = Math.ceil(yBot / tStep) * tStep; v <= yTop; v += tStep) ticks.push(v);
 
   const last = pts[pts.length - 1];
+  const hov = pts.find((p) => p.id === hovId) || null;
 
   return (
     <div ref={box} className="card" style={{ padding: "16px 14px 10px" }}>
@@ -239,7 +285,7 @@ export default function LedgerPlot({ rows }) {
         {pts.map((p) => (
           <rect key={`h${p.id}`} x={x(p.i) - step / 2} y={PT} width={Math.max(step, 6)}
                 height={curveH + GAP + barsH} fill="transparent" style={{ cursor: "crosshair" }}
-                onMouseEnter={() => setHov(p)} onMouseLeave={() => setHov(null)} />
+                onMouseEnter={() => setHovId(p.id)} onMouseLeave={() => setHovId(null)} />
         ))}
 
         {hov && (
@@ -279,44 +325,17 @@ export default function LedgerPlot({ rows }) {
               {dmy(summary.from)} – {dmy(summary.to)}
             </span>
             <span className="lp-r lp-dim">
-              best <b className="disp">{summary.best.symbol}</b> {rfmt(summary.best.r)}
-              {" · worst "}<b className="disp">{summary.worst.symbol}</b> {rfmt(summary.worst.r)}
+              {/* One decimal, not two. This line is a glance at the window,
+                  and the extra digit was the difference between reading the
+                  worst trade and reading an ellipsis. */}
+              best <b className="disp">{summary.best.symbol}</b> {rfmt(summary.best.r, 1)}
+              {" · worst "}<b className="disp">{summary.worst.symbol}</b> {rfmt(summary.worst.r, 1)}
             </span>
           </>
         ) : null}
       </div>
 
-      <style jsx>{`
-        .lp-head {
-          display: flex; justify-content: space-between; align-items: center;
-          padding: 0 6px 8px; flex-wrap: wrap; gap: 10px;
-        }
-        .lp-total { font-size: 20px; margin-left: auto; }
-        .lp-range { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-        .lp-dates { display: flex; align-items: center; gap: 6px; }
-        .lp-dates :global(.in) { padding: 4px 7px; font-size: 12px; width: auto; }
-        .lp-to { font-size: 11px; color: var(--ink3); }
-
-        .lp-foot {
-          display: grid; grid-template-columns: 1fr auto 1fr;
-          align-items: baseline; gap: 12px;
-          padding: 2px 6px 4px; min-height: 22px;
-          font-size: 11.5px; color: var(--ink2);
-        }
-        .lp-l { text-align: left; }
-        .lp-c { text-align: center; white-space: nowrap; }
-        .lp-r { text-align: right; }
-        .lp-l, .lp-r { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .lp-dim { color: var(--ink3); }
-
-        /* The date keeps the middle; the two ends give way first, since one is
-           a symbol you can also read off the crosshair and the other is a
-           number repeated in the header. */
-        @media (max-width: 620px) {
-          .lp-foot { grid-template-columns: 1fr auto; }
-          .lp-r { display: none; }
-        }
-      `}</style>
+      {styles}
     </div>
   );
 }
