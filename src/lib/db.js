@@ -474,10 +474,11 @@ export async function saveStops(rows, onProgress) {
    * discard the nine hundred that saved beside it. Failures are counted and
    * reported at the end, and the rows that worked stay saved.
    */
-  const patchFor = ({ stop_loss, initial_stop_loss, stop_source }) =>
-    initial_stop_loss == null
-      ? { stop_loss, initial_stop_loss: stop_loss, stop_source: stop_source || "recorded" }
-      : { stop_loss, stop_source: stop_source || "recorded" };
+  // Both columns, always the same value. The old form left an existing
+  // initial_stop_loss alone so a re-fill could not rebase 1R, which is how a
+  // row ended up holding two different stops.
+  const patchFor = ({ stop_loss, stop_source }) =>
+    ({ stop_loss, initial_stop_loss: stop_loss, stop_source: stop_source || "recorded" });
 
   let done = 0;
   const failures = [];

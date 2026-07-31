@@ -233,7 +233,7 @@ export default function Holdings({
         // the same reading the dashboard's open positions give. Breached means
         // price is already through it and the position is running on borrowed
         // time; for a short that's price rising into the stop instead.
-        const stop = t.currentStop;
+        const stop = t.stop;
         const canRead = isFinite(t.mark) && isFinite(stop);
         const toStop = canRead ? ((t.mark - stop) / t.mark) * 100 : NaN;
         const breached = canRead && (t.side === "short" ? t.mark >= stop : t.mark <= stop);
@@ -313,14 +313,14 @@ export default function Holdings({
     for (const r of rows) {
       const entry = Number(r.entry_price);
       const dir = r.side === "short" ? -1 : 1;
-      const perShare = Math.abs(entry - r.initialStop);
+      const perShare = Math.abs(entry - r.stop);
       const gainR = isFinite(r.mark) && perShare > 0
         ? ((r.mark - entry) * dir) / perShare
         : NaN;
       // What comes off the dial once this position can no longer lose.
       const releasesR = Math.max(0, isFinite(r.netRiskR) ? r.netRiskR : 0);
       if (gainR >= FREE_AT_R && releasesR > 0
-          && isFinite(r.currentStop) && isFinite(r.initialStop)) {
+          && isFinite(r.stop)) {
         m.set(r.id, { id: r.id, symbol: r.symbol, entry, gainR, releasesR });
       }
     }
@@ -434,9 +434,8 @@ export default function Holdings({
               <th className="num">Open qty</th>
               <th className="num">Open %</th>
               <th className="num">Entry</th>
-              <th className="num">Initial SL</th>
+              <th className="num">Stop</th>
               <th className="num">SL %</th>
-              <th className="num">Current SL</th>
               <th className="num">To stop</th>
               <th className="num">Exposure</th>
               <th className="num">Open risk</th>
@@ -483,14 +482,11 @@ export default function Holdings({
                     </div>
                   </td>
                   <td className="num">{Number(r.entry_price).toFixed(2)}</td>
-                  <td className="num ps-dim">
-                    {isFinite(r.initialStop) ? r.initialStop.toFixed(2) : "—"}
-                  </td>
-                  <td className="num ps-dim">{isFinite(r.slPct) ? pct(r.slPct) : "—"}</td>
                   <td className={`num ${r.stopAboveEntry ? "ps-locked" : ""}`}
                       title={r.stopAboveEntry ? "Stop is past entry — this position can no longer lose" : undefined}>
-                    {isFinite(r.currentStop) ? r.currentStop.toFixed(2) : "—"}
+                    {isFinite(r.stop) ? r.stop.toFixed(2) : "—"}
                   </td>
+                  <td className="num ps-dim">{isFinite(r.slPct) ? pct(r.slPct) : "—"}</td>
                   <td className="num ps-tostop"
                       data-state={r.breached ? "breached" : r.stopAboveEntry ? "locked" : "live"}
                       title={r.breached

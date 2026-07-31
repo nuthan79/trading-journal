@@ -95,7 +95,6 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
       .map(({ t }) => ({
         id: t.id,
         stop_loss: Number(values[t.id]),
-        initial_stop_loss: t.initial_stop_loss ?? null,
         // Typed in here by hand, whatever the row started as. Filling one over
         // an assumed stop is the act that turns it into a real one.
         stop_source: "recorded",
@@ -141,8 +140,7 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
         const dir = t.side === "short" ? -1 : 1;
         const stop = Math.round(entry * (1 - (dir * pctNum) / 100) * 100) / 100;
         return stop > 0
-          ? { id: t.id, stop_loss: stop, initial_stop_loss: t.initial_stop_loss ?? null,
-              stop_source: "assumed" }
+          ? { id: t.id, stop_loss: stop, stop_source: "assumed" }
           : null;
       })
       .filter(Boolean);

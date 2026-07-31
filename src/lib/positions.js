@@ -47,8 +47,21 @@ export function derivePosition(t, accountSize) {
   const dir = t.side === "short" ? -1 : 1;
   const entry = n(t.entry_price);
   const qty = n(t.quantity);                                    // original size
-  const initialStop = firstNum(t.initial_stop_loss, t.stop_loss);  // defines 1R
-  const currentStop = firstNum(t.stop_loss, t.initial_stop_loss);  // live distance
+  /**
+   * One stop. It sets 1R and it is the live distance, because it is the same
+   * number.
+   *
+   * There were two: initial_stop_loss defined 1R and stop_loss was where the
+   * stop stood now, so trailing could never rebase R. That is worth having in
+   * a journal that follows a stop as it moves. This one does not — trailing
+   * happens at the broker, and the stop written here is the risk that was
+   * taken. The only reason it ever changes is that it was wrong.
+   *
+   * Reading stop_loss first is what makes an old row heal itself: a trade
+   * still carrying a stale initial_stop_loss from before this shows the stop
+   * the trader last set, rather than the one they had already corrected.
+   */
+  const stop = firstNum(t.stop_loss, t.initial_stop_loss);
 
   // Exit tranches, oldest first.
   //
@@ -73,7 +86,7 @@ export function derivePosition(t, accountSize) {
       : [];
 
   /* ---- risk, fixed at entry ---------------------------------------- */
-  const riskPerShare = Math.abs(entry - initialStop);
+  const riskPerShare = Math.abs(entry - stop);
   const riskAmt = riskPerShare * qty;                            // 1R, immutable
   const riskPct = accountSize > 0 ? (riskAmt / accountSize) * 100 : NaN;
   const exposure = entry * qty;
@@ -89,7 +102,7 @@ export function derivePosition(t, accountSize) {
   // entry and genuinely at risk; negative means trailed above entry, so the
   // remaining position can no longer lose money.
   const slPctCurrent =
-    entry > 0 ? ((entry - currentStop) / entry) * 100 * dir : NaN;
+    entry > 0 ? ((entry - stop) / entry) * 100 * dir : NaN;
   const stopAboveEntry = isFinite(slPctCurrent) && slPctCurrent < 0;
 
   /* ---- how much is still on ---------------------------------------- */
@@ -158,7 +171,7 @@ export function derivePosition(t, accountSize) {
   // A stop trailed past entry isn't risk, it's a floor under a gain, so the
   // distance to it must not be counted as money still on the line.
   const openRiskAmt =
-    qtyOpen > 0 && !stopAboveEntry ? Math.abs(entry - currentStop) * qtyOpen : 0;
+    qtyOpen > 0 && !stopAboveEntry ? Math.abs(entry - stop) * qtyOpen : 0;
   const bankedAgainstRisk =
     riskAmt > 0 && isFinite(realisedPnl) ? realisedPnl / riskAmt : 0;
   // Negative means the remainder can no longer produce a losing trade overall
@@ -188,7 +201,7 @@ export function derivePosition(t, accountSize) {
     unrealisedPnl, unrealisedR, mark, hasMark,
     pnl, r,
     // live risk
-    openRiskAmt, netRiskR, isRiskFree, currentStop, initialStop,
+    openRiskAmt, netRiskR, isRiskFree, stop,
     // context
     distPivot, heldDays, firstExit, lastExit,
     exits,

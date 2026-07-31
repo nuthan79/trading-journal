@@ -153,18 +153,17 @@ export default function PositionDetail({ row, onClose, onEdit, onExit, onDelete,
               : stat("CMP",
                   isFinite(row.mark) ? Number(row.mark).toFixed(2) : "—",
                   isFinite(row.mark) ? signedPct(gainPct(row.mark)) : null)}
-            {closed
-              ? stat("Charges", isFinite(row.charges) ? rupee(row.charges) : "—",
-                  isFinite(row.exposure) && row.exposure > 0
-                    ? `${pct((row.charges / row.exposure) * 100, 2)} of size` : null)
-              : stat("Stop now",
-                  isFinite(row.currentStop) ? row.currentStop.toFixed(2) : "—",
-                  isFinite(row.slPctCurrent) ? `${pct(Math.abs(row.slPctCurrent))} away` : null)}
-            {stat("Stop at entry",
-              isFinite(row.initialStop) ? row.initialStop.toFixed(2) : "—",
+            {stat("Charges", isFinite(row.charges) ? rupee(row.charges) : "—",
+              isFinite(row.exposure) && row.exposure > 0
+                ? `${pct((row.charges / row.exposure) * 100, 2)} of size` : null)}
+            {/* One stop. It was two tiles — the stop the position opened with
+                and the stop now — which read as a distinction the trader had
+                made when it was one number they had typed once. */}
+            {stat("Stop",
+              isFinite(row.stop) ? row.stop.toFixed(2) : "—",
               row.stop_source === "assumed"
                 ? `${isFinite(row.slPct) ? pct(row.slPct) : ""} — assumed, not set`
-                : isFinite(row.slPct) ? `${pct(row.slPct)} — sets 1R` : null)}
+                : isFinite(row.slPct) ? `${pct(row.slPct)} from entry` : null)}
             {stat("1R — risk taken",
               isFinite(row.riskAmt) ? rupee(row.riskAmt) : "—",
               isFinite(row.riskPct) ? `${pct(row.riskPct, 2)} of account` : null)}
