@@ -41,3 +41,21 @@ export function signedPct(v, dp = 1) {
 }
 
 export const days = (v) => (isFinite(v) ? `${Math.round(v)} d` : "—");
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * A date to read rather than to sort by. Tables keep ISO because a column of
+ * them lines up and sorts as text; a date sitting alone in a sentence or under
+ * a chart does neither, and "2025-05-21" is slower to take in than "21 May 25".
+ *
+ * Parsed by hand rather than through Date, which reads a bare YYYY-MM-DD as
+ * UTC and can show the day before once the browser is west of Greenwich.
+ */
+export function dmy(iso) {
+  if (!iso) return "—";
+  const [y, m, d] = String(iso).slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return "—";
+  return `${d} ${MONTHS[m - 1]} ${String(y).slice(2)}`;
+}
