@@ -54,7 +54,7 @@ function FindingCard({ f }) {
   );
 }
 
-export default function Review({ closed, stats }) {
+export default function Review({ closed, stats, all }) {
   const [market, setMarket] = useState({ loading: true, error: null, classified: [] });
 
   useEffect(() => {
@@ -79,8 +79,8 @@ export default function Review({ closed, stats }) {
   );
 
   const result = useMemo(
-    () => reviewFindings(closed, { regimes, stats }),
-    [closed, regimes, stats]
+    () => reviewFindings(closed, { regimes, stats, all }),
+    [closed, regimes, stats, all]
   );
 
   const groups = useMemo(() => {

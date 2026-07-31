@@ -555,10 +555,96 @@ function dataQuality(closed) {
 }
 
 /* ==================================================================== */
+/*  Duplicate positions                                                 */
+/* ==================================================================== */
+
+/**
+ * The same symbol opening more than once on the same day.
+ *
+ * Sometimes deliberate — a position built through two orders and recorded as
+ * two trades. Often not: a hand-entered trade that a later import re-created
+ * under a different id, so the journal counts one position twice.
+ *
+ * It costs more than a count. A Zerodha import matches sells to a position by
+ * symbol and entry date, and where two positions share both it cannot tell
+ * which one the sells belong to. Rather than guess and put real exits on the
+ * wrong trade, the import holds those rows back — so the exits never land at
+ * all until the duplicate is resolved. That is why this is worth surfacing
+ * even when the pair is legitimate: it will keep blocking every future file.
+ *
+ * Reads every trade, open and closed, since a duplicate is about how the
+ * position was entered and has nothing to do with whether it finished.
+ */
+function duplicatePositions(all) {
+  if (!Array.isArray(all) || all.length < 2) return null;
+
+  const by = new Map();
+  for (const t of all) {
+    if (!t.symbol || !t.entry_date) continue;
+    const k = `${t.symbol}|${t.entry_date}`;
+    if (!by.has(k)) by.set(k, []);
+    by.get(k).push(t);
+  }
+
+  const groups = [...by.values()].filter((g) => g.length > 1);
+  if (!groups.length) return null;
+
+  groups.sort((a, b) => b.length - a.length || (a[0].symbol < b[0].symbol ? -1 : 1));
+  const trades = groups.reduce((a, g) => a + g.length, 0);
+
+  // Identical size as well as identical day. A position genuinely built in two
+  // orders rarely splits into equal halves, so this is the shape that usually
+  // means one trade was recorded twice.
+  const sameQty = groups.filter(
+    (g) => new Set(g.map((t) => Number(t.quantity))).size === 1
+  ).length;
+
+  // Imported alongside hand-entered is the other tell: the file re-created
+  // something already there rather than recognising it.
+  const mixed = groups.filter(
+    (g) => g.some((t) => t.imported) && g.some((t) => !t.imported)
+  ).length;
+
+  const ev = {
+    groups: groups.length,
+    trades,
+    sameQuantity: sameQty,
+    importedAndManual: mixed,
+    positions: groups.slice(0, 20).map((g) => ({
+      symbol: g[0].symbol,
+      entry_date: g[0].entry_date,
+      count: g.length,
+      trades: g.map((t) => ({
+        id: t.id,
+        quantity: Number(t.quantity),
+        entry_price: Number(t.entry_price),
+        status: t.status,
+        source: t.imported ? "imported" : "entered by hand",
+      })),
+    })),
+  };
+
+  const tells = [];
+  if (sameQty) tells.push(`${sameQty} of them hold the same quantity on both sides`);
+  if (mixed) tells.push(`${mixed} mix an imported trade with one you entered yourself`);
+
+  return F("watch", "duplicate-positions",
+    "The same position is recorded twice",
+    `${groups.length} symbol-and-date pair${groups.length === 1 ? "" : "s"} open more than once — ` +
+    `${trades} trades between them` +
+    (tells.length ? `, and ${tells.join(", ")}` : "") + `. ` +
+    `Some of these are real, a position built through two orders. The rest are one trade recorded twice, ` +
+    `which double-counts the position and splits its R across two rows. ` +
+    `Either way an import can't tell which of the pair a sell belongs to, so it holds those rows back ` +
+    `instead of guessing — and will keep doing that on every future file until the pair is resolved.`,
+    ev);
+}
+
+/* ==================================================================== */
 /*  Assemble                                                            */
 /* ==================================================================== */
 
-export function reviewFindings(closed, { regimes = null, stats = null } = {}) {
+export function reviewFindings(closed, { regimes = null, stats = null, all = null } = {}) {
   const flat = [];
   const push = (x) => { if (!x) return; Array.isArray(x) ? flat.push(...x) : flat.push(x); };
 
@@ -570,6 +656,8 @@ export function reviewFindings(closed, { regimes = null, stats = null } = {}) {
   push(marketAlignment(closed, regimes));
   push(tradingCadence(closed));
   push(dataQuality(closed));
+  // Every trade, not just the closed ones — see the note on the check.
+  push(duplicatePositions(all || closed));
 
   // Substitute the real max drawdown into any template placeholder
   if (stats?.maxDD != null) {
