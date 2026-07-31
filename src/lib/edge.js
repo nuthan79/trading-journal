@@ -149,12 +149,76 @@ export function adaptiveBander(values, { k, unit = "", dp = 1 } = {}) {
 }
 
 /* ==================================================================== */
+/*  Fixed bands                                                         */
+/* ==================================================================== */
+
+/**
+ * How long a trade was held, in the units people actually think in.
+ *
+ * This is the one continuous column where adaptive bands are the wrong tool.
+ * Everywhere else -- stop width, risk taken, RS -- there is no universal
+ * scale, so bands cut from your own distribution are the only ones that mean
+ * anything. Days are different: everyone already knows what six months is,
+ * and nobody knows what "503-1781 d" is. Worse, quantile bands re-cut
+ * themselves as you trade, so this quarter's third band is not last quarter's
+ * third band and the table can't be compared against its own past.
+ *
+ * The steps widen as they go, because the difference between three days and
+ * ten matters and the difference between three years and four does not.
+ *
+ * Bands nobody landed in never become rows -- the rows are built from the
+ * trades, not from this list -- so a journal with forty trades in it shows
+ * three or four rows rather than ten, most of them empty.
+ */
+export const HOLD_BANDS = [
+  { max: 5, label: "0–5 d" },
+  { max: 15, label: "6–15 d" },
+  { max: 30, label: "16–30 d" },
+  { max: 45, label: "31–45 d" },
+  { max: 60, label: "46–60 d" },
+  { max: 90, label: "61–90 d" },
+  { max: 180, label: "3–6 months" },
+  { max: 365, label: "6–12 months" },
+  { max: 730, label: "1–2 years" },
+  { max: Infinity, label: "2 years+" },
+];
+
+/**
+ * Same interface as `adaptiveBander`, over a list you supply. `max` is the
+ * last value that belongs to the band, so the labels can be read literally:
+ * a 15-day trade is in "6-15 d" and a 16-day one is not.
+ */
+export function fixedBander(spec) {
+  const bands = spec.map((b, i) => ({
+    i,
+    lo: i === 0 ? -Infinity : spec[i - 1].max + 1,
+    hi: b.max,
+    label: b.label,
+  }));
+  const orderOf = new Map(bands.map((b) => [b.label, b.i]));
+
+  return {
+    bands,
+    label(v) {
+      if (!isFinite(v)) return NOT_RECORDED;
+      const b = bands.find((x) => v <= x.hi);
+      return (b || bands[bands.length - 1]).label;
+    },
+    order(label) {
+      return orderOf.has(label) ? orderOf.get(label) : 999;
+    },
+  };
+}
+
+/* ==================================================================== */
 /*  Dimensions                                                          */
 /* ==================================================================== */
 
 /**
- * `continuous` dimensions supply a numeric `value()` and get adaptive bands.
- * Categorical ones supply `get()` and are grouped as-is.
+ * `continuous` dimensions supply a numeric `value()`. They get adaptive bands
+ * cut from the data unless they name a `fixed` list, which is for units that
+ * already mean something to a reader. Categorical ones supply `get()` and are
+ * grouped as-is.
  */
 export const DIMENSIONS = [
   { id: "pattern", label: "Base pattern",
@@ -175,7 +239,7 @@ export const DIMENSIONS = [
   { id: "rs", label: "RS rank", continuous: true, unit: "", dp: 0,
     value: (t) => n(t.rs_rank) },
 
-  { id: "hold", label: "Holding period", continuous: true, unit: " d", dp: 0,
+  { id: "hold", label: "Holding period", continuous: true, fixed: HOLD_BANDS,
     value: (t) => t.heldDays },
 
   { id: "stage", label: "Weinstein stage",
@@ -206,9 +270,9 @@ export function dimensionRows(closed, dimensionId, { accountSize = 0, bands } = 
   let labelOf, orderOf = null, bandInfo = [];
 
   if (dim.continuous) {
-    const bander = adaptiveBander(closed.map(dim.value), {
-      k: bands, unit: dim.unit, dp: dim.dp,
-    });
+    const bander = dim.fixed
+      ? fixedBander(dim.fixed)
+      : adaptiveBander(closed.map(dim.value), { k: bands, unit: dim.unit, dp: dim.dp });
     labelOf = (t) => bander.label(dim.value(t));
     orderOf = bander.order;
     bandInfo = bander.bands;
