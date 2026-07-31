@@ -54,21 +54,35 @@ order by symbol, entry_date;
 
 
 -- -------------------------------------------------------------------
---  PART 2 — repin. EDIT THE ID LIST FIRST, then run.
+--  PART 2 — repin ONE trade. Run this for each correction.
 --
---  Moves 1R onto the current stop for the trades you name, and only
---  those. Paste the ids from PART 1 that were corrections, not trails.
---  Running it with the list as it stands changes nothing.
+--  Copy the id from the first column of PART 1, paste it between the
+--  quotes below, run. Keep the quotes.
+--
+--  EXPECT: one row back, showing 1R_now equal to the stop you set and
+--  sl_pct_now the real distance to it. NO ROWS means the id did not
+--  match — check the quotes are still there and the whole UUID was
+--  copied.
 -- -------------------------------------------------------------------
 update public.trades
    set initial_stop_loss = stop_loss,
        updated_at        = now()
- where id in (
-   -- '00000000-0000-0000-0000-000000000000',
-   -- '11111111-1111-1111-1111-111111111111'
-   null
- )
+ where id = 'PASTE-THE-ID-HERE'
  returning symbol, entry_date, entry_price,
            initial_stop_loss as "1R_now",
            round(((entry_price - stop_loss) / entry_price * 100)::numeric, 2)
              as sl_pct_now;
+
+
+-- -------------------------------------------------------------------
+--  Several at once, if PART 1 turned up more than one correction.
+--  One quoted id per line, commas between, no comma after the last.
+-- -------------------------------------------------------------------
+-- update public.trades
+--    set initial_stop_loss = stop_loss,
+--        updated_at        = now()
+--  where id in (
+--    'FIRST-ID-HERE',
+--    'SECOND-ID-HERE'
+--  )
+--  returning symbol, entry_date, initial_stop_loss as "1R_now";
