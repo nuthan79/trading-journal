@@ -7,6 +7,7 @@
 --  Supabase → SQL Editor → New query → paste all of this → Run.
 -- ===================================================================
 
+drop table if exists backup.merge_plan_012;
 drop table if exists backup.exits_012;
 drop table if exists backup.trades_012;
 drop schema if exists backup;
