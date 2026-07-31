@@ -1,7 +1,7 @@
 -- ===================================================================
 --  012d — CHECK.  Run this FOURTH, after 012c.  Reads only.
 --
---  Three questions, answered in one result each.
+--  Four questions, one result, a row each.
 --
 --  Supabase → SQL Editor → New query → paste all of this → Run.
 -- ===================================================================
