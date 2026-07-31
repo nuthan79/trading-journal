@@ -491,6 +491,14 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
           {assume
             ? `Stops set ${stopPct}% below entry, flagged as assumed.`
             : "Stops are left empty — you'll be asked next."}
+          {/* Said before the import, not discovered afterwards. A stopless,
+              R-less trade with an entry price of zero looks like a bug unless
+              you were told it is a bonus issue. */}
+          {parsed.freeShares > 0 && (
+            <> {parsed.freeShares} {parsed.freeShares === 1 ? "row is" : "rows are"}{" "}
+            zero-cost — bonus, split or allotment. They keep their rupee P&L and
+            get no stop, because free shares carry no risk to measure an R against.</>
+          )}
         </span>
         <button className="btn" onClick={confirm}
                 disabled={busy || !stopPctOk || (!parsed.trades.length && !parsed.completions?.length)}>

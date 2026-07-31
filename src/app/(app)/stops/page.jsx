@@ -13,8 +13,11 @@ export default function StopsPage() {
   // Raw rows, not the derived ones — StopFill computes its own preview R from
   // entry/exit/charges, and a derived row would already have folded in the
   // missing stop as NaN.
+  // Bonus shares are excluded, not merely skipped by the bulk fill. They
+  // cost nothing, so there is no entry to take a percentage below and no
+  // risk to divide an R by — they are not waiting for anything.
   const needStops = useMemo(
-    () => trades.filter((t) => t.stop_loss == null),
+    () => trades.filter((t) => t.stop_loss == null && t.acquisition !== "bonus"),
     [trades]
   );
 

@@ -249,7 +249,9 @@ export default function AppLayout({ children }) {
   // Counted off the raw rows: a derived trade has stop_loss folded into NaN
   // risk figures, so null is only distinguishable before derivation.
   const needStopsCount = useMemo(
-    () => trades.filter((t) => t.stop_loss == null).length,
+    () => trades.filter(
+      (t) => t.stop_loss == null && t.acquisition !== "bonus"
+    ).length,
     [trades]
   );
   const closedCount = useMemo(

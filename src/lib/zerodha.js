@@ -330,7 +330,11 @@ const assumedStop = (entryPrice, pct) =>
 
 export function toTradeRows(groups, { batchId, exchange = "NSE", assumeStopPct = 0 } = {}) {
   return groups.map((g) => {
-    const stop = assumedStop(round2(g.entryPrice), assumeStopPct);
+    const free = isFreeShares(g);
+    // No stop on shares that cost nothing. An assumed stop is a percentage
+    // below the entry price, and a percentage below zero is zero — risk of
+    // zero, which every R figure then divides by.
+    const stop = free ? null : assumedStop(round2(g.entryPrice), assumeStopPct);
     return {
     symbol: g.symbol,
     exchange,
@@ -338,8 +342,11 @@ export function toTradeRows(groups, { batchId, exchange = "NSE", assumeStopPct =
     status: "closed",
 
     entry_date: g.entryDate,
-    entry_price: round2(g.entryPrice),
+    // Zero is the truth for a bonus issue, not a missing value: those shares
+    // really did cost nothing, so the whole sale price is profit.
+    entry_price: free ? 0 : round2(g.entryPrice),
     quantity: g.quantity,
+    acquisition: free ? "bonus" : "purchase",
     // Null unless the importer was told to assume one. Inventing a stop by
     // default would make every R figure a guess wearing a measurement's face.
     stop_loss: stop,
@@ -486,10 +493,23 @@ export function reconcile(groups, targets) {
         });
         continue;
       }
-      grow = {
-        quantity: Math.max(held, already + adding, Number(g.quantity) || 0),
-        entry_price: g.entryPrice,
-      };
+      /**
+       * Quantity and entry price move together or not at all.
+       *
+       * This used to take the largest quantity it had ever seen and pair it
+       * with the newest file's average price. Those need not describe the
+       * same shares, and when they didn't the position ended up holding more
+       * stock than its cost basis accounts for — the exact shape that turns
+       * a real entry into a fraction of itself.
+       *
+       * So: if the file knows about more of this position than the journal
+       * does, take its pair. Otherwise keep the pair already recorded.
+       */
+      const fileQty = Number(g.quantity) || 0;
+      const needed = already + adding;
+      grow = fileQty >= held && fileQty >= needed
+        ? { quantity: fileQty, entry_price: g.entryPrice }
+        : { quantity: Math.max(held, needed) };
     }
 
     claimed.add(target.id);
@@ -516,16 +536,38 @@ export function reconcile(groups, targets) {
 /* ------------------------------------------------------------------ */
 
 /**
- * A position the journal can't record. `trades` requires a positive entry
- * price and quantity, so a group that can't produce one has to be held back —
- * the insert is a single statement and one bad row rolls back the entire
- * file, which is a miserable way to find out about a blank cell.
+ * Shares that arrived at no cost: a bonus issue, a split, an allotment.
+ *
+ * The report states this plainly as a buy value of 0, and it is a fact about
+ * the shares rather than a gap in the file. Treating it as a gap is what made
+ * a trader edit the number to get the row through, and a fabricated buy value
+ * of 10 across three shares became an entry price of 3.33, a risk of almost
+ * nothing, and an R of five thousand.
+ *
+ * Quantity and a sell still have to be there. Free shares that were never
+ * sold have no P&L to record and no reason to be in a journal of trades.
+ */
+function isFreeShares(g) {
+  return g.quantity > 0 && g.exitPrice > 0 && !(g.buyValue > 0);
+}
+
+/**
+ * A position the journal can't record, held back rather than written.
+ *
+ * The insert is a single statement and one bad row rolls back the whole file,
+ * which is a miserable way to find out about a blank cell.
+ *
+ * A zero buy value is deliberately NOT one of these. It used to be, and that
+ * was the bug: the one thing the file was telling us clearly got read as the
+ * one thing it couldn't tell us.
  */
 function rejectReason(g) {
   if (!(g.quantity > 0)) return "no quantity";
-  if (!(g.entryPrice > 0)) return "no buy value in the file, so no entry price";
   if (!(g.exitPrice > 0)) return "no sell value in the file, so no exit price";
   if (!g.entryDate || !g.exitDate) return "missing a date";
+  if (!(g.entryPrice > 0) && !isFreeShares(g)) {
+    return "no buy value in the file, so no entry price";
+  }
   return null;
 }
 
@@ -559,6 +601,9 @@ export function parseZerodhaTaxPnl(rows, { targets, batchId, exchange, assumeSto
     duplicates,
     rejected,
     conflicts,
+    // Counted so the preview can say what it did rather than leaving a
+    // stopless, R-less trade to be discovered later.
+    freeShares: fresh.filter(isFreeShares).length,
     // Named separately from `rejected` because the remedy is different: this
     // is the parser failing to find a column, not the file lacking a value.
     missingColumns,

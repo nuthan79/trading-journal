@@ -130,7 +130,13 @@ export default function Trades({ all, onEdit, onExit, onDelete, onNew }) {
                   <td className="num" style={{ fontSize: 12, color: "var(--ink2)" }}
                       title={t.exit_date ? undefined : "Still open — counted to today"}>
                     {isFinite(t.heldDays) ? `${t.heldDays}d` : "—"}</td>
-                  <td className="num">{Number(t.entry_price).toFixed(2)}</td>
+                  <td className="num" title={t.acquisition === "bonus"
+                        ? "Bonus, split or allotment — these shares cost nothing, "
+                          + "so the sale is all profit and there is no R to compute"
+                        : undefined}>
+                    {t.acquisition === "bonus"
+                      ? <span className="tr-free">free</span>
+                      : Number(t.entry_price).toFixed(2)}</td>
                   <td className="num" title={t.stop_source === "assumed"
                         ? "Assumed at import, not a stop you set — every R on this row follows from it"
                         : undefined}>
@@ -197,6 +203,13 @@ export default function Trades({ all, onEdit, onExit, onDelete, onNew }) {
         .tr-assumed {
           display: block; font-style: normal; font-size: 9px;
           letter-spacing: 0.06em; text-transform: uppercase; color: var(--brass);
+        }
+        /* Reads as a word rather than a price, because 0.00 in this column
+           looks like a broken row and that is exactly the confusion that
+           started all this. */
+        .tr-free {
+          font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
+          color: var(--ink3);
         }
       `}</style>
     </div>

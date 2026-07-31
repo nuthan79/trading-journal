@@ -475,7 +475,19 @@ export function headline(closed, { openingCapital = 0, flows = [] } = {}) {
     // Overrides the count stats() reports, which only counts what had a stop.
     n: rows.length,
     nWithR: s.n || 0,
-    nNeedStop: rows.length - (s.n || 0),
+    /**
+     * Trades whose R is missing and could be supplied.
+     *
+     * Inferred from "has no R", which used to be the same question. It isn't
+     * any more: shares that arrived free have no R and never will, because
+     * there was no risk to divide by. Counting them here would nag about a
+     * stop forever, and send the reader to a page that has correctly decided
+     * they don't belong on it.
+     */
+    nNeedStop: rows.filter(
+      (t) => !isFinite(t.r) && t.acquisition !== "bonus"
+    ).length,
+    nFree: rows.filter((t) => t.acquisition === "bonus").length,
 
     winRateByCount: decided.length ? (wonByCount / decided.length) * 100 : NaN,
     avgGainPct: gains.length ? gains.reduce((a, b) => a + b, 0) / gains.length : NaN,
