@@ -76,13 +76,44 @@ export function adaptiveBander(values, { k, unit = "", dp = 1 } = {}) {
   const cuts = quantileCuts(clean, count);
   const edges = [clean[0], ...cuts, clean[clean.length - 1]];
 
+  /**
+   * Labels that match how the bands actually work.
+   *
+   * A band holds [lo, hi) — a 42-day trade goes in the band starting at 42,
+   * not the one ending there. Printing both ends verbatim gave "0-42 d" and
+   * "42-106 d", which claim the same day twice and leave no way to tell which
+   * one owns it. Showing the top as one step below the next band's floor is
+   * the same bucketing, described honestly: 0-41, 42-105, 106-274.
+   *
+   * The last band is closed, so it keeps the real maximum.
+   *
+   * A band whose ends meet is a single value, not a range — that happens when
+   * one number dominates the column, as an assumed stop does. "18-18%" reads
+   * like a bug; "18%" is what it is.
+   */
+  const scale = Math.pow(10, dp);
+  const step = 1 / scale;
+  // Stepping back in display space, not real space: hi and hi-step can round
+  // to the same printed value when hi doesn't sit on a step boundary, which
+  // put "3.25" at the top of one band and the bottom of the next again.
+  const shown = (v) => Math.round(v * scale) / scale;
+
   const bands = [];
   for (let i = 0; i < edges.length - 1; i++) {
+    const lo = shown(edges[i]);
+    const hi = edges[i + 1];
+    const last = i === edges.length - 2;
+    const top = last ? shown(hi) : shown(hi) - step;
+    const point = top <= lo;   // the ends meet: one value, not a range
+    // An en dash reads as a range where a hyphen fights the minus sign, and
+    // where either end is negative even that isn't enough: "-4--1%" is not a
+    // thing anyone should have to parse.
+    const sep = lo < 0 || top < 0 ? " to " : "–";
     bands.push({
-      i,
-      lo: edges[i],
-      hi: edges[i + 1],
-      label: `${fmtNum(edges[i], dp)}-${fmtNum(edges[i + 1], dp)}${unit}`,
+      i, lo: edges[i], hi,
+      label: point
+        ? `${fmtNum(lo, dp)}${unit}`
+        : `${fmtNum(lo, dp)}${sep}${fmtNum(top, dp)}${unit}`,
     });
   }
 
