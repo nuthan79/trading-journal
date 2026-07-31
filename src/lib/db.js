@@ -148,6 +148,7 @@ const isMissingTable = (error) =>
  * file names the file to run; this makes the column ones do the same.
  */
 const MIGRATION_FOR_COLUMN = {
+  acquisition: "013_zero_cost_shares.sql",
   stop_source: "011_stop_source.sql",
   initial_stop_loss: "007_partial_exits.sql",
   avatar_path: "010_avatars.sql",
@@ -325,10 +326,19 @@ export async function importTrades({ trades, completions = [], meta }) {
   // single row Postgres won't take rejects the whole file — and it reports the
   // constraint without saying which row tripped it. Checking here turns that
   // into something you can act on.
+  //
+  // Mirrors the CHECK constraints exactly, including the one 013 relaxed:
+  // shares that arrived free are allowed an entry price of zero, and only
+  // those. Left as a blanket "must be positive" it went on rejecting the very
+  // rows 013 was written to admit — and said the journal needed a positive
+  // entry price for a row whose price was correctly, truthfully, nothing.
+  const freeShares = (r) =>
+    r.acquisition === "bonus" && Number(r.entry_price) === 0;
+
   const offenders = rows
     .map((r, i) => ({ r, i }))
     .filter(({ r }) =>
-      !(Number(r.entry_price) > 0) ||
+      (!(Number(r.entry_price) > 0) && !freeShares(r)) ||
       !(Number(r.quantity) > 0) ||
       (r.exit_price != null && !(Number(r.exit_price) > 0))
     );
@@ -343,7 +353,8 @@ export async function importTrades({ trades, completions = [], meta }) {
       .join("; ");
     throw new Error(
       `${offenders.length} row${offenders.length === 1 ? "" : "s"} can't be saved — ` +
-      `the journal needs a positive entry price, quantity and exit price. ${list}` +
+      `a quantity and an exit price are needed, and an entry price unless the ` +
+      `shares were free. ${list}` +
       `${offenders.length > 5 ? ` (+${offenders.length - 5} more)` : ""}. Nothing was saved.`
     );
   }
