@@ -24,7 +24,10 @@ const GRAINS = [
 ];
 
 export default function PeriodPerformance({ closed, openingCapital, flows = [], all = [] }) {
-  const [grain, setGrain] = useState("month");
+  // Opens on financial years: a monthly table of a long record is dozens of
+  // rows deep, and the first thing anyone wants from it is the shape of a
+  // year. Months are one click away when the question gets narrower.
+  const [grain, setGrain] = useState("year");
   const [basis, setBasis] = useState("exit");
   const byEntry = basis === "entry";
 

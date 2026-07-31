@@ -92,11 +92,7 @@ export default function Trades({ all, onEdit, onExit, onDelete, onNew }) {
               {th("symbol", "Symbol", "fz fz-last")}
               {th("entry_date", "In")}
               {th("exit_date", "Out")}
-              {th("pattern", "Pattern")}
-              {th("distPivot", "Δ pivot", "num")}
-              {th("vol_pct_avg", "Vol %", "num")}
-              {th("weinstein_stage", "Stg", "num")}
-              {th("rs_rank", "RS", "num")}
+              {th("heldDays", "Held", "num")}
               {th("entry_price", "Entry", "num")}
               {th("stop_loss", "Stop", "num")}
               {th("slPct", "SL %", "num")}
@@ -104,6 +100,14 @@ export default function Trades({ all, onEdit, onExit, onDelete, onNew }) {
               {th("riskPct", "Risk", "num")}
               {th("pnl", "P&L", "num")}
               {th("r", "R", "num")}
+              {/* The setup — what the chart looked like going in. Behind the
+                  outcome because most rows have none of it recorded, and a
+                  block of dashes shouldn't sit between a symbol and its P&L. */}
+              {th("pattern", "Pattern")}
+              {th("distPivot", "Δ pivot", "num")}
+              {th("vol_pct_avg", "Vol %", "num")}
+              {th("weinstein_stage", "Stg", "num")}
+              {th("rs_rank", "RS", "num")}
               <th></th>
             </tr></thead>
             <tbody>
@@ -123,15 +127,9 @@ export default function Trades({ all, onEdit, onExit, onDelete, onNew }) {
                   <td className="mono" style={{ fontSize: 12 }}>{t.entry_date}</td>
                   <td className="mono" style={{ fontSize: 12, color: t.exit_date ? "inherit" : "var(--ink3)" }}>
                     {t.exit_date || "open"}</td>
-                  <td style={{ fontSize: 12, color: "var(--ink2)" }}>{t.pattern || "—"}</td>
-                  <td className="num" style={{ fontSize: 12,
-                        color: t.distPivot > 5 ? "var(--short)" : "inherit" }}>
-                    {isFinite(t.distPivot) ? `${t.distPivot >= 0 ? "+" : ""}${t.distPivot.toFixed(1)}%` : "—"}</td>
-                  <td className="num" style={{ fontSize: 12,
-                        color: isFinite(num(t.vol_pct_avg)) && num(t.vol_pct_avg) < 100 ? "var(--short)" : "inherit" }}>
-                    {t.vol_pct_avg ? `${t.vol_pct_avg}%` : "—"}</td>
-                  <td className="num" style={{ fontSize: 12 }}>{t.weinstein_stage || "—"}</td>
-                  <td className="num" style={{ fontSize: 12 }}>{t.rs_rank || "—"}</td>
+                  <td className="num" style={{ fontSize: 12, color: "var(--ink2)" }}
+                      title={t.exit_date ? undefined : "Still open — counted to today"}>
+                    {isFinite(t.heldDays) ? `${t.heldDays}d` : "—"}</td>
                   <td className="num">{Number(t.entry_price).toFixed(2)}</td>
                   <td className="num" title={t.stop_source === "assumed"
                         ? "Assumed at import, not a stop you set — every R on this row follows from it"
@@ -145,6 +143,15 @@ export default function Trades({ all, onEdit, onExit, onDelete, onNew }) {
                     {isFinite(t.pnl) ? rupee(t.pnl) : "—"}</td>
                   <td className={`num ${isFinite(t.r) ? (t.r >= 0 ? "pos" : "neg") : ""}`}
                       style={{ fontWeight: 500 }}>{isFinite(t.r) ? rfmt(t.r) : "—"}</td>
+                  <td style={{ fontSize: 12, color: "var(--ink2)" }}>{t.pattern || "—"}</td>
+                  <td className="num" style={{ fontSize: 12,
+                        color: t.distPivot > 5 ? "var(--short)" : "inherit" }}>
+                    {isFinite(t.distPivot) ? `${t.distPivot >= 0 ? "+" : ""}${t.distPivot.toFixed(1)}%` : "—"}</td>
+                  <td className="num" style={{ fontSize: 12,
+                        color: isFinite(num(t.vol_pct_avg)) && num(t.vol_pct_avg) < 100 ? "var(--short)" : "inherit" }}>
+                    {t.vol_pct_avg ? `${t.vol_pct_avg}%` : "—"}</td>
+                  <td className="num" style={{ fontSize: 12 }}>{t.weinstein_stage || "—"}</td>
+                  <td className="num" style={{ fontSize: 12 }}>{t.rs_rank || "—"}</td>
                   <td style={{ whiteSpace: "nowrap" }}>
                     <button className="x" onClick={() => onEdit(t)} aria-label="Edit"><Pencil size={13} /></button>
                     <button className="x" onClick={() => onDelete(t.id)} aria-label="Delete"><Trash2 size={13} /></button>
