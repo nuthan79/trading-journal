@@ -87,6 +87,54 @@ async function fetchAllPages(build) {
   }
 }
 
+/* ------------------------------- events ---------------------------- */
+
+/**
+ * Record that something happened. Never throws, never blocks, never waits.
+ *
+ * Analytics that can break the app is worse than no analytics. Every failure
+ * path here is swallowed on purpose: signed out, offline, table missing
+ * because 016 has not been run, RLS refusing the row — all of it ends the
+ * same way, with the app carrying on as though nothing was asked of it.
+ *
+ * Not awaited by callers either. A journal entry saving is the user's
+ * business; the note that they saved one is ours, and ours can be late or
+ * lost without anyone minding.
+ *
+ * `props` is for counts and enums. Never a symbol, a price, or anything about
+ * the positions — see the note on the table in 016.
+ */
+export function track(event, props = {}) {
+  (async () => {
+    try {
+      const { data } = await supabase.auth.getSession();
+      const uid = data?.session?.user?.id;
+      if (!uid) return;
+      await supabase.from("user_events").insert({ user_id: uid, event, props });
+    } catch {
+      /* deliberately silent — see above */
+    }
+  })();
+}
+
+/**
+ * The one event that answers "is anyone still using this".
+ *
+ * Fired once per browser session rather than per page load, so it counts
+ * visits and not clicks. Active days come straight off this; everything else
+ * in the events table describes what they did once they were here.
+ */
+export function trackVisit() {
+  try {
+    if (typeof sessionStorage === "undefined") return;
+    if (sessionStorage.getItem("tj_visit")) return;
+    sessionStorage.setItem("tj_visit", "1");
+    track("opened");
+  } catch {
+    /* private mode denies sessionStorage; not worth a broken page */
+  }
+}
+
 /* ------------------------------- trades ---------------------------- */
 
 export async function listTrades() {
@@ -200,6 +248,9 @@ export async function saveTrade(t) {
   const { data, error } = await supabase
     .from("trades").upsert(row).select().single();
   if (error) throw new Error(migrationHint(error) || error.message);
+  // Logging a trade and closing one are different habits, and the second is
+  // the one that says someone is seeing this journal through.
+  track(t.id ? "trade_saved" : "trade_logged", { closed: row.status === "closed" });
   return data;
 }
 
@@ -427,12 +478,20 @@ export async function importTrades({ trades, completions = [], meta }) {
     }
   }
 
-  return {
+  const result = {
     inserted: data?.length ?? rows.length,
     completed: completions.length,
     tranches: exitRows.length,
     batchId: batch.id,
   };
+  // The size matters as much as the fact: an import of four hundred trades and
+  // one of three are different events in someone's first ten minutes.
+  track("imported", {
+    inserted: result.inserted,
+    completed: result.completed,
+    tranches: result.tranches,
+  });
+  return result;
 }
 
 /** Removes a batch and everything it wrote. trade_exits cascades off trades. */
@@ -479,6 +538,8 @@ export async function saveStops(rows, onProgress) {
   // row ended up holding two different stops.
   const patchFor = ({ stop_loss, stop_source }) =>
     ({ stop_loss, initial_stop_loss: stop_loss, stop_source: stop_source || "recorded" });
+
+  track("stops_filled", { n: rows.length });
 
   let done = 0;
   const failures = [];
@@ -535,6 +596,7 @@ export async function saveDiary(entry, imageFile) {
   const { data, error } = await supabase
     .from("diary_entries").upsert({ ...entry, image_path, user_id }).select().single();
   if (error) throw error;
+  track("diary_written", { withImage: !!image_path });
   return data;
 }
 

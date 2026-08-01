@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { track } from "@/lib/db";
 import { Check } from "lucide-react";
 import { rupee, pct } from "@/lib/format";
 import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
@@ -47,6 +48,9 @@ export default function FirstRun({ onComplete, initialName = "" }) {
         default_risk_pct: riskNum,
         onboarded_at: new Date().toISOString(),
       });
+      // The end of setup, which is the first point anyone could be said to
+      // have started rather than merely signed up.
+      track("onboarded");
       clearDraft();
     } catch (e) {
       setErr(e.message || "Could not save. Try again.");

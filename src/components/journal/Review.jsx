@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { apiFetch } from "@/lib/db";
+import { apiFetch, track } from "@/lib/db";
 import { reviewFindings } from "@/lib/analysis";
 import { classifyRegime, regimeIndex, REGIME_LABEL } from "@/lib/market";
 import { signedPct } from "@/lib/format";
@@ -56,6 +56,10 @@ function FindingCard({ f }) {
 
 export default function Review({ closed, stats, all }) {
   const [market, setMarket] = useState({ loading: true, error: null, classified: [] });
+
+  // Opening the review is the habit this journal is actually for — recording
+  // trades is bookkeeping, reading them back is the point.
+  useEffect(() => { track("review_opened"); }, []);
 
   useEffect(() => {
     let alive = true;

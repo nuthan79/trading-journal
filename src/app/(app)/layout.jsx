@@ -9,7 +9,7 @@ import {
   listTrades, listExitsByTrade, saveExits, saveTrade as dbSaveTrade, deleteTrade as dbDeleteTrade,
   listDiary, saveDiary as dbSaveDiary, deleteDiary as dbDeleteDiary,
   listFlows, markOpenPositions, sendMagicLink, signInWithPassword, signOut,
-  sendPasswordReset, avatarUrl,
+  sendPasswordReset, avatarUrl, trackVisit,
 } from "@/lib/db";
 import { stats } from "@/lib/calc";
 import { derivePosition } from "@/lib/positions";
@@ -85,6 +85,11 @@ export default function AppLayout({ children }) {
 
   const [profile, setProfile] = useState(null);
   const [profileLoading, setProfileLoading] = useState(false);
+
+  // One per browser session, not per page load: this counts visits, and
+  // active days are counted off it. Fires only once a session exists, so a
+  // signed-out visitor is a matter for the page analytics script instead.
+  useEffect(() => { trackVisit(); }, [session]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
