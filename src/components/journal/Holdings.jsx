@@ -478,6 +478,10 @@ export default function Holdings({
           <tbody>
             {rows.map((r, i) => {
               const riskFree = r.isRiskFree || !(r.openRiskAmt > 0);
+              // The reminder has been put down. Held here as well as in the
+              // row so the flag turns hollow on the click rather than on the
+              // reload that follows it.
+              const ackd = !!r.breakeven_ack_at || acked.includes(r.id);
               return (
                 <tr key={r.id} data-alert={r.breached ? 1 : 0}>
                   <td className="num ps-dim fz">{i + 1}</td>
@@ -491,8 +495,20 @@ export default function Holdings({
                       <BreakevenFlag c={flagged.get(r.id)} busy={busyId === r.id}
                                      onAck={ackBreakeven} />
                     )}
-                    {riskFree && (
-                      <span className="ps-flag done" title="Risk-free — the stop is at or past entry, so this position has nothing left to lose">
+                    {/* The hollow flag: solid means act, outline means dealt
+                        with. It used to appear by accident — clicking the
+                        solid one wrote entry into the stop, which made the
+                        position read as risk-free, which drew this. Take the
+                        stop-writing away and the outline vanished with it, and
+                        a two-state design quietly became one. Now it is drawn
+                        for the two things that actually mean "nothing more to
+                        do here", and says which. */}
+                    {!flagged.has(r.id) && (ackd || riskFree) && (
+                      <span className="ps-flag done"
+                            title={ackd
+                              ? "Breakeven reminder dismissed — you moved this stop at your broker. "
+                                + "Nothing changed here: the dial still counts the stop recorded in this journal."
+                              : "Risk-free — enough is banked that this position can no longer lose overall"}>
                         <Flag size={11} />
                       </span>
                     )}
@@ -581,10 +597,10 @@ export default function Holdings({
         Open risk is what the current stop still exposes, so a stop moved past entry reads zero.
         The {RISK_WARN_R}R dial is there to be read, not obeyed: there&apos;s no cap on how many
         holdings you can carry at once, and nothing is blocked past the line.
-        A flag means the trade is up past {FREE_AT_R}R and its stop could go to breakeven at your
-        broker. Move it there, then click the flag to put the reminder down. Nothing else changes:
-        no stop moves here, and the dial keeps counting the stop you recorded, because that is the
-        only stop this journal knows about.
+        A solid flag means the trade is up past {FREE_AT_R}R and its stop could go to breakeven at
+        your broker. Move it there, then click it to put the reminder down and the flag turns
+        hollow. Nothing else changes: no stop moves here, and the dial keeps counting the stop you
+        recorded, because that is the only stop this journal knows about.
       </div>
 
       <style jsx>{`
