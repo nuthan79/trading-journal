@@ -612,9 +612,9 @@ function returnConcentration(closed) {
     grossR: +gross.toFixed(1),
     totalR: +sorted.reduce((a, t) => a + t.r, 0).toFixed(1),
     tradesForHalfTheGains: halfCount,
-    tradesForHalfPct: +halfPct.toFixed(1),
+    shareOfAllTradesPct: +halfPct.toFixed(1),
     topDecileTrades: decileCount,
-    topDecileShareOfGains: +decilePct.toFixed(1),
+    topDecileSharePct: +decilePct.toFixed(1),
     everythingElseR: +restR.toFixed(1),
     biggest: sorted.slice(0, 5).map((t) => ({
       symbol: t.symbol, r: +Number(t.r).toFixed(2), exit: t.exit_date,
@@ -640,9 +640,9 @@ function returnConcentration(closed) {
     heavy
       ? "A few trades carry the whole record"
       : "Your returns are spread across many trades",
-    `${halfCount} trade${halfCount === 1 ? "" : "s"} — ${ev.tradesForHalfPct}% of the ones with an R — ` +
+    `${halfCount} trade${halfCount === 1 ? "" : "s"} — ${ev.shareOfAllTradesPct}% of the ones with an R — ` +
     `made half of everything you earned, and your best ${decileCount} produced ` +
-    `${ev.topDecileShareOfGains}% of it. Set those aside and the remaining ` +
+    `${ev.topDecileSharePct}% of it. Set those aside and the remaining ` +
     `${rows.length - decileCount} come to ${ev.everythingElseR >= 0 ? "+" : ""}${ev.everythingElseR}R. ` +
     (heavy
       ? `That is not a fault — cutting losers and letting winners run concentrates returns by ` +

@@ -35,6 +35,166 @@ const REGIME_COLOR = {
   unknown: "var(--ink3)",
 };
 
+/**
+ * Turn a key into a label. `topDecileSharePct` reads as "Top decile share %".
+ *
+ * Words are lowercased after the first, because a row of Title Case Everywhere
+ * reads like a form and these are sentences about someone's trading. Single
+ * capitals and all-caps stay as they are, which keeps R and FY intact.
+ */
+function label(key) {
+  return String(key)
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .split(/[\s_]+/)
+    .map((w, i) => {
+      if (/^pct$/i.test(w)) return "%";
+      if (/^[A-Z0-9]+$/.test(w)) return w;
+      return i === 0 ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w.toLowerCase();
+    })
+    .join(" ")
+    .replace(/ %/, " %");
+}
+
+/**
+ * Units come from the key, and only where the key says so plainly.
+ *
+ * A suffix invented by inference is worse than none: a number labelled % that
+ * is not one misleads in a way raw JSON never did. So only `…Pct`, `…Rate`,
+ * `…R` and `expectancy` get a unit, and everything else is printed as it is.
+ * The fix for a bare number is to name the key better, not to guess harder.
+ */
+function value(key, v) {
+  if (v === null || v === undefined) return "—";
+  if (typeof v === "boolean") return v ? "yes" : "no";
+  if (typeof v !== "number") return String(v);
+  const k = String(key);
+  if (/Pct$/.test(k) || /Rate$/i.test(k)) return `${v}%`;
+  if (k === "r" || /[a-z]R$/.test(k) || k === "expectancy") {
+    return `${v > 0 ? "+" : ""}${v}R`;
+  }
+  return Number.isInteger(v) ? v.toLocaleString("en-IN") : String(v);
+}
+
+const isRow = (v) => v && typeof v === "object" && !Array.isArray(v);
+
+/** A table from a list of like-shaped objects, columns taken from the union. */
+function EvTable({ rows, firstCol }) {
+  const cols = [...new Set(rows.flatMap((r) => Object.keys(r.data)))];
+  return (
+    <div className="rv-ev-scroll">
+      <table className="rv-ev-table">
+        <thead>
+          <tr>
+            {firstCol && <th>{firstCol}</th>}
+            {cols.map((c) => <th key={c} className="num">{label(c)}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i}>
+              {firstCol && <th scope="row">{r.name}</th>}
+              {cols.map((c) => (
+                <td key={c} className="num">
+                  {r.data[c] === undefined ? "—" : value(c, r.data[c])}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/**
+ * The evidence behind a finding, as something to read.
+ *
+ * It used to be `JSON.stringify(evidence, null, 2)` in a <pre>. That is
+ * developer output: braces, quoted keys, camelCase, and a reader left to work
+ * out that "topDecileSharePct" is a percentage. The numbers were always the
+ * interesting part of these findings and they were the hardest part to look at.
+ *
+ * Four shapes cover every check: plain numbers, a list of like objects, an
+ * object of objects (a matrix, one row per regime), and an object of plain
+ * numbers. Anything unforeseen falls back to compact JSON rather than
+ * disappearing — a finding that showed nothing would be worse than one that
+ * showed something ugly.
+ */
+function Evidence({ data }) {
+  const entries = Object.entries(data || {});
+  if (!entries.length) return null;
+
+  const flat = entries.filter(([, v]) => !v || typeof v !== "object");
+  const blocks = entries.filter(([, v]) => v && typeof v === "object");
+
+  return (
+    <div className="rv-ev">
+      {flat.length > 0 && (
+        <dl className="rv-ev-facts">
+          {flat.map(([k, v]) => (
+            <div key={k}>
+              <dt>{label(k)}</dt>
+              <dd className="mono">{value(k, v)}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+
+      {blocks.map(([k, v]) => {
+        // A list of like-shaped things: the five biggest trades, say.
+        if (Array.isArray(v) && v.length && isRow(v[0])) {
+          return (
+            <div key={k} className="rv-ev-block">
+              <div className="rv-ev-cap">{label(k)}</div>
+              <EvTable rows={v.map((d) => ({ data: d }))} />
+            </div>
+          );
+        }
+        if (Array.isArray(v)) {
+          return (
+            <div key={k} className="rv-ev-block">
+              <div className="rv-ev-cap">{label(k)}</div>
+              <div className="rv-ev-list mono">{v.join(" · ") || "—"}</div>
+            </div>
+          );
+        }
+        const inner = Object.entries(v);
+        // An object of objects — one row each, keyed by name.
+        if (inner.length && inner.every(([, iv]) => isRow(iv))) {
+          return (
+            <div key={k} className="rv-ev-block">
+              <div className="rv-ev-cap">{label(k)}</div>
+              <EvTable firstCol="" rows={inner.map(([name, d]) => ({ name: label(name), data: d }))} />
+            </div>
+          );
+        }
+        // An object of plain numbers.
+        if (inner.length && inner.every(([, iv]) => !iv || typeof iv !== "object")) {
+          return (
+            <div key={k} className="rv-ev-block">
+              <div className="rv-ev-cap">{label(k)}</div>
+              <dl className="rv-ev-facts">
+                {inner.map(([ik, iv]) => (
+                  <div key={ik}>
+                    <dt>{label(ik)}</dt>
+                    <dd className="mono">{value(ik, iv)}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          );
+        }
+        return (
+          <div key={k} className="rv-ev-block">
+            <div className="rv-ev-cap">{label(k)}</div>
+            <pre className="mono rv-ev-raw">{JSON.stringify(v, null, 2)}</pre>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function FindingCard({ f }) {
   const sev = SEVERITY[f.severity] || SEVERITY.watch;
   return (
@@ -47,7 +207,7 @@ function FindingCard({ f }) {
       {f.evidence && (
         <details className="rv-evidence">
           <summary>Evidence</summary>
-          <pre className="mono">{JSON.stringify(f.evidence, null, 2)}</pre>
+          <Evidence data={f.evidence} />
         </details>
       )}
     </div>
@@ -185,9 +345,69 @@ export default function Review({ closed, stats, all }) {
           text-transform: uppercase; color: var(--ink3);
         }
         .rv-evidence summary:hover { color: var(--ink2); }
-        .rv-evidence pre {
+        .rv-ev { margin-top: 9px; }
+        .rv-ev-block { margin-top: 12px; }
+        .rv-ev-block:first-child { margin-top: 0; }
+        .rv-ev-cap {
+          font-family: 'Archivo', sans-serif; font-size: 9px; font-weight: 600;
+          letter-spacing: 0.11em; text-transform: uppercase; color: var(--ink3);
+          margin-bottom: 5px;
+        }
+
+        /* Facts read as pairs, so they wrap into as many columns as fit rather
+           than being pinned to a count that is wrong on some screen. */
+        /* Separators drawn by the cells, not by a ruled background showing
+           through the gaps. Eight facts across seven columns leaves one alone
+           on the last row, and a ruled background turns that leftover into a
+           grey slab. A 1px spread over a 1px gap means neighbours share one
+           line, so any number of cells wraps cleanly. Same trick as the
+           headline numbers, for the same reason. */
+        .rv-ev-facts {
+          display: grid; gap: 1px; margin: 0;
+          grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+          background: var(--card); border: 1px solid var(--rule); border-radius: 2px;
+          overflow: hidden;
+        }
+        .rv-ev-facts > div {
+          background: var(--card); padding: 7px 10px; min-width: 0;
+          box-shadow: 0 0 0 1px var(--rule);
+        }
+        .rv-ev-facts dt {
+          font-size: 10px; color: var(--ink3); letter-spacing: 0.04em;
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .rv-ev-facts dd {
+          margin: 2px 0 0; font-size: 13px; color: var(--ink);
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+
+        /* Its own scroller: a wide matrix must not widen the card and push the
+           whole review sideways. */
+        .rv-ev-scroll { overflow-x: auto; border: 1px solid var(--rule); border-radius: 2px; }
+        /* Sized to its contents, not stretched to the card. Three columns
+           pulled to full width put the symbol at one edge and the date at the
+           other with a corridor between them; the scroller handles a matrix
+           that genuinely is wide. */
+        .rv-ev-table { width: auto; border-collapse: collapse; font-size: 11.5px; }
+        .rv-ev-table th, .rv-ev-table td {
+          padding: 6px 10px; text-align: left; white-space: nowrap;
+          border-bottom: 1px solid var(--rule);
+        }
+        .rv-ev-table thead th {
+          font-family: 'Archivo', sans-serif; font-size: 9px; font-weight: 600;
+          letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink3);
+          background: var(--paper);
+        }
+        .rv-ev-table tbody tr:last-child th,
+        .rv-ev-table tbody tr:last-child td { border-bottom: 0; }
+        .rv-ev-table tbody th { font-weight: 500; color: var(--ink2); }
+        .rv-ev-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+        .rv-ev-table tbody td { color: var(--ink); font-family: var(--mono, monospace); }
+
+        .rv-ev-list { font-size: 11.5px; color: var(--ink2); }
+        .rv-ev-raw {
           background: var(--paper); border: 1px solid var(--rule); border-radius: 2px;
-          padding: 10px 12px; margin-top: 8px; font-size: 11.5px; line-height: 1.6;
+          padding: 10px 12px; margin: 0; font-size: 11px; line-height: 1.6;
           overflow-x: auto; color: var(--ink2);
         }
 
