@@ -643,9 +643,21 @@ export default function Holdings({
           .ps-strip { grid-template-columns: repeat(2, 1fr); }
         }
         .ps-table { max-height: 62vh; }
+        /* Set in columns rather than capped at a width.
+           The 720px cap was there for a real reason — a 200-character line of
+           11px grey is not read, it is skipped — but on a wide screen it left
+           a third of the card empty and looked like a mistake. Columns keep
+           the measure readable AND use the box: two of them at ~85 characters
+           each, which is what the cap was protecting in the first place. */
         .ps-foot {
           font-size: 11px; color: var(--ink3); margin-top: 9px;
-          line-height: 1.6; max-width: 720px; text-wrap: pretty;
+          line-height: 1.6; text-wrap: pretty;
+          columns: 2; column-gap: 30px;
+        }
+        /* Below this a single column is already about the right measure, and
+           two would be too narrow to read. */
+        @media (max-width: 900px) {
+          .ps-foot { columns: 1; }
         }
       `}</style>
 
