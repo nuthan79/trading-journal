@@ -555,6 +555,108 @@ function dataQuality(closed) {
 }
 
 /* ==================================================================== */
+/*  How much of the record rests on how few trades                      */
+/* ==================================================================== */
+
+/**
+ * Concentration of the result.
+ *
+ * The app already computes every number this needs and has never once said it
+ * out loud. On the journal it was written against, 105 trades out of 404 —
+ * one in four — carried nearly three quarters of the total R.
+ *
+ * NOT a fault, and deliberately not phrased as one. Cutting losers and letting
+ * winners run produces concentration by construction; a breakout trader whose
+ * returns were evenly spread would be the one with a problem. The finding is
+ * useful for a different reason.
+ *
+ * WHAT IT ACTUALLY TELLS YOU: how big your sample really is. Four hundred
+ * trades sounds like enough to trust an expectancy. If a dozen of them carry
+ * the result, the expectancy rests on those twelve and the other three hundred
+ * and ninety are mostly noise around zero — so the error bars are far wider
+ * than the trade count suggests, and a run of ordinary months says much less
+ * about whether the edge has gone than it appears to.
+ *
+ * Measured against gross winnings rather than net R. Net can be small or
+ * negative while the winners are large, and "the top ten trades made 340% of
+ * your total" is arithmetic nobody should have to parse.
+ */
+function returnConcentration(closed) {
+  const rows = closed.filter((t) => isFinite(t.r));
+  if (rows.length < 20) return null;
+
+  const sorted = [...rows].sort((a, b) => b.r - a.r);
+  const gross = sorted.reduce((a, t) => a + Math.max(0, t.r), 0);
+  if (!(gross > 0)) return null;
+
+  // How few of the best trades it takes to make half of everything earned.
+  let cum = 0, halfCount = 0;
+  for (const t of sorted) {
+    if (t.r <= 0) break;
+    cum += t.r;
+    halfCount++;
+    if (cum >= gross / 2) break;
+  }
+
+  const decileCount = Math.max(1, Math.round(rows.length * 0.1));
+  const decileR = sorted.slice(0, decileCount).reduce((a, t) => a + t.r, 0);
+  const decilePct = (decileR / gross) * 100;
+  const halfPct = (halfCount / rows.length) * 100;
+
+  // What the rest of the record comes to once the top decile is set aside —
+  // the number that makes the point without any interpretation attached.
+  const restR = sorted.slice(decileCount).reduce((a, t) => a + t.r, 0);
+
+  const ev = {
+    trades: rows.length,
+    grossR: +gross.toFixed(1),
+    totalR: +sorted.reduce((a, t) => a + t.r, 0).toFixed(1),
+    tradesForHalfTheGains: halfCount,
+    tradesForHalfPct: +halfPct.toFixed(1),
+    topDecileTrades: decileCount,
+    topDecileShareOfGains: +decilePct.toFixed(1),
+    everythingElseR: +restR.toFixed(1),
+    biggest: sorted.slice(0, 5).map((t) => ({
+      symbol: t.symbol, r: +Number(t.r).toFixed(2), exit: t.exit_date,
+    })),
+  };
+
+  /**
+   * Two ways a record can rest on a few trades, and the share of gains only
+   * catches one of them.
+   *
+   * The journal this was written against reported 57.6% from the top decile —
+   * under any reasonable threshold — while everything outside that decile came
+   * to MINUS 143.9R. So the share said "spread out" and the remainder said the
+   * whole result was those forty trades, and the finding printed both in the
+   * same paragraph.
+   *
+   * If setting the best tenth aside leaves the rest underwater, the record
+   * rests on them whatever the percentage says.
+   */
+  const heavy = decilePct >= 60 || restR <= 0;
+
+  return F(heavy ? "watch" : "good", "return-concentration",
+    heavy
+      ? "A few trades carry the whole record"
+      : "Your returns are spread across many trades",
+    `${halfCount} trade${halfCount === 1 ? "" : "s"} — ${ev.tradesForHalfPct}% of the ones with an R — ` +
+    `made half of everything you earned, and your best ${decileCount} produced ` +
+    `${ev.topDecileShareOfGains}% of it. Set those aside and the remaining ` +
+    `${rows.length - decileCount} come to ${ev.everythingElseR >= 0 ? "+" : ""}${ev.everythingElseR}R. ` +
+    (heavy
+      ? `That is not a fault — cutting losers and letting winners run concentrates returns by ` +
+        `construction, and a breakout record with evenly spread gains would be the odd one. What it ` +
+        `changes is how much your own numbers prove. ${rows.length} trades sounds like enough to ` +
+        `trust an expectancy; if ${decileCount} of them carry it, that is closer to your real sample ` +
+        `size, and a quiet few months says far less about whether the edge has gone than it feels ` +
+        `like it does.`
+      : `No single stretch of luck is holding this up, which means the expectancy above is doing ` +
+        `what a sample that size should — describing the method rather than a handful of trades.`),
+    ev);
+}
+
+/* ==================================================================== */
 /*  Duplicate positions                                                 */
 /* ==================================================================== */
 
@@ -678,6 +780,7 @@ export function reviewFindings(closed, { regimes = null, stats = null, all = nul
   push(marketAlignment(closed, regimes));
   push(tradingCadence(closed));
   push(dataQuality(closed));
+  push(returnConcentration(closed));
   // Every trade, not just the closed ones — see the note on the check.
   push(duplicatePositions(all || closed));
 
