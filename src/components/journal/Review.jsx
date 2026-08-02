@@ -372,9 +372,12 @@ export default function Review({ closed, stats, all }) {
           background: var(--card); padding: 7px 10px; min-width: 0;
           box-shadow: 0 0 0 1px var(--rule);
         }
+        /* Labels wrap; values do not. A name is still a name over two lines,
+           where "Everything else median he…" is not — and shortening the keys
+           to fit a column width would be letting the CSS name the data. */
         .rv-ev-facts dt {
           font-size: 10px; color: var(--ink3); letter-spacing: 0.04em;
-          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+          line-height: 1.35; text-wrap: pretty;
         }
         .rv-ev-facts dd {
           margin: 2px 0 0; font-size: 13px; color: var(--ink);

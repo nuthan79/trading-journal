@@ -617,9 +617,27 @@ function returnConcentration(closed) {
     topDecileSharePct: +decilePct.toFixed(1),
     everythingElseR: +restR.toFixed(1),
     biggest: sorted.slice(0, 5).map((t) => ({
-      symbol: t.symbol, r: +Number(t.r).toFixed(2), exit: t.exit_date,
+      symbol: t.symbol, r: +Number(t.r).toFixed(2),
+      heldDays: isFinite(t.heldDays) ? Math.round(t.heldDays) : null,
+      exit: t.exit_date,
     })),
   };
+
+  /**
+   * How long the big ones were held against everything else.
+   *
+   * The finding says a few trades carry the record; the next question is what
+   * those trades were like, and holding period is the part the trader can do
+   * something about. If the winners were held far longer, the lesson is about
+   * not cutting them short rather than about finding more of them.
+   */
+  const heldOf = (list) => list.map((t) => t.heldDays).filter((d) => isFinite(d));
+  const topHeld = heldOf(sorted.slice(0, decileCount));
+  const restHeld = heldOf(sorted.slice(decileCount));
+  if (topHeld.length && restHeld.length) {
+    ev.topDecileMedianHeldDays = Math.round(median(topHeld));
+    ev.everythingElseMedianHeldDays = Math.round(median(restHeld));
+  }
 
   /**
    * Two ways a record can rest on a few trades, and the share of gains only
@@ -635,6 +653,13 @@ function returnConcentration(closed) {
    * rests on them whatever the percentage says.
    */
   const heavy = decilePct >= 60 || restR <= 0;
+
+  // Only worth a sentence when the gap is big enough to act on.
+  const held = ev.topDecileMedianHeldDays && ev.everythingElseMedianHeldDays
+    && ev.topDecileMedianHeldDays >= ev.everythingElseMedianHeldDays * 1.5
+    ? ` They were also held far longer — a median of ${ev.topDecileMedianHeldDays} days against ` +
+      `${ev.everythingElseMedianHeldDays} for the rest, which points at holding rather than picking.`
+    : "";
 
   return F(heavy ? "watch" : "good", "return-concentration",
     heavy
@@ -652,7 +677,7 @@ function returnConcentration(closed) {
         `size, and a quiet few months says far less about whether the edge has gone than it feels ` +
         `like it does.`
       : `No single stretch of luck is holding this up, which means the expectancy above is doing ` +
-        `what a sample that size should — describing the method rather than a handful of trades.`),
+        `what a sample that size should — describing the method rather than a handful of trades.`) + held,
     ev);
 }
 
