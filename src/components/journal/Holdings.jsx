@@ -117,72 +117,6 @@ function RiskDial({ riskR }) {
   );
 }
 
-/**
- * How far the realised R curve sits below its own best.
- *
- * The ring is the high-water mark: green to where you stand, coloured from
- * there to the peak for what's been handed back. At a new high it's all green.
- *
- * The give-back is the centre number rather than the total, because the ring's
- * proportions stop carrying it — 12R off a 127R peak is a tenth of the circle
- * and easy to read, 12R off 400R is a sliver. The figure that matters has to
- * stay the same size whatever the account has grown to.
- *
- * Amber while the give-back is inside the worst there's been, red once it goes
- * past it: at that point the colour is saying this is the deepest hole yet,
- * which is the moment worth noticing.
- */
-function GiveBackDial({ curve }) {
-  const { current, peak, giveBack, worstDD, n } = curve;
-  const framed = n > 0 && peak > 0;
-  const held = framed ? Math.max(0, Math.min(1, current / peak)) : 0;
-  const green = held * DIAL_C;
-
-  const level = !n ? "none"
-    : giveBack <= 1e-9 ? "high"
-    : giveBack >= worstDD - 1e-9 ? "deep" : "off";
-
-  return (
-    <div className="ps-dial" data-level={level} data-kind="giveback">
-      <div className="ps-dial-ring">
-        <svg viewBox="0 0 140 140" role="img"
-             aria-label={n
-               ? `${giveBack.toFixed(2)}R below a peak of ${peak.toFixed(2)}R`
-               : "No realised R yet"}>
-          <g transform="rotate(-90 70 70)">
-            <circle className="ps-dial-track" cx="70" cy="70" r={DIAL_R}
-                    fill="none" strokeWidth={DIAL_SW} />
-            {/* Given back — drawn first, so the green sits over its start */}
-            <circle className="ps-gb-lost" cx="70" cy="70" r={DIAL_R}
-                    fill="none" strokeWidth={DIAL_SW}
-                    strokeDasharray={`${DIAL_C - green} ${green}`}
-                    strokeDashoffset={-green} />
-            <circle className="ps-gb-held" cx="70" cy="70" r={DIAL_R}
-                    fill="none" strokeWidth={DIAL_SW}
-                    strokeDasharray={`${green} ${DIAL_C - green}`} />
-          </g>
-        </svg>
-        <div className="ps-dial-mid">
-          <span className="ps-dial-v mono">
-            {!n ? "—" : giveBack <= 1e-9 ? "0.0" : `−${giveBack.toFixed(1)}`}
-            {n > 0 && <i>R</i>}
-          </span>
-          <span className="ps-dial-s mono">
-            {!n ? "no R yet"
-              : framed ? `${current.toFixed(1)} of ${peak.toFixed(1)}R`
-              : "never above the start"}
-          </span>
-        </div>
-      </div>
-      <div className="ps-dial-note">
-        {!n ? "Fill in some stops and this fills in."
-          : level === "high" ? "At a new high."
-          : level === "deep" ? "The deepest you have been."
-          : `Worst has been ${worstDD.toFixed(1)}R.`}
-      </div>
-    </div>
-  );
-}
 
 /**
  * The flag beside a symbol: this trade has run far enough that its stop can
@@ -278,22 +212,15 @@ export default function Holdings({
   }, [rows]);
 
   /**
-   * The realised R curve, walked in exit order — the order the money actually
-   * landed, which is what a high-water mark is about. Same shape as calc.js's
-   * maxDD (peak starts at 0, before any trade), so the worst-ever figure here
-   * is the one the dashboard reports.
+   * How many closed trades carry an R, which is what the all-time figure is
+   * an average of. This used to walk the whole realised curve tracking the
+   * peak and the give-back for a ring that no longer exists — the high-water
+   * mark is a dashboard question, and the dashboard already answers it.
    */
-  const curve = useMemo(() => {
-    let cum = 0, peak = 0, worstDD = 0, n = 0;
-    for (const t of closed) {
-      if (!isFinite(t.r)) continue;
-      n++;
-      cum += t.r;
-      peak = Math.max(peak, cum);
-      worstDD = Math.max(worstDD, peak - cum);
-    }
-    return { current: cum, peak, giveBack: Math.max(0, peak - cum), worstDD, n };
-  }, [closed]);
+  const curve = useMemo(
+    () => ({ n: closed.filter((t) => isFinite(t.r)).length }),
+    [closed]
+  );
 
   const realised = useMemo(() => {
     const thisFy = fyStartYear(new Date());
@@ -412,26 +339,22 @@ export default function Holdings({
           </div>
         </div>
 
-        {/* Same pairing as open risk: the ring beside the figure it describes.
-            Realised all-time has left the strip because this is that number. */}
-        <div className="ps-riskcard">
-          <GiveBackDial curve={curve} />
-          <div className="ps-riskfig">
-            <div className="ps-sum-l">Realised all-time</div>
-            <div className={`ps-sum-v mono ${realised.all >= 0 ? "pos" : "neg"}`}>
-              {rupee(realised.all)}
-            </div>
-            <div className="ps-sum-s mono">
-              {isFinite(realised.allR) ? rfmt(realised.allR) : "—"}
-              {curve.n > 0 && ` over ${curve.n} trade${curve.n === 1 ? "" : "s"}`}
-            </div>
-            <div className="ps-riskfig-note">
-              The ring reads against your own best, not a target.
-            </div>
-          </div>
-        </div>
-
+        {/* The give-back ring used to sit here, reading how far below your
+            best you were. A worthwhile thing to know and the wrong place to
+            know it: this page is about what is open right now, and a lifetime
+            drawdown is neither. The ring also argued with itself — a nearly
+            complete circle beside a number saying nothing much had been given
+            back. The figure it described is a figure, so it sits with the
+            others. */}
         <div className="ps-strip">
+          <Summary
+            label="Realised all-time"
+            value={rupee(realised.all)}
+            sub={isFinite(realised.allR)
+              ? `${rfmt(realised.allR)}${curve.n > 0 ? ` · ${curve.n} trades` : ""}`
+              : "—"}
+            tone={realised.all >= 0 ? "pos" : "neg"}
+          />
           <Summary label="Exposure" value={rupee(totals.exposure)} sub="at CMP" />
           <Summary
             label="Unrealised"
@@ -609,8 +532,11 @@ export default function Holdings({
           gap: 14px; flex-wrap: wrap; margin-bottom: 12px;
         }
         .ps-sub { font-size: 12px; color: var(--ink2); margin-top: 3px; }
+        /* One card and the strip. It was 290px 290px 1fr when there were two
+           dials; taking one away left the strip in a 290px slot with the third
+           column empty beside it, which truncated every figure to "₹9.3…". */
         .ps-top {
-          display: grid; grid-template-columns: 290px 290px 1fr;
+          display: grid; grid-template-columns: 290px 1fr;
           gap: 12px; margin-bottom: 12px; align-items: stretch;
         }
         .ps-riskcard {
@@ -624,23 +550,21 @@ export default function Holdings({
           line-height: 1.45; text-wrap: pretty;
         }
         .ps-strip {
-          display: grid; grid-template-columns: repeat(3, 1fr);
+          display: grid; grid-template-columns: repeat(4, 1fr);
           border: 1px solid var(--rule); border-radius: 3px;
           background: var(--card); overflow: hidden;
         }
-        /* Two dials then the strip; the dials pair up before the strip drops
-           under them, so neither ring ends up alone on a row. */
-        @media (max-width: 1240px) {
-          .ps-top { grid-template-columns: 1fr 1fr; }
-          .ps-strip { grid-column: 1 / -1; }
+        /* Below this the strip cannot hold four figures beside a 290px card
+           without clipping them, so it takes its own full-width row. */
+        @media (max-width: 1100px) {
+          .ps-top { grid-template-columns: 1fr; }
         }
         @media (max-width: 720px) {
-          .ps-top { grid-template-columns: 1fr; }
-          .ps-strip { grid-template-columns: repeat(3, 1fr); }
+          .ps-strip { grid-template-columns: repeat(2, 1fr); }
         }
         @media (max-width: 520px) {
           .ps-riskcard { flex-direction: column; align-items: flex-start; }
-          .ps-strip { grid-template-columns: repeat(2, 1fr); }
+          .ps-strip { grid-template-columns: 1fr; }
         }
         .ps-table { max-height: 62vh; }
         /* Set in columns rather than capped at a width.
@@ -676,7 +600,6 @@ export default function Holdings({
           --d-calm:  #0F8A6E;
           --d-warm:  #D9A125;
           --d-hot:   #C6402B;
-          --d-held:  #3F5E8C;
         }
         .ps-dial-ring { position: relative; width: 118px; height: 118px; }
         .ps-dial-ring svg { width: 100%; height: 100%; display: block; }
@@ -690,20 +613,6 @@ export default function Holdings({
         .ps-dial[data-level="hot"]  .ps-dial-arc { stroke: var(--d-hot); }
 
         /* Give-back ring: what's held, then what's been handed back. */
-        .ps-gb-held { stroke: var(--d-held); transition: stroke-dasharray 0.4s ease; }
-        .ps-gb-lost {
-          stroke: var(--d-warm);
-          transition: stroke-dasharray 0.4s ease, stroke 0.3s ease;
-        }
-        .ps-dial[data-level="deep"] .ps-gb-lost { stroke: var(--d-hot); }
-        .ps-dial[data-level="high"] .ps-gb-lost { stroke: none; }
-        .ps-dial[data-level="none"] .ps-gb-held,
-        .ps-dial[data-level="none"] .ps-gb-lost { stroke: none; }
-        .ps-dial[data-kind="giveback"] .ps-dial-v { color: var(--d-warm); }
-        .ps-dial[data-kind="giveback"][data-level="high"] .ps-dial-v { color: var(--d-held); }
-        .ps-dial[data-kind="giveback"][data-level="deep"] .ps-dial-v { color: var(--d-hot); }
-        .ps-dial[data-kind="giveback"][data-level="none"] .ps-dial-v { color: var(--ink3); }
-        .ps-dial[data-kind="giveback"][data-level="deep"] .ps-dial-note { color: var(--d-hot); }
         .ps-dial-mid {
           position: absolute; inset: 0; display: flex;
           flex-direction: column; align-items: center; justify-content: center;
