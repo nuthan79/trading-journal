@@ -550,9 +550,18 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
           text-transform: uppercase; color: var(--ink3); margin-top: 4px;
         }
         @media (max-width: 820px) { .im-stats { grid-template-columns: repeat(3, 1fr); } }
+        /* Columns rather than a width cap, the same as the holdings
+           footnote. The cap gave a good measure — about 108 characters at
+           this size — and left five hundred pixels of the panel empty to do
+           it, which reads as something failing to load. Two columns keep the
+           measure and use the width. */
         .im-note {
           font-size: 12px; color: var(--ink2); line-height: 1.65;
-          margin: 0 0 11px; max-width: 640px; text-wrap: pretty;
+          margin: 0 0 11px; text-wrap: pretty;
+          columns: 2; column-gap: 30px;
+        }
+        @media (max-width: 900px) {
+          .im-note { columns: 1; }
         }
         .im-skips {
           display: flex; flex-direction: column; gap: 4px; margin-bottom: 11px;
