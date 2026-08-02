@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Holdings from "@/components/journal/Holdings";
-import { markOpenPositions } from "@/lib/db";
+import { markOpenPositions, acknowledgeBreakeven } from "@/lib/db";
 import { useJournal } from "../JournalContext";
 
 export default function HoldingsPage() {
@@ -26,12 +26,26 @@ export default function HoldingsPage() {
   };
 
 
+  // Recording that the reminder was read, and nothing else. The stop this
+  // trade carries is the one the trader typed, and it stays that way.
+  const ackBreakeven = async ({ id, symbol }) => {
+    try {
+      await acknowledgeBreakeven(id);
+      await reloadTrades();
+      say(`${symbol} reminder cleared — check the stop really is at breakeven with your broker.`);
+    } catch (e) {
+      say(e.message || `Could not clear the reminder on ${symbol}.`);
+      throw e;
+    }
+  };
+
   return (
     <Holdings
       open={open}
       closed={closed}
       onRefresh={refresh}
       refreshing={refreshing}
+      onAckBreakeven={ackBreakeven}
       onEditTrade={openEditTrade}
       onExitTrade={openExitTrade}
       onDeleteTrade={removeTrade}

@@ -196,6 +196,7 @@ const isMissingTable = (error) =>
  * file names the file to run; this makes the column ones do the same.
  */
 const MIGRATION_FOR_COLUMN = {
+  breakeven_ack_at: "017_breakeven_ack.sql",
   acquisition: "013_zero_cost_shares.sql",
   stop_source: "011_stop_source.sql",
   initial_stop_loss: "007_partial_exits.sql",
@@ -492,6 +493,33 @@ export async function importTrades({ trades, completions = [], meta }) {
     tranches: result.tranches,
   });
   return result;
+}
+
+/**
+ * Dismiss the breakeven reminder on one position.
+ *
+ * Writes a timestamp and nothing else. Not the stop — the stop lives at the
+ * broker and this app holds exactly one, the one the trader typed. The whole
+ * point of the column is that acknowledging a reminder and moving a stop are
+ * different acts, and the app only witnesses the first.
+ *
+ * Guarded to open positions for the same reason the old version was: a closed
+ * trade's reminder is history, and a stale screen should not be able to write
+ * to it.
+ */
+export async function acknowledgeBreakeven(id) {
+  const { data, error } = await supabase
+    .from("trades")
+    .update({ breakeven_ack_at: new Date().toISOString() })
+    .in("status", ["open", "partial"])
+    .eq("id", id)
+    .select("id");
+  if (error) throw new Error(migrationHint(error) || error.message);
+  if (!data?.length) {
+    throw new Error("That position isn't open any more — reload and try again.");
+  }
+  track("breakeven_acknowledged");
+  return data[0];
 }
 
 /** Removes a batch and everything it wrote. trade_exits cascades off trades. */
