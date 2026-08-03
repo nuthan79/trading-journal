@@ -15,6 +15,20 @@ import { rupee } from "@/lib/format";
  *   across later edits. `auto` is persisted, not inferred, so reopening a trade
  *   you adjusted by hand doesn't quietly recalculate it.
  *
+ *   Except a zero, on a trade nobody imported. That is not an override, it is
+ *   an absent value: nobody decides they paid nothing, because on a delivery
+ *   trade you cannot. Six hand-entered positions were sitting at ₹0 with the
+ *   flag off, understating their cost by about ₹3,700, and the rule meant to
+ *   protect a considered figure was protecting a figure nobody had considered.
+ *   Fifty-six other rows in that account carry real typed amounts and are
+ *   untouched by this — a zero is rare enough to be distinctive.
+ *
+ *   An IMPORTED zero is left alone, and that distinction is the whole of the
+ *   care here. Shares from a demerger carry an apportioned cost and no
+ *   brokerage, so their ₹0 came from the broker and is the truth: LTI, NLSL,
+ *   TRANSINDIA and ALLCARGOTERMINALS are all sitting at zero for that reason.
+ *   Recomputing those would invent costs the broker says were never paid.
+ *
  *   Both legs, not just the sell. The intuitive mistake is charging only the
  *   exit, since that's the moment you're filling this in. But stamp duty is
  *   buy-side and STT applies to both, so on delivery the entry accounts for
@@ -63,11 +77,15 @@ export default function ChargesField({
   /* Push the computed figure up only while this field is still automatic. */
   useEffect(() => {
     if (!computed || disabled) return;
-    if (auto === false) return;                    // user owns it now
+    // Typed in this session — theirs, whatever it says, including a zero they
+    // meant. Checked before the rule below so an intentional zero survives.
     if (touched.current) return;
+    // A zero on a trade nobody imported was never set — see the note above.
+    const neverSet = !(Number(value) > 0) && !trade?.imported;
+    if (auto === false && !neverSet) return;       // a real figure is theirs
     if (Math.abs(Number(value || 0) - computed.total) < 0.01) return;
     onChange?.(computed.total, true, computed.breakdown);
-  }, [computed, auto, disabled, value, onChange]);
+  }, [computed, auto, disabled, value, onChange, trade?.imported]);
 
   const typeOver = (e) => {
     touched.current = true;
