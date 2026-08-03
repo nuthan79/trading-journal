@@ -530,9 +530,10 @@ export default function Holdings({
         The {RISK_WARN_R}R dial is there to be read, not obeyed: there&apos;s no cap on how many
         holdings you can carry at once, and nothing is blocked past the line.
         A solid flag means the trade is up past {FREE_AT_R}R and its stop could go to breakeven at
-        your broker. Move it there, then click it to put the reminder down and the flag turns
-        hollow. Nothing else changes: no stop moves here, and the dial keeps counting the stop you
-        recorded, because that is the only stop this journal knows about.
+        your broker. Move it there, then click it to put the reminder down: the flag turns hollow
+        and that position stops counting towards open risk, because a stop at entry cannot lose.
+        Your recorded stop is untouched, so 1R and every R measured against it stay exactly as
+        they are.
       </div>
 
       <style jsx>{`

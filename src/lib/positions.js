@@ -170,8 +170,24 @@ export function derivePosition(t, accountSize) {
   // not the original 1R. This is the number that belongs in "open risk".
   // A stop trailed past entry isn't risk, it's a floor under a gain, so the
   // distance to it must not be counted as money still on the line.
+  /**
+   * Acknowledging the breakeven flag says the broker stop has been moved to
+   * entry, and a position stopped at entry cannot lose. So it stops counting.
+   *
+   * This is the one thing the acknowledgement changes, and it changes nothing
+   * else: stop_loss is untouched, so 1R, stop width and every R already
+   * recorded stay exactly as they were. That separation is the point. The risk
+   * TAKEN at entry is history and must not move; the risk STILL RUNNING is a
+   * fact about now, and the trader has just told us what it is.
+   *
+   * Without this the dial argued with the flag — a hollow flag saying nothing
+   * left to lose beside a dial counting a full R against it.
+   */
+  const atBreakeven = !!t.breakeven_ack_at;
   const openRiskAmt =
-    qtyOpen > 0 && !stopAboveEntry ? Math.abs(entry - stop) * qtyOpen : 0;
+    qtyOpen > 0 && !stopAboveEntry && !atBreakeven
+      ? Math.abs(entry - stop) * qtyOpen
+      : 0;
   const bankedAgainstRisk =
     riskAmt > 0 && isFinite(realisedPnl) ? realisedPnl / riskAmt : 0;
   // Negative means the remainder can no longer produce a losing trade overall
