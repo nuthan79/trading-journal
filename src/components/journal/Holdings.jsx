@@ -26,20 +26,6 @@ const RISK_WARN_R = 5;
 // Once a trade is up this much, its stop can go to entry and its 1R comes back.
 const FREE_AT_R = 1.5;
 
-/** Weekdays between two dates. Exchange holidays aren't known here, so this
- *  slightly overstates — it's a sense of pace, not a settlement calculation. */
-function tradingDays(from, to) {
-  const a = new Date(from), b = new Date(to);
-  if (!isFinite(a) || !isFinite(b)) return NaN;
-  let n = 0;
-  const d = new Date(a);
-  while (d <= b) {
-    const day = d.getDay();
-    if (day !== 0 && day !== 6) n++;
-    d.setDate(d.getDate() + 1);
-  }
-  return Math.max(0, n - 1);
-}
 
 function Summary({ label, value, sub, tone }) {
   return (
@@ -167,6 +153,10 @@ export default function Holdings({
         const qtyOpen = isFinite(t.qtyOpen) ? t.qtyOpen : Number(t.quantity);
         const openPct = Number(t.quantity) > 0 ? (qtyOpen / Number(t.quantity)) * 100 : NaN;
         const liveExposure = isFinite(t.mark) ? t.mark * qtyOpen : Number(t.entry_price) * qtyOpen;
+        // What the shares still held actually cost. Every other figure on the
+        // row describes the open part — quantity, exposure, risk — so the cost
+        // of a part already sold has no business among them.
+        const buyValue = Number(t.entry_price) * qtyOpen;
         const changePct = isFinite(t.mark) && Number(t.entry_price) > 0
           ? ((t.mark - Number(t.entry_price)) / Number(t.entry_price)) * 100 * (t.side === "short" ? -1 : 1)
           : NaN;
@@ -184,6 +174,7 @@ export default function Holdings({
           qtyOpen,
           openPct,
           liveExposure,
+          buyValue,
           changePct,
           toStop,
           breached,
@@ -194,7 +185,6 @@ export default function Holdings({
           // said nothing left to lose and the figure said fifty-eight thousand.
           riskFree: t.isRiskFree || !(t.openRiskAmt > 0),
           days: isFinite(t.heldDays) ? t.heldDays : NaN,
-          tdays: tradingDays(t.entry_date, today),
         };
       })
       .sort((a, b) => new Date(b.entry_date) - new Date(a.entry_date));
@@ -390,14 +380,13 @@ export default function Holdings({
               <th className="fz2 fz-last">Symbol</th>
               <th>Entered</th>
               <th className="num">Days</th>
-              <th className="num">Trading</th>
               <th className="num">Open qty</th>
               <th className="num">Open %</th>
               <th className="num">Entry</th>
               <th className="num">Stop</th>
               <th className="num">SL %</th>
               <th className="num">To stop</th>
-              <th className="num">Exposure</th>
+              <th className="num">Buy value</th>
               <th className="num">Open risk</th>
               <th className="num">Open risk R</th>
               <th className="num">CMP</th>
@@ -448,7 +437,6 @@ export default function Holdings({
                   </td>
                   <td className="mono ps-dim">{r.entry_date}</td>
                   <td className="num ps-dim">{isFinite(r.days) ? r.days : "—"}</td>
-                  <td className="num ps-dim">{isFinite(r.tdays) ? r.tdays : "—"}</td>
                   <td className="num">{r.qtyOpen}</td>
                   <td className="num">
                     {/* A bar rather than only a number: how much of the position
@@ -476,7 +464,8 @@ export default function Holdings({
                       : r.stopAboveEntry ? `locked ${pct(Math.abs(r.toStop))}`
                       : pct(Math.abs(r.toStop))}
                   </td>
-                  <td className="num">{rupee(r.liveExposure)}</td>
+                  <td className="num" title="What the shares still held cost — entry price × open quantity">
+                    {rupee(r.buyValue)}</td>
                   <td className={`num ${riskFree ? "ps-dim" : "neg"}`}>
                     {riskFree ? "0" : rupee(-Math.abs(r.openRiskAmt))}
                   </td>
@@ -525,7 +514,7 @@ export default function Holdings({
       )}
 
       <div className="ps-foot">
-        Trading days count weekdays only — exchange holidays aren&apos;t known here.
+        Buy value is what the shares still held cost, so it falls as a position is sold down.
         Open risk is what the current stop still exposes, so a stop moved past entry reads zero.
         The {RISK_WARN_R}R dial is there to be read, not obeyed: there&apos;s no cap on how many
         holdings you can carry at once, and nothing is blocked past the line.
