@@ -45,6 +45,10 @@ const REGIME_COLOR = {
 function label(key) {
   return String(key)
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    // And between a run of capitals and the word that follows it, or
+    // `tradesWithAFeeling` splits as "with AFeeling" and prints "afeeling".
+    // One rule catches camelCase; it takes two to catch all of it.
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
     .split(/[\s_]+/)
     .map((w, i) => {
       if (/^pct$/i.test(w)) return "%";
@@ -214,7 +218,7 @@ function FindingCard({ f }) {
   );
 }
 
-export default function Review({ closed, stats, all }) {
+export default function Review({ closed, stats, all, diary }) {
   const [market, setMarket] = useState({ loading: true, error: null, classified: [] });
 
   // Opening the review is the habit this journal is actually for — recording
@@ -243,8 +247,8 @@ export default function Review({ closed, stats, all }) {
   );
 
   const result = useMemo(
-    () => reviewFindings(closed, { regimes, stats, all }),
-    [closed, regimes, stats, all]
+    () => reviewFindings(closed, { regimes, stats, all, diary }),
+    [closed, regimes, stats, all, diary]
   );
 
   const groups = useMemo(() => {

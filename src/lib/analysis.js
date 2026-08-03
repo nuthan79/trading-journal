@@ -555,6 +555,138 @@ function dataQuality(closed) {
 }
 
 /* ==================================================================== */
+/*  What you were feeling, against what happened                        */
+/* ==================================================================== */
+
+/** Below this an emotion is noise and gets shown but not spoken about. */
+const MIN_PER_EMOTION = 8;
+
+/**
+ * A feeling as it reads mid-sentence. Lowercased, because "Trades you open
+ * feeling Anxious" reads like a proper noun — except FOMO, which is an
+ * acronym and comes out as "fomo" if you lowercase it blindly.
+ */
+const feelingWord = (s) =>
+  /^[A-Z0-9]+$/.test(String(s)) ? String(s) : String(s).toLowerCase();
+
+/**
+ * Emotion tags against the R of the trades they sat beside.
+ *
+ * The diary has asked for a feeling on every entry since the app existed and
+ * has never once said what those feelings were worth. The only mention of it
+ * anywhere in this file used to be a line telling the reader to go and pair
+ * the two up by hand — with both halves sitting right here.
+ *
+ * MATCHED ON ENTRY DATE, NOT EXIT. This is the whole difference between a
+ * finding and a horoscope. A feeling recorded the day a position was opened is
+ * something that could have shaped the decision. A feeling recorded the day it
+ * closed mostly records how the result felt, so pairing it with that result
+ * would discover, with great confidence, that losing puts people in a bad
+ * mood. `trade_id` is honoured where the writer set one, since that is them
+ * saying which trade they meant.
+ *
+ * A trade counts once per emotion however many entries mention it: two
+ * calm notes on one day are one calm day, not two.
+ */
+function emotionOutcomes(closed, diary) {
+  if (!Array.isArray(diary) || !diary.length) return null;
+
+  const scored = closed.filter((t) => isFinite(t.r));
+  if (scored.length < 10) return null;
+
+  const byId = new Map(scored.map((t) => [t.id, t]));
+  const byEntryDate = new Map();
+  for (const t of scored) {
+    const d = String(t.entry_date || "").slice(0, 10);
+    if (!d) continue;
+    if (!byEntryDate.has(d)) byEntryDate.set(d, []);
+    byEntryDate.get(d).push(t);
+  }
+
+  const perEmotion = new Map();          // emotion -> Map(tradeId -> trade)
+  for (const e of diary) {
+    const tags = Array.isArray(e.emotions) ? e.emotions : [];
+    if (!tags.length) continue;
+
+    const hits = [];
+    if (e.trade_id && byId.has(e.trade_id)) hits.push(byId.get(e.trade_id));
+    const d = String(e.entry_date || "").slice(0, 10);
+    if (d && byEntryDate.has(d)) hits.push(...byEntryDate.get(d));
+    if (!hits.length) continue;
+
+    for (const tag of tags) {
+      if (!perEmotion.has(tag)) perEmotion.set(tag, new Map());
+      const m = perEmotion.get(tag);
+      for (const t of hits) m.set(t.id, t);
+    }
+  }
+  if (!perEmotion.size) return null;
+
+  const rows = [...perEmotion.entries()].map(([emotion, m]) => {
+    const list = [...m.values()];
+    const total = list.reduce((a, t) => a + t.r, 0);
+    return {
+      emotion,
+      trades: list.length,
+      expectancy: +(total / list.length).toFixed(2),
+      winRatePct: +((list.filter((t) => t.r > 0).length / list.length) * 100).toFixed(0),
+      totalR: +total.toFixed(1),
+    };
+  }).sort((a, b) => a.expectancy - b.expectancy);
+
+  const solid = rows.filter((r) => r.trades >= MIN_PER_EMOTION);
+  const tagged = new Set([...perEmotion.values()].flatMap((m) => [...m.keys()]));
+
+  const ev = {
+    diaryEntriesRead: diary.length,
+    tradesTagged: tagged.size,
+    feelingsWithEnoughTrades: solid.length,
+    minimumTradesToCount: MIN_PER_EMOTION,
+    byFeeling: rows,
+  };
+
+  // Nothing to compare against yet — say so plainly rather than reading a
+  // difference off four trades.
+  if (solid.length < 2) {
+    return F("watch", "emotion-outcome",
+      "Not enough diary entries to read your moods yet",
+      `${tagged.size} trade${tagged.size === 1 ? " has" : "s have"} a feeling recorded against ` +
+      `${diary.length} diary ${diary.length === 1 ? "entry" : "entries"}, and no two feelings yet ` +
+      `have the ${MIN_PER_EMOTION} trades it takes to compare them. The table below is what there ` +
+      `is so far. Tag the mood as you enter a trade rather than after it closes — the second only ` +
+      `records how the result felt.`,
+      ev);
+  }
+
+  const worst = solid[0];
+  const best = solid[solid.length - 1];
+  const gap = best.expectancy - worst.expectancy;
+
+  if (gap < 0.4) {
+    return F("good", "emotion-outcome",
+      "Your mood doesn't seem to move your results",
+      `Across ${solid.length} feelings with at least ${MIN_PER_EMOTION} trades each, expectancy ` +
+      `runs from ${worst.expectancy}R when ${feelingWord(worst.emotion)} to ${best.expectancy}R ` +
+      `when ${feelingWord(best.emotion)} — a spread of ${gap.toFixed(2)}R, which is small enough ` +
+      `to be noise. Worth knowing: it means the process is holding up whatever kind of day you are ` +
+      `having, which is harder than it sounds.`,
+      ev);
+  }
+
+  return F(worst.expectancy < 0 ? "warning" : "watch", "emotion-outcome",
+    `Trades you open feeling ${feelingWord(worst.emotion)} do worse`,
+    `${worst.trades} trades entered on days you logged ${feelingWord(worst.emotion)} came to ` +
+    `${worst.expectancy}R each, against ${best.expectancy}R across ${best.trades} when you logged ` +
+    `${feelingWord(best.emotion)} — a gap of ${gap.toFixed(2)}R a trade. ` +
+    `Matched on the day the position was OPENED, not closed, so this is about the state you were ` +
+    `in when you decided rather than how the result made you feel afterwards. ` +
+    `It is still your own tagging and a small sample, so read it as a question worth watching ` +
+    `rather than a law — but ${feelingWord(worst.emotion)} is a cheap thing to notice before you ` +
+    `press the button.`,
+    ev);
+}
+
+/* ==================================================================== */
 /*  How much of the record rests on how few trades                      */
 /* ==================================================================== */
 
@@ -793,7 +925,10 @@ function duplicatePositions(all) {
 /*  Assemble                                                            */
 /* ==================================================================== */
 
-export function reviewFindings(closed, { regimes = null, stats = null, all = null } = {}) {
+export function reviewFindings(
+  closed,
+  { regimes = null, stats = null, all = null, diary = null } = {}
+) {
   const flat = [];
   const push = (x) => { if (!x) return; Array.isArray(x) ? flat.push(...x) : flat.push(x); };
 
@@ -806,6 +941,7 @@ export function reviewFindings(closed, { regimes = null, stats = null, all = nul
   push(tradingCadence(closed));
   push(dataQuality(closed));
   push(returnConcentration(closed));
+  push(emotionOutcomes(closed, diary));
   // Every trade, not just the closed ones — see the note on the check.
   push(duplicatePositions(all || closed));
 
