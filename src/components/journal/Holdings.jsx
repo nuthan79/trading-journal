@@ -187,6 +187,12 @@ export default function Holdings({
           changePct,
           toStop,
           breached,
+          // Decided once, here, because it was being decided twice: the row
+          // printed 0 for a position that had banked past its own risk, while
+          // the dial beside it went on adding that position's full openRiskAmt
+          // to the rupee total. Same page, same word, two answers — the table
+          // said nothing left to lose and the figure said fifty-eight thousand.
+          riskFree: t.isRiskFree || !(t.openRiskAmt > 0),
           days: isFinite(t.heldDays) ? t.heldDays : NaN,
           tdays: tradingDays(t.entry_date, today),
         };
@@ -196,7 +202,10 @@ export default function Holdings({
 
   const totals = useMemo(() => {
     const sum = (f) => rows.reduce((a, r) => a + (isFinite(f(r)) ? f(r) : 0), 0);
-    const openRisk = sum((r) => r.openRiskAmt);
+    // A position with nothing left to lose contributes nothing, exactly as its
+    // row shows. The R figure below already worked this way; the rupee one did
+    // not, which is the whole of the discrepancy.
+    const openRisk = sum((r) => (r.riskFree ? 0 : r.openRiskAmt));
     return {
       exposure: sum((r) => r.liveExposure),
       openRisk,
@@ -400,7 +409,7 @@ export default function Holdings({
           </thead>
           <tbody>
             {rows.map((r, i) => {
-              const riskFree = r.isRiskFree || !(r.openRiskAmt > 0);
+              const riskFree = r.riskFree;
               // The reminder has been put down. Held here as well as in the
               // row so the flag turns hollow on the click rather than on the
               // reload that follows it.
