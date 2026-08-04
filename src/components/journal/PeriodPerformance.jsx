@@ -43,6 +43,21 @@ export default function PeriodPerformance({ closed, openingCapital, flows = [], 
     [rows]
   );
 
+  /**
+   * What an average period came to.
+   *
+   * The table already carries this and makes the reader do the division, which
+   * is the sort of arithmetic people carry around in their heads wrongly.
+   *
+   * Divided by the periods LISTED, not by calendar months elapsed, because
+   * `byPeriod` only builds a bucket where trades exist — a month you sat out
+   * has no row. Those two are the same number for anyone who traded every
+   * month and different for everyone else, so the divisor is printed beside
+   * the figures rather than left to be assumed.
+   */
+  const grainWord = grain === "month" ? "month"
+    : grain === "quarter" ? "quarter" : "financial year";
+
   const totals = useMemo(() => {
     if (!rows.length) return null;
     // Guarded: a period whose trades all lack a stop has no totalR, and one
@@ -189,6 +204,27 @@ export default function PeriodPerformance({ closed, openingCapital, flows = [], 
                 </td>
                 <td></td>
               </tr>
+              {rows.length > 1 && (
+                <tr className="pp-avg">
+                  <td><b>Per {grainWord}</b></td>
+                  <td className="num pp-dim">{(totals.trades / rows.length).toFixed(1)}</td>
+                  <td className={`num ${totals.pnl >= 0 ? "pos" : "neg"}`}>
+                    {rupee(totals.pnl / rows.length)}
+                  </td>
+                  <td className="num pp-dim">—</td>
+                  <td className={`num ${totals.totalR >= 0 ? "pos" : "neg"}`}>
+                    {rfmt(totals.totalR / rows.length)}
+                  </td>
+                  {/* The divisor, said out loud. A period you didn't trade has
+                      no row here, so this is per period traded — which is the
+                      same as per calendar month only if you never sat one out. */}
+                  <td colSpan={5} className="num pp-dim">
+                    across {rows.length} {grainWord}
+                    {rows.length === 1 ? "" : grain === "year" ? "s" : "s"} with trades
+                  </td>
+                  <td></td>
+                </tr>
+              )}
             </tfoot>
           )}
         </table>
@@ -201,6 +237,9 @@ export default function PeriodPerformance({ closed, openingCapital, flows = [], 
         }
         .pp-sub { font-size: 12px; color: var(--ink2); margin-top: 3px; max-width: 620px; }
         .pp-dim { color: var(--ink3); font-size: 11px; }
+        /* Lighter than the total above it: a derived figure, not a sum. */
+        .pp-avg td { border-top: 1px solid var(--rule); }
+        .pp-avg b { font-weight: 500; color: var(--ink2); }
         .pp-controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
         .pp-note {
           font-size: 11.5px; color: var(--ink3); line-height: 1.6;
