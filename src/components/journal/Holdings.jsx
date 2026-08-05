@@ -27,9 +27,9 @@ const RISK_WARN_R = 5;
 const FREE_AT_R = 1.5;
 
 
-function Summary({ label, value, sub, tone }) {
+function Summary({ label, value, sub, tone, hint }) {
   return (
-    <div className="ps-sum">
+    <div className="ps-sum" title={hint || undefined}>
       <div className="ps-sum-l">{label}</div>
       <div className={`ps-sum-v mono ${tone || ""}`}>{value}</div>
       {sub != null && <div className="ps-sum-s mono">{sub}</div>}
@@ -157,6 +157,24 @@ export default function Holdings({
         // row describes the open part — quantity, exposure, risk — so the cost
         // of a part already sold has no business among them.
         const buyValue = Number(t.entry_price) * qtyOpen;
+        /**
+         * Where price stands against this trade's 1R — the same figure the
+         * position panel puts beside each sell, and the one a trader means by
+         * "I sold a third at 6R".
+         *
+         * Deliberately NOT weighted by how much is still held. The column used
+         * to show unrealised money over the whole position's 1R, which falls
+         * the moment you sell any of it: KMEW sold down to 40% read +3.27R
+         * while price was 8.2R above entry, so a trade at a new high looked
+         * like one that had given most of it back. Nothing had dropped; the
+         * numerator had.
+         *
+         * The rupee column beside it still carries what the remaining shares
+         * are worth, and the strip above still totals the R that is summable.
+         */
+        const atR = t.riskPerShare > 0 && isFinite(t.mark)
+          ? ((t.mark - Number(t.entry_price)) * (t.side === "short" ? -1 : 1)) / t.riskPerShare
+          : NaN;
         const changePct = isFinite(t.mark) && Number(t.entry_price) > 0
           ? ((t.mark - Number(t.entry_price)) / Number(t.entry_price)) * 100 * (t.side === "short" ? -1 : 1)
           : NaN;
@@ -175,6 +193,7 @@ export default function Holdings({
           openPct,
           liveExposure,
           buyValue,
+          atR,
           changePct,
           toStop,
           breached,
@@ -359,6 +378,10 @@ export default function Holdings({
             label="Unrealised"
             value={rupee(totals.unrealised)}
             sub={isFinite(totals.unrealisedR) ? rfmt(totals.unrealisedR) : "—"}
+            hint="Money still on the table across every holding, and what it comes to in R. This
+                  one IS weighted by size, so it will not match the Now at column added up —
+                  that column is where each price stands, which is not a thing you can sum."
+
             tone={totals.unrealised >= 0 ? "pos" : "neg"}
           />
           <Summary
@@ -393,7 +416,7 @@ export default function Holdings({
               <th className="num">Change %</th>
               <th className="num">Banked</th>
               <th className="num">Unrealised</th>
-              <th className="num">Unreal. R</th>
+              <th className="num">Now at</th>
             </tr>
           </thead>
           <tbody>
@@ -489,8 +512,12 @@ export default function Holdings({
                   <td className={`num ${r.unrealisedPnl >= 0 ? "pos" : "neg"}`} style={{ fontWeight: 500 }}>
                     {isFinite(r.unrealisedPnl) ? rupee(r.unrealisedPnl) : "—"}
                   </td>
-                  <td className={`num ${r.unrealisedR >= 0 ? "pos" : "neg"}`}>
-                    {isFinite(r.unrealisedR) ? rfmt(r.unrealisedR) : "—"}
+                  <td className={`num ${r.atR >= 0 ? "pos" : "neg"}`}
+                      title={"Where price stands against this trade's 1R. It does not change when "
+                        + "you sell part of the position — sell a third at 6R and this still reads "
+                        + "6R, then follows the price from there. The rupee column beside it is "
+                        + "what the shares you still hold are worth."}>
+                    {isFinite(r.atR) ? rfmt(r.atR) : "—"}
                   </td>
                 </tr>
               );
@@ -515,6 +542,8 @@ export default function Holdings({
 
       <div className="ps-foot">
         Buy value is what the shares still held cost, so it falls as a position is sold down.
+        Now at is where price stands against that trade's 1R — it holds still when you sell part
+        of a position, so a trade at a new high never reads as one that gave it back.
         Open risk is what the current stop still exposes, so a stop moved past entry reads zero.
         The {RISK_WARN_R}R dial is there to be read, not obeyed: there&apos;s no cap on how many
         holdings you can carry at once, and nothing is blocked past the line.
