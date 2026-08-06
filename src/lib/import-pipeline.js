@@ -331,6 +331,20 @@ export function reconcile(groups, targets, { broker = null } = {}) {
       group: g,
       tradeId: target.id,
       tranches: missing,
+      /**
+       * A trade with no broker is claimed by the first file that completes it.
+       *
+       * Null matches anything, which is what lets an import finish a position
+       * typed in by hand. Left null afterwards it goes on matching anything —
+       * so a Zerodha file could complete it today and a Dhan file add ITS
+       * sells to the same position tomorrow, and one trade would end up
+       * holding two brokers' exits. Verified before this existed.
+       *
+       * Stamping records which file claimed it and changes nothing the trader
+       * wrote: not the size, not the entry, not the stop. It only stops the
+       * position being a magnet for every import that follows.
+       */
+      claimsBroker: !target.broker && !!broker ? broker : null,
       // Set only when the earlier import under-recorded the position size.
       grow,
       // For the preview: what is being added, and to what.

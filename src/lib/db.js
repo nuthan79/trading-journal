@@ -466,6 +466,26 @@ export async function importTrades({ trades, completions = [], meta }) {
     }
   }
 
+  // A position that had no broker now belongs to the file that completed it.
+  // Nothing the trader typed is touched — this is only what stops the next
+  // broker's import matching the same trade and stacking its sells on top.
+  for (const c of completions) {
+    if (!c.claimsBroker) continue;
+    const { error: brokerErr } = await supabase
+      .from("trades")
+      .update({ broker: c.claimsBroker })
+      .is("broker", null)
+      .eq("id", c.tradeId);
+    if (brokerErr) {
+      await supabase.from("trades").delete().eq("import_batch", batch.id);
+      await supabase.from("import_batches").delete().eq("id", batch.id);
+      throw new Error(
+        migrationHint(brokerErr) ||
+        `Could not record the broker on ${c.group.symbol}: ${brokerErr.message}. Nothing was saved.`
+      );
+    }
+  }
+
   if (exitRows.length) {
     const { error: exitErr } = await supabase.from("trade_exits").insert(exitRows);
     if (exitErr) {
