@@ -4,6 +4,11 @@
   --paper:#EDF0EE; --card:#FBFCFB; --grid:#CFD8D4; --rule:#DCE3E0;
   --ink:#131C1A; --ink2:#4A5A56; --ink3:#7C8B87;
   --long:#0F7A63; --short:#A83E27; --brass:#B8862F;
+  /* A fifth plot colour, for a series that is neither money nor an outcome —
+     the concurrent position count on the deployment chart. Muted to the same
+     degree as the others so it reads as one of the family rather than an
+     alert. */
+  --steel:#4C6B8A;
 }
 
 * { box-sizing: border-box; }

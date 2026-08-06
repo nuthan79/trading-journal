@@ -31,14 +31,6 @@ import { apiFetch } from "@/lib/db";
 const CAP_MONEY = "cd";                       // unique prefix — see the styled-jsx note in CLAUDE.md
 
 /**
- * Gridline values that land on round money.
- *
- * Dividing the maximum into equal fifths gives ticks like ₹1.68 Cr, and
- * `inr()` renders that at zero decimals as "₹2 Cr" — an axis label a third
- * above the line it sits on. Stepping by 1 / 2 / 2.5 / 5 × a power of ten
- * instead means every label is exact at the precision it prints.
- */
-/**
  * The index point on or before `day`, by binary search over an ascending list.
  *
  * An exact-date lookup finds nothing on a weekend or a market holiday, and the
@@ -58,13 +50,65 @@ function lastAtOrBefore(points, day) {
   return found;
 }
 
-function niceTicks(max, target = 4) {
+/**
+ * Gridline values that land on round numbers and always CLEAR the maximum.
+ *
+ * Two things this has to get right, both of which it got wrong first time.
+ *
+ * Round: dividing the maximum into equal fifths gives ticks like ₹1.68 Cr,
+ * and `inr()` renders that at zero decimals as "₹2 Cr" — a label a third above
+ * the line it sits on. Stepping by 1 / 2 / 2.5 / 5 × a power of ten means
+ * every label is exact at the precision it prints.
+ *
+ * Clear: the last tick has to be at or above `max`, because the caller scales
+ * the panel to it. Stopping at the last tick BELOW the maximum let the series
+ * climb past the top of the plot — the capital line was drawing itself up into
+ * the legend, and the position axis stopped at 15 while the line reached 18.
+ *
+ * `integer` drops the 2.5 step, since half a position is not a thing.
+ */
+/**
+ * The fewest decimals that print this tick exactly.
+ *
+ * A fixed decimal count cannot be right for a whole axis: at one place ₹1.25
+ * Cr prints as "₹1.3 Cr", a label ₹5L above its own gridline, and at two every
+ * lakh tick grows a pointless "₹25.00 L". Asking each tick what it needs gives
+ * ₹25 L, ₹50 L, ₹75 L, ₹1 Cr, ₹1.25 Cr — every one of them exact.
+ */
+function axisMoney(v) {
+  if (v === 0) return "0";
+  const unit = Math.abs(v) >= 1e7 ? 1e7 : 1e5;
+  for (let d = 0; d <= 2; d++) {
+    if (Math.abs(Number((v / unit).toFixed(d)) * unit - v) < unit * 1e-6) {
+      return rupee(v, { decimals: d });
+    }
+  }
+  return rupee(v, { decimals: 2 });
+}
+
+function niceTicks(max, { target = 4, integer = false } = {}) {
   if (!(max > 0)) return [0];
   const mag = Math.pow(10, Math.floor(Math.log10(max / target)));
-  const step =
-    [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= max / target) || 10 * mag;
+  const steps = (integer ? [1, 2, 5, 10] : [1, 2, 2.5, 5, 10]).map((m) => m * mag);
+
+  // The step whose tick count lands nearest `target`. Taking the first step
+  // at or above max/target instead is what left ~40% of the panel empty on a
+  // chart whose maximum sat just over a round number.
+  let step = steps[steps.length - 1];
+  let best = Infinity;
+  for (const s of steps) {
+    if (integer && s < 1) continue;
+    const n = Math.ceil(max / s);
+    if (n < 2) continue;
+    const score = Math.abs(n - target);
+    if (score < best) { best = score; step = s; }
+  }
+
   const out = [];
-  for (let v = 0; v <= max + step * 0.001; v += step) out.push(v);
+  for (let v = 0; ; v += step) {
+    out.push(v);
+    if (v >= max - step * 1e-9) break;
+  }
   return out;
 }
 
@@ -163,6 +207,36 @@ export default function CapitalDeployment({ all = [], closed = [], accountSize =
   const topMoney = yTicks[yTicks.length - 1];
   const fy = (v) => PT + depH - (v / topMoney) * depH;
 
+  /**
+   * How many positions were open, on its own right-hand scale.
+   *
+   * A second axis on one panel is usually a bad trade — it lets a crossing
+   * point look meaningful when the two scales are arbitrary. It earns its
+   * place here because the question the money line cannot answer on its own is
+   * whether committed capital moved because positions were ADDED or because
+   * they got BIGGER, and only laying the two over each other shows it: the
+   * lines parting company is the whole signal.
+   *
+   * Stepped, not interpolated. A position count is an integer that jumps, and
+   * a smooth line between 3 and 4 draws an afternoon spent holding 3.4
+   * positions.
+   */
+  const maxCount = Math.max(...S.days.map((x) => x.count), 1);
+  const countTicks = niceTicks(maxCount, { integer: true });
+  const countTop = countTicks[countTicks.length - 1];
+  const fyc = (v) => PT + depH - (v / countTop) * depH;
+
+  let prevY = null;
+  const countPath = S.days
+    .map((x, i) => {
+      const X = fx(x.d).toFixed(1);
+      const Y = fyc(x.count).toFixed(1);
+      const seg = i === 0 ? `M${X} ${Y}` : `L${X} ${prevY}L${X} ${Y}`;
+      prevY = Y;
+      return seg;
+    })
+    .join("");
+
   const path = (key) =>
     S.days.map((x, i) => `${i ? "L" : "M"}${fx(x.d).toFixed(1)} ${fy(x[key]).toFixed(1)}`).join("");
   const areaPath =
@@ -244,6 +318,8 @@ export default function CapitalDeployment({ all = [], closed = [], accountSize =
       <div className="card" ref={box} style={{ padding: "10px 4px 4px" }}>
         <div className={`${CAP_MONEY}-legend`}>
           <span><i className={`${CAP_MONEY}-sw ${CAP_MONEY}-dep`} />Committed</span>
+          <span><i className={`${CAP_MONEY}-sw ${CAP_MONEY}-pos`} />Positions held
+            <span className={`${CAP_MONEY}-dim`}>&nbsp;· right axis</span></span>
           <span><i className={`${CAP_MONEY}-sw ${CAP_MONEY}-risk`} />Open risk</span>
           <span><i className={`${CAP_MONEY}-sw ${CAP_MONEY}-cap`} />Capital</span>
           {idx.points.length > 0 && (
@@ -261,7 +337,7 @@ export default function CapitalDeployment({ all = [], closed = [], accountSize =
               <line x1={PL} x2={PL + innerW} y1={fy(v)} y2={fy(v)}
                     stroke="var(--rule)" strokeWidth="1" />
               <text x={PL - 7} y={fy(v) + 3.5} textAnchor="end" className={`${CAP_MONEY}-ax`}>
-                {v === 0 ? "0" : rupee(v, { decimals: 1 })}
+                {axisMoney(v)}
               </text>
             </g>
           ))}
@@ -271,6 +347,16 @@ export default function CapitalDeployment({ all = [], closed = [], accountSize =
           <path d={path("capital")} fill="none" stroke="var(--ink3)" strokeWidth="1"
                 strokeDasharray="3 3" opacity="0.7" />
           <path d={path("risk")} fill="none" stroke="var(--short)" strokeWidth="1.3" opacity="0.85" />
+          <path d={countPath} fill="none" stroke="var(--steel)" strokeWidth="1.3" opacity="0.9" />
+
+          {/* Right-hand axis, in the line's own colour so there is no question
+              which scale belongs to which series. */}
+          {countTicks.map((v) => (
+            <text key={`c${v}`} x={PL + innerW + 7} y={fyc(v) + 3.5}
+                  textAnchor="start" className={`${CAP_MONEY}-axc`}>
+              {v}
+            </text>
+          ))}
 
           {iPts.length > 0 && (
             <>
@@ -297,6 +383,7 @@ export default function CapitalDeployment({ all = [], closed = [], accountSize =
               <line x1={fx(hovDay.d)} x2={fx(hovDay.d)} y1={PT} y2={iy0 + idxH}
                     stroke="var(--ink3)" strokeWidth="1" opacity="0.5" />
               <circle cx={fx(hovDay.d)} cy={fy(hovDay.deployed)} r="3" fill="var(--long)" />
+              <circle cx={fx(hovDay.d)} cy={fyc(hovDay.count)} r="2.5" fill="var(--steel)" />
               {hovIdx && <circle cx={fx(hovIdx.d)} cy={fiy(hovIdx.c)} r="2.5" fill="var(--brass)" />}
             </>
           )}
@@ -317,29 +404,6 @@ export default function CapitalDeployment({ all = [], closed = [], accountSize =
               Busiest was {S.busiest.count} positions on {dmy(S.busiest.d)}.
             </span>
           )}
-        </div>
-      </div>
-
-      {/* ---- distribution ------------------------------------------- */}
-      <div className={`${CAP_MONEY}-block`}>
-        <div className="eyebrow">How often, at what level</div>
-        <div className={`${CAP_MONEY}-sub`}>
-          Days spent at each share of capital. Counted in calendar days — a position
-          held over a weekend is still held. The typical day sat at {pct(S.medianPct, 0)}.
-        </div>
-        <div className="card" style={{ padding: "12px 14px" }}>
-          {S.bands.map((b) => (
-            <div key={b.label} className={`${CAP_MONEY}-band`}>
-              <div className={`${CAP_MONEY}-blabel`}>{b.label}</div>
-              <div className={`${CAP_MONEY}-btrack`}>
-                <div style={{ width: `${b.share}%` }} />
-              </div>
-              <div className={`${CAP_MONEY}-bval`}>
-                {b.days} day{b.days === 1 ? "" : "s"}
-                <span className={`${CAP_MONEY}-dim`}> · {pct(b.share, 0)}</span>
-              </div>
-            </div>
-          ))}
         </div>
       </div>
 
@@ -383,53 +447,6 @@ export default function CapitalDeployment({ all = [], closed = [], accountSize =
           )}
         </div>
       )}
-
-      {/* ---- by month ------------------------------------------------ */}
-      <div className={`${CAP_MONEY}-block`}>
-        <div className="eyebrow">Month by month</div>
-        <div className="card scroll">
-          <table className="t">
-            <thead><tr>
-              <th>Month</th>
-              <th className="num">Avg committed</th>
-              <th className="num">% of capital</th>
-              <th className="num">Most</th>
-              <th className="num">Least</th>
-              <th className="num">Avg positions</th>
-              <th className="num">Most positions</th>
-              <th className="num">Avg risk</th>
-            </tr></thead>
-            <tbody>
-              {S.months.map((m) => (
-                <tr key={m.key}>
-                  <td><b style={{ fontWeight: 500 }}>
-                    {new Date(`${m.key}-01`).toLocaleDateString("en-IN", { month: "short", year: "numeric" })}
-                  </b></td>
-                  <td className="num">{rupee(m.avgDeployed)}</td>
-                  <td className="num">{pct(m.avgPct, 0)}</td>
-                  <td className="num">{rupee(m.maxDeployed)}</td>
-                  <td className="num">{rupee(m.minDeployed)}</td>
-                  <td className="num">{m.avgCount.toFixed(1)}</td>
-                  <td className="num">{m.maxCount}</td>
-                  <td className="num">{pct(m.avgRiskPct, 2)}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td><b>All</b></td>
-                <td className="num">{rupee(S.avgDeployed)}</td>
-                <td className="num">{pct(S.avgPct, 0)}</td>
-                <td className="num">{rupee(S.peak.deployed)}</td>
-                <td className="num">{rupee(Math.min(...S.days.map((x) => x.deployed)))}</td>
-                <td className="num">{S.avgCount.toFixed(1)}</td>
-                <td className="num">{S.busiest.count}</td>
-                <td className="num">{pct(S.avgRiskPct, 2)}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </div>
 
       <div className={`${CAP_MONEY}-notes`}>
         <p><b>At cost, not market value.</b> Committed capital is entry price × shares
@@ -480,7 +497,9 @@ export default function CapitalDeployment({ all = [], closed = [], accountSize =
         .${CAP_MONEY}-risk { background: var(--short); }
         .${CAP_MONEY}-cap  { background: var(--ink3); }
         .${CAP_MONEY}-idx  { background: var(--brass); }
+        .${CAP_MONEY}-pos  { background: var(--steel); }
         .${CAP_MONEY}-ax { font-size: 10px; fill: var(--ink3); font-variant-numeric: tabular-nums; }
+        .${CAP_MONEY}-axc { font-size: 10px; fill: var(--steel); font-variant-numeric: tabular-nums; }
 
         .${CAP_MONEY}-read {
           display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline;
@@ -489,15 +508,6 @@ export default function CapitalDeployment({ all = [], closed = [], accountSize =
           font-variant-numeric: tabular-nums;
         }
         .${CAP_MONEY}-read b { font-weight: 500; color: var(--ink); }
-
-        .${CAP_MONEY}-band {
-          display: grid; grid-template-columns: 86px 1fr 120px;
-          align-items: center; gap: 10px; padding: 4px 0;
-        }
-        .${CAP_MONEY}-blabel { font-size: 11.5px; color: var(--ink2); }
-        .${CAP_MONEY}-btrack { height: 9px; background: var(--rule); border-radius: 1px; }
-        .${CAP_MONEY}-btrack > div { height: 100%; background: var(--long); opacity: .6; border-radius: 1px; }
-        .${CAP_MONEY}-bval { font-size: 11.5px; text-align: right; font-variant-numeric: tabular-nums; }
 
         /* Two columns so a five-item list doesn't run the width of the page
            as one long thin ribbon — the same pass applied to the other

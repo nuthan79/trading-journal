@@ -61,13 +61,13 @@ const median = (xs) => {
 };
 
 /**
- * Bands the deployment distribution is counted into.
+ * Bands trades are grouped into by how committed the account was at entry.
  *
  * Fixed fractions of capital rather than fixed rupee amounts, so the same
  * bands mean the same thing to a ₹2L account and a ₹2Cr one. Quantile bands
- * would be wrong here for once: the question is "how often was I nearly all
- * in", and adaptive cuts would define that relative to your own habit, which
- * is the thing being examined.
+ * would be wrong here for once: the question is "did a fuller book pay
+ * better", and adaptive cuts would define "full" relative to your own habit,
+ * which is the thing being examined.
  */
 export const DEPLOY_BANDS = [
   { max: 10, label: "under 10%" },
@@ -236,42 +236,11 @@ export function deploymentSeries(
     .map((t) => n(t.entry_price) * n(t.quantity))
     .filter((v) => isFinite(v) && v > 0);
 
-  const bands = DEPLOY_BANDS.map((b) => ({ ...b, days: 0 }));
-  for (const p of pcts) {
-    const i = bandOf(p);
-    if (i >= 0) bands[i].days++;
-  }
-  for (const b of bands) b.share = pcts.length ? (b.days / pcts.length) * 100 : 0;
-
-  /* ---- by month ------------------------------------------------------ */
-  const mMap = new Map();
-  for (const x of days) {
-    const k = x.d.slice(0, 7);
-    const m = mMap.get(k) || { key: k, dep: [], pct: [], cnt: [], risk: [] };
-    m.dep.push(x.deployed);
-    if (isFinite(x.pct)) m.pct.push(x.pct);
-    m.cnt.push(x.count);
-    if (isFinite(x.riskPct)) m.risk.push(x.riskPct);
-    mMap.set(k, m);
-  }
   const avg = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : NaN);
-  const months = [...mMap.values()].map((m) => ({
-    key: m.key,
-    avgDeployed: avg(m.dep),
-    maxDeployed: Math.max(...m.dep),
-    minDeployed: Math.min(...m.dep),
-    avgPct: avg(m.pct),
-    avgCount: avg(m.cnt),
-    maxCount: Math.max(...m.cnt),
-    avgRiskPct: avg(m.risk),
-  }));
-
   const last = days[days.length - 1];
 
   return {
     days,
-    months,
-    bands,
     from: start,
     to: end,
     dayCount: days.length,
