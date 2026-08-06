@@ -147,3 +147,81 @@ export async function getQuotes(items, sourceName) {
   }
   return fresh;
 }
+
+/* ------------------------------------------------------------------ */
+/*  Index history                                                      */
+/*                                                                     */
+/*  A daily close series for a broad index, so the deployment chart can */
+/*  be read against what the market was doing at the time.              */
+/*                                                                     */
+/*  UNLIKE QUOTES, THIS IS THE SAME FOR EVERY USER. One cache entry     */
+/*  serves the whole deployment, which is the opposite of the per-symbol */
+/*  quote problem — adding this screen does not add to that load. The   */
+/*  series only changes once a day, after close, so the TTL is hours.   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Indices offered, by the ticker Yahoo knows them as.
+ *
+ * Nifty 500 is the default because it is the widest NSE index with a long
+ * history, and a breakout system trades far outside the top 50. It is still
+ * only a proxy: an index can grind upward through a stretch where breakouts
+ * are failing, which is precisely when the chart is most tempting to
+ * misread. Breadth would be the honest measure and Yahoo does not carry it.
+ */
+export const INDICES = [
+  { id: "nifty500", ticker: "^CRSLDX", label: "Nifty 500" },
+  { id: "nifty50", ticker: "^NSEI", label: "Nifty 50" },
+  { id: "midcap", ticker: "^NSEMDCP50", label: "Nifty Midcap 50" },
+];
+
+const histCache = new Map();
+const HIST_TTL_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * Daily closes between two dates, oldest first: [{ d: 'YYYY-MM-DD', c }].
+ *
+ * Returns [] rather than throwing when the source is down — the deployment
+ * chart is fully readable without the index behind it, and a dead upstream
+ * should cost you a comparison, not the screen.
+ */
+export async function getIndexHistory({ index = "nifty500", from, to } = {}) {
+  const spec = INDICES.find((i) => i.id === index) || INDICES[0];
+  const p1 = Math.floor(new Date(from || "2000-01-01").getTime() / 1000);
+  const p2 = Math.floor(new Date(to || Date.now()).getTime() / 1000) + 86400;
+
+  const key = `${spec.id}:${p1}:${p2}`;
+  const hit = histCache.get(key);
+  if (hit && Date.now() - hit.t < HIST_TTL_MS) return hit.v;
+
+  for (const host of HOSTS) {
+    try {
+      const url =
+        `https://${host}/v8/finance/chart/${encodeURIComponent(spec.ticker)}` +
+        `?period1=${p1}&period2=${p2}&interval=1d`;
+      const res = await fetch(url, { headers: BROWSER_HEADERS, cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const r = (await res.json())?.chart?.result?.[0];
+      const ts = r?.timestamp || [];
+      const closes = r?.indicators?.quote?.[0]?.close || [];
+
+      const out = [];
+      for (let i = 0; i < ts.length; i++) {
+        if (closes[i] == null) continue;   // trading halts leave null holes
+        out.push({
+          d: new Date(ts[i] * 1000).toISOString().slice(0, 10),
+          c: Math.round(closes[i] * 100) / 100,
+        });
+      }
+      if (!out.length) throw new Error("no closes in response");
+
+      const v = { index: spec.id, label: spec.label, points: out };
+      histCache.set(key, { t: Date.now(), v });
+      return v;
+    } catch (err) {
+      console.warn("[index-history]", spec.ticker, err?.message);
+    }
+  }
+  return { index: spec.id, label: spec.label, points: [] };
+}

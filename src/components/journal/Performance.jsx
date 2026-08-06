@@ -7,6 +7,7 @@ import { isExecutionError } from "@/lib/constants";
 import { rupee, rfmt, pct } from "@/lib/format";
 import Tile from "./Tile";
 import PeriodPerformance from "./PeriodPerformance";
+import CapitalDeployment from "./CapitalDeployment";
 
 export default function Performance({ closed, S, accountSize, flows, all = [] }) {
   const [dim, setDim] = useState("pattern");
@@ -46,6 +47,13 @@ export default function Performance({ closed, S, accountSize, flows, all = [] })
 
       <div className="sec">
         <PeriodPerformance closed={closed} openingCapital={accountSize} flows={flows} all={all} />
+      </div>
+
+      {/* Sits directly under the period table on purpose: deployment only means
+          something next to the returns it produced. `all`, not `closed` —
+          an open position is committing capital right now. */}
+      <div className="sec">
+        <CapitalDeployment all={all} closed={closed} accountSize={accountSize} flows={flows} />
       </div>
 
       <div className="sec">
