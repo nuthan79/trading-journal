@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { deploymentSeries, deploymentOutcomes, THIN_DEPLOY_SLICE } from "@/lib/deployment";
 import { rupee, rfmt, pct, dmy } from "@/lib/format";
+import { apiFetch } from "@/lib/db";
 
 /**
  * Capital deployment — how much of the account was in the market, and when.
@@ -89,7 +90,11 @@ function useIndexHistory(index, from, to) {
     let alive = true;
     setState((s) => ({ ...s, loading: true, error: null }));
 
-    fetch(`/api/index-history?index=${index}&from=${from}&to=${to}`)
+    // apiFetch, not fetch. The Supabase session lives in localStorage rather
+    // than a cookie, so nothing rides along on its own and a bare fetch gets
+    // 401 every time — which this failed soft on, so the panel just never
+    // appeared. See the note on apiFetch in db.js.
+    apiFetch(`/api/index-history?index=${index}&from=${from}&to=${to}`)
       .then((r) => r.json())
       .then((d) => {
         if (!alive) return;
