@@ -119,7 +119,7 @@ export function groupLots(lots) {
 const assumedStop = (entryPrice, pct) =>
   pct > 0 && entryPrice > 0 ? round2(entryPrice * (1 - pct / 100)) : null;
 
-export function toTradeRows(groups, { batchId, exchange = "NSE", assumeStopPct = 0 } = {}) {
+export function toTradeRows(groups, { batchId, exchange = "NSE", assumeStopPct = 0, broker = null } = {}) {
   return groups.map((g) => {
     const free = isFreeShares(g);
     // No stop on shares that cost nothing. An assumed stop is a percentage
@@ -131,6 +131,10 @@ export function toTradeRows(groups, { batchId, exchange = "NSE", assumeStopPct =
     exchange,
     side: "long",
     status: "closed",
+
+    // Which file this came out of, so a later import from a different broker
+    // knows this position is not one of its own.
+    broker,
 
     entry_date: g.entryDate,
     // Zero is the truth for a bonus issue, not a missing value: those shares
@@ -225,7 +229,24 @@ export function importSummary(groups, { skipped = 0 } = {}) {
  *   duplicates   it's here and every sell is already recorded
  *   conflicts    the file and the journal disagree; a human decides
  */
-export function reconcile(groups, targets) {
+export function reconcile(groups, targets, { broker = null } = {}) {
+  /**
+   * Two known and different brokers are never the same position.
+   *
+   * Matching on symbol and entry date alone was right while there was one
+   * source, and became a way of merging real positions the moment there were
+   * two: the same stock bought the same day through two brokers is routine
+   * for anyone with two accounts, and the second import would either skip the
+   * position as a duplicate or graft its sells onto the first broker's trade
+   * and grow the quantity to fit.
+   *
+   * An UNKNOWN broker still matches either way, and that is deliberate rather
+   * than lax. A trade entered by hand has no broker; the whole point of
+   * importing afterwards is to complete it, and a null that refused to match
+   * would duplicate it instead.
+   */
+  const sameBroker = (a, b) => !a || !b || a === b;
+
   const byPosition = new Map();
   for (const t of targets || []) {
     const k = `${t.symbol}|${t.entry_date}`;
@@ -244,7 +265,9 @@ export function reconcile(groups, targets) {
 
   for (const g of groups) {
     const key = `${g.symbol}|${g.entryDate}`;
-    const found = (byPosition.get(key) || []).filter((t) => !claimed.has(t.id));
+    const found = (byPosition.get(key) || [])
+      .filter((t) => !claimed.has(t.id))
+      .filter((t) => sameBroker(t.broker, broker));
 
     if (found.length === 0) { fresh.push(g); continue; }
 
@@ -370,11 +393,12 @@ function rejectReason(g) {
  * adapter has already decided which rows are equity, what the columns meant
  * and how the dates were written; from here on nothing knows or cares.
  */
-export function assembleImport(parsed, { targets, batchId, exchange, assumeStopPct } = {}) {
+export function assembleImport(parsed, { targets, batchId, exchange, assumeStopPct, broker } = {}) {
   const { lots, warnings = [], sectionCounts = {}, missingColumns = [], skippedSections = [] } = parsed;
 
   const grouped = groupLots(lots);
-  const { fresh: matched, completions, duplicates, conflicts } = reconcile(grouped, targets);
+  const { fresh: matched, completions, duplicates, conflicts } =
+    reconcile(grouped, targets, { broker });
 
   // Kept apart from `conflicts`, which the UI reports separately: a rejected
   // group has a value the journal can't store, and the fix is in the file or
@@ -389,7 +413,7 @@ export function assembleImport(parsed, { targets, batchId, exchange, assumeStopP
   }
 
   return {
-    trades: toTradeRows(fresh, { batchId, exchange, assumeStopPct }),
+    trades: toTradeRows(fresh, { batchId, exchange, assumeStopPct, broker }),
     groups: fresh,
     // Sells to attach to positions already here. Carries the trade id, so
     // these never travel through toTradeRows — there is no new trade to make.

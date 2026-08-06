@@ -138,7 +138,8 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
         throw new Error("Expected an .xlsx or .csv file.");
       }
 
-      const out = assembleImport(broker.parseRows(rows), { targets, assumeStopPct: stopPct });
+      const out = assembleImport(broker.parseRows(rows),
+        { targets, assumeStopPct: stopPct, broker: broker.id });
       if (!out.trades.length && !out.completions.length && !out.duplicates.length) {
         throw new Error(
           "No equity trades found. This report may cover a period with no closed positions."
@@ -164,7 +165,9 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
    */
   useEffect(() => {
     if (!rawRows) return;
-    setParsed(assembleImport((broker || zerodha).parseRows(rawRows), { targets, assumeStopPct: stopPct }));
+    const b = broker || zerodha;
+    setParsed(assembleImport(b.parseRows(rawRows),
+      { targets, assumeStopPct: stopPct, broker: b.id }));
   }, [rawRows, targets, stopPct]);
 
   const confirm = async () => {
@@ -176,7 +179,9 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
         completions: parsed.completions,
         meta: {
           filename: file?.name,
-          source: "zerodha-taxpnl",
+          // Was hardcoded when there was one adapter. The batch should say
+          // which file it actually read, not which one it used to be.
+          source: `${(broker || zerodha).id}-taxpnl`,
           trades_count: parsed.trades.length,
           lots_count: parsed.summary.lots,
           date_from: parsed.summary.from,

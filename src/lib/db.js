@@ -196,6 +196,7 @@ const isMissingTable = (error) =>
  * file names the file to run; this makes the column ones do the same.
  */
 const MIGRATION_FOR_COLUMN = {
+  broker: "019_trade_broker.sql",
   breakeven_ack_at: "017_breakeven_ack.sql",
   acquisition: "013_zero_cost_shares.sql",
   stop_source: "011_stop_source.sql",
@@ -332,7 +333,9 @@ export async function listImportTargets() {
   const [trades, exits] = await Promise.all([
     fetchAllPages(() =>
       supabase.from("trades")
-        .select("id,symbol,entry_date,quantity,status,imported")
+        // broker included since 019: reconcile refuses to match a position
+        // against one from a different broker, and cannot tell without it.
+        .select("id,symbol,entry_date,quantity,status,imported,broker")
         .order("id")),
     fetchAllPages(() =>
       supabase.from("trade_exits")
