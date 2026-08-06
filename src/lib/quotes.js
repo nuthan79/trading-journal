@@ -169,10 +169,26 @@ export async function getQuotes(items, sourceName) {
  * are failing, which is precisely when the chart is most tempting to
  * misread. Breadth would be the honest measure and Yahoo does not carry it.
  */
+/**
+ * WHY NOT MIDSMALLCAP 400, which is the one a breakout trader actually wants.
+ *
+ * Yahoo answers for it — `NIFTYMIDSML400.NS` returns a live level — but asked
+ * for a date range it returns a single close and a firstTradeDate of
+ * 1970-01-01, which is its null. There is no history behind that quote, so a
+ * button for it would draw an empty panel.
+ *
+ * Its two halves do have full history, and they are listed separately rather
+ * than blended into a synthetic 400. Combining them correctly needs free-float
+ * market-cap weights that are not in this data; averaging them would produce a
+ * line that looks like an index, is not one, and could not be checked against
+ * anything. Same rule as the broker adapters — no series without a real source
+ * to test it against.
+ */
 export const INDICES = [
   { id: "nifty500", ticker: "^CRSLDX", label: "Nifty 500" },
   { id: "nifty50", ticker: "^NSEI", label: "Nifty 50" },
-  { id: "midcap", ticker: "^NSEMDCP50", label: "Nifty Midcap 50" },
+  { id: "midcap150", ticker: "NIFTYMIDCAP150.NS", label: "Midcap 150" },
+  { id: "smallcap250", ticker: "NIFTYSMLCAP250.NS", label: "Smallcap 250" },
 ];
 
 const histCache = new Map();

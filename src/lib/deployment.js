@@ -237,10 +237,39 @@ export function deploymentSeries(
     .filter((v) => isFinite(v) && v > 0);
 
   const avg = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : NaN);
+
+  /* ---- by month ------------------------------------------------------ */
+  //
+  // A month of a daily step series, averaged. Not a second source of truth —
+  // every figure here is a mean of the days above it — but a month is the
+  // grain people actually think in, and the daily line is too busy to read a
+  // trend off at a glance.
+  const mMap = new Map();
+  for (const x of days) {
+    const k = x.d.slice(0, 7);
+    const m = mMap.get(k) || { key: k, dep: [], pct: [], cnt: [], risk: [] };
+    m.dep.push(x.deployed);
+    if (isFinite(x.pct)) m.pct.push(x.pct);
+    m.cnt.push(x.count);
+    if (isFinite(x.riskPct)) m.risk.push(x.riskPct);
+    mMap.set(k, m);
+  }
+  const months = [...mMap.values()].map((m) => ({
+    key: m.key,
+    avgDeployed: avg(m.dep),
+    maxDeployed: Math.max(...m.dep),
+    minDeployed: Math.min(...m.dep),
+    avgPct: avg(m.pct),
+    avgCount: avg(m.cnt),
+    maxCount: Math.max(...m.cnt),
+    avgRiskPct: avg(m.risk),
+  }));
+
   const last = days[days.length - 1];
 
   return {
     days,
+    months,
     from: start,
     to: end,
     dayCount: days.length,
@@ -279,10 +308,14 @@ export const THIN_DEPLOY_SLICE = 10;
 
 export function deploymentOutcomes(closed, series) {
   if (!series?.days?.length) return [];
-  const pctOn = new Map(series.days.map((x) => [x.d, x.pct]));
+  const onDay = new Map(series.days.map((x) => [x.d, x]));
 
-  const rows = DEPLOY_BANDS.map((b) => ({
+  // Both edges of the band, not just the top. The UI needs the lower bound to
+  // print the band as a span, and deriving it there by peeking at the previous
+  // row breaks the moment an empty band is filtered out.
+  const rows = DEPLOY_BANDS.map((b, i) => ({
     key: b.label,
+    min: i === 0 ? 0 : DEPLOY_BANDS[i - 1].max,
     max: b.max,
     n: 0,
     wins: 0,
@@ -292,9 +325,9 @@ export function deploymentOutcomes(closed, series) {
 
   for (const t of closed || []) {
     const k = dayKey(t.entry_date);
-    const p = k != null ? pctOn.get(k) : undefined;
-    if (!isFinite(p)) continue;
-    const i = bandOf(p);
+    const day = k != null ? onDay.get(k) : undefined;
+    if (!day || !isFinite(day.pct)) continue;
+    const i = bandOf(day.pct);
     if (i < 0) continue;
     const r = Number(t.r);
     if (!isFinite(r)) continue;
