@@ -82,6 +82,12 @@ async function nse() {
         s: pick(o, "SYMBOL"),
         n: pick(o, "NAME_OF_COMPANY", "COMPANY_NAME"),
         e: "NSE",
+        // The feed has carried this all along and it was being dropped.
+        // Brokers other than Zerodha identify a stock by ISIN and company
+        // name and never give a ticker, so this column is the only thing
+        // that makes their exports readable. It also survives a rename,
+        // which a ticker does not.
+        i: pick(o, "ISIN_NUMBER", "ISIN"),
       }))
       .filter((x) => x.s && x.n);
     console.log(`NSE  → ${out.length} symbols`);
@@ -103,10 +109,11 @@ async function local() {
     for (const o of objs) {
       const s = pick(o, "SECURITY_ID", "SYMBOL", "SC_CODE", "SCRIP_ID");
       const n = pick(o, "ISSUER_NAME", "SECURITY_NAME", "NAME_OF_COMPANY", "COMPANY_NAME");
+      const i = pick(o, "ISIN_NO", "ISIN_NUMBER", "ISIN");
       const status = pick(o, "STATUS", "SECURITY_STATUS").toUpperCase();
       if (!s || !n) continue;
       if (status && status !== "ACTIVE") continue;
-      out.push({ s, n, e: looksBse ? "BSE" : "NSE" });
+      out.push({ s, n, e: looksBse ? "BSE" : "NSE", ...(i ? { i } : {}) });
     }
     console.log(`${f} → ${out.length} rows so far`);
   }

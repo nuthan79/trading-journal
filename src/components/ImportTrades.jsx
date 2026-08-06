@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Upload, Check, AlertTriangle, X, FileSpreadsheet } from "lucide-react";
-import { parseZerodhaTaxPnl, findTradewiseSheet, INCLUDED_SECTIONS } from "@/lib/zerodha";
+import { detectBroker, brokerNames, assembleImport } from "@/lib/brokers";
+import * as zerodha from "@/lib/brokers/zerodha";
 import { rupee, pct } from "@/lib/format";
 
 /**
@@ -83,6 +84,9 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
   const [drag, setDrag] = useState(false);
   const [result, setResult] = useState(null);
   const [rawRows, setRawRows] = useState(null);
+  // Remembered so re-parsing at a different assumed stop uses the same
+  // adapter that read the file, rather than defaulting back to one of them.
+  const [broker, setBroker] = useState(null);
   // A tax report has no stops, so without one every R figure stays blank and a
   // freshly imported journal looks broken. Assuming a single percentage is the
   // difference between a page of dashes and something you can read — as long
@@ -98,13 +102,28 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
     setError(""); setParsed(null); setResult(null); setBusy(true);
     try {
       let rows;
+      // A CSV has no sheets to inspect, so there is nothing to detect from:
+      // that path is Zerodha's, which is the only one offering the report in
+      // that format.
+      let broker = zerodha;
 
       if (/\.(xlsx|xls)$/i.test(f.name)) {
         // Loaded on demand — no reason to ship a spreadsheet parser to
         // everyone who never imports anything
         const XLSX = await import("xlsx");
         const wb = XLSX.read(await f.arrayBuffer(), { cellDates: true });
-        const sheet = findTradewiseSheet(wb);
+        // Worked out from the file rather than asked for. Naming the brokers
+        // we do read is the useful half of failing here — it tells someone
+        // with an unsupported export what is actually wrong.
+        broker = detectBroker(wb);
+        if (!broker) {
+          throw new Error(
+            `This doesn't look like a tax P&L report we can read yet. ` +
+            `Supported: ${brokerNames().join(", ")}. If it's from another broker, ` +
+            `send us the file and we'll add it.`
+          );
+        }
+        const sheet = broker.findSheet(wb);
         if (!sheet) {
           throw new Error(
             "No 'Tradewise Exits' sheet in this file. Download the Tax P&L report " +
@@ -119,13 +138,14 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
         throw new Error("Expected an .xlsx or .csv file.");
       }
 
-      const out = parseZerodhaTaxPnl(rows, { targets, assumeStopPct: stopPct });
+      const out = assembleImport(broker.parseRows(rows), { targets, assumeStopPct: stopPct });
       if (!out.trades.length && !out.completions.length && !out.duplicates.length) {
         throw new Error(
           "No equity trades found. This report may cover a period with no closed positions."
         );
       }
       setFile(f);
+      setBroker(broker);
       setRawRows(rows);
       setParsed(out);
     } catch (e) {
@@ -144,7 +164,7 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
    */
   useEffect(() => {
     if (!rawRows) return;
-    setParsed(parseZerodhaTaxPnl(rawRows, { targets, assumeStopPct: stopPct }));
+    setParsed(assembleImport((broker || zerodha).parseRows(rawRows), { targets, assumeStopPct: stopPct }));
   }, [rawRows, targets, stopPct]);
 
   const confirm = async () => {
