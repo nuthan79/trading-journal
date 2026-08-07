@@ -77,6 +77,7 @@ export default function Performance({ closed, S, accountSize, flows, all = [] })
               <th className="num">Trades</th><th className="num">Win rate</th>
               <th className="num">Avg win</th><th className="num">Avg loss</th>
               <th className="num">Expectancy</th><th className="num">Total R</th>
+              <th className="num">Net P&amp;L</th>
               <th className="num">Avg value</th><th className="num">Avg risk</th>
               <th className="num">Return on risk</th>
               <th style={{ width: "16%" }}></th>
@@ -100,6 +101,14 @@ export default function Performance({ closed, S, accountSize, flows, all = [] })
                     <td className={`num ${g.expectancy >= 0 ? "pos" : "neg"}`} style={{ fontWeight: 500 }}>
                       {rfmt(g.expectancy)}</td>
                     <td className={`num ${g.totalR >= 0 ? "pos" : "neg"}`}>{rfmt(g.totalR, 1)}</td>
+                    {/* Net of charges — grossRealised minus charges, the same
+                        figure returnOnRisk beside it is already built from. R
+                        answers whether the setup works; this answers what it
+                        paid, and they part company whenever risk per trade
+                        was not constant. */}
+                    <td className={`num ${g.netPnl >= 0 ? "pos" : "neg"}`} style={{ fontWeight: 500 }}>
+                      {rupee(g.netPnl)}
+                    </td>
                     <td className="num">{rupee(g.avgValue)}</td>
                     <td className="num" title={`${pct(g.avgRiskPct, 2)} of capital`}>{rupee(g.avgRisk)}</td>
                     <td className="num">{isFinite(g.returnOnRisk) ? `${g.returnOnRisk.toFixed(2)}×` : "—"}</td>
