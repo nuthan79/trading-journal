@@ -6,6 +6,12 @@
  * but rename only deliberately.
  */
 
+/**
+ * "Power Play" was removed. Anything already tagged with it was moved to
+ * "Other" by 023_retire_power_play.sql rather than left pointing at a label
+ * the dropdown no longer offers — an orphaned value shows up in the edge table
+ * as its own row and cannot be edited back out through the form.
+ */
 export const PATTERNS = [
   "VCP",
   "Cup & Handle",
@@ -13,7 +19,8 @@ export const PATTERNS = [
   "Double Bottom",
   "High Tight Flag",
   "Ascending Base",
-  "Power Play",
+  "All Time High",
+  "Breakout Entry",
   "Pullback Entry",
   "Other",
 ];
@@ -61,6 +68,8 @@ export const MISTAKES = [
   "Traded against market trend",
   "Not a real base",
   "Revenge trade",
+  "Wrong trade",
+  "Early entry",
 ];
 
 /** Tags that describe what the market did, not what you did wrong. */
