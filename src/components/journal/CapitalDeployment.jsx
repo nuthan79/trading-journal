@@ -69,34 +69,31 @@ const MONTH_RANGES = [
 ];
 
 /**
- * Custom bounds are held as full dates, not months.
+ * Custom bounds are month keys — "2025-09" — picked from the months that
+ * actually exist in the record.
  *
- * `<input type="month">` looked like the honest control — the bars ARE months
- * — but Safari does not implement it and silently renders a plain text box,
- * so half the users would get no picker and no validation. A date input works
- * everywhere and is what the dashboard's range bar already uses; the day part
- * is simply trimmed off here.
+ * Two earlier attempts were worse. `<input type="month">` is the obvious
+ * control and Safari does not implement it, silently degrading to a plain
+ * text box with no picker and no validation. `<input type="date">` works
+ * everywhere but asks for a day the chart cannot use: nobody choosing a span
+ * of monthly bars wants to decide between the 30th and the 31st, and picking
+ * one felt like precision the answer does not have.
+ *
+ * Dropdowns of real months solve both. They render natively everywhere, they
+ * read the way the axis reads, and an out-of-range or empty window is not
+ * reachable — you can only choose months the record contains.
  */
-const monthOf = (isoDate) => (isoDate ? String(isoDate).slice(0, 7) : "");
-
 function monthsInRange(months, rangeId, custom) {
   if (!months?.length) return [];
   if (rangeId === "custom") {
-    const from = monthOf(custom.from) || "0000-01";
-    const to = monthOf(custom.to) || "9999-12";
+    const from = custom.from || "0000-01";
+    const to = custom.to || "9999-12";
     return months.filter((m) => m.key >= from && m.key <= to);
   }
   const spec = MONTH_RANGES.find((r) => r.id === rangeId);
   if (!spec?.months) return months;
   return months.slice(-spec.months);
 }
-
-/** First and last day of a month key, for seeding the date inputs. */
-const firstDayOf = (key) => `${key}-01`;
-const lastDayOf = (key) => {
-  const [y, m] = key.split("-").map(Number);
-  return `${key}-${String(new Date(y, m, 0).getDate()).padStart(2, "0")}`;
-};
 
 const monthName = (key) =>
   new Date(`${key}-01`).toLocaleDateString("en-IN", { month: "short", year: "2-digit" });
@@ -339,10 +336,7 @@ export default function CapitalDeployment({ all = [], accountSize = 0, flows = [
    */
   const pickRange = (id) => {
     if (id === "custom" && !mCustom.from && !mCustom.to && mShown.length) {
-      setMCustom({
-        from: firstDayOf(mShown[0].key),
-        to: lastDayOf(mShown[mShown.length - 1].key),
-      });
+      setMCustom({ from: mShown[0].key, to: mShown[mShown.length - 1].key });
     }
     setMRange(id);
     setMHov(null);
@@ -542,15 +536,21 @@ export default function CapitalDeployment({ all = [], accountSize = 0, flows = [
               </div>
               {mRange === "custom" && (
                 <span className={`${CAP_MONEY}-dates`}>
-                  <input type="date" className="in" value={mCustom.from}
-                         min={firstDayOf(S.months[0].key)}
-                         max={mCustom.to || lastDayOf(S.months[S.months.length - 1].key)}
-                         onChange={(e) => setMCustom((c) => ({ ...c, from: e.target.value }))} />
+                  {/* Each side only offers months that keep the range valid, so
+                      a window with nothing in it cannot be built by hand. */}
+                  <select className="in" value={mCustom.from}
+                          onChange={(e) => setMCustom((c) => ({ ...c, from: e.target.value }))}>
+                    {S.months.filter((m) => !mCustom.to || m.key <= mCustom.to).map((m) => (
+                      <option key={m.key} value={m.key}>{monthName(m.key)}</option>
+                    ))}
+                  </select>
                   <span className={`${CAP_MONEY}-dim`}>to</span>
-                  <input type="date" className="in" value={mCustom.to}
-                         min={mCustom.from || firstDayOf(S.months[0].key)}
-                         max={lastDayOf(S.months[S.months.length - 1].key)}
-                         onChange={(e) => setMCustom((c) => ({ ...c, to: e.target.value }))} />
+                  <select className="in" value={mCustom.to}
+                          onChange={(e) => setMCustom((c) => ({ ...c, to: e.target.value }))}>
+                    {S.months.filter((m) => !mCustom.from || m.key >= mCustom.from).map((m) => (
+                      <option key={m.key} value={m.key}>{monthName(m.key)}</option>
+                    ))}
+                  </select>
                 </span>
               )}
             </div>
@@ -708,7 +708,7 @@ export default function CapitalDeployment({ all = [], accountSize = 0, flows = [
         }
         .${CAP_MONEY}-range { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
         .${CAP_MONEY}-dates { display: inline-flex; gap: 6px; align-items: center; font-size: 11.5px; }
-        .${CAP_MONEY}-dates .in { width: 132px; padding: 5px 7px; font-size: 12px; }
+        .${CAP_MONEY}-dates .in { width: auto; padding: 5px 7px; font-size: 12px; }
         .${CAP_MONEY}-empty-win {
           height: 150px; display: flex; align-items: center; justify-content: center;
           font-size: 12px; color: var(--ink3); text-align: center; padding: 0 20px;
