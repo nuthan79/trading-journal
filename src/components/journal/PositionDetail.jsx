@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect } from "react";
-import { Pencil, Trash2, X, ChevronUp, ChevronDown, LogOut } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Pencil, Trash2, X, ChevronUp, ChevronDown, LogOut, ImagePlus } from "lucide-react";
 import { rupee, rfmt, pct, signedPct } from "@/lib/format";
+import { chartUrl } from "@/lib/db";
+import { resolveTradingViewChart, RESOLVE_HELP } from "@/lib/tradingview";
 
 /**
  * One position, opened up.
@@ -28,7 +30,82 @@ const daysBetween = (a, b) => {
   return isFinite(x) && isFinite(y) ? Math.round((y - x) / 86400000) : NaN;
 };
 
-export default function PositionDetail({ row, onClose, onEdit, onExit, onDelete, onPrev, onNext }) {
+export default function PositionDetail({ row, diary = [], onAttachChart, onClose, onEdit, onExit, onDelete, onPrev, onNext }) {
+  /**
+   * The diary entries written against this trade, newest first.
+   *
+   * This is the join the app already had in its data and never showed: a diary
+   * entry carries trade_id and an image, so "what did the chart look like"
+   * has always been answerable and was only reachable by scrolling the diary
+   * hunting for the right date.
+   */
+  const notes = useMemo(
+    () => (diary || [])
+      .filter((d) => d.trade_id === row?.id)
+      .sort((a, b) => String(b.entry_date).localeCompare(String(a.entry_date))),
+    [diary, row?.id]
+  );
+
+  // Signed Storage URLs expire, so they are fetched when the panel opens
+  // rather than held anywhere. A pasted TradingView link passes straight
+  // through — chartUrl knows the difference.
+  const [urls, setUrls] = useState({});
+  useEffect(() => {
+    let alive = true;
+    for (const e of notes) {
+      if (!e.image_path || urls[e.id]) continue;
+      chartUrl(e.image_path).then((u) => {
+        if (alive && u) setUrls((m) => ({ ...m, [e.id]: u }));
+      });
+    }
+    return () => { alive = false; };
+  }, [notes]);
+
+  /* ---- attaching a chart ------------------------------------------- */
+  //
+  // Charts were only ever attachable from the Diary, and only if you
+  // remembered to pick the trade from a dropdown while writing an entry. The
+  // link between the two has been in the schema from the start and almost
+  // nothing used it — three trades in a hundred and twenty-five. Attaching
+  // from the trade you are already looking at is the whole fix.
+  //
+  // It still writes a diary entry underneath. The diary stays the one home
+  // for charts and notes, nothing about the data model changes, and the entry
+  // shows up in both places.
+  const [link, setLink] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [open, setOpen] = useState(false);
+  // null while the preview is loading, then whether it actually resolved to an
+  // image. A well-formed snapshot id that does not exist parses perfectly and
+  // 404s at S3 — without this you can attach a dead link and only find out
+  // months later, when the chart is the thing you came back for.
+  const [imgOk, setImgOk] = useState(null);
+  const resolved = resolveTradingViewChart(link);
+
+  useEffect(() => { setLink(""); setOpen(false); }, [row?.id]);
+  useEffect(() => { setImgOk(null); }, [resolved.src]);
+
+  const attach = async () => {
+    if (resolved.status !== "ok" || imgOk !== true || !onAttachChart) return;
+    setSaving(true);
+    try {
+      await onAttachChart({
+        trade_id: row.id,
+        // Dated to the trade's entry, not to today: a chart attached during a
+        // weekend review belongs beside the decision it illustrates, and the
+        // diary lists by date.
+        entry_date: row.entry_date || new Date().toISOString().slice(0, 10),
+        image_path: resolved.src,
+        emotions: [],
+        body: "",
+      });
+      setLink("");
+      setOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   useEffect(() => {
     const key = (e) => {
       if (e.key === "Escape") onClose();
@@ -295,6 +372,86 @@ export default function PositionDetail({ row, onClose, onEdit, onExit, onDelete,
             </div>
           )}
 
+          {/* The charts, last, because they are the thing worth arriving at.
+              A diary entry with no image still shows — what you wrote at the
+              time is the other half of the evidence. */}
+          {(notes.length > 0 || onAttachChart) && (
+            <div className="pd-charts">
+              <div className="pd-charts-head">
+                <div className="pd-stat-l">
+                  {notes.length > 0
+                    ? `From the diary · ${notes.length} ${notes.length === 1 ? "entry" : "entries"}`
+                    : "No chart saved for this trade"}
+                </div>
+                {onAttachChart && !open && (
+                  <button className="btn ghost sm" onClick={() => setOpen(true)}>
+                    <ImagePlus size={13} />Attach chart
+                  </button>
+                )}
+              </div>
+
+              {open && (
+                <div className="pd-attach">
+                  <input
+                    className="in" autoFocus value={link}
+                    placeholder="Paste a TradingView snapshot link — tradingview.com/x/…"
+                    onChange={(e) => setLink(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter" && resolved.status === "ok") attach(); }}
+                  />
+                  {/* The preview is the validation. A link that resolves to a
+                      real image proves itself by rendering; one that does not
+                      cannot be talked into working, so the message says which
+                      menu item to use instead. */}
+                  {resolved.status === "ok" && (
+                    <img className="pd-attach-preview" src={resolved.src}
+                         alt="Chart to attach" data-bad={imgOk === false ? 1 : 0}
+                         onLoad={() => setImgOk(true)}
+                         onError={() => setImgOk(false)} />
+                  )}
+                  {resolved.status === "ok" && imgOk === false && (
+                    <p className="pd-attach-help">
+                      That link is the right shape but TradingView has no snapshot at it.
+                      Check it was copied whole — or take a fresh one with the camera icon.
+                    </p>
+                  )}
+                  {RESOLVE_HELP[resolved.status] && (
+                    <p className="pd-attach-help">{RESOLVE_HELP[resolved.status]}</p>
+                  )}
+                  <div className="pd-attach-row">
+                    {/* Enabled only once the image has actually rendered — the
+                        preview is the proof, not the parse. */}
+                    <button className="btn sm"
+                            disabled={resolved.status !== "ok" || imgOk !== true || saving}
+                            onClick={attach}>
+                      {saving ? "Attaching…" : "Attach"}
+                    </button>
+                    <button className="btn ghost sm"
+                            onClick={() => { setLink(""); setOpen(false); }}>Cancel</button>
+                    <span className="pd-attach-note">
+                      Saved as a diary entry against this trade, dated {day(row.entry_date)}.
+                    </span>
+                  </div>
+                </div>
+              )}
+              {notes.map((e) => (
+                <figure key={e.id} className="pd-shot">
+                  {e.image_path ? (
+                    urls[e.id]
+                      ? <img src={urls[e.id]} alt={`Chart saved ${e.entry_date}`} />
+                      : <div className="pd-shot-wait">loading chart…</div>
+                  ) : null}
+                  <figcaption>
+                    <span className="mono">{day(e.entry_date)}</span>
+                    {(e.emotions || []).length > 0 && (
+                      <span className="pd-emo"> · {e.emotions.join(", ")}</span>
+                    )}
+                  </figcaption>
+                  {e.body && <p>{e.body}</p>}
+                </figure>
+              ))}
+            </div>
+          )}
+
           <div className="pd-foot">
             The R beside each sell is where price stood against your 1R at that moment, not that
             leg&apos;s share of the result — sizes differ, so those don&apos;t add up to the
@@ -351,6 +508,49 @@ export default function PositionDetail({ row, onClose, onEdit, onExit, onDelete,
             padding: 10px 13px; border-radius: 2px;
           }
           .pd-thesis p { font-size: 12.5px; margin: 4px 0 0; line-height: 1.55; }
+          .pd-charts { margin-top: 18px; }
+          .pd-charts-head {
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 12px; flex-wrap: wrap;
+          }
+          .pd-attach {
+            margin-top: 10px; padding: 12px; border: 1px solid var(--rule);
+            border-radius: 3px; background: var(--card);
+          }
+          .pd-attach .in { width: 100%; font-size: 12.5px; }
+          .pd-attach-preview {
+            width: 100%; height: auto; display: block; margin-top: 10px;
+            border: 1px solid var(--rule); border-radius: 3px;
+          }
+          /* A broken image renders as an alt-text stub at whatever size the
+             browser picks; collapsing it keeps the message below as the thing
+             you read. */
+          .pd-attach-preview[data-bad="1"] { display: none; }
+          .pd-attach-help {
+            font-size: 11.5px; color: var(--ink3); line-height: 1.55;
+            margin: 8px 0 0; text-wrap: pretty;
+          }
+          .pd-attach-row {
+            display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px;
+          }
+          .pd-attach-note { font-size: 11px; color: var(--ink3); }
+          .pd-shot {
+            margin: 10px 0 0; padding: 0 0 12px;
+            border-bottom: 1px solid var(--rule);
+          }
+          .pd-shot:last-child { border-bottom: 0; }
+          .pd-shot img {
+            width: 100%; height: auto; display: block; border-radius: 3px;
+            border: 1px solid var(--rule); background: var(--card);
+          }
+          .pd-shot-wait {
+            height: 120px; display: flex; align-items: center; justify-content: center;
+            font-size: 11.5px; color: var(--ink3);
+            border: 1px dashed var(--rule); border-radius: 3px;
+          }
+          .pd-shot figcaption { font-size: 11.5px; color: var(--ink3); margin-top: 6px; }
+          .pd-emo { color: var(--brass); }
+          .pd-shot p { font-size: 12.5px; line-height: 1.55; margin: 5px 0 0; color: var(--ink2); }
           .pd-notes p {
             font-size: 12.5px; margin: 5px 0 0; line-height: 1.6;
             white-space: pre-wrap; color: var(--ink2);

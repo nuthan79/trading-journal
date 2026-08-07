@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { dimensionRows, DIMENSIONS, maxAbsTotalR, isThin, NOT_RECORDED } from "@/lib/edge";
 import { mistakeCost, outcomeTagCounts } from "@/lib/analysis";
 import { isExecutionError } from "@/lib/constants";
@@ -153,6 +154,7 @@ export default function Performance({ closed, S, accountSize, flows, all = [] })
                 Only counts trades where you tagged an execution error yourself.
                 Net P&amp;L is what those trades came to, not what the mistake cost you —
                 nobody can know what the same trade would have done without it.
+                <b> Click a mistake</b> to see the trades behind it.
               </div>
             </div>
           </div>
@@ -164,7 +166,16 @@ export default function Performance({ closed, S, accountSize, flows, all = [] })
               <tbody>
                 {mistakeRows.map((m) => (
                   <tr key={m.tag}>
-                    <td>{m.tag}</td>
+                    {/* The row is the way in. Costing a tag out and then
+                        offering no route to the trades behind it is where this
+                        table used to stop. */}
+                    <td>
+                      <Link className="mk-link"
+                            href={`/trades?mistake=${encodeURIComponent(m.tag)}`}
+                            title={`See the ${m.count} trade${m.count === 1 ? "" : "s"} tagged "${m.tag}"`}>
+                        {m.tag}
+                      </Link>
+                    </td>
                     <td className="num">{m.count}</td>
                     <td className="num">{pct(m.winRate, 0)}</td>
                     <td className={`num ${m.avgR >= 0 ? "pos" : "neg"}`}>{rfmt(m.avgR)}</td>
@@ -203,6 +214,17 @@ export default function Performance({ closed, S, accountSize, flows, all = [] })
           </div>
         </div>
       )}
+
+      {/* global: the anchor is rendered by next/link rather than by this
+          component's own JSX, so a scoped block would not reach it. Prefixed
+          to keep it from leaking onto other links. */}
+      <style jsx global>{`
+        .mk-link {
+          color: inherit; text-decoration: none;
+          border-bottom: 1px dotted var(--ink3);
+        }
+        .mk-link:hover { color: var(--brass); border-bottom-color: var(--brass); }
+      `}</style>
     </>
   );
 }

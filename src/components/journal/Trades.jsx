@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Plus, Pencil, Trash2, Download } from "lucide-react";
+import { Plus, Pencil, Trash2, Download, Image as ImageIcon, X } from "lucide-react";
 import { rupee, rfmt, pct, signedPct } from "@/lib/format";
 import PositionDetail from "./PositionDetail";
 
@@ -24,14 +24,37 @@ function exportCsv(all) {
   a.click(); URL.revokeObjectURL(a.href);
 }
 
-export default function Trades({ all, onEdit, onExit, onDelete, onNew }) {
+export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNew,
+                                 onAttachChart, mistake = "", onClearMistake }) {
   const [filter, setFilter] = useState("all");
   const [q, setQ] = useState("");
   const [sort, setSort] = useState({ k: "entry_date", dir: -1 });
   const [detailId, setDetailId] = useState(null);
 
+  /**
+   * Trades that have a chart, by trade id.
+   *
+   * Charts are not attached to trades — they hang off diary entries, which
+   * point back at a trade through trade_id. That link is real in the data and
+   * was surfaced nowhere, so "did I save a chart for this one" could only be
+   * answered by scrolling the diary. A Set of ids is enough for the column;
+   * the images themselves are fetched only when a row is opened.
+   */
+  const charted = useMemo(() => {
+    const m = new Map();
+    for (const d of diary || []) {
+      if (!d.trade_id || !d.image_path) continue;
+      m.set(d.trade_id, (m.get(d.trade_id) || 0) + 1);
+    }
+    return m;
+  }, [diary]);
+
   const rows = useMemo(() => {
     let r = all;
+    // Arrives from the mistakes table on Performance. Exact match, not a
+    // substring — "Sold too early" and "Sold a little late" both contain
+    // "Sold", and a fuzzy filter would quietly mix two different errors.
+    if (mistake) r = r.filter((t) => (t.mistakes || []).includes(mistake));
     if (filter === "open") r = r.filter((t) => t.status === "open");
     if (filter === "closed") r = r.filter((t) => t.status === "closed");
     if (filter === "winners") r = r.filter((t) => t.r > 0);
@@ -47,7 +70,7 @@ export default function Trades({ all, onEdit, onExit, onDelete, onNew }) {
         return ((isFinite(av) ? av : -1e12) - (isFinite(bv) ? bv : -1e12)) * sort.dir;
       return String(av || "").localeCompare(String(bv || "")) * sort.dir;
     });
-  }, [all, filter, q, sort]);
+  }, [all, mistake, filter, q, sort]);
 
   // Resolved by id against the filtered list, not held as an object: change
   // the filter or the sort while it's open and the panel follows the row,
@@ -67,6 +90,15 @@ export default function Trades({ all, onEdit, onExit, onDelete, onNew }) {
 
   return (
     <div className="sec">
+      {mistake && (
+        <div className="tr-chip">
+          <span>Showing trades tagged <b>{mistake}</b></span>
+          <span className="tr-chip-n">{rows.length} of {all.length}</span>
+          <button className="btn ghost sm" onClick={onClearMistake}>
+            <X size={12} />Clear
+          </button>
+        </div>
+      )}
       <div className="sechead">
         <div className="seg">
           {[["all","All"],["open","Open"],["closed","Closed"],["winners","Winners"],["losers","Losers"]].map(([id,l]) => (
@@ -112,6 +144,7 @@ export default function Trades({ all, onEdit, onExit, onDelete, onNew }) {
               {/* The setup — what the chart looked like going in. Behind the
                   outcome because most rows have none of it recorded, and a
                   block of dashes shouldn't sit between a symbol and its P&L. */}
+              <th title="Charts saved against this trade in the diary">Chart</th>
               {th("pattern", "Pattern")}
               {th("distPivot", "Δ pivot", "num")}
               {th("vol_pct_avg", "Vol %", "num")}
@@ -174,6 +207,20 @@ export default function Trades({ all, onEdit, onExit, onDelete, onNew }) {
                         ? `${pct(t.riskPct, 2)} of the account — the 1R every R above divides by`
                         : "No stop, so no 1R to divide by"}>
                     {isFinite(t.riskAmt) ? rupee(t.riskAmt) : "—"}</td>
+                  {/* Clickable when there is one: opens the trade, where the
+                      chart is actually rendered. A count only shows past one,
+                      since "1" beside every charted row is noise. */}
+                  <td style={{ textAlign: "center" }}>
+                    {charted.has(t.id) ? (
+                      <button className="tr-chart" onClick={() => setDetailId(t.id)}
+                              title={`${charted.get(t.id)} chart${charted.get(t.id) === 1 ? "" : "s"} — open ${t.symbol}`}>
+                        <ImageIcon size={13} />
+                        {charted.get(t.id) > 1 && <span>{charted.get(t.id)}</span>}
+                      </button>
+                    ) : (
+                      <span style={{ color: "var(--rule)", fontSize: 11 }}>—</span>
+                    )}
+                  </td>
                   <td style={{ fontSize: 12, color: "var(--ink2)" }}>{t.pattern || "—"}</td>
                   <td className="num" style={{ fontSize: 12,
                         color: t.distPivot > 5 ? "var(--short)" : "inherit" }}>
@@ -203,6 +250,8 @@ export default function Trades({ all, onEdit, onExit, onDelete, onNew }) {
       {detailAt >= 0 && (
         <PositionDetail
           row={rows[detailAt]}
+          diary={diary}
+          onAttachChart={onAttachChart}
           onClose={() => setDetailId(null)}
           onEdit={(t) => { setDetailId(null); onEdit(t); }}
           onExit={onExit ? (t) => { setDetailId(null); onExit(t); } : undefined}
@@ -215,6 +264,19 @@ export default function Trades({ all, onEdit, onExit, onDelete, onNew }) {
       )}
 
       <style jsx>{`
+        .tr-chip {
+          display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+          border-left: 2px solid var(--brass); padding: 7px 0 7px 10px;
+          margin-bottom: 12px; font-size: 12.5px; color: var(--ink2);
+        }
+        .tr-chip b { font-weight: 500; color: var(--ink); }
+        .tr-chip-n { color: var(--ink3); font-size: 11.5px; }
+        .tr-chart {
+          background: none; border: 0; padding: 2px 4px; cursor: pointer;
+          color: var(--brass); display: inline-flex; align-items: center; gap: 3px;
+          font: inherit; font-size: 11px;
+        }
+        .tr-chart:hover { color: var(--ink); }
         /* Reads as text until you go near it — a sheet of rows, not a list
            of links. Same affordance as the Holdings table. */
         .tr-sym {
