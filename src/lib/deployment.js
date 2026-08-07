@@ -142,6 +142,40 @@ function events(positions) {
         pnl: (isFinite(gross) ? gross : 0) - totalCharges * share,
       });
     });
+
+    /**
+     * A trade the DATABASE calls closed is closed, whatever its tranches add
+     * up to.
+     *
+     * Without this the arithmetic above is the only thing that ever ends a
+     * position, so a closed trade whose sells fall even one share short of its
+     * quantity stays open here forever — holding its slot in the position
+     * count and its residual cost in committed capital, for the rest of the
+     * record. Three hundred such trades read as three hundred concurrent
+     * positions that were never held.
+     *
+     * status is authoritative: a trigger keeps it in step with the tranches,
+     * and every other screen in the app re-overrides derivePosition with it
+     * for exactly this reason. This file was the one place still inferring it.
+     *
+     * The remainder is released on the last date the trade is known to have
+     * been touched. A closed trade with no exit date at all is left alone
+     * rather than guessed at — that is a broken row, and quietly closing it on
+     * its entry date would hide the very thing worth seeing.
+     */
+    if (t.status === "closed" && left > 1e-6) {
+      const lastKnown =
+        dayKey(exits.length ? exits[exits.length - 1].exit_date : t.exit_date);
+      if (lastKnown) {
+        out.push({
+          d: lastKnown,
+          cost: -(entry * left),
+          risk: -(riskAll * (qty > 0 ? left / qty : 0)),
+          count: -1,
+          pnl: 0,          // P&L on shares with no sell recorded is unknowable
+        });
+      }
+    }
   }
 
   return out;
