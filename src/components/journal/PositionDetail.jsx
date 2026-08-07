@@ -106,15 +106,32 @@ export default function PositionDetail({ row, diary = [], onAttachChart, onClose
     }
   };
 
+  /* ---- the chart, full size ---------------------------------------- */
+  //
+  // A TradingView snapshot is around four thousand pixels wide and the panel
+  // shows it at six hundred. Fine for "is there a chart", useless for the
+  // thing charts are for. `zoom` holds the src being looked at; `actual`
+  // switches between fitting the screen and 1:1 with scroll, because a chart
+  // scaled to fit a laptop is still smaller than the one it was drawn on.
+  const [zoom, setZoom] = useState(null);
+  const [actual, setActual] = useState(false);
+  useEffect(() => { setActual(false); }, [zoom]);
+
   useEffect(() => {
     const key = (e) => {
+      // The lightbox owns Escape while it is open, or one press would shut
+      // the panel behind it and lose the trade you were reading.
+      if (zoom) {
+        if (e.key === "Escape") { e.stopPropagation(); setZoom(null); }
+        return;                       // and arrows must not step trades either
+      }
       if (e.key === "Escape") onClose();
       else if (e.key === "ArrowUp" && onPrev) { e.preventDefault(); onPrev(); }
       else if (e.key === "ArrowDown" && onNext) { e.preventDefault(); onNext(); }
     };
     document.addEventListener("keydown", key);
     return () => document.removeEventListener("keydown", key);
-  }, [onClose, onPrev, onNext]);
+  }, [onClose, onPrev, onNext, zoom]);
 
   if (!row) return null;
 
@@ -151,6 +168,28 @@ export default function PositionDetail({ row, diary = [], onAttachChart, onClose
   );
 
   return (
+    <>
+    {/* Above the panel, not inside it: the sheet scrolls and clips, and a
+        chart pinned to the viewport must do neither. */}
+    {zoom && (
+      <div className="pd-lightbox"
+           onMouseDown={(e) => e.target === e.currentTarget && setZoom(null)}>
+        <div className="pd-lb-bar">
+          <button className="pd-lb-btn" onClick={() => setActual((a) => !a)}>
+            {actual ? "Fit to screen" : "Actual size"}
+          </button>
+          <button className="pd-lb-btn" onClick={() => setZoom(null)} aria-label="Close chart">
+            <X size={15} />
+          </button>
+        </div>
+        <div className={`pd-lb-scroll${actual ? " is-actual" : ""}`}
+             onMouseDown={(e) => e.target === e.currentTarget && setZoom(null)}>
+          <img src={zoom} alt="Chart, full size"
+               onClick={() => setActual((a) => !a)} />
+        </div>
+        <div className="pd-lb-hint">Click the chart to {actual ? "fit it to the screen" : "see it at full resolution"} · Esc to close</div>
+      </div>
+    )}
     <div className="modal" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="sheet pd" onMouseDown={(e) => e.stopPropagation()}>
         <div className="sheethead">
@@ -437,7 +476,10 @@ export default function PositionDetail({ row, diary = [], onAttachChart, onClose
                 <figure key={e.id} className="pd-shot">
                   {e.image_path ? (
                     urls[e.id]
-                      ? <img src={urls[e.id]} alt={`Chart saved ${e.entry_date}`} />
+                      ? <button className="pd-shot-open" onClick={() => setZoom(urls[e.id])}
+                                title="Open full size">
+                          <img src={urls[e.id]} alt={`Chart saved ${e.entry_date}`} />
+                        </button>
                       : <div className="pd-shot-wait">loading chart…</div>
                   ) : null}
                   <figcaption>
@@ -593,7 +635,60 @@ export default function PositionDetail({ row, diary = [], onAttachChart, onClose
             border-top: 1px solid var(--ink3); font-weight: 600; font-size: 12px;
           }
         `}</style>
+
+      {/* Global, and not by preference. The lightbox renders in the other branch
+          of this component's fragment from the scoped block above, and
+          styled-jsx puts its scoping class on neither — the markup came out with
+          no jsx- class at all and every rule silently missed, which is why a
+          4215px chart ignored max-width and filled the screen. Same trap the
+          block above this one describes. Prefixed so nothing leaks. */}
+      <style jsx global>{`
+          .pd-shot-open {
+            display: block; width: 100%; padding: 0; border: 0; background: none;
+            cursor: zoom-in;
+          }
+          .pd-lightbox {
+            position: fixed; inset: 0; z-index: 200;
+            background: rgba(10, 14, 13, 0.92);
+            display: flex; flex-direction: column;
+          }
+          .pd-lb-bar {
+            display: flex; justify-content: flex-end; align-items: center; gap: 8px;
+            padding: 10px 14px; flex: 0 0 auto;
+          }
+          .pd-lb-btn {
+            background: rgba(255,255,255,0.10); border: 1px solid rgba(255,255,255,0.18);
+            color: #EDF0EE; border-radius: 3px; padding: 5px 10px; cursor: pointer;
+            font: inherit; font-size: 12px; display: inline-flex; align-items: center; gap: 5px;
+          }
+          .pd-lb-btn:hover { background: rgba(255,255,255,0.18); }
+          .pd-lb-scroll {
+            flex: 1 1 auto; min-height: 0; overflow: auto;
+            display: flex; align-items: center; justify-content: center;
+            padding: 0 14px;
+          }
+          .pd-lb-scroll img {
+            max-width: 100%; max-height: 100%; width: auto; height: auto;
+            display: block; cursor: zoom-in; border-radius: 2px;
+            /* A flex item will not shrink below its intrinsic size unless its
+               automatic minimum is removed, so a 4215px snapshot ignored
+               max-width and rendered full width in a viewport a fifth of that. */
+            min-width: 0; min-height: 0;
+          }
+          /* 1:1. The flex centring has to go or the image is clipped rather than
+             scrolled once it is wider than the box. */
+          .pd-lb-scroll.is-actual { display: block; }
+          .pd-lb-scroll.is-actual img {
+            max-width: none; max-height: none; margin: 0 auto; cursor: zoom-out;
+          }
+          .pd-lb-hint {
+            flex: 0 0 auto; text-align: center; padding: 9px 14px 13px;
+            font-size: 11.5px; color: rgba(237,240,238,0.55);
+          }
+        `}</style>
       </div>
     </div>
+
+    </>
   );
 }
