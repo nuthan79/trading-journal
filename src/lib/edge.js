@@ -184,6 +184,59 @@ export const HOLD_BANDS = [
 ];
 
 /**
+ * Round money bands, stepped, covering whatever was actually risked.
+ *
+ * A tenth of a lakh means the same thing to everyone in rupees and nothing
+ * like the same thing as a bet — so this is the one continuous dimension where
+ * fixed edges are what the trader asked for and adaptive quantiles would be
+ * unreadable ("₹13.4k–₹19.7k" is a cut point, not a category anyone thinks in).
+ *
+ * The STEP is chosen from the data rather than hardcoded. ₹10k bands are right
+ * for an account risking ₹15–25k a trade and useless either way outside that:
+ * a ₹2L account risking ₹1,500 puts every trade in the first band, and one
+ * risking ₹2L a trade would need forty rows. Picking the roundest step that
+ * lands near seven bands keeps the shape readable at any size, and for a book
+ * risking tens of thousands it lands on ₹10k by itself.
+ *
+ * THE CAVEAT THIS CANNOT FIX, and the UI says it out loud: rupee risk is not
+ * comparable across a growing account. ₹15k risked against ₹20L is a large
+ * bet; the same ₹15k against ₹1.2Cr is a small one. Sorted into fixed bands
+ * over a record where capital grew tenfold, the low bands fill with early
+ * trades and the high bands with recent ones, so the table is partly reading
+ * WHEN rather than HOW MUCH. The "Risk % of capital" tab beside it has no such
+ * problem, which is why both exist.
+ */
+const STEPS = [250, 500, 1000, 2500, 5000, 10_000, 25_000, 50_000, 100_000, 250_000, 500_000];
+
+/** Band edges read better trimmed — "₹10k" not "₹10.0k". */
+const edge = (v) => {
+  if (v >= 1e7) return `₹${(v / 1e7).toFixed(2).replace(/\.?0+$/, "")}Cr`;
+  if (v >= 1e5) return `₹${(v / 1e5).toFixed(2).replace(/\.?0+$/, "")}L`;
+  if (v >= 1e3) return `₹${(v / 1e3).toFixed(1).replace(/\.?0+$/, "")}k`;
+  return `₹${Math.round(v)}`;
+};
+
+export function moneyBands(values, { target = 7 } = {}) {
+  const vals = values.filter((v) => isFinite(v) && v > 0);
+  if (!vals.length) return [{ max: Infinity, label: NOT_RECORDED }];
+
+  const hi = Math.max(...vals);
+  const step = STEPS.find((sp) => hi / sp <= target) || STEPS[STEPS.length - 1];
+
+  const out = [];
+  for (let lo = 0; lo < hi; lo += step) {
+    out.push({
+      max: lo + step,
+      label: lo === 0 ? `under ${edge(step)}` : `${edge(lo)} – ${edge(lo + step)}`,
+    });
+  }
+  // The top band is open-ended so nothing falls off the end of the table.
+  if (out.length) out[out.length - 1].max = Infinity;
+  else out.push({ max: Infinity, label: `under ${edge(step)}` });
+  return out;
+}
+
+/**
  * Same interface as `adaptiveBander`, over a list you supply. `max` is the
  * last value that belongs to the band, so the labels can be read literally:
  * a 15-day trade is in "6-15 d" and a 16-day one is not.
@@ -233,8 +286,14 @@ export const DIMENSIONS = [
   { id: "sl", label: "Stop width", continuous: true, unit: "%", dp: 1,
     value: (t) => t.slPct },
 
-  { id: "risk", label: "Risk taken", continuous: true, unit: "%", dp: 2,
+  { id: "risk", label: "Risk % of capital", continuous: true, unit: "%", dp: 2,
     value: (t) => t.riskPct },
+
+  // The same question in money. See moneyBands for why this one is banded on
+  // fixed edges while every other continuous dimension is banded adaptively.
+  { id: "riskamt", label: "Risk in rupees", continuous: true, money: true,
+    fixed: (closed) => moneyBands(closed.map((t) => t.riskAmt)),
+    value: (t) => t.riskAmt },
 
   { id: "rs", label: "RS rank", continuous: true, unit: "", dp: 0,
     value: (t) => n(t.rs_rank) },
@@ -270,8 +329,9 @@ export function dimensionRows(closed, dimensionId, { accountSize = 0, bands } = 
   let labelOf, orderOf = null, bandInfo = [];
 
   if (dim.continuous) {
-    const bander = dim.fixed
-      ? fixedBander(dim.fixed)
+    const spec = typeof dim.fixed === "function" ? dim.fixed(closed) : dim.fixed;
+    const bander = spec
+      ? fixedBander(spec)
       : adaptiveBander(closed.map(dim.value), { k: bands, unit: dim.unit, dp: dim.dp });
     labelOf = (t) => bander.label(dim.value(t));
     orderOf = bander.order;

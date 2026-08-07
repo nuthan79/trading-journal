@@ -129,6 +129,19 @@ export default function Performance({ closed, S, accountSize, flows, all = [] })
             Faded rows have fewer than 15 trades — noise, not signal. Read them as questions to watch, not conclusions.
           </div>
         )}
+        {/* Only on the rupee cut. Every other dimension here is either
+            categorical or already normalised; this is the one whose bands
+            drift as the account grows, and saying so is cheaper than letting
+            someone read a decade of compounding as a finding about sizing. */}
+        {dim === "riskamt" && (
+          <div className="hint" style={{ marginTop: 8 }}>
+            Rupee risk isn&rsquo;t comparable across a growing account — ₹15k against ₹20L
+            is a large bet, the same ₹15k against ₹1.2Cr is a small one. If your capital
+            has grown a lot, the low bands hold mostly early trades and the high bands
+            mostly recent ones, so some of what you see here is <b>when</b> rather than
+            how much. <b>Risk % of capital</b> is the same question with that removed.
+          </div>
+        )}
       </div>
 
       {mistakeRows.length > 0 && (
