@@ -53,7 +53,7 @@ export default function Performance({ closed, S, accountSize, flows, all = [] })
           something next to the returns it produced. `all`, not `closed` —
           an open position is committing capital right now. */}
       <div className="sec">
-        <CapitalDeployment all={all} closed={closed} accountSize={accountSize} flows={flows} />
+        <CapitalDeployment all={all} accountSize={accountSize} flows={flows} />
       </div>
 
       <div className="sec">

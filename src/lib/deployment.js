@@ -61,13 +61,13 @@ const median = (xs) => {
 };
 
 /**
- * Bands trades are grouped into by how committed the account was at entry.
+ * How full the book was, in steps — the shading on the monthly bars.
  *
  * Fixed fractions of capital rather than fixed rupee amounts, so the same
  * bands mean the same thing to a ₹2L account and a ₹2Cr one. Quantile bands
- * would be wrong here for once: the question is "did a fuller book pay
- * better", and adaptive cuts would define "full" relative to your own habit,
- * which is the thing being examined.
+ * would be wrong here for once: "nearly all in" has to mean the same thing
+ * every month, and adaptive cuts would redefine it against your own habit —
+ * a cautious record and a reckless one would shade identically.
  */
 export const DEPLOY_BANDS = [
   { max: 10, label: "under 10%" },
@@ -78,8 +78,6 @@ export const DEPLOY_BANDS = [
   { max: 85, label: "70–85%" },
   { max: Infinity, label: "over 85%" },
 ];
-
-const bandOf = (pct) => DEPLOY_BANDS.findIndex((b) => pct < b.max);
 
 /**
  * Every change in committed capital, as dated events.
@@ -288,61 +286,4 @@ export function deploymentSeries(
     avgPositionSize: avg(sizes),
     positionsCounted: sizes.length,
   };
-}
-
-/**
- * Did deploying more actually earn more?
- *
- * The question the deployment chart provokes and cannot answer on its own.
- * Each closed trade is tagged with how deployed the account was on the day it
- * was ENTERED — the state of the book when the decision was taken — and the R
- * that came out is grouped by that band.
- *
- * Entry, not exit, for the same reason `emotionOutcomes` matches on entry: it
- * is a question about the decision, and the exit happens in a different world.
- *
- * Deliberately returns counts alongside the R so a band holding four trades
- * cannot be read as a verdict. `THIN` mirrors edge.js.
- */
-export const THIN_DEPLOY_SLICE = 10;
-
-export function deploymentOutcomes(closed, series) {
-  if (!series?.days?.length) return [];
-  const onDay = new Map(series.days.map((x) => [x.d, x]));
-
-  // Both edges of the band, not just the top. The UI needs the lower bound to
-  // print the band as a span, and deriving it there by peeking at the previous
-  // row breaks the moment an empty band is filtered out.
-  const rows = DEPLOY_BANDS.map((b, i) => ({
-    key: b.label,
-    min: i === 0 ? 0 : DEPLOY_BANDS[i - 1].max,
-    max: b.max,
-    n: 0,
-    wins: 0,
-    totalR: 0,
-    rs: [],
-  }));
-
-  for (const t of closed || []) {
-    const k = dayKey(t.entry_date);
-    const day = k != null ? onDay.get(k) : undefined;
-    if (!day || !isFinite(day.pct)) continue;
-    const i = bandOf(day.pct);
-    if (i < 0) continue;
-    const r = Number(t.r);
-    if (!isFinite(r)) continue;
-    rows[i].n++;
-    rows[i].rs.push(r);
-    rows[i].totalR += r;
-    if (r > 0) rows[i].wins++;
-  }
-
-  return rows
-    .filter((r) => r.n > 0)
-    .map((r) => ({
-      ...r,
-      expectancy: r.totalR / r.n,
-      winRate: (r.wins / r.n) * 100,
-      isThin: r.n < THIN_DEPLOY_SLICE,
-    }));
 }

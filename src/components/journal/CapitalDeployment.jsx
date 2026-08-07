@@ -1,10 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  deploymentSeries, deploymentOutcomes, THIN_DEPLOY_SLICE, DEPLOY_BANDS,
-} from "@/lib/deployment";
-import { rupee, rfmt, pct, dmy } from "@/lib/format";
+import { deploymentSeries, DEPLOY_BANDS } from "@/lib/deployment";
+import { rupee, pct, dmy } from "@/lib/format";
 import { apiFetch } from "@/lib/db";
 
 /**
@@ -25,11 +23,9 @@ import { apiFetch } from "@/lib/db";
  * not take would have paid like the average of the ones you did, which is
  * exactly what a system that stands aside in bad conditions is denying.
  *
- * Cash is a position. So the screen measures the cash calls instead of
- * grading them: the band table at the bottom shows what your own R did at
- * each level of deployment, and lets that answer the question. It is why the
- * monthly bars are shaded in one hue rather than red-through-green — see
- * SHADES below.
+ * Cash is a position. So the screen measures the cash calls and leaves the
+ * grading to whoever made them. It is why the monthly bars are shaded in one
+ * hue rather than red-through-green — see SHADES below.
  */
 
 const CAP_MONEY = "cd";                       // unique prefix — see the styled-jsx note in CLAUDE.md
@@ -55,19 +51,33 @@ function lastAtOrBefore(points, day) {
 }
 
 /**
- * A deployment band written in rupees, at a given capital.
+ * Windows for the monthly bars, counted in months back from the latest one.
  *
- * A translation of the percentages beside it, not a claim about history — the
- * account was smaller once, and these are not the amounts that were committed
- * back then. The caption says so; without that this quietly becomes a lie
- * about the past.
+ * A record of any length ends up here — six years is seventy-eight bars, which
+ * is a picket fence rather than a chart. Counted from the last month WITH DATA
+ * rather than from today, so a journal that stops being updated still opens on
+ * something rather than on an empty window.
  */
-function bandMoney(band, capital) {
-  if (!(capital > 0)) return "";
-  const at = (p) => rupee((p / 100) * capital, { decimals: 1 });
-  if (band.min <= 0) return `below ${at(band.max)}`;
-  if (!isFinite(band.max)) return `above ${at(band.min)}`;
-  return `${at(band.min)} – ${at(band.max)}`;
+const MONTH_RANGES = [
+  { id: "3m", label: "3M", months: 3 },
+  { id: "6m", label: "6M", months: 6 },
+  { id: "9m", label: "9M", months: 9 },
+  { id: "1y", label: "1Y", months: 12 },
+  { id: "2y", label: "2Y", months: 24 },
+  { id: "all", label: "All" },
+  { id: "custom", label: "Custom" },
+];
+
+function monthsInRange(months, rangeId, custom) {
+  if (!months?.length) return [];
+  if (rangeId === "custom") {
+    const from = custom.from || "0000-01";
+    const to = custom.to || "9999-12";
+    return months.filter((m) => m.key >= from && m.key <= to);
+  }
+  const spec = MONTH_RANGES.find((r) => r.id === rangeId);
+  if (!spec?.months) return months;
+  return months.slice(-spec.months);
 }
 
 const monthName = (key) =>
@@ -206,11 +216,17 @@ function useIndexHistory(index, from, to) {
 
 /* ------------------------------------------------------------------ */
 
-export default function CapitalDeployment({ all = [], closed = [], accountSize = 0, flows = [] }) {
+export default function CapitalDeployment({ all = [], accountSize = 0, flows = [] }) {
   const box = useRef(null);
   const [w, setW] = useState(900);
   const [hov, setHov] = useState(null);
   const [index, setIndex] = useState("nifty500");
+  // Opens on a year of bars. "All" is the honest default for a short record
+  // and a picket fence for a long one, and the long one is the case that
+  // actually needs help.
+  const [mRange, setMRange] = useState("1y");
+  const [mCustom, setMCustom] = useState({ from: "", to: "" });
+  const [mHov, setMHov] = useState(null);
 
   useEffect(() => {
     const on = () => box.current && setW(box.current.clientWidth);
@@ -225,7 +241,6 @@ export default function CapitalDeployment({ all = [], closed = [], accountSize =
   );
 
   const idx = useIndexHistory(index, S?.from, S?.to);
-  const outcomes = useMemo(() => deploymentOutcomes(closed, S), [closed, S]);
 
   if (!S) {
     return (
@@ -266,17 +281,34 @@ export default function CapitalDeployment({ all = [], closed = [], accountSize =
   const fy = (v) => PT + depH - (v / topMoney) * depH;
 
   /* ---- monthly panel ------------------------------------------------ */
+  //
+  // Everything below is scaled to the months ACTUALLY SHOWN, not to the whole
+  // record. Narrowing to six months of a quiet stretch and still reading the
+  // axis of a peak two years earlier would leave every visible bar in the
+  // bottom fifth of the panel.
+  const mShown = monthsInRange(S.months, mRange, mCustom);
   const MPT = 12, mDepH = 168, MH = MPT + mDepH + 52;
-  const bandW = innerW / Math.max(1, S.months.length);
-  const barW = Math.max(4, Math.min(30, bandW - 8));
+  const bandW = innerW / Math.max(1, mShown.length);
+  const barW = Math.max(4, Math.min(34, bandW - 8));
 
-  const mTicks = niceTicks(Math.max(...S.months.map((m) => m.avgDeployed), 1));
+  const mTicks = niceTicks(Math.max(...mShown.map((m) => m.avgDeployed), 1));
   const mTop = mTicks[mTicks.length - 1];
   const mfy = (v) => MPT + mDepH - (v / mTop) * mDepH;
 
-  const mCountTicks = niceTicks(Math.max(...S.months.map((m) => m.avgCount), 1), { integer: true });
+  const mCountTicks = niceTicks(Math.max(...mShown.map((m) => m.avgCount), 1), { integer: true });
   const mCountTop = mCountTicks[mCountTicks.length - 1];
   const mfyc = (v) => MPT + mDepH - (v / mCountTop) * mDepH;
+
+  // Labels get crowded long before the bars do — a month name is far wider
+  // than its bar once past about thirty of them.
+  const mLabelEvery = Math.max(1, Math.ceil(mShown.length / Math.max(4, Math.floor(innerW / 46))));
+
+  const onMonthMove = (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const i = Math.floor((e.clientX - r.left - PL) / bandW);
+    setMHov(i >= 0 && i < mShown.length ? i : null);
+  };
+  const mHovM = mHov != null ? mShown[mHov] : null;
 
   const path = (key) =>
     S.days.map((x, i) => `${i ? "L" : "M"}${fx(x.d).toFixed(1)} ${fy(x[key]).toFixed(1)}`).join("");
@@ -296,10 +328,6 @@ export default function CapitalDeployment({ all = [], closed = [], accountSize =
 
   const monthTicks = S.days.filter((x) => x.d.slice(8) === "01");
   const every = Math.max(1, Math.ceil(monthTicks.length / Math.max(4, Math.floor(dInnerW / 62))));
-
-  // The capital the band table translates its percentages at — the latest
-  // reading, which is what "today" means to whoever is looking at the screen.
-  const capitalNow = S.current.capital;
 
   const hovDay = hov != null ? S.days[hov] : null;
   /**
@@ -457,11 +485,39 @@ export default function CapitalDeployment({ all = [], closed = [], accountSize =
       {/* ---- month by month ----------------------------------------- */}
       {S.months.length > 1 && (
         <div className={`${CAP_MONEY}-block`}>
-          <div className="eyebrow">Month by month</div>
-          <div className={`${CAP_MONEY}-sub`}>
-            Each bar is that month&rsquo;s average committed capital, shaded by how
-            full the book was. The line is the average number of positions held.
+          <div className={`${CAP_MONEY}-head`}>
+            <div>
+              <div className="eyebrow">Month by month</div>
+              <div className={`${CAP_MONEY}-sub`}>
+                Each bar is that month&rsquo;s average committed capital, shaded by how
+                full the book was. The line is the average number of positions held.
+              </div>
+            </div>
+            <div className={`${CAP_MONEY}-range`}>
+              <div className="seg">
+                {MONTH_RANGES.map((r) => (
+                  <button key={r.id} data-on={mRange === r.id ? 1 : 0}
+                          onClick={() => { setMRange(r.id); setMHov(null); }}>
+                    {r.label}
+                  </button>
+                ))}
+              </div>
+              {mRange === "custom" && (
+                <span className={`${CAP_MONEY}-dates`}>
+                  {/* Month inputs, not dates. The bars ARE months, and a day
+                      picker invites a precision this chart cannot honour. */}
+                  <input type="month" className="in" value={mCustom.from}
+                         min={S.months[0].key} max={mCustom.to || S.months[S.months.length - 1].key}
+                         onChange={(e) => setMCustom((c) => ({ ...c, from: e.target.value }))} />
+                  <span className={`${CAP_MONEY}-dim`}>to</span>
+                  <input type="month" className="in" value={mCustom.to}
+                         min={mCustom.from || S.months[0].key} max={S.months[S.months.length - 1].key}
+                         onChange={(e) => setMCustom((c) => ({ ...c, to: e.target.value }))} />
+                </span>
+              )}
+            </div>
           </div>
+
           <div className="card" style={{ padding: "10px 4px 4px" }}>
             <div className={`${CAP_MONEY}-legend`}>
               {/* A ramp, not a solid swatch — the bars are shaded across it, and
@@ -471,7 +527,15 @@ export default function CapitalDeployment({ all = [], closed = [], accountSize =
               <span><i className={`${CAP_MONEY}-sw ${CAP_MONEY}-pos`} />Average positions
                 <span className={`${CAP_MONEY}-dim`}>&nbsp;· right axis</span></span>
             </div>
-            <svg width="100%" height={MH} style={{ display: "block" }}>
+
+            {mShown.length === 0 ? (
+              <div className={`${CAP_MONEY}-empty-win`}>
+                No months in that window. The record runs {monthName(S.months[0].key)} to{" "}
+                {monthName(S.months[S.months.length - 1].key)}.
+              </div>
+            ) : (
+            <svg width="100%" height={MH} style={{ display: "block", touchAction: "none" }}
+                 onMouseMove={onMonthMove} onMouseLeave={() => setMHov(null)}>
               {mTicks.map((v, i) => (
                 <g key={i}>
                   <line x1={PL} x2={PL + innerW} y1={mfy(v)} y2={mfy(v)}
@@ -486,105 +550,66 @@ export default function CapitalDeployment({ all = [], closed = [], accountSize =
                       textAnchor="start" className={`${CAP_MONEY}-axc`}>{v}</text>
               ))}
 
-              {S.months.map((m, i) => {
+              {/* The hovered month is lit by a full-height band behind the bar
+                  rather than by recolouring it — the bar's own shade encodes
+                  how full the book was, and overriding it to show a pointer
+                  would destroy the reading it exists for. */}
+              {mHov != null && (
+                <rect x={PL + mHov * bandW} y={MPT} width={bandW} height={mDepH}
+                      fill="var(--ink3)" opacity="0.09" />
+              )}
+
+              {mShown.map((m, i) => {
                 const x = PL + i * bandW + (bandW - barW) / 2;
                 const y = mfy(m.avgDeployed);
                 return (
                   <rect key={m.key} x={x} y={y} width={barW}
                         height={Math.max(0, MPT + mDepH - y)} rx="1"
-                        fill={shadeFor(m.avgPct)}>
-                    <title>
-                      {monthName(m.key)} — {rupee(m.avgDeployed)} average, {pct(m.avgPct, 0)} of
-                      capital, {m.avgCount.toFixed(1)} positions
-                    </title>
-                  </rect>
+                        fill={shadeFor(m.avgPct)} />
                 );
               })}
 
-              <path d={S.months.map((m, i) =>
+              <path d={mShown.map((m, i) =>
                       `${i ? "L" : "M"}${(PL + i * bandW + bandW / 2).toFixed(1)} ${mfyc(m.avgCount).toFixed(1)}`
                     ).join("")}
                     fill="none" stroke="var(--steel)" strokeWidth="1.6" />
-              {S.months.map((m, i) => (
+              {mShown.map((m, i) => (
                 <circle key={`d${m.key}`} cx={PL + i * bandW + bandW / 2}
-                        cy={mfyc(m.avgCount)} r="2.6"
+                        cy={mfyc(m.avgCount)} r={mHov === i ? 3.6 : 2.6}
                         fill="var(--card)" stroke="var(--steel)" strokeWidth="1.4" />
               ))}
 
-              {S.months.map((m, i) => (
-                <text key={`l${m.key}`}
-                      x={PL + i * bandW + bandW / 2} y={MPT + mDepH + 14}
-                      textAnchor="end" className={`${CAP_MONEY}-ax`}
-                      transform={`rotate(-45 ${PL + i * bandW + bandW / 2} ${MPT + mDepH + 14})`}>
-                  {monthName(m.key)}
-                </text>
+              {mShown.map((m, i) => (
+                (i % mLabelEvery === 0 || mHov === i) && (
+                  <text key={`l${m.key}`}
+                        x={PL + i * bandW + bandW / 2} y={MPT + mDepH + 14}
+                        textAnchor="end" className={`${CAP_MONEY}-ax`}
+                        transform={`rotate(-45 ${PL + i * bandW + bandW / 2} ${MPT + mDepH + 14})`}>
+                    {monthName(m.key)}
+                  </text>
+                )
               ))}
             </svg>
-          </div>
-        </div>
-      )}
+            )}
 
-      {/* ---- did it pay? -------------------------------------------- */}
-      {outcomes.length > 0 && (
-        <div className={`${CAP_MONEY}-block`}>
-          <div className="eyebrow">Did a fuller book pay better?</div>
-          <div className={`${CAP_MONEY}-sub`}>
-            Every closed trade grouped by how committed the account was on the day
-            it was <b>entered</b> — the state of the book when you took the decision.
-            This is the question the chart above provokes and cannot answer on its own.
-            The rupee figures translate each band at your capital today
-            ({rupee(capitalNow)}) so the percentages are easier to picture — they are
-            a ruler, not what was committed at the time, since the account was
-            smaller earlier on.
-          </div>
-          <div className="card scroll">
-            <table className="t">
-              <thead><tr>
-                <th>Committed at entry</th>
-                <th className="num">Trades</th>
-                <th className="num">Win rate</th>
-                <th className="num">Expectancy</th>
-                <th className="num">Total R</th>
-              </tr></thead>
-              <tbody>
-                {outcomes.map((o) => (
-                  <tr key={o.key} style={{ opacity: o.isThin ? 0.55 : 1 }}>
-                    <td>
-                      <b style={{ fontWeight: 500 }}>{o.key}</b>
-                      {/* What the band came to in money — the amounts actually
-                          committed on those entry days, so this reads as a real
-                          span rather than a conversion at a capital figure the
-                          account may never have had. */}
-                      {/* The band's OWN edges in money, at today's capital.
-                          The first version printed the smallest and largest
-                          amounts actually committed in the band, which was
-                          accurate and unreadable: a percentage is a boundary
-                          and an observed extreme is a sample, so the two lines
-                          were different kinds of thing. It showed — "10–25%"
-                          opening at ₹12.7 L looks simply wrong, and the spans
-                          overlapped instead of nesting.
-
-                          One decimal, not the default two: this is scanned
-                          down a column, and "₹13.74 L" spends precision nobody
-                          reads on the shape everybody does. */}
-                      <span className={`${CAP_MONEY}-money`}>{bandMoney(o, capitalNow)}</span>
-                    </td>
-                    <td className="num">{o.n}</td>
-                    <td className="num">{pct(o.winRate, 0)}</td>
-                    <td className={`num ${o.expectancy >= 0 ? "pos" : "neg"}`} style={{ fontWeight: 500 }}>
-                      {rfmt(o.expectancy)}
-                    </td>
-                    <td className={`num ${o.totalR >= 0 ? "pos" : "neg"}`}>{rfmt(o.totalR, 1)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {outcomes.some((o) => o.isThin) && (
-            <div className="hint" style={{ marginTop: 8 }}>
-              Faded rows hold fewer than {THIN_DEPLOY_SLICE} trades — questions to watch, not conclusions.
+            <div className={`${CAP_MONEY}-read`}>
+              {mHovM ? (
+                <>
+                  <b>{monthName(mHovM.key)}</b>
+                  <span>{rupee(mHovM.avgDeployed)} average · {pct(mHovM.avgPct, 0)} of capital</span>
+                  <span>{mHovM.avgCount.toFixed(1)} positions, most {mHovM.maxCount}</span>
+                  <span>{rupee(mHovM.minDeployed)} to {rupee(mHovM.maxDeployed)} across the month</span>
+                  <span>{pct(mHovM.avgRiskPct, 2)} at risk</span>
+                </>
+              ) : (
+                <span className={`${CAP_MONEY}-dim`}>
+                  {mShown.length
+                    ? `${monthName(mShown[0].key)} to ${monthName(mShown[mShown.length - 1].key)} · ${mShown.length} month${mShown.length === 1 ? "" : "s"} · hover for any of them.`
+                    : "Pick a window that overlaps the record."}
+                </span>
+              )}
             </div>
-          )}
+          </div>
         </div>
       )}
 
@@ -643,9 +668,12 @@ export default function CapitalDeployment({ all = [], closed = [], accountSize =
           height: 8px; width: 26px; border-radius: 1px;
           background: linear-gradient(90deg, #DCEAE6, #98C5BA, #539F8F, #0F7A63);
         }
-        .${CAP_MONEY}-money {
-          display: block; font-size: 11px; color: var(--ink3);
-          margin-top: 2px; font-variant-numeric: tabular-nums;
+        .${CAP_MONEY}-range { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+        .${CAP_MONEY}-dates { display: inline-flex; gap: 6px; align-items: center; font-size: 11.5px; }
+        .${CAP_MONEY}-dates .in { width: 132px; padding: 5px 7px; font-size: 12px; }
+        .${CAP_MONEY}-empty-win {
+          height: 150px; display: flex; align-items: center; justify-content: center;
+          font-size: 12px; color: var(--ink3); text-align: center; padding: 0 20px;
         }
         .${CAP_MONEY}-ax { font-size: 10px; fill: var(--ink3); font-variant-numeric: tabular-nums; }
         .${CAP_MONEY}-axc { font-size: 10px; fill: var(--steel); font-variant-numeric: tabular-nums; }
