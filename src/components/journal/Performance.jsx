@@ -138,13 +138,16 @@ export default function Performance({ closed, S, accountSize, flows, all = [] })
               <div className="eyebrow">What the mistakes cost</div>
               <div style={{ fontSize: 12, color: "var(--ink2)", marginTop: 3 }}>
                 Only counts trades where you tagged an execution error yourself.
+                Net P&amp;L is what those trades came to, not what the mistake cost you —
+                nobody can know what the same trade would have done without it.
               </div>
             </div>
           </div>
           <div className="card scroll">
             <table className="t">
               <thead><tr><th>Mistake</th><th className="num">Times</th>
-                <th className="num">Win rate</th><th className="num">Expectancy</th><th className="num">Total R</th></tr></thead>
+                <th className="num">Win rate</th><th className="num">Expectancy</th>
+                <th className="num">Total R</th><th className="num">Net P&amp;L</th></tr></thead>
               <tbody>
                 {mistakeRows.map((m) => (
                   <tr key={m.tag}>
@@ -153,6 +156,9 @@ export default function Performance({ closed, S, accountSize, flows, all = [] })
                     <td className="num">{pct(m.winRate, 0)}</td>
                     <td className={`num ${m.avgR >= 0 ? "pos" : "neg"}`}>{rfmt(m.avgR)}</td>
                     <td className={`num ${m.totalR >= 0 ? "pos" : "neg"}`}>{rfmt(m.totalR, 1)}</td>
+                    <td className={`num ${m.netPnl >= 0 ? "pos" : "neg"}`} style={{ fontWeight: 500 }}>
+                      {rupee(m.netPnl)}
+                    </td>
                   </tr>
                 ))}
               </tbody>

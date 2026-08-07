@@ -500,9 +500,26 @@ export function mistakeCost(closed, isExecutionError) {
     .map(([tag, trades]) => {
       const rs = trades.map((t) => t.r).filter(isFinite);
       const total = rs.reduce((a, b) => a + b, 0);
+      /**
+       * What the tag came to in money, net of charges.
+       *
+       * Summed over ALL trades carrying the tag, not only those with a
+       * computable R — a trade with no stop recorded still has a P&L, and
+       * dropping it here would understate the cost of the very trades most
+       * likely to have gone wrong.
+       *
+       * It is the total on those trades, not a counterfactual. Nobody can say
+       * what they would have made without the mistake; this says what the
+       * trades it was tagged on actually did.
+       */
+      const netPnl = trades
+        .map((t) => t.pnl)
+        .filter(isFinite)
+        .reduce((a, b) => a + b, 0);
       return {
         tag,
         count: trades.length,
+        netPnl,
         totalR: +total.toFixed(2),
         avgR: rs.length ? +(total / rs.length).toFixed(2) : null,
         winRate: rs.length
