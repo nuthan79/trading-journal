@@ -273,7 +273,7 @@ export default function AppLayout({ children }) {
   );
   const S = useMemo(() => stats(closed), [closed]);
 
-  const saveTrade = async (payload, exits) => {
+  const saveTrade = async (payload, exits, chartSrc) => {
     try {
       const saved = await dbSaveTrade(payload);
 
@@ -290,14 +290,44 @@ export default function AppLayout({ children }) {
         savedExits = null;
       }
 
+      /**
+       * The entry chart, if one was pasted. Same shape as the exits above and
+       * for the same reason — it needs the trade's id, which only exists once
+       * the row is written.
+       *
+       * Its own try/catch on purpose. A chart is the least important thing
+       * being saved here, and a diary insert that fails must not turn a
+       * successfully logged trade into an error the user reads as "nothing
+       * saved". They lose the picture and are told so; they keep the trade.
+       */
+      let chartSaved = false;
+      if (chartSrc) {
+        try {
+          const entry = await dbSaveDiary({
+            trade_id: saved.id,
+            entry_date: saved.entry_date,
+            image_path: chartSrc,
+            emotions: [],
+            body: "",
+          });
+          setDiary((prev) => [entry, ...prev]
+            .sort((a, b) => (a.entry_date < b.entry_date ? 1 : -1)));
+          chartSaved = true;
+        } catch (e) {
+          say("Trade saved, but the chart could not be attached.");
+        }
+      }
+
       const [t, ex] = await Promise.all([listTrades(), listExitsByTrade()]);
       setTrades(t);
       setExitsByTrade(ex);
 
       setShowForm(false); setEditing(null);
+      if (chartSrc && !chartSaved) return;   // the message above already said it
       say(
         savedExits?.length > 1
           ? `Trade saved with ${savedExits.length} sells.`
+          : chartSaved ? "Trade logged, with the chart."
           : payload.id ? "Trade updated." : "Trade logged."
       );
     } catch (e) {

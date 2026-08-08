@@ -7,6 +7,7 @@ import ChargesField from "./ChargesField";
 import { derivePosition } from "@/lib/positions";
 import { rupee, pct } from "@/lib/format";
 import { PATTERNS, EXIT_REASONS, MISTAKES, STAGES, slBand } from "@/lib/constants";
+import { resolveTradingViewChart, RESOLVE_HELP } from "@/lib/tradingview";
 import { entryCharges, mergeConfig } from "@/lib/charges";
 import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
 
@@ -344,6 +345,41 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
   const overRisk = isFinite(d.riskPct) && d.riskPct > 2;
 
 
+  /**
+   * The chart at entry.
+   *
+   * Deliberately not part of `t`: there is no chart column on trades, and
+   * there should not be. It travels beside the payload and is written as a
+   * diary entry once the trade has an id, the same way exit tranches are.
+   *
+   * WHY IT IS WORTH CAPTURING HERE rather than only on the trade panel. A
+   * snapshot taken now shows the base before it resolved — the pivot untested,
+   * the volume dry-up, the thing actually being looked at. Come back in three
+   * months and TradingView shows what happened instead; the outcome is baked
+   * into the picture and cannot be taken back out. It is the same reason the
+   * thesis above locks once the trade closes.
+   */
+  /**
+   * Weinstein stage is hidden, not removed.
+   *
+   * It comes off the default form because the setup section had grown to the
+   * point where logging a trade felt like filling in a survey, and stage is
+   * the field least often used. Everything behind it stays: the column, the
+   * recorded values, the edge dimension that reads them. So the analysis keeps
+   * working on the trades that have it and the field is one click away when
+   * someone wants it.
+   *
+   * Opens by itself on a trade that already has a stage. Hiding a field that
+   * holds a value is how a value gets silently dropped on the next save.
+   */
+  const [showStage, setShowStage] = useState(false);
+
+  const [chartLink, setChartLink] = useState("");
+  const [chartOk, setChartOk] = useState(null);
+  const chart = resolveTradingViewChart(chartLink);
+  useEffect(() => { if (t.weinstein_stage) setShowStage(true); }, [t.weinstein_stage]);
+  useEffect(() => { setChartOk(null); }, [chart.src]);
+
   const submit = async () => {
     if (!valid || saving) return;
     setSaving(true);
@@ -352,7 +388,10 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
       // trade_exits and the trade has to exist before they can reference it.
       // The charge figure is attributed across the two on the way out, so a
       // part-sold position isn't billed for sells that haven't happened.
-      await onSave({ ...toPayload(t), charges: split.tradeCharges }, split.exits);
+      // A chart that resolved AND rendered. Never a blocker: a bad link, or a
+      // link nobody pasted, must not stand between someone and a logged trade.
+      const chartSrc = chart.status === "ok" && chartOk === true ? chart.src : null;
+      await onSave({ ...toPayload(t), charges: split.tradeCharges }, split.exits, chartSrc);
       clearDraft();
     } finally {
       setSaving(false);
@@ -477,11 +516,21 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                 <input className="in" inputMode="numeric" placeholder="1–99" value={t.rs_rank} onChange={set("rs_rank")} /></label>
             </div>
             <div className="grid2" style={{ gap: 12, marginTop: 12 }}>
-              <label className="f" style={{ maxWidth: 280 }}><span>Weinstein stage</span>
-                <select className="in" value={t.weinstein_stage} onChange={set("weinstein_stage")}>
-                  <option value="">—</option>
-                  {STAGES.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}
-                </select></label>
+              {showStage ? (
+                <label className="f" style={{ maxWidth: 280 }}><span>Weinstein stage</span>
+                  <select className="in" value={t.weinstein_stage} onChange={set("weinstein_stage")}>
+                    <option value="">—</option>
+                    {STAGES.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}
+                  </select>
+                  <div className="hint">Feeds the stage cut on the performance sheet.</div>
+                </label>
+              ) : (
+                <div className="f" style={{ maxWidth: 280, alignSelf: "end" }}>
+                  <button type="button" className="lnk" onClick={() => setShowStage(true)}>
+                    + Weinstein stage
+                  </button>
+                </div>
+              )}
               <label className="f"><span>Why this trade</span>
                 <input className="in" value={t.thesis} onChange={set("thesis")}
                        readOnly={derivedStatus === "closed"}
@@ -493,6 +542,33 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                     : "Read back after the trade closes, this is often the most honest line in the journal."}
                 </div></label>
             </div>
+
+            {/* Under the thesis because it is the other half of it — the words
+                and the picture, both taken before the outcome is known. Only
+                on a new trade: an existing one is attached to from its own
+                panel, where the charts already saved are visible and a second
+                place to add them would just be a way to add duplicates. */}
+            {!editing && (
+              <div style={{ marginTop: 12 }}>
+                <label className="f"><span>Chart at entry <i className="tf-opt">optional</i></span>
+                  <input className="in" value={chartLink} onChange={(e) => setChartLink(e.target.value)}
+                         placeholder="Paste a TradingView snapshot link — tradingview.com/x/…" />
+                  <div className="hint">
+                    {chart.status === "ok" && chartOk === true
+                      ? "Saved with the trade, as it looks right now — before you know how it turned out."
+                      : chart.status === "ok" && chartOk === false
+                      ? "That link is the right shape but TradingView has no snapshot at it."
+                      : RESOLVE_HELP[chart.status]
+                        || "The camera icon on the TradingView toolbar (or Alt+S) makes one. Never required."}
+                  </div>
+                </label>
+                {chart.status === "ok" && (
+                  <img className="tf-chart" src={chart.src} alt="Chart at entry"
+                       data-bad={chartOk === false ? 1 : 0}
+                       onLoad={() => setChartOk(true)} onError={() => setChartOk(false)} />
+                )}
+              </div>
+            )}
           </div>
 
           <div ref={exitRef}>
@@ -633,6 +709,18 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
       </div>
 
       <style jsx>{`
+        .tf-opt {
+          font-style: normal; font-weight: 400; color: var(--ink3);
+          font-size: 9.5px; letter-spacing: 0.06em; margin-left: 6px;
+        }
+        .tf-chart {
+          width: 100%; height: auto; display: block; margin-top: 10px;
+          border: 1px solid var(--rule); border-radius: 3px; max-height: 260px;
+          object-fit: contain; object-position: top; background: var(--paper);
+        }
+        /* A broken image renders as an alt-text stub; the hint above already
+           says what went wrong, so the stub is only noise. */
+        .tf-chart[data-bad="1"] { display: none; }
         .ex-head {
           display: flex; align-items: baseline; justify-content: space-between;
           gap: 12px; margin-bottom: 10px; flex-wrap: wrap;
