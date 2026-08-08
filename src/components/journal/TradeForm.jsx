@@ -7,7 +7,7 @@ import ChargesField from "./ChargesField";
 import { derivePosition } from "@/lib/positions";
 import { rupee, pct } from "@/lib/format";
 import { PATTERNS, EXIT_REASONS, MISTAKES, STAGES, slBand } from "@/lib/constants";
-import { resolveTradingViewChart, RESOLVE_HELP } from "@/lib/tradingview";
+import { resolveTradingViewChart } from "@/lib/charts";
 import { entryCharges, mergeConfig } from "@/lib/charges";
 import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
 
@@ -392,7 +392,7 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
   useEffect(() => {
     if (t.pattern || t.pivot_price || t.vol_pct_avg || t.weinstein_stage) setShowMore(true);
   }, [t.pattern, t.pivot_price, t.vol_pct_avg, t.weinstein_stage]);
-  useEffect(() => { setChartOk(null); }, [chart.src]);
+  useEffect(() => { setChartOk(null); }, [chart.url]);
 
   const submit = async () => {
     if (!valid || saving) return;
@@ -404,7 +404,7 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
       // part-sold position isn't billed for sells that haven't happened.
       // A chart that resolved AND rendered. Never a blocker: a bad link, or a
       // link nobody pasted, must not stand between someone and a logged trade.
-      const chartSrc = chart.status === "ok" && chartOk === true ? chart.src : null;
+      const chartSrc = chart.ok && chartOk === true ? chart.url : null;
       await onSave({ ...toPayload(t), charges: split.tradeCharges }, split.exits, chartSrc);
       clearDraft();
     } finally {
@@ -535,16 +535,17 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                   <input className="in" value={chartLink} onChange={(e) => setChartLink(e.target.value)}
                          placeholder="Paste a TradingView snapshot link — tradingview.com/x/…" />
                   <div className="hint">
-                    {chart.status === "ok" && chartOk === true
+                    {chart.ok && chartOk === true
                       ? "Saved with the trade, as it looks right now — before you know how it turned out."
-                      : chart.status === "ok" && chartOk === false
+                      : chart.ok && chartOk === false
                       ? "That link is the right shape but TradingView has no snapshot at it."
-                      : RESOLVE_HELP[chart.status]
-                        || "The camera icon on the TradingView toolbar (or Alt+S) makes one. Never required."}
+                      : chart.empty
+                      ? "The camera icon on the TradingView toolbar (or Alt+S) makes one. Never required."
+                      : chart.error}
                   </div>
                 </label>
-                {chart.status === "ok" && (
-                  <img className="tf-chart" src={chart.src} alt="Chart at entry"
+                {chart.ok && (
+                  <img className="tf-chart" src={chart.url} alt="Chart at entry"
                        data-bad={chartOk === false ? 1 : 0}
                        onLoad={() => setChartOk(true)} onError={() => setChartOk(false)} />
                 )}

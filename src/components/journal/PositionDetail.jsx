@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Pencil, Trash2, X, ChevronUp, ChevronDown, LogOut, ImagePlus } from "lucide-react";
 import { rupee, rfmt, pct, signedPct } from "@/lib/format";
 import { chartUrl } from "@/lib/db";
-import { resolveTradingViewChart, RESOLVE_HELP } from "@/lib/tradingview";
+import { resolveTradingViewChart } from "@/lib/charts";
 
 /**
  * One position, opened up.
@@ -83,10 +83,10 @@ export default function PositionDetail({ row, diary = [], onAttachChart, onClose
   const resolved = resolveTradingViewChart(link);
 
   useEffect(() => { setLink(""); setOpen(false); }, [row?.id]);
-  useEffect(() => { setImgOk(null); }, [resolved.src]);
+  useEffect(() => { setImgOk(null); }, [resolved.url]);
 
   const attach = async () => {
-    if (resolved.status !== "ok" || imgOk !== true || !onAttachChart) return;
+    if (!resolved.ok || imgOk !== true || !onAttachChart) return;
     setSaving(true);
     try {
       await onAttachChart({
@@ -95,7 +95,7 @@ export default function PositionDetail({ row, diary = [], onAttachChart, onClose
         // weekend review belongs beside the decision it illustrates, and the
         // diary lists by date.
         entry_date: row.entry_date || new Date().toISOString().slice(0, 10),
-        image_path: resolved.src,
+        image_path: resolved.url,
         emotions: [],
         body: "",
       });
@@ -435,32 +435,34 @@ export default function PositionDetail({ row, diary = [], onAttachChart, onClose
                     className="in" autoFocus value={link}
                     placeholder="Paste a TradingView snapshot link — tradingview.com/x/…"
                     onChange={(e) => setLink(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter" && resolved.status === "ok") attach(); }}
+                    onKeyDown={(e) => { if (e.key === "Enter" && resolved.ok) attach(); }}
                   />
                   {/* The preview is the validation. A link that resolves to a
                       real image proves itself by rendering; one that does not
                       cannot be talked into working, so the message says which
                       menu item to use instead. */}
-                  {resolved.status === "ok" && (
-                    <img className="pd-attach-preview" src={resolved.src}
+                  {resolved.ok && (
+                    <img className="pd-attach-preview" src={resolved.url}
                          alt="Chart to attach" data-bad={imgOk === false ? 1 : 0}
                          onLoad={() => setImgOk(true)}
                          onError={() => setImgOk(false)} />
                   )}
-                  {resolved.status === "ok" && imgOk === false && (
+                  {resolved.ok && imgOk === false && (
                     <p className="pd-attach-help">
                       That link is the right shape but TradingView has no snapshot at it.
                       Check it was copied whole — or take a fresh one with the camera icon.
                     </p>
                   )}
-                  {RESOLVE_HELP[resolved.status] && (
-                    <p className="pd-attach-help">{RESOLVE_HELP[resolved.status]}</p>
+                  {/* The message travels with the result now, so a new failure
+                      case cannot be added without its explanation. */}
+                  {!resolved.ok && !resolved.empty && (
+                    <p className="pd-attach-help">{resolved.error}</p>
                   )}
                   <div className="pd-attach-row">
                     {/* Enabled only once the image has actually rendered — the
                         preview is the proof, not the parse. */}
                     <button className="btn sm"
-                            disabled={resolved.status !== "ok" || imgOk !== true || saving}
+                            disabled={!resolved.ok || imgOk !== true || saving}
                             onClick={attach}>
                       {saving ? "Attaching…" : "Attach"}
                     </button>
