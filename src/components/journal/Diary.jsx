@@ -1,27 +1,25 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Plus, X, Trash2, Image as ImageIcon, Link2, Check } from "lucide-react";
+import { Plus, X, Trash2, Link2, Check } from "lucide-react";
 import { chartUrl } from "@/lib/db";
 import { resolveTradingViewChart } from "@/lib/charts";
 import { rfmt } from "@/lib/format";
 import { EMOTIONS } from "@/lib/constants";
 import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
 
-const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
-
 function newDraft() {
   return {
     entry_date: new Date().toISOString().slice(0, 10),
     emotions: [], body: "", trade_id: "",
-    imageFile: null, imagePreview: null, imageUrl: null,
+    imageUrl: null,
     linkOpen: false, linkInput: "", linkError: "",
   };
 }
 
-// imageFile/imagePreview can't survive a reload (a File object, and a blob:
-// URL that's already dead by the time we'd restore it) — only the text
-// fields and a pasted-link URL are worth persisting.
+// A pasted link is just text, so the whole draft survives a reload. This used
+// to carry a File and a blob: URL for uploaded images, neither of which could
+// be persisted — one more thing that got simpler when uploads went away.
 function serializeDraft(d) {
   if (!d) return null;
   return {
@@ -45,7 +43,7 @@ function loadPersistedDraft() {
     emotions: Array.isArray(p.emotions) ? p.emotions : [],
     body: p.body || "",
     trade_id: p.trade_id || "",
-    imageFile: null, imagePreview: null, imageUrl: p.imageUrl || null,
+    imageUrl: p.imageUrl || null,
     linkOpen: false, linkInput: "", linkError: "",
   };
 }
@@ -54,7 +52,6 @@ export default function Diary({ diary, trades, onSave, onDelete, say }) {
   const [draft, setDraft] = useState(null);
   const [urls, setUrls] = useState({});
   const [saving, setSaving] = useState(false);
-  const fileRef = useRef(null);
   const restoredRef = useRef(false);
 
   useEffect(() => {
@@ -87,19 +84,7 @@ export default function Diary({ diary, trades, onSave, onDelete, say }) {
     hasContent(serialized) ? serialized : null
   );
 
-  const pickFile = (e) => {
-    const f = e.target.files && e.target.files[0];
-    if (!f) return;
-    if (f.size > MAX_IMAGE_BYTES) { say("That image is too large — keep it under 8MB."); e.target.value = ""; return; }
-    if (draft.imagePreview) URL.revokeObjectURL(draft.imagePreview);
-    setDraft((p) => ({ ...p, imageFile: f, imagePreview: URL.createObjectURL(f), imageUrl: null, linkOpen: false }));
-    e.target.value = "";
-  };
-
-  const removeImage = () => {
-    if (draft.imagePreview) URL.revokeObjectURL(draft.imagePreview);
-    setDraft((p) => ({ ...p, imageFile: null, imagePreview: null, imageUrl: null }));
-  };
+  const removeImage = () => setDraft((p) => ({ ...p, imageUrl: null }));
 
   const openLink = () => setDraft((p) => ({ ...p, linkOpen: true, linkInput: "", linkError: "" }));
 
@@ -109,21 +94,18 @@ export default function Diary({ diary, trades, onSave, onDelete, say }) {
       setDraft((p) => ({ ...p, linkError: result.error }));
       return;
     }
-    if (draft.imagePreview) URL.revokeObjectURL(draft.imagePreview);
     setDraft((p) => ({
-      ...p, imageFile: null, imagePreview: null, imageUrl: result.url,
-      linkOpen: false, linkInput: "", linkError: "",
+      ...p, imageUrl: result.url, linkOpen: false, linkInput: "", linkError: "",
     }));
   };
 
   const discard = () => {
-    if (draft.imagePreview) URL.revokeObjectURL(draft.imagePreview);
     clearPersistedDraft();
     setDraft(null);
   };
 
   const commit = async () => {
-    if (!draft.body.trim() && !draft.imageFile && !draft.imageUrl) { say("Write something or attach a chart first."); return; }
+    if (!draft.body.trim() && !draft.imageUrl) { say("Write something or paste a chart link first."); return; }
     setSaving(true);
     try {
       await onSave({
@@ -132,8 +114,7 @@ export default function Diary({ diary, trades, onSave, onDelete, say }) {
         body: draft.body,
         trade_id: draft.trade_id || null,
         ...(draft.imageUrl ? { image_path: draft.imageUrl } : {}),
-      }, draft.imageFile);
-      if (draft.imagePreview) URL.revokeObjectURL(draft.imagePreview);
+      });
       clearPersistedDraft();
       setDraft(null);
     } finally {
@@ -185,9 +166,9 @@ export default function Diary({ diary, trades, onSave, onDelete, say }) {
             onChange={(e) => setDraft((p) => ({ ...p, body: e.target.value }))}
             placeholder="What happened today. What you did and why. What you would do differently." />
 
-          {(draft.imagePreview || draft.imageUrl) && (
+          {draft.imageUrl && (
             <div style={{ marginTop: 12 }}>
-              <img src={draft.imagePreview || draft.imageUrl} alt="Attached chart"
+              <img src={draft.imageUrl} alt="Attached chart"
                    style={{ maxWidth: "100%", border: "1px solid var(--rule)", borderRadius: 2 }} />
               <button className="btn ghost sm" style={{ marginTop: 8 }} onClick={removeImage}>
                 <X size={12} />Remove chart
@@ -211,15 +192,16 @@ export default function Diary({ diary, trades, onSave, onDelete, say }) {
             </div>
           )}
 
-          <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={pickFile} />
-
           <div style={{ display: "flex", gap: 10, justifyContent: "space-between", marginTop: 16, flexWrap: "wrap" }}>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button className="btn ghost" onClick={() => fileRef.current && fileRef.current.click()}>
-                <ImageIcon size={13} />{(draft.imagePreview || draft.imageUrl) ? "Replace chart" : "Attach chart"}
-              </button>
+              {/* Links only. An uploaded PNG of a 4000px chart is around 800KB
+                  in Storage and comes out of your egress every time anyone
+                  looks at it; the same chart as a TradingView snapshot link is
+                  51 bytes of text and is served by TradingView. Entries that
+                  already hold an uploaded file still render — chartUrl signs a
+                  Storage path and passes a URL straight through. */}
               <button className="btn ghost" onClick={openLink}>
-                <Link2 size={13} />Paste link
+                <Link2 size={13} />{draft.imageUrl ? "Replace chart link" : "Paste chart link"}
               </button>
             </div>
             <div style={{ display: "flex", gap: 10 }}>
