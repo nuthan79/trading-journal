@@ -140,7 +140,8 @@ function BreakevenFlag({ c, busy, onAck }) {
 }
 
 export default function Holdings({
-  open, closed, onRefresh, refreshing, onAckBreakeven, onEditTrade, onExitTrade, onDeleteTrade,
+  open, closed, diary = [], onRefresh, refreshing, onAckBreakeven,
+  onEditTrade, onExitTrade, onDeleteTrade, onAttachChart,
 }) {
   const [detailId, setDetailId] = useState(null);
   const [acked, setAcked] = useState([]);
@@ -529,6 +530,13 @@ export default function Holdings({
       {detailAt >= 0 && (
         <PositionDetail
           row={rows[detailAt]}
+          // The same panel the trades table opens, so a live position gets the
+          // charts and the attach field without a second implementation. This
+          // is arguably where it matters most: an open position is the one you
+          // keep coming back to, and "does this still look like the base I
+          // bought" is only answerable with the picture from entry beside it.
+          diary={diary}
+          onAttachChart={onAttachChart}
           onClose={() => setDetailId(null)}
           onEdit={(r) => { setDetailId(null); onEditTrade?.(r); }}
           onExit={(r) => { setDetailId(null); onExitTrade?.(r); }}
