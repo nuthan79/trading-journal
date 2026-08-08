@@ -84,12 +84,17 @@ export default function AppLayout({ children }) {
   }, []);
 
   const [profile, setProfile] = useState(null);
-  const [profileLoading, setProfileLoading] = useState(false);
 
   // One per browser session, not per page load: this counts visits, and
   // active days are counted off it. Fires only once a session exists, so a
   // signed-out visitor is a matter for the page analytics script instead.
-  useEffect(() => { trackVisit(); }, [session]);
+  //
+  // Keyed on the user id, not the session object. Supabase hands out a fresh
+  // session object every time it refreshes the token — which it does whenever
+  // the tab regains focus — so keying on the object counted a new visit every
+  // time somebody alt-tabbed back from a spreadsheet.
+  const userId = session?.user?.id ?? null;
+  useEffect(() => { if (userId) trackVisit(); }, [userId]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -100,13 +105,23 @@ export default function AppLayout({ children }) {
     return () => sub.subscription.unsubscribe();
   }, []);
 
+  /**
+   * The profile, fetched once per signed-in user.
+   *
+   * Keyed on the user id for the same reason as above, and this one was worse
+   * than a miscount. A token refresh produced a new session object, which
+   * re-ran this effect, which flipped a loading flag, which made the render
+   * below return "Opening the ledger" — unmounting every page under it and
+   * taking its state with it. Switch to a spreadsheet, come back, and the
+   * search you had typed on the trades table was gone, along with the sort,
+   * the filter and any open position panel.
+   *
+   * Nothing looked broken. The page simply came back the way it starts.
+   */
   useEffect(() => {
-    if (!session) { setProfile(null); return; }
-    setProfileLoading(true);
-    getProfile()
-      .then(setProfile)
-      .finally(() => setProfileLoading(false));
-  }, [session]);
+    if (!userId) { setProfile(null); return; }
+    getProfile().then(setProfile);
+  }, [userId]);
 
   /**
    * A viewing URL for the profile picture.
@@ -515,7 +530,10 @@ export default function AppLayout({ children }) {
     );
   }
 
-  if (profileLoading || !profile) {
+  // Only while there is nothing to show. A refetch that happens once a profile
+  // is already in hand must not blank the screen, because blanking the screen
+  // here means unmounting whatever page the user was working in.
+  if (!profile) {
     return <div className="wrap"><div className="eyebrow">Opening the ledger</div></div>;
   }
 
