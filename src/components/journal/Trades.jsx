@@ -276,7 +276,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
             {/* 21 columns: 11 spanned here, P&L, R, then 8 spanned to the end.
                 Get that sum wrong and the whole row slides out of line under
                 the headers without anything erroring. */}
-            <tfoot>
+            <tfoot className="stick">
               <tr className="tr-tot">
                 <td colSpan={11}>
                   <b>{totals.n}</b> {totals.n === 1 ? "trade" : "trades"} shown

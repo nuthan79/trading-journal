@@ -72,6 +72,23 @@ table.t thead th {
   z-index: 2;
 }
 
+/* A totals row that stays in view while the rows scroll under it — the
+   same trick as the header, anchored to the other edge.
+
+   OPT-IN, not applied to every tfoot. Sticky is per-cell rather than
+   per-row, so a tfoot carrying two summary lines would pin both at
+   bottom: 0 and stack them on top of each other. This is only right for
+   a single line.
+
+   Needs the same capped .scroll height the sticky header needs: with
+   nothing to scroll, the row simply sits at the end of the table. */
+table.t tfoot.stick td {
+  position: sticky;
+  bottom: 0;
+  background: var(--card);
+  z-index: 2;
+}
+
 /* Sortable headings: reserve the arrow's width whether or not it shows,
    so clicking to sort doesn't shift the column by a few pixels. */
 table.t thead th[data-sortable] {
