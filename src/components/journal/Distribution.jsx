@@ -101,7 +101,7 @@ export default function Distribution({ rows }) {
             positioned by percentage stay round at any size. */}
         <div className="dist-over">
           <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-            <polyline points={line} fill="none" stroke="var(--steel)"
+            <polyline points={line} fill="none" stroke="var(--violet)"
                       strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
           </svg>
           {buckets.map((b, i) => {
@@ -146,7 +146,7 @@ export default function Distribution({ rows }) {
         .dist-legend span { display: inline-flex; align-items: center; gap: 5px; }
         .dist-sw { width: 12px; height: 2px; border-radius: 1px; display: inline-block; }
         .dist-sw-r { background: var(--long); }
-        .dist-sw-n { background: var(--steel); }
+        .dist-sw-n { background: var(--violet); }
         .dist-dim { font-style: normal; color: var(--ink3); }
 
         /* The right gutter holds the trade-count scale, so the plot itself
@@ -190,12 +190,12 @@ export default function Distribution({ rows }) {
         .dist-dot {
           position: absolute; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px;
           border-radius: 50%; background: var(--card);
-          border: 1.4px solid var(--steel); pointer-events: auto;
+          border: 1.4px solid var(--violet); pointer-events: auto;
         }
         .dist-yr {
           position: absolute; right: 0; top: 21px; bottom: 0; width: 24px;
           display: flex; flex-direction: column; justify-content: space-between;
-          align-items: flex-end; font-size: 10px; color: var(--steel);
+          align-items: flex-end; font-size: 10px; color: var(--violet);
           font-variant-numeric: tabular-nums;
         }
 
@@ -211,7 +211,7 @@ export default function Distribution({ rows }) {
            the number, without a label per point colliding with the R above. */
         .dist-n {
           display: block; font-style: normal; font-size: 10px;
-          color: var(--steel); margin-top: 2px;
+          color: var(--violet); margin-top: 2px;
         }
       `}</style>
     </div>

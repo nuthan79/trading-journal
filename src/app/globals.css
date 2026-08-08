@@ -5,10 +5,15 @@
   --ink:#131C1A; --ink2:#4A5A56; --ink3:#7C8B87;
   --long:#0F7A63; --short:#A83E27; --brass:#B8862F;
   /* A fifth plot colour, for a series that is neither money nor an outcome —
-     the concurrent position count on the deployment chart. Muted to the same
-     degree as the others so it reads as one of the family rather than an
-     alert. */
-  --steel:#4C6B8A;
+     a count, drawn over bars that mean money.
+
+     Violet, and specifically not a blue. #4C6B8A was the first attempt and
+     desaturated slate sitting next to #0F7A63 teal on warm paper stops
+     reading as blue at all — it just looks like another green thing. Violet
+     is the one hue far from all three the palette already spends: teal for
+     gains, rust for losses, brass for accents. Red and orange are not
+     available at any saturation; they mean losing money here. */
+  --violet:#6A4C9C;
 }
 
 * { box-sizing: border-box; }

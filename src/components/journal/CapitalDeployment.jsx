@@ -610,11 +610,11 @@ export default function CapitalDeployment({ all = [], accountSize = 0, flows = [
               <path d={mShown.map((m, i) =>
                       `${i ? "L" : "M"}${(PL + i * bandW + bandW / 2).toFixed(1)} ${mfyc(m.avgCount).toFixed(1)}`
                     ).join("")}
-                    fill="none" stroke="var(--steel)" strokeWidth="1.6" />
+                    fill="none" stroke="var(--violet)" strokeWidth="1.6" />
               {mShown.map((m, i) => (
                 <circle key={`d${m.key}`} cx={PL + i * bandW + bandW / 2}
                         cy={mfyc(m.avgCount)} r={mHov === i ? 3.6 : 2.6}
-                        fill="var(--card)" stroke="var(--steel)" strokeWidth="1.4" />
+                        fill="var(--card)" stroke="var(--violet)" strokeWidth="1.4" />
               ))}
 
               {mShown.map((m, i) => (
@@ -701,7 +701,7 @@ export default function CapitalDeployment({ all = [], accountSize = 0, flows = [
         .${CAP_MONEY}-risk { background: var(--short); }
         .${CAP_MONEY}-cap  { background: var(--ink3); }
         .${CAP_MONEY}-idx  { background: var(--brass); }
-        .${CAP_MONEY}-pos  { background: var(--steel); }
+        .${CAP_MONEY}-pos  { background: var(--violet); }
         .${CAP_MONEY}-ramp {
           height: 8px; width: 26px; border-radius: 1px;
           background: linear-gradient(90deg, #DCEAE6, #98C5BA, #539F8F, #0F7A63);
@@ -714,7 +714,7 @@ export default function CapitalDeployment({ all = [], accountSize = 0, flows = [
           font-size: 12px; color: var(--ink3); text-align: center; padding: 0 20px;
         }
         .${CAP_MONEY}-ax { font-size: 10px; fill: var(--ink3); font-variant-numeric: tabular-nums; }
-        .${CAP_MONEY}-axc { font-size: 10px; fill: var(--steel); font-variant-numeric: tabular-nums; }
+        .${CAP_MONEY}-axc { font-size: 10px; fill: var(--violet); font-variant-numeric: tabular-nums; }
 
         .${CAP_MONEY}-read {
           display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline;
