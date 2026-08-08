@@ -85,6 +85,28 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
   // Resolved by id against the filtered list, not held as an object: change
   // the filter or the sort while it's open and the panel follows the row,
   // or closes if that row is no longer on screen.
+  /**
+   * What is on screen, added up.
+   *
+   * Only worth having because the list filters: eight GARFIBRES rows raise
+   * "so what did this stock cost me altogether", and nothing answered it.
+   *
+   * R is counted separately from money and says how many trades it covers. A
+   * trade with no stop has a P&L and no R, so the two totals are drawn from
+   * different sets of rows — printing them side by side without saying so
+   * invites reading one as the other's explanation.
+   */
+  const totals = useMemo(() => {
+    const pnl = rows.map((t) => t.pnl).filter(isFinite);
+    const rs = rows.map((t) => t.r).filter(isFinite);
+    return {
+      n: rows.length,
+      pnl: pnl.reduce((a, b) => a + b, 0),
+      r: rs.reduce((a, b) => a + b, 0),
+      withR: rs.length,
+    };
+  }, [rows]);
+
   const detailAt = detailId == null ? -1 : rows.findIndex((t) => t.id === detailId);
 
   const th = (k, label, cls) => {
@@ -251,6 +273,29 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                 </tr>
               ))}
             </tbody>
+            {/* 21 columns: 11 spanned here, P&L, R, then 8 spanned to the end.
+                Get that sum wrong and the whole row slides out of line under
+                the headers without anything erroring. */}
+            <tfoot>
+              <tr className="tr-tot">
+                <td colSpan={11}>
+                  <b>{totals.n}</b> {totals.n === 1 ? "trade" : "trades"} shown
+                </td>
+                <td className={`num ${totals.pnl >= 0 ? "pos" : "neg"}`}>
+                  {rupee(totals.pnl)}
+                </td>
+                <td className={`num ${totals.r >= 0 ? "pos" : "neg"}`}
+                    title={totals.withR < totals.n
+                      ? `${totals.n - totals.withR} of these have no stop recorded, so no R`
+                      : undefined}>
+                  {totals.withR ? rfmt(totals.r, 1) : "—"}
+                  {totals.withR > 0 && totals.withR < totals.n && (
+                    <i className="tr-tot-sub">of {totals.withR}</i>
+                  )}
+                </td>
+                <td colSpan={8}></td>
+              </tr>
+            </tfoot>
           </table>
         )}
       </div>
@@ -285,6 +330,17 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
         }
         .tr-chip b { font-weight: 500; color: var(--ink); }
         .tr-chip-n { color: var(--ink3); font-size: 11.5px; }
+        .tr-tot td {
+          border-top: 1px solid var(--ink3); border-bottom: 0;
+          font-size: 12px; padding-top: 8px;
+        }
+        .tr-tot b { font-weight: 500; }
+        /* Under the figure, not beside it — inline, it pushed a right-aligned
+           column out of true with the R values above it. */
+        .tr-tot-sub {
+          display: block; font-style: normal; font-size: 10px;
+          color: var(--ink3); margin-top: 1px;
+        }
         .tr-chart {
           background: none; border: 0; padding: 2px 4px; cursor: pointer;
           color: var(--brass); display: inline-flex; align-items: center; gap: 3px;
