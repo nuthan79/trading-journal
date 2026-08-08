@@ -360,24 +360,38 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
    * thesis above locks once the trade closes.
    */
   /**
-   * Weinstein stage is hidden, not removed.
+   * The setup fields that can wait, folded away.
    *
-   * It comes off the default form because the setup section had grown to the
-   * point where logging a trade felt like filling in a survey, and stage is
-   * the field least often used. Everything behind it stays: the column, the
-   * recorded values, the edge dimension that reads them. So the analysis keeps
-   * working on the trades that have it and the field is one click away when
-   * someone wants it.
+   * The section had grown to where logging a trade felt like filling in a
+   * survey, and the fix is not to cut fields but to sort them by WHEN they
+   * are knowable.
    *
-   * Opens by itself on a trade that already has a stage. Hiding a field that
-   * holds a value is how a value gets silently dropped on the next save.
+   * Pattern, pivot, volume and stage are all still readable off the chart in
+   * six months — the base is on it, the pivot is on it, the volume bar is on
+   * it. Nothing about them decays, so nothing is lost by filling them in
+   * later, or never.
+   *
+   * RS rank, the thesis and the entry chart stay in the open because all
+   * three stop being recoverable the moment the trade resolves. RS is a
+   * point-in-time ranking nobody can look up for a past date; memory rewrites
+   * a thesis once the outcome is known; and a chart pulled later shows what
+   * happened rather than what was in front of you.
+   *
+   * Nothing is removed. Every column, every recorded value and every cut on
+   * the performance sheet that reads them is untouched.
+   *
+   * Opens by itself when any of them already holds a value. Hiding a field
+   * that has something in it is how the something gets dropped on the next
+   * save.
    */
-  const [showStage, setShowStage] = useState(false);
+  const [showMore, setShowMore] = useState(false);
 
   const [chartLink, setChartLink] = useState("");
   const [chartOk, setChartOk] = useState(null);
   const chart = resolveTradingViewChart(chartLink);
-  useEffect(() => { if (t.weinstein_stage) setShowStage(true); }, [t.weinstein_stage]);
+  useEffect(() => {
+    if (t.pattern || t.pivot_price || t.vol_pct_avg || t.weinstein_stage) setShowMore(true);
+  }, [t.pattern, t.pivot_price, t.vol_pct_avg, t.weinstein_stage]);
   useEffect(() => { setChartOk(null); }, [chart.src]);
 
   const submit = async () => {
@@ -490,47 +504,14 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
 
           <div>
             <div className="eyebrow" style={{ marginBottom: 10 }}>The setup</div>
-            <div className="grid4" style={{ gap: 12 }}>
-              <label className="f"><span>Base pattern</span>
-                <select className="in" value={t.pattern} onChange={set("pattern")}>
-                  <option value="">—</option>
-                  {PATTERNS.map((p) => <option key={p} value={p}>{p}</option>)}
-                </select></label>
-              <label className="f"><span>Pivot price</span>
-                <input className="in" inputMode="decimal" value={t.pivot_price} onChange={set("pivot_price")} />
-                <div className="hint">
-                  {isFinite(d.distPivot)
-                    ? `Entered ${d.distPivot >= 0 ? "" : "−"}${Math.abs(d.distPivot).toFixed(1)}% ${d.distPivot >= 0 ? "above" : "below"} pivot`
-                    : "Sets your extension at entry"}
-                </div></label>
-              <label className="f"><span>Volume % of avg</span>
-                <input className="in" inputMode="decimal" placeholder="240" value={t.vol_pct_avg} onChange={set("vol_pct_avg")} />
-                <div className="hint" style={{ color: isFinite(num(t.vol_pct_avg)) && num(t.vol_pct_avg) < 100 ? "var(--short)" : undefined }}>
-                  {isFinite(num(t.vol_pct_avg))
-                    ? num(t.vol_pct_avg) >= 100
-                      ? `${(num(t.vol_pct_avg) - 100).toFixed(0)}% above the 30-day average`
-                      : `${(100 - num(t.vol_pct_avg)).toFixed(0)}% below average — thin breakout`
-                    : "100 = the 30-day average"}
-                </div></label>
-              <label className="f"><span>RS rank</span>
-                <input className="in" inputMode="numeric" placeholder="1–99" value={t.rs_rank} onChange={set("rs_rank")} /></label>
-            </div>
-            <div className="grid2" style={{ gap: 12, marginTop: 12 }}>
-              {showStage ? (
-                <label className="f" style={{ maxWidth: 280 }}><span>Weinstein stage</span>
-                  <select className="in" value={t.weinstein_stage} onChange={set("weinstein_stage")}>
-                    <option value="">—</option>
-                    {STAGES.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}
-                  </select>
-                  <div className="hint">Feeds the stage cut on the performance sheet.</div>
-                </label>
-              ) : (
-                <div className="f" style={{ maxWidth: 280, alignSelf: "end" }}>
-                  <button type="button" className="lnk" onClick={() => setShowStage(true)}>
-                    + Weinstein stage
-                  </button>
-                </div>
-              )}
+            {/* What survives the trade, first. RS rank, the thesis and the
+                chart cannot be recovered once the outcome is known; the four
+                behind the link below can, off the same chart, any time. */}
+            <div className="grid2" style={{ gap: 12 }}>
+              <label className="f" style={{ maxWidth: 280 }}><span>RS rank</span>
+                <input className="in" inputMode="numeric" placeholder="1–99" value={t.rs_rank} onChange={set("rs_rank")} />
+                <div className="hint">Where it ranked the day you bought — not something you can look up later.</div>
+              </label>
               <label className="f"><span>Why this trade</span>
                 <input className="in" value={t.thesis} onChange={set("thesis")}
                        readOnly={derivedStatus === "closed"}
@@ -567,6 +548,47 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                        data-bad={chartOk === false ? 1 : 0}
                        onLoad={() => setChartOk(true)} onError={() => setChartOk(false)} />
                 )}
+              </div>
+            )}
+
+            {showMore ? (
+              <div className="grid4" style={{ gap: 12, marginTop: 14 }}>
+                <label className="f"><span>Base pattern</span>
+                  <select className="in" value={t.pattern} onChange={set("pattern")}>
+                    <option value="">—</option>
+                    {PATTERNS.map((p) => <option key={p} value={p}>{p}</option>)}
+                  </select></label>
+                <label className="f"><span>Pivot price</span>
+                  <input className="in" inputMode="decimal" value={t.pivot_price} onChange={set("pivot_price")} />
+                  <div className="hint">
+                    {isFinite(d.distPivot)
+                      ? `Entered ${d.distPivot >= 0 ? "" : "−"}${Math.abs(d.distPivot).toFixed(1)}% ${d.distPivot >= 0 ? "above" : "below"} pivot`
+                      : "Sets your extension at entry"}
+                  </div></label>
+                <label className="f"><span>Volume % of avg</span>
+                  <input className="in" inputMode="decimal" placeholder="240" value={t.vol_pct_avg} onChange={set("vol_pct_avg")} />
+                  <div className="hint" style={{ color: isFinite(num(t.vol_pct_avg)) && num(t.vol_pct_avg) < 100 ? "var(--short)" : undefined }}>
+                    {isFinite(num(t.vol_pct_avg))
+                      ? num(t.vol_pct_avg) >= 100
+                        ? `${(num(t.vol_pct_avg) - 100).toFixed(0)}% above the 30-day average`
+                        : `${(100 - num(t.vol_pct_avg)).toFixed(0)}% below average — thin breakout`
+                      : "100 = the 30-day average"}
+                  </div></label>
+                <label className="f"><span>Weinstein stage</span>
+                  <select className="in" value={t.weinstein_stage} onChange={set("weinstein_stage")}>
+                    <option value="">—</option>
+                    {STAGES.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}
+                  </select></label>
+              </div>
+            ) : (
+              <button type="button" className="lnk" style={{ marginTop: 14 }}
+                      onClick={() => setShowMore(true)}>
+                + Pattern, pivot, volume and stage
+              </button>
+            )}
+            {!showMore && (
+              <div className="hint" style={{ marginTop: 5 }}>
+                All four are still on the chart later — add them now or when you review.
               </div>
             )}
           </div>

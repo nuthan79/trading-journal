@@ -19,6 +19,7 @@ function TradesInner() {
   const router = useRouter();
   const params = useSearchParams();
   const mistake = params.get("mistake") || "";
+  const missing = params.get("missing") || "";
 
   const { all, diary, saveDiaryEntry,
           openEditTrade, openExitTrade, removeTrade, openNewTrade } = useJournal();
@@ -28,7 +29,8 @@ function TradesInner() {
       all={all}
       diary={diary}
       mistake={mistake}
-      onClearMistake={() => router.push("/trades")}
+      missing={missing}
+      onClearFilter={() => router.push("/trades")}
       onAttachChart={saveDiaryEntry}
       onEdit={openEditTrade}
       onExit={openExitTrade}

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Plus, Pencil, Trash2, Download, Image as ImageIcon, X } from "lucide-react";
 import { rupee, rfmt, pct, signedPct } from "@/lib/format";
 import PositionDetail from "./PositionDetail";
+import { SETUP_FIELDS } from "@/lib/gaps";
 
 const num = (v) => (v === "" || v === null || v === undefined ? NaN : Number(v));
 
@@ -25,7 +26,7 @@ function exportCsv(all) {
 }
 
 export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNew,
-                                 onAttachChart, mistake = "", onClearMistake }) {
+                                 onAttachChart, mistake = "", missing = "", onClearFilter }) {
   const [filter, setFilter] = useState("all");
   const [q, setQ] = useState("");
   const [sort, setSort] = useState({ k: "entry_date", dir: -1 });
@@ -49,12 +50,21 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
     return m;
   }, [diary]);
 
+  const missingField = SETUP_FIELDS.find((f) => f.key === missing) || null;
+
   const rows = useMemo(() => {
     let r = all;
     // Arrives from the mistakes table on Performance. Exact match, not a
     // substring — "Sold too early" and "Sold a little late" both contain
     // "Sold", and a fuzzy filter would quietly mix two different errors.
     if (mistake) r = r.filter((t) => (t.mistakes || []).includes(mistake));
+
+    // Arrives from the gaps prompt on Review. Closed only, matching how the
+    // count was made — offering to fix a hundred and then listing a hundred
+    // and forty is how a prompt stops being trusted.
+    if (missingField) {
+      r = r.filter((t) => t.status === "closed" && !missingField.has(t));
+    }
     if (filter === "open") r = r.filter((t) => t.status === "open");
     if (filter === "closed") r = r.filter((t) => t.status === "closed");
     if (filter === "winners") r = r.filter((t) => t.r > 0);
@@ -70,7 +80,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
         return ((isFinite(av) ? av : -1e12) - (isFinite(bv) ? bv : -1e12)) * sort.dir;
       return String(av || "").localeCompare(String(bv || "")) * sort.dir;
     });
-  }, [all, mistake, filter, q, sort]);
+  }, [all, mistake, missingField, filter, q, sort]);
 
   // Resolved by id against the filtered list, not held as an object: change
   // the filter or the sort while it's open and the panel follows the row,
@@ -90,11 +100,15 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
 
   return (
     <div className="sec">
-      {mistake && (
+      {(mistake || missingField) && (
         <div className="tr-chip">
-          <span>Showing trades tagged <b>{mistake}</b></span>
+          <span>
+            {mistake
+              ? <>Showing trades tagged <b>{mistake}</b></>
+              : <>Closed trades with no <b>{missingField.label}</b> recorded — open each and add it</>}
+          </span>
           <span className="tr-chip-n">{rows.length} of {all.length}</span>
-          <button className="btn ghost sm" onClick={onClearMistake}>
+          <button className="btn ghost sm" onClick={onClearFilter}>
             <X size={12} />Clear
           </button>
         </div>

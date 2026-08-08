@@ -5,6 +5,8 @@ import { apiFetch, track } from "@/lib/db";
 import { reviewFindings } from "@/lib/analysis";
 import { classifyRegime, regimeIndex, REGIME_LABEL } from "@/lib/market";
 import { signedPct } from "@/lib/format";
+import Link from "next/link";
+import { setupGaps } from "@/lib/gaps";
 
 /**
  * Behavioural review — arithmetic findings from the trader's own closed
@@ -219,6 +221,15 @@ function FindingCard({ f }) {
 }
 
 export default function Review({ closed, stats, all, diary }) {
+  /**
+   * Setup fields the form no longer asks for by default.
+   *
+   * Folding them away only works if something eventually asks. Left alone the
+   * "Base pattern" cut does not break, it hollows — one huge "Not recorded"
+   * row with the real patterns as slivers beside it, and nobody ever decides
+   * to lose it. This is the asking.
+   */
+  const gaps = useMemo(() => setupGaps(closed), [closed]);
   const [market, setMarket] = useState({ loading: true, error: null, classified: [] });
 
   // Opening the review is the habit this journal is actually for — recording
@@ -292,6 +303,28 @@ export default function Review({ closed, stats, all, diary }) {
         )}
       </div>
 
+      {gaps.length > 0 && (
+        <div className="rv-gaps">
+          <div className="eyebrow" style={{ marginBottom: 6 }}>Worth filling in</div>
+          <p className="rv-gaps-lead">
+            These are read off the chart, so they can be added any time — but until they
+            are, the cut on the performance sheet that uses them is mostly one
+            &ldquo;Not recorded&rdquo; row.
+          </p>
+          {gaps.map((g) => (
+            <div key={g.key} className="rv-gap">
+              <span>
+                <b>{g.missing}</b> of {g.total} closed trades have no {g.label} recorded
+                <span className="rv-dim"> · weakens {g.cut}</span>
+              </span>
+              <Link className="rv-gap-go" href={`/trades?missing=${g.key}`}>
+                Show them →
+              </Link>
+            </div>
+          ))}
+        </div>
+      )}
+
       {result.provisional && (
         <div className="warn" style={{ marginBottom: 18 }}>
           Only {result.sample} closed trades in this sample — treat everything below as an early
@@ -319,6 +352,26 @@ export default function Review({ closed, stats, all, diary }) {
       )}
 
       <style jsx global>{`
+        .rv-gaps {
+          border: 1px solid var(--rule); background: var(--card);
+          border-radius: 3px; padding: 13px 15px; margin-bottom: 18px;
+        }
+        .rv-gaps-lead {
+          font-size: 11.5px; color: var(--ink3); line-height: 1.6;
+          margin: 0 0 9px; max-width: 620px; text-wrap: pretty;
+        }
+        .rv-gap {
+          display: flex; align-items: baseline; justify-content: space-between;
+          gap: 14px; flex-wrap: wrap; font-size: 12.5px; color: var(--ink2);
+          padding: 5px 0; border-top: 1px solid var(--rule);
+        }
+        .rv-gap:first-of-type { border-top: 0; }
+        .rv-gap b { font-weight: 500; color: var(--ink); }
+        .rv-gap-go {
+          font-size: 11.5px; color: var(--brass); text-decoration: none;
+          white-space: nowrap;
+        }
+        .rv-gap-go:hover { color: var(--ink); }
         .rv-strip {
           display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
           padding: 10px 14px; border: 1px solid var(--rule); border-radius: 3px;
