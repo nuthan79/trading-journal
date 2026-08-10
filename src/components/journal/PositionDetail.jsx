@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Pencil, Trash2, X, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, LogOut, ImagePlus } from "lucide-react";
 import { rupee, rfmt, pct, signedPct } from "@/lib/format";
 import { chartUrl } from "@/lib/db";
+import ChartViewer from "./ChartViewer";
 import { resolveTradingViewChart } from "@/lib/charts";
 
 /**
@@ -123,9 +124,7 @@ export default function PositionDetail({ row, diary = [], onAttachChart, onRemov
    * than on a dead URL.
    */
   const [zoom, setZoom] = useState(null);
-  const [actual, setActual] = useState(false);
   const [removing, setRemoving] = useState(false);
-  useEffect(() => { setActual(false); }, [zoom]);
 
   // Only entries whose image has actually resolved can be paged through — a
   // Storage URL still being signed has nothing to show yet.
@@ -162,23 +161,14 @@ export default function PositionDetail({ row, diary = [], onAttachChart, onRemov
     }
   };
 
-  const step = (d) => {
-    if (!shots.length) return;
-    setZoom((i) => (((i ?? 0) + d) % shots.length + shots.length) % shots.length);
-  };
-
   useEffect(() => {
     const key = (e) => {
       // The lightbox owns Escape while it is open, or one press would shut
       // the panel behind it and lose the trade you were reading.
-      if (zoom != null) {
-        if (e.key === "Escape") { e.stopPropagation(); setZoom(null); }
-        // Left and right page the charts; up and down would step the TRADE
-        // underneath, which is never what someone looking at a chart means.
-        else if (e.key === "ArrowLeft") { e.preventDefault(); step(-1); }
-        else if (e.key === "ArrowRight") { e.preventDefault(); step(1); }
-        return;
-      }
+      // While the viewer is open it owns the keyboard — it handles Escape and
+      // the left/right keys itself, and the arrows here must not also step the
+      // trade underneath it.
+      if (zoom != null) return;
       if (e.key === "Escape") onClose();
       else if (e.key === "ArrowUp" && onPrev) { e.preventDefault(); onPrev(); }
       else if (e.key === "ArrowDown" && onNext) { e.preventDefault(); onNext(); }
@@ -223,58 +213,22 @@ export default function PositionDetail({ row, diary = [], onAttachChart, onRemov
 
   return (
     <>
+    {shot && (
+      <ChartViewer
+        shots={shots.map((e) => ({
+          id: e.id,
+          src: urls[e.id],
+          title: row.symbol,
+          sub: day(e.entry_date),
+        }))}
+        index={at}
+        onIndex={setZoom}
+        onClose={() => setZoom(null)}
+        onRemove={onRemoveChart ? (sh) => removeChart(shots.find((e) => e.id === sh.id)) : undefined}
+      />
+    )}
     {/* Above the panel, not inside it: the sheet scrolls and clips, and a
         chart pinned to the viewport must do neither. */}
-    {shot && (
-      <div className="pd-lightbox"
-           onMouseDown={(e) => e.target === e.currentTarget && setZoom(null)}>
-        <div className="pd-lb-bar">
-          {shots.length > 1 && (
-            <span className="pd-lb-count">
-              {at + 1} of {shots.length}
-              <i className="pd-lb-when">{day(shot.entry_date)}</i>
-            </span>
-          )}
-          <span className="pd-lb-spacer" />
-          {onRemoveChart && (
-            <button className="pd-lb-btn is-danger" disabled={removing}
-                    onClick={() => removeChart(shot)}>
-              <Trash2 size={14} />{removing ? "Removing…" : "Remove"}
-            </button>
-          )}
-          <button className="pd-lb-btn" onClick={() => setActual((a) => !a)}>
-            {actual ? "Fit to screen" : "Actual size"}
-          </button>
-          <button className="pd-lb-btn" onClick={() => setZoom(null)} aria-label="Close chart">
-            <X size={15} />
-          </button>
-        </div>
-
-        <div className={`pd-lb-scroll${actual ? " is-actual" : ""}`}
-             onMouseDown={(e) => e.target === e.currentTarget && setZoom(null)}>
-          <img src={urls[shot.id]} alt={`Chart saved ${shot.entry_date}`}
-               onClick={() => setActual((a) => !a)} />
-        </div>
-
-        {/* Outside the scroller so they hold still while an actual-size chart
-            is panned around underneath them. */}
-        {shots.length > 1 && (
-          <>
-            <button className="pd-lb-nav is-prev" onClick={() => step(-1)} aria-label="Previous chart">
-              <ChevronLeft size={22} />
-            </button>
-            <button className="pd-lb-nav is-next" onClick={() => step(1)} aria-label="Next chart">
-              <ChevronRight size={22} />
-            </button>
-          </>
-        )}
-
-        <div className="pd-lb-hint">
-          Click the chart to {actual ? "fit it to the screen" : "see it at full resolution"}
-          {shots.length > 1 && " · ← → for the others"} · Esc to close
-        </div>
-      </div>
-    )}
     <div className="modal" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="sheet pd" onMouseDown={(e) => e.stopPropagation()}>
         <div className="sheethead">
@@ -735,66 +689,7 @@ export default function PositionDetail({ row, diary = [], onAttachChart, onRemov
             display: block; width: 100%; padding: 0; border: 0; background: none;
             cursor: zoom-in;
           }
-          .pd-lightbox {
-            position: fixed; inset: 0; z-index: 200;
-            background: rgba(10, 14, 13, 0.92);
-            display: flex; flex-direction: column;
-          }
-          .pd-lb-bar {
-            display: flex; justify-content: flex-end; align-items: center; gap: 8px;
-            padding: 10px 14px; flex: 0 0 auto;
-          }
-          .pd-lb-btn {
-            background: rgba(255,255,255,0.10); border: 1px solid rgba(255,255,255,0.18);
-            color: #EDF0EE; border-radius: 3px; padding: 5px 10px; cursor: pointer;
-            font: inherit; font-size: 12px; display: inline-flex; align-items: center; gap: 5px;
-          }
-        .pd-lb-btn:hover { background: rgba(255,255,255,0.18); }
-        .pd-lb-btn:disabled { opacity: 0.5; cursor: default; }
-        .pd-lb-btn.is-danger { color: #F0B0A4; border-color: rgba(240,176,164,0.35); }
-        .pd-lb-btn.is-danger:hover { background: rgba(240,176,164,0.16); }
-        .pd-lb-spacer { flex: 1; }
-        .pd-lb-count {
-          color: #EDF0EE; font-size: 12px; display: inline-flex;
-          align-items: baseline; gap: 8px; padding-left: 4px;
-        }
-        .pd-lb-when { font-style: normal; color: rgba(237,240,238,0.55); font-size: 11px; }
-        /* Vertically centred on the viewport rather than inside the scroller,
-           so they hold position while an actual-size chart is panned. */
-        .pd-lb-nav {
-          position: absolute; top: 50%; transform: translateY(-50%);
-          background: rgba(0,0,0,0.45); border: 1px solid rgba(255,255,255,0.18);
-          color: #EDF0EE; width: 38px; height: 56px; cursor: pointer;
-          display: flex; align-items: center; justify-content: center;
-          border-radius: 3px;
-        }
-        .pd-lb-nav:hover { background: rgba(0,0,0,0.7); }
-        .pd-lb-nav.is-prev { left: 10px; }
-        .pd-lb-nav.is-next { right: 10px; }
-          .pd-lb-scroll {
-            flex: 1 1 auto; min-height: 0; overflow: auto;
-            display: flex; align-items: center; justify-content: center;
-            padding: 0 14px;
-          }
-          .pd-lb-scroll img {
-            max-width: 100%; max-height: 100%; width: auto; height: auto;
-            display: block; cursor: zoom-in; border-radius: 2px;
-            /* A flex item will not shrink below its intrinsic size unless its
-               automatic minimum is removed, so a 4215px snapshot ignored
-               max-width and rendered full width in a viewport a fifth of that. */
-            min-width: 0; min-height: 0;
-          }
-          /* 1:1. The flex centring has to go or the image is clipped rather than
-             scrolled once it is wider than the box. */
-          .pd-lb-scroll.is-actual { display: block; }
-          .pd-lb-scroll.is-actual img {
-            max-width: none; max-height: none; margin: 0 auto; cursor: zoom-out;
-          }
-          .pd-lb-hint {
-            flex: 0 0 auto; text-align: center; padding: 9px 14px 13px;
-            font-size: 11.5px; color: rgba(237,240,238,0.55);
-          }
-        `}</style>
+          `}</style>
       </div>
     </div>
 

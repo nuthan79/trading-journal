@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Plus, X, Trash2, Link2, Check } from "lucide-react";
 import { chartUrl } from "@/lib/db";
+import ChartViewer from "./ChartViewer";
 import { resolveTradingViewChart } from "@/lib/charts";
-import { rfmt } from "@/lib/format";
+import { rfmt, dmy } from "@/lib/format";
 import { EMOTIONS } from "@/lib/constants";
 import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
 
@@ -48,8 +49,16 @@ function loadPersistedDraft() {
   };
 }
 
-export default function Diary({ diary, trades, onSave, onDelete, say }) {
+export default function Diary({ diary, trades, onSave, onDelete, onRemoveChart, say }) {
   const [draft, setDraft] = useState(null);
+  /**
+   * Which chart the viewer is on, as an index into `shots` below.
+   *
+   * Every entry that has a resolved image, in the order they are listed — so
+   * paging in the viewer walks the diary the way the page reads, rather than
+   * being trapped inside one entry.
+   */
+  const [zoom, setZoom] = useState(null);
   const [urls, setUrls] = useState({});
   const [saving, setSaving] = useState(false);
   const restoredRef = useRef(false);
@@ -83,6 +92,29 @@ export default function Diary({ diary, trades, onSave, onDelete, say }) {
     DRAFT_KEYS.diary,
     hasContent(serialized) ? serialized : null
   );
+
+  /**
+   * What the viewer shows, and what it calls each one.
+   *
+   * The title has to answer "what am I looking at", and in the diary that is
+   * not the same answer every time. An entry written against a trade is about
+   * that trade and says so; an entry that is a chart and nothing else is just
+   * a chart somebody kept, and pretending otherwise would be inventing a link
+   * that is not in the data.
+   */
+  const shots = (diary || [])
+    .filter((e) => e.image_path && urls[e.id])
+    .map((e) => {
+      const t = trades.find((x) => x.id === e.trade_id);
+      return {
+        id: e.id,
+        src: urls[e.id],
+        entry: e,
+        title: t ? `${t.symbol} — diary entry` : "Diary entry",
+        sub: [dmy(e.entry_date), t ? null : e.body?.trim() ? null : "chart only"]
+          .filter(Boolean).join(" · "),
+      };
+    });
 
   const removeImage = () => setDraft((p) => ({ ...p, imageUrl: null }));
 
@@ -128,6 +160,16 @@ export default function Diary({ diary, trades, onSave, onDelete, say }) {
 
   return (
     <div className="sec">
+      {zoom != null && shots.length > 0 && (
+        <ChartViewer
+          shots={shots}
+          index={zoom}
+          onIndex={setZoom}
+          onClose={() => setZoom(null)}
+          onRemove={onRemoveChart ? (sh) => onRemoveChart(sh.entry) : undefined}
+        />
+      )}
+
       <div className="sechead">
         <div>
           <div className="eyebrow">Diary</div>
@@ -245,7 +287,12 @@ export default function Diary({ diary, trades, onSave, onDelete, say }) {
                 </div>
               )}
               {e.body && <p className="body">{e.body}</p>}
-              {e.image_path && urls[e.id] && <img src={urls[e.id]} alt="Chart from this entry" />}
+              {e.image_path && urls[e.id] && (
+                <button className="dy-shot" title="Open full size"
+                        onClick={() => setZoom(shots.findIndex((x) => x.id === e.id))}>
+                  <img src={urls[e.id]} alt="Chart from this entry" />
+                </button>
+              )}
             </div>
           );
         })
