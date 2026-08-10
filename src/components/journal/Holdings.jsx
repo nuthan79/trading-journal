@@ -141,7 +141,7 @@ function BreakevenFlag({ c, busy, onAck }) {
 
 export default function Holdings({
   open, closed, diary = [], onRefresh, refreshing, onAckBreakeven,
-  onEditTrade, onExitTrade, onDeleteTrade, onAttachChart,
+  onEditTrade, onExitTrade, onDeleteTrade, onAttachChart, onRemoveChart,
 }) {
   const [detailId, setDetailId] = useState(null);
   const [acked, setAcked] = useState([]);
@@ -537,6 +537,7 @@ export default function Holdings({
           // bought" is only answerable with the picture from entry beside it.
           diary={diary}
           onAttachChart={onAttachChart}
+          onRemoveChart={onRemoveChart}
           onClose={() => setDetailId(null)}
           onEdit={(r) => { setDetailId(null); onEditTrade?.(r); }}
           onExit={(r) => { setDetailId(null); onExitTrade?.(r); }}

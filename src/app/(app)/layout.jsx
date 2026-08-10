@@ -388,6 +388,37 @@ export default function AppLayout({ children }) {
     }
   };
 
+  /**
+   * Take the chart off a diary entry, or take the entry if that is all it was.
+   *
+   * Reported as charts being attached to the wrong trade and then living there
+   * forever. The care needed is that an entry may carry a note and the
+   * emotions tagged with it as well as the image — deleting the row would take
+   * the writing too, and a mis-pasted link is not a reason to lose what
+   * somebody thought at the time.
+   */
+  const removeChartFromEntry = async (entry) => {
+    const hasWords = !!(entry.body?.trim() || entry.emotions?.length);
+    const ask = hasWords
+      ? "Remove the chart from this diary entry? The note stays."
+      : "Remove this chart? The entry holds nothing else, so it goes too.";
+    if (!window.confirm(ask)) return;
+
+    try {
+      if (hasWords) {
+        const saved = await dbSaveDiary({ ...entry, image_path: null });
+        setDiary((prev) => prev.map((x) => (x.id === saved.id ? saved : x)));
+        say("Chart removed — the note is still there.");
+      } else {
+        await dbDeleteDiary(entry);
+        setDiary((prev) => prev.filter((x) => x.id !== entry.id));
+        say("Chart removed.");
+      }
+    } catch (e) {
+      say(e.message || "Could not remove the chart.");
+    }
+  };
+
   const saveSettings = async (patch) => {
     try {
       const saved = await dbSaveProfile(patch);
@@ -565,7 +596,7 @@ export default function AppLayout({ children }) {
         say,
         openNewTrade, openEditTrade, openExitTrade,
         removeTrade,
-        saveDiaryEntry, removeDiaryEntry,
+        saveDiaryEntry, removeDiaryEntry, removeChartFromEntry,
         mergeMarks, reloadTrades,
       }}
     >

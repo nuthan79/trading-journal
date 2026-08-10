@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Pencil, Trash2, X, ChevronUp, ChevronDown, LogOut, ImagePlus } from "lucide-react";
+import { Pencil, Trash2, X, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, LogOut, ImagePlus } from "lucide-react";
 import { rupee, rfmt, pct, signedPct } from "@/lib/format";
 import { chartUrl } from "@/lib/db";
 import { resolveTradingViewChart } from "@/lib/charts";
@@ -30,7 +30,7 @@ const daysBetween = (a, b) => {
   return isFinite(x) && isFinite(y) ? Math.round((y - x) / 86400000) : NaN;
 };
 
-export default function PositionDetail({ row, diary = [], onAttachChart, onClose, onEdit, onExit, onDelete, onPrev, onNext }) {
+export default function PositionDetail({ row, diary = [], onAttachChart, onRemoveChart, onClose, onEdit, onExit, onDelete, onPrev, onNext }) {
   /**
    * The diary entries written against this trade, newest first.
    *
@@ -113,17 +113,71 @@ export default function PositionDetail({ row, diary = [], onAttachChart, onClose
   // thing charts are for. `zoom` holds the src being looked at; `actual`
   // switches between fitting the screen and 1:1 with scroll, because a chart
   // scaled to fit a laptop is still smaller than the one it was drawn on.
+  /**
+   * An INDEX into the charts, not a URL.
+   *
+   * Holding the src meant the lightbox knew what it was showing and nothing
+   * about where that sat among the others, so there was no next to go to. An
+   * index gives it both, and re-resolves through `shots` on every render, so
+   * deleting the chart being viewed lands on whatever takes its place rather
+   * than on a dead URL.
+   */
   const [zoom, setZoom] = useState(null);
   const [actual, setActual] = useState(false);
+  const [removing, setRemoving] = useState(false);
   useEffect(() => { setActual(false); }, [zoom]);
+
+  // Only entries whose image has actually resolved can be paged through — a
+  // Storage URL still being signed has nothing to show yet.
+  const shots = notes.filter((e) => e.image_path && urls[e.id]);
+  const at = zoom == null ? -1 : Math.min(zoom, shots.length - 1);
+  const shot = at >= 0 ? shots[at] : null;
+
+  // Deleting the last chart, or the last one full stop, closes the viewer
+  // rather than leaving it open on nothing.
+  useEffect(() => {
+    if (zoom != null && shots.length === 0) setZoom(null);
+  }, [zoom, shots.length]);
+
+  /**
+   * Removing a chart is not always removing an entry.
+   *
+   * A chart lives on a diary entry that may also hold a note and the emotions
+   * tagged with it. Deleting the row would take those with it silently, and
+   * "wrong chart attached" is a different mistake from "this whole entry was a
+   * mistake". So an entry carrying words keeps them and loses only the image;
+   * an entry that was nothing but the chart goes entirely, because an empty
+   * diary row is litter nobody will ever tidy.
+   *
+   * The caller confirms and does the writing — it owns the diary state, and
+   * the delete path already asks before it removes anything.
+   */
+  const removeChart = async (entry) => {
+    if (!onRemoveChart || removing) return;
+    setRemoving(true);
+    try {
+      await onRemoveChart(entry);
+    } finally {
+      setRemoving(false);
+    }
+  };
+
+  const step = (d) => {
+    if (!shots.length) return;
+    setZoom((i) => (((i ?? 0) + d) % shots.length + shots.length) % shots.length);
+  };
 
   useEffect(() => {
     const key = (e) => {
       // The lightbox owns Escape while it is open, or one press would shut
       // the panel behind it and lose the trade you were reading.
-      if (zoom) {
+      if (zoom != null) {
         if (e.key === "Escape") { e.stopPropagation(); setZoom(null); }
-        return;                       // and arrows must not step trades either
+        // Left and right page the charts; up and down would step the TRADE
+        // underneath, which is never what someone looking at a chart means.
+        else if (e.key === "ArrowLeft") { e.preventDefault(); step(-1); }
+        else if (e.key === "ArrowRight") { e.preventDefault(); step(1); }
+        return;
       }
       if (e.key === "Escape") onClose();
       else if (e.key === "ArrowUp" && onPrev) { e.preventDefault(); onPrev(); }
@@ -131,7 +185,7 @@ export default function PositionDetail({ row, diary = [], onAttachChart, onClose
     };
     document.addEventListener("keydown", key);
     return () => document.removeEventListener("keydown", key);
-  }, [onClose, onPrev, onNext, zoom]);
+  }, [onClose, onPrev, onNext, zoom, shots.length]);
 
   if (!row) return null;
 
@@ -171,10 +225,23 @@ export default function PositionDetail({ row, diary = [], onAttachChart, onClose
     <>
     {/* Above the panel, not inside it: the sheet scrolls and clips, and a
         chart pinned to the viewport must do neither. */}
-    {zoom && (
+    {shot && (
       <div className="pd-lightbox"
            onMouseDown={(e) => e.target === e.currentTarget && setZoom(null)}>
         <div className="pd-lb-bar">
+          {shots.length > 1 && (
+            <span className="pd-lb-count">
+              {at + 1} of {shots.length}
+              <i className="pd-lb-when">{day(shot.entry_date)}</i>
+            </span>
+          )}
+          <span className="pd-lb-spacer" />
+          {onRemoveChart && (
+            <button className="pd-lb-btn is-danger" disabled={removing}
+                    onClick={() => removeChart(shot)}>
+              <Trash2 size={14} />{removing ? "Removing…" : "Remove"}
+            </button>
+          )}
           <button className="pd-lb-btn" onClick={() => setActual((a) => !a)}>
             {actual ? "Fit to screen" : "Actual size"}
           </button>
@@ -182,12 +249,30 @@ export default function PositionDetail({ row, diary = [], onAttachChart, onClose
             <X size={15} />
           </button>
         </div>
+
         <div className={`pd-lb-scroll${actual ? " is-actual" : ""}`}
              onMouseDown={(e) => e.target === e.currentTarget && setZoom(null)}>
-          <img src={zoom} alt="Chart, full size"
+          <img src={urls[shot.id]} alt={`Chart saved ${shot.entry_date}`}
                onClick={() => setActual((a) => !a)} />
         </div>
-        <div className="pd-lb-hint">Click the chart to {actual ? "fit it to the screen" : "see it at full resolution"} · Esc to close</div>
+
+        {/* Outside the scroller so they hold still while an actual-size chart
+            is panned around underneath them. */}
+        {shots.length > 1 && (
+          <>
+            <button className="pd-lb-nav is-prev" onClick={() => step(-1)} aria-label="Previous chart">
+              <ChevronLeft size={22} />
+            </button>
+            <button className="pd-lb-nav is-next" onClick={() => step(1)} aria-label="Next chart">
+              <ChevronRight size={22} />
+            </button>
+          </>
+        )}
+
+        <div className="pd-lb-hint">
+          Click the chart to {actual ? "fit it to the screen" : "see it at full resolution"}
+          {shots.length > 1 && " · ← → for the others"} · Esc to close
+        </div>
       </div>
     )}
     <div className="modal" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -478,7 +563,8 @@ export default function PositionDetail({ row, diary = [], onAttachChart, onClose
                 <figure key={e.id} className="pd-shot">
                   {e.image_path ? (
                     urls[e.id]
-                      ? <button className="pd-shot-open" onClick={() => setZoom(urls[e.id])}
+                      ? <button className="pd-shot-open"
+                                onClick={() => setZoom(shots.findIndex((x) => x.id === e.id))}
                                 title="Open full size">
                           <img src={urls[e.id]} alt={`Chart saved ${e.entry_date}`} />
                         </button>
@@ -663,7 +749,28 @@ export default function PositionDetail({ row, diary = [], onAttachChart, onClose
             color: #EDF0EE; border-radius: 3px; padding: 5px 10px; cursor: pointer;
             font: inherit; font-size: 12px; display: inline-flex; align-items: center; gap: 5px;
           }
-          .pd-lb-btn:hover { background: rgba(255,255,255,0.18); }
+        .pd-lb-btn:hover { background: rgba(255,255,255,0.18); }
+        .pd-lb-btn:disabled { opacity: 0.5; cursor: default; }
+        .pd-lb-btn.is-danger { color: #F0B0A4; border-color: rgba(240,176,164,0.35); }
+        .pd-lb-btn.is-danger:hover { background: rgba(240,176,164,0.16); }
+        .pd-lb-spacer { flex: 1; }
+        .pd-lb-count {
+          color: #EDF0EE; font-size: 12px; display: inline-flex;
+          align-items: baseline; gap: 8px; padding-left: 4px;
+        }
+        .pd-lb-when { font-style: normal; color: rgba(237,240,238,0.55); font-size: 11px; }
+        /* Vertically centred on the viewport rather than inside the scroller,
+           so they hold position while an actual-size chart is panned. */
+        .pd-lb-nav {
+          position: absolute; top: 50%; transform: translateY(-50%);
+          background: rgba(0,0,0,0.45); border: 1px solid rgba(255,255,255,0.18);
+          color: #EDF0EE; width: 38px; height: 56px; cursor: pointer;
+          display: flex; align-items: center; justify-content: center;
+          border-radius: 3px;
+        }
+        .pd-lb-nav:hover { background: rgba(0,0,0,0.7); }
+        .pd-lb-nav.is-prev { left: 10px; }
+        .pd-lb-nav.is-next { right: 10px; }
           .pd-lb-scroll {
             flex: 1 1 auto; min-height: 0; overflow: auto;
             display: flex; align-items: center; justify-content: center;

@@ -7,7 +7,7 @@ import { useJournal } from "../JournalContext";
 
 export default function HoldingsPage() {
   const {
-    open, closed, diary, mergeMarks, say, reloadTrades, saveDiaryEntry,
+    open, closed, diary, mergeMarks, say, reloadTrades, saveDiaryEntry, removeChartFromEntry,
     openEditTrade, openExitTrade, removeTrade,
   } = useJournal();
   const [refreshing, setRefreshing] = useState(false);
@@ -46,6 +46,7 @@ export default function HoldingsPage() {
       diary={diary}
       onRefresh={refresh}
       onAttachChart={saveDiaryEntry}
+      onRemoveChart={removeChartFromEntry}
       refreshing={refreshing}
       onAckBreakeven={ackBreakeven}
       onEditTrade={openEditTrade}

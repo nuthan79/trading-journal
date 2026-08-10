@@ -26,7 +26,7 @@ function exportCsv(all) {
 }
 
 export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNew,
-                                 onAttachChart, mistake = "", missing = "", onClearFilter }) {
+                                 onAttachChart, onRemoveChart, mistake = "", missing = "", onClearFilter }) {
   const [filter, setFilter] = useState("all");
   const [q, setQ] = useState("");
   const [sort, setSort] = useState({ k: "entry_date", dir: -1 });
@@ -311,6 +311,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
           row={rows[detailAt]}
           diary={diary}
           onAttachChart={onAttachChart}
+          onRemoveChart={onRemoveChart}
           onClose={() => setDetailId(null)}
           onEdit={(t) => { setDetailId(null); onEdit(t); }}
           onExit={onExit ? (t) => { setDetailId(null); onExit(t); } : undefined}
