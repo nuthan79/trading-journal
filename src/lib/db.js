@@ -813,6 +813,34 @@ export const sendMagicLink = (email, emailRedirectTo) =>
 export const signInWithPassword = (email, password) =>
   supabase.auth.signInWithPassword({ email, password });
 
+/**
+ * Create an account with an email and a password of the user's choosing.
+ *
+ * WITHOUT THIS THERE IS NO WAY TO SIGN UP AT ALL except the magic link, since
+ * `signInWithPassword` only ever admits a user who already exists — which made
+ * outgoing email the single point of failure for every new account on a service
+ * whose own sender is rate-limited.
+ *
+ * The caller has to handle two outcomes, and which one it gets is a dashboard
+ * setting rather than anything in this code. With "Confirm email" off, a
+ * session comes back and the user is in. With it on, `data.session` is null and
+ * a confirmation mail has gone out instead. Treating the second case as success
+ * would drop somebody on a blank screen wondering if it worked.
+ */
+export const signUpWithPassword = (email, password) =>
+  supabase.auth.signUp({ email, password });
+
+/**
+ * Google, which is the only way in that touches no email at all — no send
+ * limit, no spam folder, no address typed wrong and locked out forever.
+ *
+ * Requires the provider to be configured in Supabase; until it is, this errors.
+ * The button is behind NEXT_PUBLIC_GOOGLE_AUTH for exactly that reason, so an
+ * unconfigured deployment shows no button rather than a broken one.
+ */
+export const signInWithGoogle = (redirectTo) =>
+  supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo } });
+
 export const signOut = () => supabase.auth.signOut();
 
 /**

@@ -103,6 +103,49 @@ label.f > span {
 .lnk:disabled { opacity: 0.5; cursor: default; }
 
 /* ------------------------------------------------------------------ */
+/*  Privacy / Terms                                                    */
+/*  Plain CSS, not styled-jsx, so the pages can stay server components  */
+/*  — they are the only routes a search engine can read, and the only   */
+/*  ones Google's OAuth review will fetch.                              */
+/* ------------------------------------------------------------------ */
+
+.legal { max-width: 760px; margin: 0 auto; padding: 30px 24px 90px; }
+.legal-top {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; padding-bottom: 26px;
+}
+.legal-back { font-size: 12.5px; color: var(--ink2); text-decoration: none; }
+.legal-back:hover { color: var(--ink); }
+.legal h1 { font-size: 32px; line-height: 1.15; margin: 0; }
+.legal-date { font-size: 12px; color: var(--ink3); margin: 10px 0 0; }
+.legal-lede {
+  font-size: 15px; line-height: 1.7; color: var(--ink2);
+  margin: 22px 0 0; padding-bottom: 26px; border-bottom: 1px solid var(--rule);
+}
+.legal h2 {
+  font-family: 'Archivo', sans-serif; font-stretch: 125%; font-weight: 600;
+  font-size: 17px; letter-spacing: 0.01em; margin: 38px 0 0;
+}
+.legal h3 {
+  font-family: 'Archivo', sans-serif; font-weight: 600;
+  font-size: 14px; margin: 22px 0 0;
+}
+.legal p, .legal li {
+  font-size: 14px; line-height: 1.75; color: var(--ink2); margin: 12px 0 0;
+}
+.legal ul { margin: 12px 0 0; padding-left: 20px; }
+.legal li { margin-top: 7px; }
+.legal b, .legal strong { color: var(--ink); font-weight: 600; }
+.legal a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
+/* Shown when a required detail is still a placeholder, so an incomplete
+   policy cannot be published quietly. */
+.legal-todo {
+  border: 1px solid var(--brass); background: #FBF6EA; color: #6A4E12;
+  padding: 12px 14px; border-radius: 2px; font-size: 13px; line-height: 1.6;
+  margin: 26px 0 0;
+}
+
+/* ------------------------------------------------------------------ */
 /*  Journal app                                                        */
 /* ------------------------------------------------------------------ */
 

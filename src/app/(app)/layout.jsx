@@ -9,6 +9,7 @@ import {
   listTrades, listExitsByTrade, saveExits, saveTrade as dbSaveTrade, deleteTrade as dbDeleteTrade,
   listDiary, saveDiary as dbSaveDiary, deleteDiary as dbDeleteDiary,
   listFlows, markOpenPositions, sendMagicLink, signInWithPassword, signOut,
+  signUpWithPassword, signInWithGoogle,
   sendPasswordReset, avatarUrl, trackVisit,
 } from "@/lib/db";
 import { stats } from "@/lib/calc";
@@ -18,6 +19,8 @@ import TradeForm from "@/components/journal/TradeForm";
 import SettingsSheet from "@/components/journal/SettingsSheet";
 import ProfileSheet from "@/components/journal/ProfileSheet";
 import AccountMenu from "@/components/journal/AccountMenu";
+import Landing from "@/components/Landing";
+import SignInCard from "@/components/SignInCard";
 import { loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
 import { JournalContext } from "./JournalContext";
 
@@ -63,6 +66,9 @@ export default function AppLayout({ children }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [authMode, setAuthMode] = useState("password");
+  // Signing in versus creating an account. Separate from authMode, which is
+  // only about how an existing user proves who they are.
+  const [authView, setAuthView] = useState("signin");
   const [authErr, setAuthErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [linkSent, setLinkSent] = useState(false);
@@ -172,8 +178,37 @@ export default function AppLayout({ children }) {
     setLinkSent(false); setAuthErr("");
   };
 
+  /**
+   * Create the account.
+   *
+   * Two outcomes, and which one arrives is a Supabase dashboard setting rather
+   * than anything here. With "Confirm email" off a session comes back and
+   * onAuthStateChange takes it from here — no success message needed, the app
+   * simply appears. With it on there is no session and a confirmation mail has
+   * gone instead, which has to be said or the screen just sits there.
+   */
+  const signUpPassword = async () => {
+    setBusy(true); setAuthErr("");
+    const { data, error } = await signUpWithPassword(email, password);
+    if (error) setAuthErr(error.message);
+    else if (!data?.session) { setSentKind("confirm"); setLinkSent(true); }
+    setBusy(false);
+  };
+
+  // No setBusy(false) on the happy path: the browser is leaving for Google, and
+  // re-enabling the button would only invite a second click on the way out.
+  const signInGoogle = async () => {
+    setBusy(true); setAuthErr("");
+    const { error } = await signInWithGoogle(window.location.origin);
+    if (error) { setAuthErr(error.message); setBusy(false); }
+  };
+
   const switchAuthMode = (mode) => {
     setAuthMode(mode); setAuthErr(""); setLinkSent(false);
+  };
+
+  const switchAuthView = (view) => {
+    setAuthView(view); setAuthErr(""); setLinkSent(false); setPassword("");
   };
 
   // ---- journal data + handlers (moved from the old Journal.jsx) ---------
@@ -476,88 +511,28 @@ export default function AppLayout({ children }) {
     return <div className="wrap"><div className="eyebrow">Starting up</div></div>;
   }
 
+  // Signed out is the marketing page now, with the same form inside it. It
+  // renders on every route rather than only "/", which is the existing
+  // behaviour — the gate has always been here — and means a shared deep link
+  // lands somewhere that explains itself instead of on a bare password box.
   if (!session) {
     return (
-      <div className="wrap" style={{ maxWidth: 380 }}>
-        <div className="eyebrow">Trading Journal</div>
-        <h1 className="disp" style={{ fontSize: 22, margin: "6px 0 24px" }}>Sign in</h1>
-
-        {linkSent ? (
-          <div className="card" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <div>
-              <div className="disp" style={{ fontSize: 15 }}>Check your email</div>
-              <p style={{ fontSize: 13, color: "var(--ink2)", lineHeight: 1.6, margin: "6px 0 0" }}>
-                {sentKind === "reset" ? (
-                  <>
-                    If <b>{email}</b> has an account, a link to set a new password is on its
-                    way. Open it from any browser or mail app. It works once and expires
-                    shortly, so ask again if it&apos;s been a while.
-                  </>
-                ) : (
-                  <>
-                    We sent a sign-in link to <b>{email}</b>. Open it from any browser or mail
-                    app — it signs you in wherever you click it. The link expires shortly, so
-                    request a new one if it&apos;s been a while.
-                  </>
-                )}
-              </p>
-            </div>
-
-            {authErr && <div className="warn">{authErr}</div>}
-
-            <button className="btn ghost" onClick={resetToEmailForm}>
-              Use a different email
-            </button>
-          </div>
-        ) : (
-          <div className="card" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <div className="seg">
-              <button type="button" data-on={authMode === "password" ? 1 : 0}
-                      onClick={() => switchAuthMode("password")}>Password</button>
-              <button type="button" data-on={authMode === "link" ? 1 : 0}
-                      onClick={() => switchAuthMode("link")}>Email link</button>
-            </div>
-
-            <label className="f"><span>Email</span>
-              <input className="in" type="email" value={email} autoComplete="username" autoFocus
-                     onChange={(e) => setEmail(e.target.value)}
-                     onKeyDown={(e) => e.key === "Enter" &&
-                       (authMode === "password" ? signInPassword() : sendLink())} /></label>
-
-            {authMode === "password" && (
-              <label className="f"><span>Password</span>
-                <input className="in" type="password" value={password} autoComplete="current-password"
-                       onChange={(e) => setPassword(e.target.value)}
-                       onKeyDown={(e) => e.key === "Enter" && signInPassword()} /></label>
-            )}
-
-            {authMode === "password" && (
-              <button type="button" className="lnk" onClick={sendReset} disabled={busy || !email}
-                      title={email ? "" : "Enter your email first"}>
-                Forgot your password?
-              </button>
-            )}
-
-            {authErr && <div className="warn">{authErr}</div>}
-
-            {authMode === "password" ? (
-              <button className="btn" onClick={signInPassword} disabled={busy || !email || !password}>
-                {busy ? "Signing in…" : "Sign in"}
-              </button>
-            ) : (
-              <button className="btn" onClick={sendLink} disabled={busy || !email}>
-                {busy ? "Sending…" : "Send magic link"}
-              </button>
-            )}
-
-            <div style={{ fontSize: 11.5, color: "var(--ink3)", lineHeight: 1.6 }}>
-              {authMode === "password"
-                ? "Your existing password still works. Email link is there for when you'd rather not type it."
-                : "We'll email you a link that signs you in — no password, and it works in whichever browser opens it."}
-            </div>
-          </div>
-        )}
-      </div>
+      <Landing
+        signIn={
+          <SignInCard
+            view={authView} switchAuthView={switchAuthView}
+            linkSent={linkSent} sentKind={sentKind}
+            email={email} setEmail={setEmail}
+            password={password} setPassword={setPassword}
+            authMode={authMode} switchAuthMode={switchAuthMode}
+            authErr={authErr} busy={busy}
+            signInPassword={signInPassword} signUpPassword={signUpPassword}
+            signInGoogle={signInGoogle} sendLink={sendLink}
+            sendReset={sendReset} resetToEmailForm={resetToEmailForm}
+          />
+        }
+        view={authView}
+      />
     );
   }
 
