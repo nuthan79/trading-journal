@@ -19,6 +19,7 @@ import TradeForm from "@/components/journal/TradeForm";
 import SettingsSheet from "@/components/journal/SettingsSheet";
 import ProfileSheet from "@/components/journal/ProfileSheet";
 import AccountMenu from "@/components/journal/AccountMenu";
+import { listenForErrors } from "@/lib/errors";
 import Landing from "@/components/Landing";
 import SignInCard from "@/components/SignInCard";
 import { loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
@@ -101,6 +102,10 @@ export default function AppLayout({ children }) {
   // time somebody alt-tabbed back from a spreadsheet.
   const userId = session?.user?.id ?? null;
   useEffect(() => { if (userId) trackVisit(); }, [userId]);
+
+  // The faults React's error boundary never sees: a throw from an event
+  // handler, and a promise nobody caught. Mounted once for the whole app.
+  useEffect(() => listenForErrors(), []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
