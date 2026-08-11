@@ -960,3 +960,42 @@ export async function exportEverything() {
     chart_links: charts,
   };
 }
+
+/**
+ * Sign out of every browser, not just this one.
+ *
+ * The plain signOut() drops the token held here and leaves every other
+ * session alone, which is the right default and the wrong answer to the
+ * question people actually ask — they signed in on a friend's laptop, or an
+ * office machine, and want it undone from where they are now.
+ *
+ * Supabase revokes the refresh tokens server-side, so the other browsers stop
+ * working at their next refresh rather than instantly. Worth saying in the UI:
+ * "everywhere" that takes up to an hour is not what it sounds like.
+ */
+export const signOutEverywhere = () => supabase.auth.signOut({ scope: "global" });
+
+/**
+ * Delete this account and everything in it.
+ *
+ * The work is a security definer function rather than an API route, so the
+ * service-role key never has to exist in this app — see 027 for why that
+ * matters more than the convenience. There is nothing to pass: the function
+ * reads auth.uid() itself, so a caller cannot name someone else.
+ *
+ * Signs out afterwards because the session outlives the user it referred to:
+ * the token stays cryptographically valid until it expires, and every request
+ * it makes now returns nothing at all, which reads as the app having broken
+ * rather than as the account having gone.
+ */
+export async function deleteMyAccount() {
+  const { error } = await supabase.rpc("delete_my_account");
+  if (error) {
+    throw new Error(
+      isMissingTable(error) || /function .*delete_my_account/i.test(error.message || "")
+        ? "Account deletion isn't set up on this database yet — run 027_delete_account.sql."
+        : error.message
+    );
+  }
+  try { await supabase.auth.signOut(); } catch { /* the account is gone either way */ }
+}

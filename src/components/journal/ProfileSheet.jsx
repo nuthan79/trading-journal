@@ -5,6 +5,7 @@ import { X, LogOut, Camera, Trash2, Crown, Download } from "lucide-react";
 import {
   supabase, reauthenticate, updatePassword, sendPasswordReset, signOut,
   uploadAvatar, removeAvatar, exportEverything,
+  signOutEverywhere, deleteMyAccount,
 } from "@/lib/db";
 import { rupee } from "@/lib/format";
 
@@ -274,6 +275,115 @@ function ExportEverything() {
   );
 }
 
+/**
+ * Sign out of the other browsers too.
+ *
+ * Separate from Sign out rather than replacing it, because they answer
+ * different questions. Sign out is "I'm done here". This one is "I left myself
+ * signed in somewhere I shouldn't have" — and the person asking it is usually
+ * not at that machine, which is the whole point.
+ *
+ * It says "shortly" rather than "now" on purpose. Supabase revokes the refresh
+ * tokens, so the other sessions die when their access token next expires
+ * instead of the instant this is pressed, and an "everywhere" that quietly
+ * takes an hour is worse than one that says so.
+ */
+function SignOutEverywhere() {
+  const [busy, setBusy] = useState(false);
+
+  const go = async () => {
+    if (!window.confirm(
+      "Sign out of every browser and device?\n\n" +
+      "You'll be signed out here immediately. Other sessions stop working shortly after."
+    )) return;
+    setBusy(true);
+    try { await signOutEverywhere(); } catch { /* the local session goes regardless */ }
+  };
+
+  return (
+    <button className="btn ghost sm" onClick={go} disabled={busy}>
+      <LogOut size={13} />{busy ? "Signing out…" : "Sign out everywhere"}
+    </button>
+  );
+}
+
+/**
+ * Closing the account.
+ *
+ * THE GATE IS TYPING THE EMAIL, not a checkbox and not a second "are you
+ * sure". Both of those are clicked through by muscle memory; copying your own
+ * address back is the smallest thing that cannot be done by accident, and it
+ * is the confirmation people already recognise from every other service that
+ * deletes things properly.
+ *
+ * The export is offered in the same breath rather than mentioned afterwards.
+ * Someone leaving still wants their record of eleven months of trading, and
+ * the moment they find out otherwise is the moment it is gone.
+ */
+function DangerZone({ email }) {
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const matches = typed.trim().toLowerCase() === (email || "").toLowerCase() && !!email;
+
+  const go = async () => {
+    if (!matches || busy) return;
+    setBusy(true); setErr("");
+    try {
+      await deleteMyAccount();
+      // Straight out. The layout gates on the session, so clearing it is what
+      // returns the browser to the landing page — and there is no longer an
+      // account for any other screen to describe.
+      window.location.href = "/";
+    } catch (e) {
+      setErr(e.message || "Could not delete the account.");
+      setBusy(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <button className="btn ghost sm danger" onClick={() => setOpen(true)}>
+        <Trash2 size={13} />Delete my account
+      </button>
+    );
+  }
+
+  return (
+    <div style={{ border: "1px solid var(--short)", borderRadius: 2, padding: 14, background: "#FBF0ED" }}>
+      <div className="disp" style={{ fontSize: 14, color: "#7A2E1C" }}>
+        This deletes everything, permanently.
+      </div>
+      <p style={{ fontSize: 12.5, lineHeight: 1.65, color: "#7A2E1C", margin: "8px 0 0" }}>
+        Every trade, sell, diary entry, chart, capital flow and setting goes, and so
+        does the account itself. It cannot be undone and we cannot get it back for
+        you. <b>Export first if you might want any of it.</b>
+      </p>
+
+      <label className="f" style={{ display: "block", marginTop: 12 }}>
+        <span>Type <b>{email}</b> to confirm</span>
+        <input className="in" value={typed} autoComplete="off" spellCheck={false}
+               onChange={(e) => setTyped(e.target.value)}
+               onKeyDown={(e) => e.key === "Enter" && go()} />
+      </label>
+
+      {err && <div className="warn" style={{ marginTop: 10 }}>{err}</div>}
+
+      <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
+        <button className="btn ghost sm" onClick={() => { setOpen(false); setTyped(""); setErr(""); }}>
+          Keep my account
+        </button>
+        <button className="btn sm" onClick={go} disabled={!matches || busy}
+                style={matches ? { background: "var(--short)", borderColor: "var(--short)" } : undefined}>
+          {busy ? "Deleting…" : "Delete permanently"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function ProfileSheet({ profile, avatar, counts, onClose, onlyPassword, onProfileChange }) {
   const [email, setEmail] = useState("");
   const [joined, setJoined] = useState(null);
@@ -348,14 +458,22 @@ export default function ProfileSheet({ profile, avatar, counts, onClose, onlyPas
                 nothing is summarised.
               </p>
               <ExportEverything />
+
+              <div style={{ marginTop: 18 }}>
+                <DangerZone email={email} />
+              </div>
             </div>
           )}
 
           <div style={{ borderTop: "1px solid var(--rule)", paddingTop: 16,
-                        display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <button className="btn ghost sm" onClick={() => signOut()}>
-              <LogOut size={13} />Sign out
-            </button>
+                        display: "flex", justifyContent: "space-between",
+                        alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="btn ghost sm" onClick={() => signOut()}>
+                <LogOut size={13} />Sign out
+              </button>
+              {!onlyPassword && <SignOutEverywhere />}
+            </div>
             <button className="btn ghost" onClick={onClose}>Close</button>
           </div>
         </div>
