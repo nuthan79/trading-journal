@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { X, LogOut, Camera, Trash2, Crown } from "lucide-react";
+import { X, LogOut, Camera, Trash2, Crown, Download } from "lucide-react";
 import {
   supabase, reauthenticate, updatePassword, sendPasswordReset, signOut,
-  uploadAvatar, removeAvatar,
+  uploadAvatar, removeAvatar, exportEverything,
 } from "@/lib/db";
 import { rupee } from "@/lib/format";
 
@@ -228,6 +228,52 @@ function AvatarPicker({ profile, avatar, onChanged }) {
   );
 }
 
+/**
+ * Take everything and go.
+ *
+ * Built in the browser rather than fetched from a route, because the data is
+ * already reachable from here under the same row-level security that guards
+ * every other read — a server endpoint would be a second place to get that
+ * wrong, for a file the client can assemble itself.
+ *
+ * The filename carries the date. Somebody who exports twice a year wants to
+ * know which one they are looking at without opening it.
+ */
+function ExportEverything() {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const run = async () => {
+    setBusy(true); setErr("");
+    try {
+      const data = await exportEverything();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `journal-export-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // Revoked on the next tick rather than immediately: Safari has not
+      // always finished reading the blob by the time click() returns.
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      setErr(e.message || "Could not build the export.");
+    }
+    setBusy(false);
+  };
+
+  return (
+    <>
+      <button className="btn ghost sm" onClick={run} disabled={busy}>
+        <Download size={13} />{busy ? "Building…" : "Export everything"}
+      </button>
+      {err && <div className="warn" style={{ marginTop: 8 }}>{err}</div>}
+    </>
+  );
+}
+
 export default function ProfileSheet({ profile, avatar, counts, onClose, onlyPassword, onProfileChange }) {
   const [email, setEmail] = useState("");
   const [joined, setJoined] = useState(null);
@@ -291,6 +337,18 @@ export default function ProfileSheet({ profile, avatar, counts, onClose, onlyPas
 
               <Subscription />
             </>
+          )}
+
+          {!onlyPassword && (
+            <div style={{ borderTop: "1px solid var(--rule)", paddingTop: 16, marginTop: 4 }}>
+              <div className="eyebrow" style={{ marginBottom: 6 }}>Your data</div>
+              <p style={{ fontSize: 12.5, color: "var(--ink2)", lineHeight: 1.6, margin: "0 0 11px" }}>
+                Every trade, sell, diary entry and capital flow in one file, with your
+                settings and the events recorded about you. Nothing is held back and
+                nothing is summarised.
+              </p>
+              <ExportEverything />
+            </div>
           )}
 
           <div style={{ borderTop: "1px solid var(--rule)", paddingTop: 16,

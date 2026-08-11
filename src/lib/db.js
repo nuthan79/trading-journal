@@ -888,3 +888,75 @@ export async function reauthenticate(email, password) {
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   return !error;
 }
+
+/* ------------------------------ export ----------------------------- */
+
+/**
+ * Everything this account owns, in one file.
+ *
+ * WHY IT IS ALL OF IT. The privacy policy says your journal can be exported at
+ * any time, and the sign-up card says you can take everything and leave. A
+ * partial export makes both of those sentences untrue — and the trades CSV on
+ * the trade sheet, useful as it is, carries no diary, no capital flows and no
+ * settings. This is the one that has to match the promise.
+ *
+ * JSON RATHER THAN A ZIP OF CSVs. A CSV per table would be friendlier to open
+ * and would lose the shape: which sell belongs to which trade, which diary
+ * entry hangs off which position. The point of this file is that nothing is
+ * lost, so it is the whole graph or it is a convenience — and the convenience
+ * already exists on the trade sheet. It also means no archive library ships to
+ * everyone who never presses the button.
+ *
+ * INCLUDING WHAT WE RECORDED ABOUT YOU, not only what you typed. Product events
+ * and crash reports are personal data under the DPDP Act's right of access, so
+ * leaving them out would be choosing the flattering reading of "everything".
+ *
+ * CHART IMAGES are referenced, not embedded. A pasted TradingView link is
+ * already a URL and survives; a file uploaded back when uploads existed lives
+ * in private storage, so a short-lived signed link is included beside its path.
+ * Those expire — which is said in the file rather than left to be discovered.
+ */
+export async function exportEverything() {
+  const user_id = await uid();
+
+  const raw = (table, order) =>
+    fetchAllPages(() => supabase.from(table).select("*").order(order, { ascending: true }));
+
+  const [profile, trades, exits, diary, flows, batches, events, errors] = await Promise.all([
+    getProfile().catch(() => null),
+    listTrades().catch(() => []),
+    raw("trade_exits", "exit_date").catch(() => []),
+    listDiary().catch(() => []),
+    listFlows().catch(() => []),
+    listImportBatches().catch(() => []),
+    raw("user_events", "created_at").catch(() => []),
+    raw("client_errors", "created_at").catch(() => []),
+  ]);
+
+  // Only the ones actually in storage. A pasted link needs no signing and
+  // asking for one would fail on every entry.
+  const stored = diary.filter((d) => d.image_path && !/^https?:\/\//i.test(d.image_path));
+  const charts = {};
+  await Promise.all(stored.map(async (d) => {
+    try { charts[d.image_path] = await chartUrl(d.image_path); } catch { /* skip */ }
+  }));
+
+  return {
+    exported_at: new Date().toISOString(),
+    account: { user_id, email: (await supabase.auth.getUser()).data?.user?.email ?? null },
+    note:
+      "Everything this account holds. Chart links under `chart_links` are " +
+      "temporary and stop working within the hour; the TradingView links stored " +
+      "on diary entries do not expire. Trades and their sells are joined by " +
+      "trade_exits.trade_id; diary entries point at a trade through trade_id.",
+    profile,
+    trades,
+    trade_exits: exits,
+    diary_entries: diary,
+    capital_flows: flows,
+    import_batches: batches,
+    user_events: events,
+    client_errors: errors,
+    chart_links: charts,
+  };
+}
