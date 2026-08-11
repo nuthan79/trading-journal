@@ -36,12 +36,21 @@ function withExits(t) {
  *
  * Buy-side costs — stamp duty, half the STT, the buy brokerage — are incurred
  * the moment the position is opened, so they stay on the trade. Sell-side
- * costs belong to the sell that incurred them, apportioned by size. That is
- * what stops a part-sold position being charged for exits that haven't
- * happened yet: sell a third and only a third of the exit cost is counted.
+ * costs belong to the sells that incurred them, split between them by size.
  *
- * The total never changes, so a figure typed by hand is still respected in
- * full — it is only attributed more precisely.
+ * THE TOTAL NEVER CHANGES. Every rupee going in comes out attributed to the
+ * entry or to a sell, which is what keeps a figure typed by hand respected in
+ * full — it is only placed more precisely.
+ *
+ * That invariant is the whole correctness condition, and it was broken here.
+ * The exit side used to be divided by the POSITION size, on the reasoning that
+ * a part-sold position shouldn't carry cost for exits that haven't happened.
+ * True of a projected round-trip bill; false of this one. `total` is computed
+ * from the legs that exist — buy 70, sell 16 — so the exit side already covers
+ * only those 16, and dividing it by 16/70 discounted it a second time. On a
+ * 70-share position part-sold at 16 that quietly dropped ₹251 of paid charges
+ * out of the books, and hand-typed figures eroded further on every reopen,
+ * since what reloads into the form is the entry-side remnant.
  */
 function splitCharges(t, exits, config) {
   const total = num(t.charges) || 0;
@@ -62,21 +71,20 @@ function splitCharges(t, exits, config) {
   const soldQty = exits.reduce((a, e) => a + e.quantity, 0);
   if (!(soldQty > 0)) return { tradeCharges: total, exits };
 
-  // Apportioned against the size of the position, not the size of what has
-  // been sold. Dividing by the latter would hand a single 40-of-100 sell the
-  // entire exit bill — the whole thing this is meant to avoid.
-  const posQty = num(t.quantity);
-  const denom = isFinite(posQty) && posQty > 0 ? posQty : soldQty;
-  const fullyOut = soldQty >= denom - 1e-6;
-
+  // Across the sells that HAPPENED. A single 40-of-100 sell does take the
+  // whole exit bill, and that is correct rather than the thing to avoid — the
+  // bill was worked out from that one sell. Cost for the other 60 arrives with
+  // the sell that incurs it, in a later total.
+  //
+  // A fully-out position divides by its own size either way, so nothing about
+  // a closed trade changes here.
   let allocated = 0;
   const withCharges = exits.map((e, i) => {
-    // Only once the position is fully out does the last sell absorb the
-    // rounding remainder; while it's part sold there is genuinely cost still
-    // to come, and forcing it in early is the same overstatement again.
-    const share = i === exits.length - 1 && fullyOut
+    // The last sell absorbs the rounding remainder, so the shares always add
+    // back to exitSide exactly.
+    const share = i === exits.length - 1
       ? Math.round((exitSide - allocated) * 100) / 100
-      : Math.round((exitSide * (e.quantity / denom)) * 100) / 100;
+      : Math.round((exitSide * (e.quantity / soldQty)) * 100) / 100;
     allocated += share;
     return { ...e, charges: share };
   });
