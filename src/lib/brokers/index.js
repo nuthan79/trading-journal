@@ -26,7 +26,18 @@ import * as zerodha from "./zerodha";
 
 export { assembleImport } from "../import-pipeline";
 
-/** In the order they're tried. Zerodha first — it is the one with users. */
+/**
+ * In the order they're tried. Zerodha first — it is the one with users.
+ *
+ * NOT YET LISTED: `zerodha-tradebook.js`, which is written and tested but
+ * cannot be registered until the import screen knows what to do with it. A
+ * tradebook is a different KIND of file rather than a different broker — a tax
+ * P&L yields matched lots and closed trades, a tradebook yields open positions
+ * — and everything downstream of `detectBroker` here assumes the former. Adding
+ * it before the screen can branch would turn today's clear "this is not a tax
+ * P&L" message into a silent bad parse, which is a worse answer than the one
+ * being replaced.
+ */
 export const BROKERS = [zerodha];
 
 export const brokerById = (id) => BROKERS.find((b) => b.id === id) || null;
