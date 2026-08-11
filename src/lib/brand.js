@@ -30,5 +30,5 @@ export const BRAND = {
   domain: "",
 
   /** Where "Contact" points. Blank hides the link rather than mailing nowhere. */
-  contactEmail: "",
+  contactEmail: "nuthann@gmail.com",
 };

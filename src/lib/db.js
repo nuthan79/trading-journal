@@ -839,7 +839,18 @@ export const signUpWithPassword = (email, password) =>
  * unconfigured deployment shows no button rather than a broken one.
  */
 export const signInWithGoogle = (redirectTo) =>
-  supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo } });
+  supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo,
+      // Always ask which Google account. Without this, Google silently reuses
+      // whichever one the browser is already signed into and the user never
+      // sees a choice — so somebody with a personal and a trading Gmail, or a
+      // shared family machine, lands in the wrong journal with no way to say
+      // otherwise. The one extra click buys the ability to pick.
+      queryParams: { prompt: "select_account" },
+    },
+  });
 
 export const signOut = () => supabase.auth.signOut();
 
