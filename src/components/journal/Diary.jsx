@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Plus, X, Trash2, Link2, Check } from "lucide-react";
+import { Plus, X, Trash2, Link2, Check, Pencil } from "lucide-react";
 import { chartUrl } from "@/lib/db";
 import ChartViewer from "./ChartViewer";
 import { resolveTradingViewChart } from "@/lib/charts";
@@ -9,11 +9,54 @@ import { rfmt, dmy } from "@/lib/format";
 import { EMOTIONS } from "@/lib/constants";
 import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
 
+/**
+ * ENTRIES ARE EDITABLE, AND SAY SO.
+ *
+ * This was read-only-after-save for a long time, which sounds like integrity —
+ * a diary you can rewrite is worth less than one you can't — except that the
+ * Delete button was already there. Delete and retype achieves a rewrite while
+ * losing the date, the emotions and the chart, so the rule cost the careful
+ * user everything and the careless one nothing. Editing is allowed, and an
+ * edited entry carries a stamp set by a database trigger rather than by this
+ * file (024_diary_edited.sql): a marker the client sets is a marker the client
+ * can forget to set, and the absence of one reads as a guarantee.
+ *
+ * THE REASON IT MATTERS is not typos. `trade_id` could only ever be set at the
+ * moment of writing, and the useful order is the other one — you write about a
+ * stock while it is still a watchlist chart, and days later it sets up and you
+ * buy it. The trade does not exist yet when the note is written, so the link
+ * that the trade panel, the Trades chart column and the mood analysis all read
+ * could never be made for exactly the entries that most deserved it. Editing
+ * is what joins the thought you had then to the position you took later.
+ */
 function newDraft() {
   return {
+    id: null,
     entry_date: new Date().toISOString().slice(0, 10),
     emotions: [], body: "", trade_id: "",
-    imageUrl: null,
+    imagePath: null,
+    linkOpen: false, linkInput: "", linkError: "",
+  };
+}
+
+/**
+ * An existing entry, opened for editing.
+ *
+ * `imagePath` is what is STORED, which is not always what is shown. A pasted
+ * TradingView link is its own URL and the two are the same; a chart uploaded
+ * back when uploads existed is a path inside the bucket whose viewing URL is
+ * signed and expires in an hour. Holding the stored value here and resolving
+ * the display separately is what stops a save writing a short-lived signed URL
+ * over a permanent path — which would look fine until the link died.
+ */
+function editDraft(e) {
+  return {
+    id: e.id,
+    entry_date: e.entry_date,
+    emotions: [...(e.emotions || [])],
+    body: e.body || "",
+    trade_id: e.trade_id || "",
+    imagePath: e.image_path || null,
     linkOpen: false, linkInput: "", linkError: "",
   };
 }
@@ -24,29 +67,45 @@ function newDraft() {
 function serializeDraft(d) {
   if (!d) return null;
   return {
+    id: d.id || null,
     entry_date: d.entry_date,
     emotions: d.emotions,
     body: d.body,
     trade_id: d.trade_id,
-    imageUrl: d.imageUrl || null,
+    imagePath: d.imagePath || null,
   };
 }
 
 function hasContent(payload) {
-  return !!payload && (payload.body?.trim() || payload.emotions?.length || payload.imageUrl);
+  return !!payload && (payload.body?.trim() || payload.emotions?.length || payload.imagePath);
 }
 
-function loadPersistedDraft() {
-  const p = loadDraft(DRAFT_KEYS.diary);
-  if (!hasContent(p)) return null;
+function hydrateDraft(p) {
   return {
+    id: p.id || null,
     entry_date: p.entry_date || new Date().toISOString().slice(0, 10),
     emotions: Array.isArray(p.emotions) ? p.emotions : [],
     body: p.body || "",
     trade_id: p.trade_id || "",
-    imageUrl: p.imageUrl || null,
+    imagePath: p.imagePath || null,
     linkOpen: false, linkInput: "", linkError: "",
   };
+}
+
+/**
+ * The date an entry was last edited, in the reader's own timezone.
+ *
+ * dmy() takes the first ten characters of an ISO string, which is right for
+ * the DATE column it was written for and wrong for a timestamptz: updated_at
+ * comes back in UTC, so an edit made at half past midnight in India would
+ * render as the day before. Convert first, then format.
+ */
+function editedOn(ts) {
+  if (!ts) return null;
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return null;
+  const pad = (n) => String(n).padStart(2, "0");
+  return dmy(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`);
 }
 
 export default function Diary({ diary, trades, onSave, onDelete, onRemoveChart, say }) {
@@ -74,18 +133,31 @@ export default function Diary({ diary, trades, onSave, onDelete, onRemoveChart, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [diary]);
 
-  // Restore an in-progress draft left behind by a cold-reload (mobile
-  // backgrounding, tab discard) before it can be lost for good.
+  /**
+   * Restore an in-progress draft left behind by a cold-reload (mobile
+   * backgrounding, tab discard) before it can be lost for good.
+   *
+   * A draft carrying an id is unsaved changes to an entry, and that entry may
+   * be gone — deleted from another tab, or from this one before the reload.
+   * Restoring it would hand back a form whose save is an upsert on a row that
+   * no longer exists, and an upsert with a missing id inserts: the deleted
+   * entry would quietly come back. So an edit draft waits for the diary to
+   * arrive and is only restored if its row is still there. A new-entry draft
+   * has nothing to check against and restores immediately, as it always did.
+   */
   useEffect(() => {
     if (restoredRef.current) return;
-    restoredRef.current = true;
-    const restored = loadPersistedDraft();
-    if (restored) {
-      setDraft(restored);
-      say("Restored an unsaved diary entry.");
+    const p = loadDraft(DRAFT_KEYS.diary);
+    if (!hasContent(p)) { restoredRef.current = true; return; }
+    if (p.id) {
+      if (!diary.length) return;                       // not loaded yet — try again
+      if (!diary.some((e) => e.id === p.id)) { restoredRef.current = true; return; }
     }
+    restoredRef.current = true;
+    setDraft(hydrateDraft(p));
+    say(p.id ? "Restored unsaved changes to an entry." : "Restored an unsaved diary entry.");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [diary]);
 
   const serialized = draft ? serializeDraft(draft) : null;
   const { clear: clearPersistedDraft } = useAutosave(
@@ -116,7 +188,14 @@ export default function Diary({ diary, trades, onSave, onDelete, onRemoveChart, 
       };
     });
 
-  const removeImage = () => setDraft((p) => ({ ...p, imageUrl: null }));
+  // What the draft's chart looks like right now: a pasted link is already a
+  // URL, an older uploaded chart is a bucket path that has to be signed. See
+  // editDraft() for why the draft holds the path rather than this.
+  const draftSrc = !draft?.imagePath ? null
+    : /^https?:\/\//i.test(draft.imagePath) ? draft.imagePath
+    : urls[draft.id] || null;
+
+  const removeImage = () => setDraft((p) => ({ ...p, imagePath: null }));
 
   const openLink = () => setDraft((p) => ({ ...p, linkOpen: true, linkInput: "", linkError: "" }));
 
@@ -127,8 +206,19 @@ export default function Diary({ diary, trades, onSave, onDelete, onRemoveChart, 
       return;
     }
     setDraft((p) => ({
-      ...p, imageUrl: result.url, linkOpen: false, linkInput: "", linkError: "",
+      ...p, imagePath: result.url, linkOpen: false, linkInput: "", linkError: "",
     }));
+  };
+
+  const startEdit = (e) => {
+    // Only a NEW draft can be lost by this — an edit draft holds nothing that
+    // isn't still in the entry underneath it.
+    if (draft && !draft.id && hasContent(serializeDraft(draft)) &&
+        !window.confirm("You have an unsaved new entry. Opening this one for editing will discard it.")) return;
+    setDraft(editDraft(e));
+    // The form is at the top and the entry being edited may be a long way
+    // down; without this the button appears to do nothing.
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const discard = () => {
@@ -137,15 +227,21 @@ export default function Diary({ diary, trades, onSave, onDelete, onRemoveChart, 
   };
 
   const commit = async () => {
-    if (!draft.body.trim() && !draft.imageUrl) { say("Write something or paste a chart link first."); return; }
+    if (!draft.body.trim() && !draft.imagePath) { say("Write something or paste a chart link first."); return; }
     setSaving(true);
     try {
       await onSave({
+        // Only on an edit. A null id would be sent as null rather than left to
+        // the column default, and the insert would fail on a not-null primary
+        // key.
+        ...(draft.id ? { id: draft.id } : {}),
         entry_date: draft.entry_date,
         emotions: draft.emotions,
         body: draft.body,
         trade_id: draft.trade_id || null,
-        ...(draft.imageUrl ? { image_path: draft.imageUrl } : {}),
+        // Always sent, so that clearing the chart on an edit actually clears
+        // it. Omitting the key would leave the old path in place.
+        image_path: draft.imagePath || null,
       });
       clearPersistedDraft();
       setDraft(null);
@@ -182,11 +278,20 @@ export default function Diary({ diary, trades, onSave, onDelete, onRemoveChart, 
 
       {draft && (
         <div className="card" style={{ marginBottom: 18 }}>
+          {draft.id && (
+            <div className="eyebrow" style={{ marginBottom: 12 }}>
+              Editing the entry from {dmy(draft.entry_date)}
+            </div>
+          )}
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
             <label className="f"><span>Date</span>
               <input className="in" type="date" value={draft.entry_date}
                      onChange={(e) => setDraft((p) => ({ ...p, entry_date: e.target.value }))} /></label>
             <label className="f" style={{ flex: 1, minWidth: 200 }}><span>Attach to a trade (optional)</span>
+              {/* The point of editing, more than typos: a note written while
+                  the stock was still a watchlist chart gets tied to the trade
+                  once you actually take it. `trades` arrives newest-first, so
+                  a position entered this week is at the top of the list. */}
               <select className="in" value={draft.trade_id}
                       onChange={(e) => setDraft((p) => ({ ...p, trade_id: e.target.value }))}>
                 <option value="">Not tied to one trade</option>
@@ -208,10 +313,12 @@ export default function Diary({ diary, trades, onSave, onDelete, onRemoveChart, 
             onChange={(e) => setDraft((p) => ({ ...p, body: e.target.value }))}
             placeholder="What happened today. What you did and why. What you would do differently." />
 
-          {draft.imageUrl && (
+          {draft.imagePath && (
             <div style={{ marginTop: 12 }}>
-              <img src={draft.imageUrl} alt="Attached chart"
-                   style={{ maxWidth: "100%", border: "1px solid var(--rule)", borderRadius: 2 }} />
+              {draftSrc && (
+                <img src={draftSrc} alt="Attached chart"
+                     style={{ maxWidth: "100%", border: "1px solid var(--rule)", borderRadius: 2 }} />
+              )}
               <button className="btn ghost sm" style={{ marginTop: 8 }} onClick={removeImage}>
                 <X size={12} />Remove chart
               </button>
@@ -243,13 +350,14 @@ export default function Diary({ diary, trades, onSave, onDelete, onRemoveChart, 
                   already hold an uploaded file still render — chartUrl signs a
                   Storage path and passes a URL straight through. */}
               <button className="btn ghost" onClick={openLink}>
-                <Link2 size={13} />{draft.imageUrl ? "Replace chart link" : "Paste chart link"}
+                <Link2 size={13} />{draft.imagePath ? "Replace chart link" : "Paste chart link"}
               </button>
             </div>
             <div style={{ display: "flex", gap: 10 }}>
-              <button className="btn ghost" onClick={discard}>Discard</button>
+              <button className="btn ghost" onClick={discard}>{draft.id ? "Cancel" : "Discard"}</button>
               <button className="btn" disabled={saving} onClick={commit}>
-                <Check size={14} />{saving ? "Saving…" : "Save entry"}
+                <Check size={14} />
+                {saving ? "Saving…" : draft.id ? "Save changes" : "Save entry"}
               </button>
             </div>
           </div>
@@ -266,8 +374,14 @@ export default function Diary({ diary, trades, onSave, onDelete, onRemoveChart, 
       ) : (
         diary.map((e) => {
           const t = trades.find((x) => x.id === e.trade_id);
+          const edited = editedOn(e.updated_at);
+          // The copy underneath the form it is loaded into. Left in place
+          // rather than hidden — it is what the entry looked like before —
+          // but dimmed, so two versions of the same note on one screen can be
+          // told apart at a glance.
+          const isEditing = draft?.id === e.id;
           return (
-            <div key={e.id} className="entry">
+            <div key={e.id} className="entry" style={isEditing ? { opacity: 0.45 } : undefined}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
                 <div>
                   <div className="mono" style={{ fontSize: 12, color: "var(--ink2)" }}>{e.entry_date}</div>
@@ -276,10 +390,22 @@ export default function Diary({ diary, trades, onSave, onDelete, onRemoveChart, 
                       on {t.symbol} · {isFinite(t.r) ? rfmt(t.r) : "still open"}
                     </div>
                   )}
+                  {edited && (
+                    <div style={{ fontSize: 11, color: "var(--ink3)", marginTop: 3 }}>edited {edited}</div>
+                  )}
                 </div>
-                <button className="x" onClick={() => onDelete(e)} aria-label="Delete entry">
-                  <Trash2 size={13} />
-                </button>
+                {!isEditing && (
+                  <div style={{ display: "flex", gap: 2, flex: "none" }}>
+                    <button className="x" onClick={() => startEdit(e)} aria-label="Edit entry"
+                            title="Edit this entry">
+                      <Pencil size={13} />
+                    </button>
+                    <button className="x" onClick={() => onDelete(e)} aria-label="Delete entry"
+                            title="Delete this entry">
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                )}
               </div>
               {(e.emotions || []).length > 0 && (
                 <div className="chips" style={{ marginTop: 9 }}>

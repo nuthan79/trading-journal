@@ -79,7 +79,10 @@ create table if not exists public.diary_entries (
   body         text,
   trade_id     uuid references public.trades on delete set null,
   image_path   text,                        -- path inside the 'charts' storage bucket
-  created_at   timestamptz not null default now()
+  created_at   timestamptz not null default now(),
+  -- Nullable on purpose: null means never edited, which the diary renders as
+  -- the absence of an "edited" marker. See 024_diary_edited.sql.
+  updated_at   timestamptz
 );
 
 create index if not exists diary_user_date_idx on public.diary_entries (user_id, entry_date desc);
@@ -147,6 +150,13 @@ begin new.updated_at = now(); return new; end $$;
 drop trigger if exists trades_touch on public.trades;
 create trigger trades_touch before update on public.trades
   for each row execute function public.touch_updated_at();
+
+-- The diary shows its stamp to the reader, so it gets a guard trades doesn't
+-- need: a save that changed nothing must not brand the entry as edited.
+drop trigger if exists diary_entries_touch on public.diary_entries;
+create trigger diary_entries_touch before update on public.diary_entries
+  for each row when (old.* is distinct from new.*)
+  execute function public.touch_updated_at();
 
 -- -------------------------------------------------------------------
 --  Storage bucket for chart screenshots (private, per-user folders)
