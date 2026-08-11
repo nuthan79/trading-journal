@@ -488,7 +488,16 @@ export default function CapitalDeployment({ all = [], accountSize = 0, flows = [
               <span>{rupee(hovDay.deployed)} committed · {pct(hovDay.pct, 0)} of {rupee(hovDay.capital)}</span>
               <span>{hovDay.count} position{hovDay.count === 1 ? "" : "s"}</span>
               <span>{rupee(hovDay.risk)} at risk · {pct(hovDay.riskPct, 2)}</span>
-              {hovIdx && <span>{INDEX_CHOICES.find((c) => c.id === index)?.label} {Math.round(hovIdx.c).toLocaleString("en-IN")}</span>}
+              {/* The only item written label-then-value; every other one leads
+                  with its number. Without a gap of its own "Nifty 500 22,928"
+                  runs together as one four-part number, so the value is spaced
+                  off the label and set in the same weight the date uses. */}
+              {hovIdx && (
+                <span className={`${CAP_MONEY}-ix`}>
+                  {INDEX_CHOICES.find((c) => c.id === index)?.label}
+                  <b>{Math.round(hovIdx.c).toLocaleString("en-IN")}</b>
+                </span>
+              )}
             </>
           ) : (
             <span className={`${CAP_MONEY}-dim`}>
@@ -716,13 +725,17 @@ export default function CapitalDeployment({ all = [], accountSize = 0, flows = [
         .${CAP_MONEY}-ax { font-size: 10px; fill: var(--ink3); font-variant-numeric: tabular-nums; }
         .${CAP_MONEY}-axc { font-size: 10px; fill: var(--violet); font-variant-numeric: tabular-nums; }
 
+        /* Each item already carries an internal "·", so the space BETWEEN
+           items has to be clearly wider than the space within one or the row
+           reads as a single run-on sentence. */
         .${CAP_MONEY}-read {
-          display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline;
-          font-size: 11.5px; color: var(--ink2); padding: 7px 10px 4px;
-          border-top: 1px solid var(--rule); min-height: 30px;
+          display: flex; flex-wrap: wrap; gap: 6px 30px; align-items: baseline;
+          font-size: 11.5px; color: var(--ink2); padding: 10px 12px 8px;
+          border-top: 1px solid var(--rule); min-height: 34px;
           font-variant-numeric: tabular-nums;
         }
         .${CAP_MONEY}-read b { font-weight: 500; color: var(--ink); }
+        .${CAP_MONEY}-ix { display: inline-flex; align-items: baseline; gap: 8px; }
 
         /* Two columns so a five-item list doesn't run the width of the page
            as one long thin ribbon — the same pass applied to the other
