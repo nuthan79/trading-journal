@@ -49,8 +49,19 @@ export default function PrivacyPage() {
         Our hosting and database providers keep server logs that include your IP
         address, browser type and the pages requested, for security and
         diagnostics. If page analytics are enabled, they record anonymous page
-        views. They do not use cookies, do not fingerprint your device, and
+        views, plus a small number of named events — that a sign-up form was
+        opened, that someone signed in, that setup was finished — so we can tell
+        how many people who arrive end up with a working journal. These carry a
+        count and nothing else: no email address, no name, and nothing you typed
+        into a form. They do not use cookies, do not fingerprint your device, and
         cannot identify you.
+      </p>
+      <p>
+        If the app crashes while you are signed in, we record the error message,
+        the page it happened on and the technical stack trace, so it can be
+        fixed. That record is tied to your account and is kept in our own
+        database. It never includes what you had typed or any part of your
+        journal.
       </p>
       <p>
         Your sign-in session is stored in your own browser&rsquo;s local storage. It

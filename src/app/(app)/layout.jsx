@@ -20,6 +20,7 @@ import SettingsSheet from "@/components/journal/SettingsSheet";
 import ProfileSheet from "@/components/journal/ProfileSheet";
 import AccountMenu from "@/components/journal/AccountMenu";
 import { listenForErrors } from "@/lib/errors";
+import { pageEvent } from "@/lib/pageEvents";
 import Landing from "@/components/Landing";
 import SignInCard from "@/components/SignInCard";
 import { loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
@@ -112,7 +113,14 @@ export default function AppLayout({ children }) {
       setSession(data.session);
       setBooted(true);
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
+    const { data: sub } = supabase.auth.onAuthStateChange((e, s) => {
+      // SIGNED_IN only. INITIAL_SESSION fires for a session restored from
+      // storage on every page load, and TOKEN_REFRESHED whenever the token
+      // rolls over — counting either would report a handful of regulars as
+      // hundreds of sign-ins and make the funnel look far better than it is.
+      if (e === "SIGNED_IN") pageEvent("signed_in");
+      setSession(s);
+    });
     return () => sub.subscription.unsubscribe();
   }, []);
 
@@ -204,6 +212,11 @@ export default function AppLayout({ children }) {
   // re-enabling the button would only invite a second click on the way out.
   const signInGoogle = async () => {
     setBusy(true); setAuthErr("");
+    // Fired before leaving, not after coming back — the drop-off worth
+    // measuring happens at Google's own screen, where nothing of ours runs.
+    // The difference between this count and the signed_in that follows IS the
+    // number of people who got as far as the consent screen and refused.
+    pageEvent("google_clicked");
     const { error } = await signInWithGoogle(window.location.origin);
     if (error) { setAuthErr(error.message); setBusy(false); }
   };
@@ -213,6 +226,9 @@ export default function AppLayout({ children }) {
   };
 
   const switchAuthView = (view) => {
+    // The top of the funnel that the database cannot see: somebody who opened
+    // the form and then didn't finish leaves no trace anywhere else.
+    if (view === "signup") pageEvent("signup_form_opened");
     setAuthView(view); setAuthErr(""); setLinkSent(false); setPassword("");
   };
 

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { track } from "@/lib/db";
+import { pageEvent } from "@/lib/pageEvents";
 import { Check } from "lucide-react";
 import { rupee, pct } from "@/lib/format";
 import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
@@ -49,8 +50,12 @@ export default function FirstRun({ onComplete, initialName = "" }) {
         onboarded_at: new Date().toISOString(),
       });
       // The end of setup, which is the first point anyone could be said to
-      // have started rather than merely signed up.
+      // have started rather than merely signed up. Recorded in both places on
+      // purpose: user_events is where retention is measured from, and the
+      // page analytics is where it can be divided by the visitors who never
+      // got this far — which is the only way to read it as a conversion.
       track("onboarded");
+      pageEvent("onboarded");
       clearDraft();
     } catch (e) {
       setErr(e.message || "Could not save. Try again.");
