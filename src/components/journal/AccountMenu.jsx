@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { User, KeyRound, Settings2, SlidersHorizontal, LogOut, Crown } from "lucide-react";
+import { User, KeyRound, Settings2, LifeBuoy, LogOut, Crown } from "lucide-react";
 
 /**
  * The avatar in the corner, and what's behind it.
@@ -19,7 +19,7 @@ const initials = (name, email) => {
   return (words.length > 1 ? words[0][0] + words[1][0] : src.slice(0, 2)).toUpperCase();
 };
 
-export default function AccountMenu({ profile, email, avatar, onProfile, onPassword, onSetup, onSettings, onSignOut }) {
+export default function AccountMenu({ profile, email, avatar, onProfile, onPassword, onSetup, onSupport, onSignOut }) {
   const [open, setOpen] = useState(false);
   const boxRef = useRef(null);
 
@@ -67,12 +67,12 @@ export default function AccountMenu({ profile, email, avatar, onProfile, onPassw
           <button className="am-item" role="menuitem" onClick={pick(onSetup)}>
             <Settings2 size={14} />Setup
           </button>
-          {/* The page that is gathering all of this up — importing, billing and
-              support already live there, and Setup and the account will follow.
-              Listed beside them rather than replacing them, so nothing anyone
-              has learned to find moves before its new home is ready. */}
-          <button className="am-item" role="menuitem" onClick={pick(onSettings)}>
-            <SlidersHorizontal size={14} />Settings
+          {/* The one thing that had no home. A settings page briefly sat here
+              gathering profile, setup, importing and billing into panels that
+              pointed at screens which already existed — scaffolding rather
+              than a feature, so it went and this took its place. */}
+          <button className="am-item" role="menuitem" onClick={pick(onSupport)}>
+            <LifeBuoy size={14} />Support
           </button>
           <button className="am-item" role="menuitem" onClick={pick(onSignOut)}>
             <LogOut size={14} />Sign out

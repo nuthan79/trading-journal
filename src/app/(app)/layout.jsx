@@ -674,11 +674,6 @@ export default function AppLayout({ children }) {
     <JournalContext.Provider
       value={{
         trades, diary: demo ? demo.diary : diary, flows, profile, accountSize,
-        // The settings page draws and changes the avatar, so it needs the
-        // signed URL the layout already holds and a way to write back — the
-        // same setter FirstRun uses, rather than a second fetch that would
-        // expire on its own schedule.
-        avatar, setProfile,
         all, closed, open, S,
         say,
         openNewTrade, openEditTrade, openExitTrade,
@@ -733,7 +728,7 @@ export default function AppLayout({ children }) {
                 onProfile={() => setShowProfile("account")}
                 onPassword={() => setShowProfile("password")}
                 onSetup={() => setShowSettings(true)}
-                onSettings={() => router.push("/settings")}
+                onSupport={() => router.push("/support")}
                 onSignOut={() => signOut()}
               />
             </div>
