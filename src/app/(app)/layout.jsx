@@ -22,6 +22,8 @@ import AccountMenu from "@/components/journal/AccountMenu";
 import { listenForErrors } from "@/lib/errors";
 import { pageEvent } from "@/lib/pageEvents";
 import { isPreset, presetIndex, presetDataUri } from "@/lib/avatars";
+import { buildDemo } from "@/lib/demo";
+import DemoBanner from "@/components/journal/DemoBanner";
 import Landing from "@/components/Landing";
 import SignInCard from "@/components/SignInCard";
 import { loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
@@ -289,13 +291,55 @@ export default function AppLayout({ children }) {
 
   const accountSize = profile?.account_size ?? 1000000;
 
+  /**
+   * The sample book, or nothing.
+   *
+   * Shown only to an account that has never dismissed it AND has no trades of
+   * its own — so it survives however many visits it takes to get comfortable,
+   * and disappears the moment there is something real to look at instead. See
+   * the note in lib/demo.js for why it is never written to the database.
+   */
+  const demoOn = !!profile && !profile.demo_dismissed_at && trades.length === 0;
+  const demo = useMemo(
+    () => (demoOn
+      ? buildDemo({
+          userId: profile?.id || userId || "demo",
+          accountSize,
+          riskPct: profile?.default_risk_pct ?? 0.75,
+        })
+      : null),
+    [demoOn, profile?.id, userId, accountSize, profile?.default_risk_pct]
+  );
+
+  /**
+   * The first real trade ends it, permanently.
+   *
+   * An effect rather than something bolted onto saveTrade, because a trade can
+   * arrive from an import too, and a rule enforced in two places is a rule
+   * enforced in one of them eventually. Writing the flag — rather than relying
+   * on `trades.length` staying above zero — means deleting everything later
+   * does not resurrect a sample book months in, which would be alarming.
+   */
+  const demoClosed = useRef(false);
+  useEffect(() => {
+    if (!profile || profile.demo_dismissed_at || trades.length === 0) return;
+    // Once per session. Before 028 has been run the column does not exist and
+    // the write fails every time — harmlessly, but there is no reason to ask
+    // the database the same question on every mount to get the same no.
+    if (demoClosed.current) return;
+    demoClosed.current = true;
+    dbSaveProfile({ demo_dismissed_at: new Date().toISOString() })
+      .then(setProfile)
+      .catch(() => { /* the sample is already hidden by the length check */ });
+  }, [profile?.id, profile?.demo_dismissed_at, trades.length]);
+
   const all = useMemo(
-    () => trades.map((t) => ({
+    () => (demo ? demo.trades : trades).map((t) => ({
       ...t,
       ...derivePosition(withExits(t, exitsByTrade), accountSize),
       status: t.status, // authoritative from the DB; a trigger keeps it in step with the tranches
     })),
-    [trades, exitsByTrade, accountSize]
+    [demo, trades, exitsByTrade, accountSize]
   );
   // Every closed trade, whether or not its R is computable. Filtering on
   // isFinite(r) here made a trade with no stop vanish from the money figures
@@ -399,6 +443,10 @@ export default function AppLayout({ children }) {
   };
 
   const removeTrade = async (id) => {
+    if (String(id).startsWith("demo-")) {
+      say("That's sample data — use Clear sample data at the top instead.");
+      return;
+    }
     if (!window.confirm("Delete this trade? This can't be undone.")) return;
     try {
       await dbDeleteTrade(id);
@@ -466,6 +514,24 @@ export default function AppLayout({ children }) {
     }
   };
 
+  /**
+   * Put the sample book away.
+   *
+   * Written to the profile rather than the browser, so dismissing it on a
+   * laptop does not bring it back on a phone. Nothing is deleted because
+   * nothing was ever stored — the flag is the whole of it, which is also why
+   * this needs no confirmation: there is nothing here to lose.
+   */
+  const dismissDemo = async () => {
+    try {
+      setProfile(await dbSaveProfile({ demo_dismissed_at: new Date().toISOString() }));
+    } catch (e) {
+      say(e.message?.includes("demo_dismissed_at")
+        ? "Run 028_demo_dismissed.sql to keep this dismissed."
+        : e.message || "Could not dismiss the sample data.");
+    }
+  };
+
   const saveSettings = async (patch) => {
     try {
       const saved = await dbSaveProfile(patch);
@@ -480,15 +546,32 @@ export default function AppLayout({ children }) {
   const openNewTrade = useCallback(() => {
     setEditing(null); setSelling(false); setShowForm(true);
   }, []);
+  /**
+   * Refused on a sample trade, and every write path is guarded the same way.
+   *
+   * Without this, opening one of the generated trades and pressing Save would
+   * write a genuine row full of invented numbers — indistinguishable, from
+   * then on, from something the user actually did. That is the one way this
+   * feature could corrupt a real journal, so the answer is no rather than a
+   * filter somewhere downstream.
+   */
+  const refuseDemo = useCallback((t) => {
+    if (!t?.demo) return false;
+    say("That's sample data — clear it and log your own trade.");
+    return true;
+  }, [say]);
+
   const openEditTrade = useCallback((t) => {
+    if (refuseDemo(t)) return;
     setEditing(t); setSelling(false); setShowForm(true);
-  }, []);
+  }, [refuseDemo]);
   // Same form, opened on the sell rather than the setup. "Exit" is the word
   // that's in mind when a position is being closed, and hunting for it under
   // Edit is a step nobody asked for.
   const openExitTrade = useCallback((t) => {
+    if (refuseDemo(t)) return;
     setEditing(t); setSelling(true); setShowForm(true);
-  }, []);
+  }, [refuseDemo]);
 
   // These modals are local state, not routes — a cold-reload loses the fact
   // that one was open at all, not just the fields inside it. Reopen the
@@ -580,7 +663,7 @@ export default function AppLayout({ children }) {
   return (
     <JournalContext.Provider
       value={{
-        trades, diary, flows, profile, accountSize,
+        trades, diary: demo ? demo.diary : diary, flows, profile, accountSize,
         // The settings page draws and changes the avatar, so it needs the
         // signed URL the layout already holds and a way to write back — the
         // same setter FirstRun uses, rather than a second fetch that would
@@ -649,6 +732,13 @@ export default function AppLayout({ children }) {
 
         <div className="jwrap">
           {flash && <div className="warn" style={{ marginTop: 14 }}>{flash}</div>}
+          {/* Here rather than on the dashboard, so it is above whichever screen
+              somebody is actually reading. */}
+          {demo && (
+            <div style={{ paddingTop: 16 }}>
+              <DemoBanner onDismiss={dismissDemo} />
+            </div>
+          )}
           {children}
         </div>
 
