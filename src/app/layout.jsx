@@ -10,6 +10,9 @@ import { BRAND } from "@/lib/brand";
  * fills it in.
  */
 export const metadata = {
+  // Without this, Next resolves openGraph URLs against localhost and warns at
+  // build time — and a shared link unfurls with a preview pointing nowhere.
+  ...(BRAND.domain ? { metadataBase: new URL(`https://${BRAND.domain}`) } : {}),
   title: `${BRAND.name} — ${BRAND.tagline}`,
   description: BRAND.blurb,
   applicationName: BRAND.name,

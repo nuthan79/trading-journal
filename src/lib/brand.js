@@ -26,8 +26,8 @@ export const BRAND = {
     "Every trade is measured in R, so a ₹8,000 win on a tight stop and a ₹40,000 " +
     "win on a wide one finally compare.",
 
-  /** Empty until a domain is bought. Nothing renders it while it is blank. */
-  domain: "",
+  /** The canonical host. Used for absolute URLs in link previews. */
+  domain: "ledgerr.app",
 
   /** Where "Contact" points. Blank hides the link rather than mailing nowhere. */
   contactEmail: "nuthann@gmail.com",
