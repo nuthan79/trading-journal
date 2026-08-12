@@ -20,6 +20,27 @@ import { supabase, updatePassword } from "@/lib/db";
 
 const MIN = 8;
 
+/**
+ * The fragment, snapshotted the moment this module loads.
+ *
+ * The supabase client is a module-level singleton with detectSessionInUrl on,
+ * so it starts reading the URL as soon as db.js is imported — and when it
+ * finds a recovery link it consumes the fragment and strips it with
+ * replaceState. That can happen before this component ever mounts, leaving the
+ * effect below to read an address bar with nothing in it and conclude the link
+ * was never valid.
+ *
+ * Reading it here wins that race: this runs synchronously at import, while the
+ * client's URL handling is asynchronous. Guarded for the server render, where
+ * there is no location at all.
+ */
+const INITIAL_HASH = typeof window === "undefined" ? "" : window.location.hash.slice(1);
+
+/** How long to wait for PASSWORD_RECOVERY before deciding it isn't coming.
+ *  Only reached when the fragment was already stripped AND the event fired
+ *  before we subscribed — the case the snapshot above is there to prevent. */
+const RECOVERY_GRACE_MS = 1500;
+
 export default function ResetPage() {
   const router = useRouter();
   const [ready, setReady] = useState(false);
@@ -48,26 +69,50 @@ export default function ResetPage() {
   const [done, setDone] = useState(false);
 
   useEffect(() => {
-    // supabase-js consumes the fragment asynchronously, so the first read can
-    // land before it has finished. The listener catches the recovery event;
-    // getSession covers a page that was already signed in.
+    // The snapshot first, falling back to the live hash for a plain visit
+    // where there was nothing for the client to strip.
+    const hash = new URLSearchParams(INITIAL_HASH || window.location.hash.slice(1));
+
+    // Supabase said no before this page ran — an expired token, or one already
+    // spent. Nothing to wait for, so answer immediately.
+    if (hash.get("error")) {
+      setErr(hash.get("error_description") || "That link didn't work — ask for a new one.");
+      setReady(true);
+      window.history.replaceState({}, "", window.location.pathname);
+      return;
+    }
+
+    const arrivedByLink = hash.get("type") === "recovery";
+    if (arrivedByLink) setRecovery(true);
+
     const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
       if (event === "PASSWORD_RECOVERY") setRecovery(true);
       setSession(s);
       setReady(true);
     });
+
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
-      setReady(true);
+      // THE FIX. getSession resolves long before the client has finished
+      // exchanging a recovery fragment for a session, so declaring readiness
+      // here told anyone following a perfectly good link that it had expired —
+      // the most alarming message this app can show, at the exact moment
+      // somebody is already locked out. When the URL says a recovery is in
+      // flight, wait for it to land.
+      if (!arrivedByLink) setReady(true);
     });
 
-    const hash = new URLSearchParams(window.location.hash.slice(1));
-    if (hash.get("type") === "recovery") setRecovery(true);
-    if (hash.get("error")) {
-      setErr(hash.get("error_description") || "That link didn't work — ask for a new one.");
-      window.history.replaceState({}, "", window.location.pathname);
-    }
-    return () => sub.subscription.unsubscribe();
+    // Re-read rather than just flipping ready. The session may have been
+    // established while we were waiting — by an event that fired before this
+    // listener existed — and the copy taken above would still be the null one
+    // read before the exchange finished. Deciding on that would report a good
+    // link as expired, which is the whole fault being fixed.
+    const grace = setTimeout(async () => {
+      const { data } = await supabase.auth.getSession();
+      setSession(data.session);
+      setReady(true);
+    }, RECOVERY_GRACE_MS);
+    return () => { clearTimeout(grace); sub.subscription.unsubscribe(); };
   }, []);
 
   const tooShort = password.length > 0 && password.length < MIN;
