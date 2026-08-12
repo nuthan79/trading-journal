@@ -90,9 +90,23 @@ export async function POST(req) {
       // spoofing, and would fail SPF and DMARC on the way out.
       from: `${BRAND.name} contact <${to}>`,
       to: [to],
-      // The whole point: hitting reply in the inbox answers the person who
-      // wrote, rather than writing back to ourselves.
+      /**
+       * The field and the raw header, both.
+       *
+       * The point is that hitting reply answers the person who wrote, rather
+       * than writing back to our own contact box — which is what happened:
+       * replies addressed contact@ledgerr.app and would have gone nowhere.
+       * `reply_to` alone did not survive the trip, and from outside there is
+       * no way to tell whether Resend dropped the field or Porkbun stripped
+       * the header while forwarding. Setting an explicit header as well
+       * removes the question.
+       *
+       * Only these two, both documented. The SDK's camelCase `replyTo` is not
+       * a REST field, and an unknown key risks a 422 that would take the whole
+       * form down to fix a reply address.
+       */
       reply_to: email,
+      headers: { "Reply-To": email },
       subject: `${BRAND.name} — message from ${name || email}`,
       text: `From: ${name || "(no name)"} <${email}>\n\n${message}`,
       html:
