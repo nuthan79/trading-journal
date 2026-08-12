@@ -21,20 +21,23 @@ import { supabase, updatePassword } from "@/lib/db";
 const MIN = 8;
 
 /**
- * The fragment, snapshotted the moment this module loads.
+ * The fragment as it was when the document loaded.
  *
- * The supabase client is a module-level singleton with detectSessionInUrl on,
- * so it starts reading the URL as soon as db.js is imported — and when it
- * finds a recovery link it consumes the fragment and strips it with
- * replaceState. That can happen before this component ever mounts, leaving the
- * effect below to read an address bar with nothing in it and conclude the link
- * was never valid.
+ * `window.__lrHash` is set by an inline script in the root layout, which runs
+ * before any bundle and therefore before the supabase client can consume the
+ * recovery fragment and strip it from the address bar. See the note there.
  *
- * Reading it here wins that race: this runs synchronously at import, while the
- * client's URL handling is asynchronous. Guarded for the server render, where
- * there is no location at all.
+ * Snapshotting at module scope was tried first and is not reliable: db.js is
+ * in an earlier chunk and can finish its URL handling before this module is
+ * evaluated. That produced exactly the failure this is here to prevent — a
+ * valid recovery link signing somebody in and then being told there was
+ * nothing to recover. The module-scope read is kept only as a fallback for a
+ * document that somehow rendered without the script.
  */
-const INITIAL_HASH = typeof window === "undefined" ? "" : window.location.hash.slice(1);
+const INITIAL_HASH =
+  typeof window === "undefined"
+    ? ""
+    : (window.__lrHash ?? window.location.hash.slice(1));
 
 /** How long to wait for PASSWORD_RECOVERY before deciding it isn't coming.
  *  Only reached when the fragment was already stripped AND the event fired

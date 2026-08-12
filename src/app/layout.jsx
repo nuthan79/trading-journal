@@ -29,9 +29,35 @@ export const metadata = {
   },
 };
 
+/**
+ * The URL fragment, kept before anything can take it away.
+ *
+ * A recovery link arrives as `/reset#access_token=…&type=recovery`. The
+ * supabase client has detectSessionInUrl on, so the moment db.js loads it
+ * consumes that fragment, signs the visitor in, and strips it from the address
+ * bar with replaceState. By the time the reset page's own code runs, the
+ * evidence that this was a RECOVERY rather than an ordinary sign-in is gone —
+ * and /reset then tells someone who followed a valid link that they are
+ * "already signed in, so there's nothing to recover here", which is true and
+ * useless, because they still cannot set the password they came to set.
+ *
+ * Reading it inside a module cannot be made reliable: db.js sits in an earlier
+ * chunk, so it can run — and finish — before the page module is evaluated.
+ * An inline script in the document is the only place that is guaranteed to go
+ * first, because it executes before any bundle is fetched.
+ *
+ * Deliberately not the whole URL. Only the fragment, only in memory, never
+ * logged and never sent anywhere — it carries an access token.
+ */
+const CAPTURE_HASH =
+  "window.__lrHash=location.hash?location.hash.slice(1):'';";
+
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: CAPTURE_HASH }} />
+      </head>
       <body>
         {children}
         <Analytics />
