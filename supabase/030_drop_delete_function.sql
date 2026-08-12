@@ -1,0 +1,33 @@
+-- ===================================================================
+--  Migration 030 — remove the delete function that did nothing
+--
+--  027 and 029 tried to delete the caller's account from a `security
+--  definer` function, so that no service-role key would have to exist
+--  anywhere in the app. It cannot work, and the way it failed is the
+--  reason this file exists rather than a third attempt at it:
+--
+--    auth.users has row level security and is owned by
+--    supabase_auth_admin. The function is owned by postgres, which is
+--    not a superuser on Supabase, and SECURITY DEFINER does not bypass
+--    RLS unless the owner owns the table.
+--
+--  A DELETE blocked by RLS is not an error. It matches zero rows and
+--  reports success — so the button signed people out, sent them to the
+--  landing page, and left every row exactly where it was. Confirmed on
+--  a real account: signed out, deleted_at null, user row intact.
+--
+--  Deletion now happens at DELETE /api/account, which verifies the
+--  caller's token and then uses the admin API. The route takes no id —
+--  it deletes whoever the token says is calling — so there is nothing
+--  to tamper with.
+--
+--  DROPPED RATHER THAN LEFT IN PLACE. A function that returns success
+--  without doing anything is the most dangerous kind to leave lying
+--  around: anything that finds it later will believe it.
+--
+--  Safe to re-run.
+--
+--  Supabase → SQL Editor → New query → Run.
+-- ===================================================================
+
+drop function if exists public.delete_my_account();

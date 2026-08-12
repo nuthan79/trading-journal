@@ -1005,42 +1005,20 @@ export async function exportEverything() {
 export const signOutEverywhere = () => supabase.auth.signOut({ scope: "global" });
 
 /**
- * The user's uploaded files, removed through the Storage API.
- *
- * Not SQL. Supabase guards storage.objects with a trigger that refuses direct
- * deletes — "Use the Storage API instead" — and a security definer function
- * does not get past it, because the guard is on the table rather than the
- * role. 027 tried anyway, the raise aborted the whole function, and the delete
- * from auth.users never ran: the button reported that it was permanently
- * deleting the account and then deleted nothing.
- *
- * Everything is written under a folder named for the user id, so listing that
- * folder is the whole inventory. Failures are swallowed: an orphaned image
- * costs a little storage, whereas an account that cannot be deleted breaks a
- * promise made in the privacy policy. Erasure goes ahead either way.
- */
-async function purgeMyStorage(user_id) {
-  for (const bucket of ["charts", "avatars"]) {
-    try {
-      const { data } = await supabase.storage.from(bucket).list(user_id, { limit: 1000 });
-      const paths = (data || []).map((o) => `${user_id}/${o.name}`);
-      if (paths.length) await supabase.storage.from(bucket).remove(paths);
-    } catch {
-      /* see above — never block the deletion */
-    }
-  }
-}
-
-/**
  * Delete this account and everything in it.
  *
- * The row deletion is a security definer function rather than an API route, so
- * the service-role key never has to exist in this app — see 029 for why that
- * matters more than the convenience. There is nothing to pass: the function
- * reads auth.uid() itself, so a caller cannot name someone else.
+ * THE WORK HAPPENS ON THE SERVER, at /api/account, and it took two failed
+ * attempts to accept that. A `security definer` function was tried first, to
+ * keep the service-role key out of this app entirely — but auth.users has row
+ * level security and is owned by supabase_auth_admin, so a function owned by
+ * postgres could not touch it. A DELETE blocked by RLS is not an error: it
+ * matched zero rows and returned success, so the button signed people out,
+ * showed them the landing page, and left every row where it was.
  *
- * Files first, while the user still exists to be allowed to remove them. After
- * the auth row goes there is no session, and storage does not cascade.
+ * A promise in the privacy policy that quietly does nothing is worse than a
+ * secret held on a server. The route takes no id — it deletes whoever the
+ * access token says is calling — so nothing about it can be pointed at
+ * somebody else.
  *
  * Signs out afterwards because the session outlives the user it referred to:
  * the token stays cryptographically valid until it expires, and every request
@@ -1048,16 +1026,9 @@ async function purgeMyStorage(user_id) {
  * rather than as the account having gone.
  */
 export async function deleteMyAccount() {
-  const user_id = await uid();
-  if (user_id) await purgeMyStorage(user_id);
+  const res = await apiFetch("/api/account", { method: "DELETE" });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || "Could not delete the account.");
 
-  const { error } = await supabase.rpc("delete_my_account");
-  if (error) {
-    throw new Error(
-      isMissingTable(error) || /function .*delete_my_account/i.test(error.message || "")
-        ? "Account deletion isn't set up on this database yet — run 029_delete_account_fix.sql."
-        : error.message
-    );
-  }
   try { await supabase.auth.signOut(); } catch { /* the account is gone either way */ }
 }
