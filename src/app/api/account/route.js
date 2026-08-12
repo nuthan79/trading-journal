@@ -46,11 +46,14 @@ const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 async function purgeStorage(admin, userId) {
   for (const bucket of ["charts", "avatars"]) {
     try {
-      const { data } = await admin.storage.from(bucket).list(userId, { limit: 1000 });
+      const { data, error } = await admin.storage.from(bucket).list(userId, { limit: 1000 });
+      if (error) { console.error("[account] list", bucket, error.message); continue; }
       const paths = (data || []).map((o) => `${userId}/${o.name}`);
-      if (paths.length) await admin.storage.from(bucket).remove(paths);
-    } catch {
-      /* see above */
+      if (!paths.length) continue;
+      const { error: rmErr } = await admin.storage.from(bucket).remove(paths);
+      if (rmErr) console.error("[account] remove", bucket, rmErr.message);
+    } catch (e) {
+      console.error("[account] storage", bucket, e?.message);
     }
   }
 }
@@ -64,11 +67,30 @@ export async function DELETE(req) {
   if (!url || !serviceKey) {
     // Said plainly rather than pretending. The previous version of this
     // feature failed silently, which is the fault being corrected.
+    console.error("[account] not configured:",
+      `url=${!!url}`, `serviceKey=${!!serviceKey}`);
     return NextResponse.json(
       { error: "Account deletion isn't configured on the server yet." },
       { status: 503 }
     );
   }
+
+  /**
+   * The shape of the key, never the key.
+   *
+   * Three attempts at this feature have now failed in three different ways and
+   * all of them looked the same from the browser, so the one fact worth
+   * writing down is which kind of credential arrived: a publishable key in
+   * this slot would explain an admin call being refused, and is otherwise
+   * invisible. Length and prefix only — enough to identify the type, useless
+   * to anyone reading the logs.
+   */
+  console.log("[account] key kind:",
+    serviceKey.startsWith("sb_secret_") ? "sb_secret"
+      : serviceKey.startsWith("sb_publishable_") ? "sb_publishable (WRONG — this is the public one)"
+      : serviceKey.startsWith("eyJ") ? "legacy JWT"
+      : "unrecognised",
+    `len=${serviceKey.length}`);
 
   const admin = createClient(url, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -80,10 +102,30 @@ export async function DELETE(req) {
   // reports, the profile — follows this out through its cascades.
   const { error } = await admin.auth.admin.deleteUser(userId);
   if (error) {
-    // Never the provider's raw message: it can quote identifiers that mean
-    // nothing to the person reading it.
+    // The browser gets nothing useful, on purpose — but the reason is written
+    // where it can be read, because a generic message on the screen is what
+    // made the last two failures indistinguishable from each other.
+    console.error("[account] deleteUser failed:", error.status, error.message);
     return NextResponse.json({ error: "Could not delete the account." }, { status: 500 });
   }
 
+  /**
+   * Confirmed, not assumed.
+   *
+   * The whole history of this feature is calls that reported success without
+   * acting — an RLS-blocked DELETE matching zero rows and returning ok. So the
+   * row is looked for again afterwards, and a user who is still there is
+   * reported as a failure rather than celebrated as one.
+   */
+  const { data: still } = await admin.auth.admin.getUserById(userId);
+  if (still?.user?.id) {
+    console.error("[account] deleteUser returned ok but the user is still present:", userId);
+    return NextResponse.json(
+      { error: "The account could not be removed. Nothing was deleted." },
+      { status: 500 }
+    );
+  }
+
+  console.log("[account] deleted", userId);
   return NextResponse.json({ ok: true });
 }
