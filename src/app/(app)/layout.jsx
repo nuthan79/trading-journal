@@ -8,7 +8,7 @@ import {
   supabase, getProfile, saveProfile as dbSaveProfile,
   listTrades, listExitsByTrade, saveExits, saveTrade as dbSaveTrade, deleteTrade as dbDeleteTrade,
   listDiary, saveDiary as dbSaveDiary, deleteDiary as dbDeleteDiary,
-  listFlows, markOpenPositions, sendMagicLink, signInWithPassword, signOut,
+  listFlows, markOpenPositions, signInWithPassword, signOut,
   signUpWithPassword, signInWithGoogle,
   sendPasswordReset, avatarUrl, trackVisit,
 } from "@/lib/db";
@@ -67,16 +67,15 @@ export default function AppLayout({ children }) {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [authMode, setAuthMode] = useState("password");
-  // Signing in versus creating an account. Separate from authMode, which is
-  // only about how an existing user proves who they are.
+  // Signing in versus creating an account.
   const [authView, setAuthView] = useState("signin");
   const [authErr, setAuthErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [linkSent, setLinkSent] = useState(false);
-  // "link" is a sign-in link, "reset" is a set-a-new-password link. Both end
-  // in the same "check your email" panel, which needs to say which was sent.
-  const [sentKind, setSentKind] = useState("link");
+  // "confirm" is a new account awaiting its confirmation link, "reset" is a
+  // set-a-new-password link. Both end in the same "check your email" panel,
+  // which needs to say which was sent.
+  const [sentKind, setSentKind] = useState("confirm");
 
   // Implicit flow reports a bad or expired link in the URL fragment
   // (#error=...&error_description=...), not a query string — supabase-js
@@ -165,17 +164,6 @@ export default function AppLayout({ children }) {
     setBusy(false);
   };
 
-  const sendLink = async () => {
-    setBusy(true); setAuthErr("");
-    // Straight back to the app root: implicit flow hands the session over in
-    // the URL fragment, which never reaches the server, so there's nothing
-    // for a callback route to do.
-    const { error } = await sendMagicLink(email, window.location.origin);
-    if (error) setAuthErr(error.message);
-    else { setSentKind("link"); setLinkSent(true); }
-    setBusy(false);
-  };
-
   const sendReset = async () => {
     setBusy(true); setAuthErr("");
     const { error } = await sendPasswordReset(email, `${window.location.origin}/reset`);
@@ -219,10 +207,6 @@ export default function AppLayout({ children }) {
     pageEvent("google_clicked");
     const { error } = await signInWithGoogle(window.location.origin);
     if (error) { setAuthErr(error.message); setBusy(false); }
-  };
-
-  const switchAuthMode = (mode) => {
-    setAuthMode(mode); setAuthErr(""); setLinkSent(false);
   };
 
   const switchAuthView = (view) => {
@@ -545,10 +529,9 @@ export default function AppLayout({ children }) {
             linkSent={linkSent} sentKind={sentKind}
             email={email} setEmail={setEmail}
             password={password} setPassword={setPassword}
-            authMode={authMode} switchAuthMode={switchAuthMode}
             authErr={authErr} busy={busy}
             signInPassword={signInPassword} signUpPassword={signUpPassword}
-            signInGoogle={signInGoogle} sendLink={sendLink}
+            signInGoogle={signInGoogle}
             sendReset={sendReset} resetToEmailForm={resetToEmailForm}
           />
         }

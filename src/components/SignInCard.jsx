@@ -13,11 +13,17 @@ const GOOGLE_ON = process.env.NEXT_PUBLIC_GOOGLE_AUTH === "1";
  * its hero. Every piece of auth state still lives in the layout and this owns
  * nothing, because the layout is what holds the Supabase session.
  *
- * THREE WAYS IN, ORDERED BY HOW LIKELY THEY ARE TO WORK. Google first: it
- * sends no email, so nothing about it can be rate-limited, land in spam, or be
- * typed wrong. Then a password, which at least fails immediately and out loud.
- * The magic link is last — it is the one that depends on a mail server being
- * healthy, and it used to be the only way to create an account.
+ * TWO WAYS IN, ORDERED BY HOW LIKELY THEY ARE TO WORK. Google first: it sends
+ * no email, so nothing about it can be rate-limited, land in spam, or be typed
+ * wrong. Then a password, which at least fails immediately and out loud.
+ *
+ * THE MAGIC LINK IS GONE. It was here because it was once the only way to
+ * create an account at all — signInWithPassword only ever admits a user who
+ * already exists. Now that sign-up and Google both work, it is a third route
+ * to what two already do, and the only one whose failure is silent: a link
+ * that lands in spam looks exactly like an app that ignored you. Anyone who
+ * signed up by link and never set a password gets in through "Forgot your
+ * password?", which issues one.
  *
  * "Check your email" is a state of this form rather than a separate screen, so
  * the way back to the form can reach the same state that got you here.
@@ -25,9 +31,9 @@ const GOOGLE_ON = process.env.NEXT_PUBLIC_GOOGLE_AUTH === "1";
 export default function SignInCard({
   view = "signin", switchAuthView,
   linkSent, sentKind, email, setEmail, password, setPassword,
-  authMode, switchAuthMode, authErr, busy,
+  authErr, busy,
   signInPassword, signUpPassword, signInGoogle,
-  sendLink, sendReset, resetToEmailForm,
+  sendReset, resetToEmailForm,
 }) {
   if (linkSent) {
     return (
@@ -41,16 +47,10 @@ export default function SignInCard({
                 way. Open it from any browser or mail app. It works once and expires
                 shortly, so ask again if it&apos;s been a while.
               </>
-            ) : sentKind === "confirm" ? (
+            ) : (
               <>
                 Your account is made. Confirm <b>{email}</b> using the link we just sent,
                 and you&apos;re in. Open it from any browser or mail app.
-              </>
-            ) : (
-              <>
-                We sent a sign-in link to <b>{email}</b>. Open it from any browser or mail
-                app — it signs you in wherever you click it. The link expires shortly, so
-                request a new one if it&apos;s been a while.
               </>
             )}
           </p>
@@ -69,13 +69,12 @@ export default function SignInCard({
   const shortPassword = password.length > 0 && password.length < MIN_PASSWORD;
   const canSubmit = signup
     ? !!email && password.length >= MIN_PASSWORD
-    : authMode === "password" ? !!email && !!password : !!email;
+    : !!email && !!password;
 
   const submit = () => {
     if (!canSubmit || busy) return;
     if (signup) signUpPassword();
-    else if (authMode === "password") signInPassword();
-    else sendLink();
+    else signInPassword();
   };
 
   return (
@@ -91,35 +90,24 @@ export default function SignInCard({
         </>
       )}
 
-      {!signup && (
-        <div className="seg">
-          <button type="button" data-on={authMode === "password" ? 1 : 0}
-                  onClick={() => switchAuthMode("password")}>Password</button>
-          <button type="button" data-on={authMode === "link" ? 1 : 0}
-                  onClick={() => switchAuthMode("link")}>Email link</button>
-        </div>
-      )}
-
       <label className="f"><span>Email</span>
         <input className="in" type="email" value={email} autoComplete="username"
                onChange={(e) => setEmail(e.target.value)}
                onKeyDown={(e) => e.key === "Enter" && submit()} /></label>
 
-      {(signup || authMode === "password") && (
-        <label className="f"><span>Password</span>
-          <input className="in" type="password" value={password}
-                 autoComplete={signup ? "new-password" : "current-password"}
-                 onChange={(e) => setPassword(e.target.value)}
-                 onKeyDown={(e) => e.key === "Enter" && submit()} />
-          {signup && (
-            <div className="hint" style={shortPassword ? { color: "var(--short)" } : undefined}>
-              At least {MIN_PASSWORD} characters. Pick something you don&apos;t use elsewhere.
-            </div>
-          )}
-        </label>
-      )}
+      <label className="f"><span>Password</span>
+        <input className="in" type="password" value={password}
+               autoComplete={signup ? "new-password" : "current-password"}
+               onChange={(e) => setPassword(e.target.value)}
+               onKeyDown={(e) => e.key === "Enter" && submit()} />
+        {signup && (
+          <div className="hint" style={shortPassword ? { color: "var(--short)" } : undefined}>
+            At least {MIN_PASSWORD} characters. Pick something you don&apos;t use elsewhere.
+          </div>
+        )}
+      </label>
 
-      {!signup && authMode === "password" && (
+      {!signup && (
         <button type="button" className="lnk" onClick={sendReset} disabled={busy || !email}
                 title={email ? "" : "Enter your email first"}>
           Forgot your password?
@@ -129,18 +117,13 @@ export default function SignInCard({
       {authErr && <div className="warn">{authErr}</div>}
 
       <button className="btn" onClick={submit} disabled={busy || !canSubmit}>
-        {busy
-          ? (signup ? "Creating…" : authMode === "link" ? "Sending…" : "Signing in…")
-          : signup ? "Create account"
-          : authMode === "password" ? "Sign in" : "Send magic link"}
+        {busy ? (signup ? "Creating…" : "Signing in…") : signup ? "Create account" : "Sign in"}
       </button>
 
       <div style={{ fontSize: 11.5, color: "var(--ink3)", lineHeight: 1.6 }}>
         {signup
           ? "Your journal is private to you. You can export everything, or delete it, whenever you want."
-          : authMode === "password"
-          ? "Your existing password still works. Email link is there for when you'd rather not type it."
-          : "We'll email you a link that signs you in — no password, and it works in whichever browser opens it."}
+          : "Forgotten it? The reset link above sets a new one."}
       </div>
 
       <div className="sic-swap">

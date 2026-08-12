@@ -29,6 +29,13 @@ export const BRAND = {
   /** The canonical host. Used for absolute URLs in link previews. */
   domain: "ledgerr.app",
 
-  /** Where "Contact" points. Blank hides the link rather than mailing nowhere. */
-  contactEmail: "nuthann@gmail.com",
+  /**
+   * The public address. Blank hides every reference rather than mailing
+   * nowhere — and makes the legal pages say plainly that they are unfinished.
+   *
+   * Lowercase deliberately. Mail routing ignores case, but this string is
+   * printed on three public pages and copied into people's address books, and
+   * a capitalised local part reads as a typo to anyone who notices.
+   */
+  contactEmail: "contact@ledgerr.app",
 };

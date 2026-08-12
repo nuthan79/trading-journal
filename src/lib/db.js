@@ -801,14 +801,16 @@ export async function saveProfile(patch) {
 
 /* -------------------------------- auth ----------------------------- */
 
-export const sendMagicLink = (email, emailRedirectTo) =>
-  supabase.auth.signInWithOtp({ email, options: { emailRedirectTo } });
-
 /**
- * Kept alongside the magic link on purpose. Magic links depend on email
- * delivery and Supabase's send-rate cap, so password sign-in is the way
- * back in when a link is slow, rate-limited, or lands in a browser that
- * can't reach this app.
+ * The magic link is gone, and signInWithOtp with it.
+ *
+ * It existed because it was once the only way to create an account at all —
+ * this function only ever admits a user who already exists. Sign-up and Google
+ * both work now, so it had become a third route to what two already do, and
+ * the only one whose failure is silent: a link sitting in a spam folder is
+ * indistinguishable from an app that ignored you. Anyone who signed up by link
+ * and never set a password gets in through sendPasswordReset below, which
+ * issues one.
  */
 export const signInWithPassword = (email, password) =>
   supabase.auth.signInWithPassword({ email, password });
