@@ -157,9 +157,16 @@ export function buildDemo({ userId = "demo", accountSize = 1000000, riskPct = 0.
       stop_loss: stop,
       initial_stop_loss: stop,
       stop_source: "entered",
-      base_pattern: PATTERNS[Math.floor(r() * PATTERNS.length)],
+      // Column names from schema.sql, not from what they ought to be called:
+      // the first pass wrote base_pattern and volume_pct, and edge.js reads
+      // `pattern` and `vol_pct_avg` — so "Where the edge is" reported all
+      // forty trades under "Not recorded", which is the one screen the sample
+      // exists to fill.
+      pattern: PATTERNS[Math.floor(r() * PATTERNS.length)],
+      vol_pct_avg: Math.round(80 + r() * 180),
+      weinstein_stage: r() < 0.75 ? 2 : 1,
       rs_rank: Math.round(55 + r() * 44),
-      volume_pct: Math.round(80 + r() * 180),
+      pivot_price: round2(entryPrice * (0.985 + r() * 0.02)),
       charges: 0,
       charges_auto: true,
       imported: false,

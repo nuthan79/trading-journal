@@ -365,17 +365,27 @@ export default function AppLayout({ children }) {
     ).length,
     [trades]
   );
+  /**
+   * What the topbar counts.
+   *
+   * The same rows every screen below is reading, which these three were not:
+   * they counted the real table while the dashboard behind them described the
+   * sample, so a new account read "0 closed · 0 open" above a summary of forty
+   * trades. needStopsCount deliberately stays on the real table — it drives a
+   * chore on the Stops page, and there is no chore to do on invented rows.
+   */
+  const shown = demo ? demo.trades : trades;
   const closedCount = useMemo(
-    () => trades.filter((t) => t.status === "closed").length,
-    [trades]
+    () => shown.filter((t) => t.status === "closed").length,
+    [shown]
   );
   const openCount = useMemo(
-    () => trades.filter((t) => t.status === "open" || t.status === "partial").length,
-    [trades]
+    () => shown.filter((t) => t.status === "open" || t.status === "partial").length,
+    [shown]
   );
   const partialCount = useMemo(
-    () => trades.filter((t) => t.status === "partial").length,
-    [trades]
+    () => shown.filter((t) => t.status === "partial").length,
+    [shown]
   );
   const S = useMemo(() => stats(closed), [closed]);
 
