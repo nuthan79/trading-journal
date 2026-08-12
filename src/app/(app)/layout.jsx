@@ -21,6 +21,7 @@ import ProfileSheet from "@/components/journal/ProfileSheet";
 import AccountMenu from "@/components/journal/AccountMenu";
 import { listenForErrors } from "@/lib/errors";
 import { pageEvent } from "@/lib/pageEvents";
+import { isPreset, presetIndex, presetDataUri } from "@/lib/avatars";
 import Landing from "@/components/Landing";
 import SignInCard from "@/components/SignInCard";
 import { loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
@@ -153,6 +154,12 @@ export default function AppLayout({ children }) {
   useEffect(() => {
     let alive = true;
     if (!profile?.avatar_path) { setAvatar(null); return; }
+    // A preset is drawn from its index, so it resolves here rather than making
+    // every component that shows a face know the difference.
+    if (isPreset(profile.avatar_path)) {
+      setAvatar(presetDataUri(presetIndex(profile.avatar_path)));
+      return;
+    }
     avatarUrl(profile.avatar_path).then((u) => { if (alive) setAvatar(u); });
     return () => { alive = false; };
   }, [profile?.avatar_path]);
@@ -551,6 +558,9 @@ export default function AppLayout({ children }) {
     return (
       <FirstRun
         initialName={profile.journal_name}
+        profile={profile}
+        avatar={avatar}
+        onProfileChange={setProfile}
         onComplete={async (patch) => {
           const saved = await dbSaveProfile(patch);
           setProfile(saved);
@@ -571,6 +581,11 @@ export default function AppLayout({ children }) {
     <JournalContext.Provider
       value={{
         trades, diary, flows, profile, accountSize,
+        // The settings page draws and changes the avatar, so it needs the
+        // signed URL the layout already holds and a way to write back — the
+        // same setter FirstRun uses, rather than a second fetch that would
+        // expire on its own schedule.
+        avatar, setProfile,
         all, closed, open, S,
         say,
         openNewTrade, openEditTrade, openExitTrade,
@@ -625,6 +640,7 @@ export default function AppLayout({ children }) {
                 onProfile={() => setShowProfile("account")}
                 onPassword={() => setShowProfile("password")}
                 onSetup={() => setShowSettings(true)}
+                onSettings={() => router.push("/settings")}
                 onSignOut={() => signOut()}
               />
             </div>

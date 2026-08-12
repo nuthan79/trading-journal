@@ -1,8 +1,7 @@
 "use client";
 
-/** Supabase's own default. Enforced here so the failure is caught before a
- *  round trip, and phrased as a requirement rather than as an error. */
-export const MIN_PASSWORD = 6;
+import { useEffect, useState } from "react";
+import { passwordScore, PASSWORD_LABELS, MIN_PASSWORD } from "@/lib/password";
 
 const GOOGLE_ON = process.env.NEXT_PUBLIC_GOOGLE_AUTH === "1";
 
@@ -66,9 +65,24 @@ export default function SignInCard({
   }
 
   const signup = view === "signup";
+
+  /**
+   * Local, because neither ever leaves this card. The repeat is a check on
+   * what was typed, not a second value to store, and the agreement is a gate
+   * rather than something the sign-up call takes. Keeping them out of the
+   * layout keeps the auth state to the things auth actually needs.
+   */
+  const [confirm, setConfirm] = useState("");
+  const [agreed, setAgreed] = useState(false);
+  useEffect(() => { setConfirm(""); setAgreed(false); }, [view]);
+
   const shortPassword = password.length > 0 && password.length < MIN_PASSWORD;
+  const score = passwordScore(password);
+  const mismatch = confirm.length > 0 && confirm !== password;
+  const matched = confirm.length > 0 && confirm === password;
+
   const canSubmit = signup
-    ? !!email && password.length >= MIN_PASSWORD
+    ? !!email && password.length >= MIN_PASSWORD && confirm === password && agreed
     : !!email && !!password;
 
   const submit = () => {
@@ -101,11 +115,47 @@ export default function SignInCard({
                onChange={(e) => setPassword(e.target.value)}
                onKeyDown={(e) => e.key === "Enter" && submit()} />
         {signup && (
-          <div className="hint" style={shortPassword ? { color: "var(--short)" } : undefined}>
-            At least {MIN_PASSWORD} characters. Pick something you don&apos;t use elsewhere.
-          </div>
+          <>
+            {/* Five segments, filled to the score. Shown only once there is
+                something to judge — an empty bar beside an empty field reads
+                as a failure before anyone has typed. */}
+            {password.length > 0 && (
+              <div className="sic-meter" aria-hidden="true">
+                {[0, 1, 2, 3, 4].map((i) => (
+                  <i key={i} data-on={i <= score ? 1 : 0} data-s={score} />
+                ))}
+                <span data-s={score}>{PASSWORD_LABELS[score]}</span>
+              </div>
+            )}
+            <div className="hint" style={shortPassword ? { color: "var(--short)" } : undefined}>
+              At least {MIN_PASSWORD} characters. Pick something you don&apos;t use elsewhere.
+            </div>
+          </>
         )}
       </label>
+
+      {signup && (
+        <label className="f"><span>Repeat password</span>
+          <input className="in" type="password" value={confirm} autoComplete="new-password"
+                 onChange={(e) => setConfirm(e.target.value)}
+                 onKeyDown={(e) => e.key === "Enter" && submit()} />
+          {mismatch && <div className="hint" style={{ color: "var(--short)" }}>Those two don&apos;t match.</div>}
+          {matched && <div className="hint" style={{ color: "var(--long)" }}>Passwords match.</div>}
+        </label>
+      )}
+
+      {/* Consent recorded at the moment it is given, rather than a line of
+          small print claiming that using the site implies it. The DPDP Act
+          wants consent to be a positive act; an unticked box is one. */}
+      {signup && (
+        <label className="sic-agree">
+          <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
+          <span>
+            I agree to the <a href="/terms" target="_blank" rel="noopener">Terms of Use</a>{" "}
+            and acknowledge the <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>.
+          </span>
+        </label>
+      )}
 
       {!signup && (
         <button type="button" className="lnk" onClick={sendReset} disabled={busy || !email}
@@ -152,6 +202,34 @@ export default function SignInCard({
           border-top: 1px solid var(--rule); padding-top: 13px;
           font-size: 12.5px; color: var(--ink3);
         }
+
+        .sic-meter {
+          display: flex; align-items: center; gap: 4px; margin-top: 7px;
+        }
+        .sic-meter i {
+          flex: 1; height: 3px; border-radius: 2px; background: var(--rule);
+        }
+        /* Rust only at the bottom of the range. Amber in the middle rather
+           than a second red, because "fair" is not a failure and colouring it
+           like one trains people to ignore the bar entirely. */
+        .sic-meter i[data-on="1"][data-s="0"],
+        .sic-meter i[data-on="1"][data-s="1"] { background: var(--short); }
+        .sic-meter i[data-on="1"][data-s="2"] { background: var(--brass); }
+        .sic-meter i[data-on="1"][data-s="3"],
+        .sic-meter i[data-on="1"][data-s="4"] { background: var(--long); }
+        .sic-meter span {
+          font-size: 11px; min-width: 62px; text-align: right; color: var(--ink3);
+        }
+        .sic-meter span[data-s="0"], .sic-meter span[data-s="1"] { color: var(--short); }
+        .sic-meter span[data-s="2"] { color: var(--brass); }
+        .sic-meter span[data-s="3"], .sic-meter span[data-s="4"] { color: var(--long); }
+
+        .sic-agree {
+          display: flex; align-items: flex-start; gap: 9px;
+          font-size: 12px; line-height: 1.55; color: var(--ink2); cursor: pointer;
+        }
+        .sic-agree input { margin-top: 2px; flex: none; accent-color: var(--ink); }
+        .sic-agree a { color: var(--ink); text-underline-offset: 2px; }
       `}</style>
       <style jsx global>{`
         .sic-swaplink { font-size: 12.5px !important; color: var(--ink) !important; }

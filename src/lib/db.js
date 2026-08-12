@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient } from "@supabase/supabase-js";
+import { isPreset, presetPath } from "./avatars";
 
 /**
  * The whole storage layer. In the prototype this was window.storage; here it
@@ -751,9 +752,35 @@ export async function removeAvatar() {
   return data;
 }
 
+/**
+ * Choose one of the drawn avatars.
+ *
+ * Writes the sentinel into the same column an upload uses, and deletes the
+ * uploaded file if there was one — otherwise picking a preset would leave the
+ * old photo sitting in the bucket, paid for and unreachable, and switching
+ * back and forth would accumulate them.
+ */
+export async function saveAvatarPreset(index) {
+  const user_id = await uid();
+  const { data: prev } = await supabase
+    .from("profiles").select("avatar_path").eq("id", user_id).single();
+
+  const { data, error } = await supabase
+    .from("profiles").update({ avatar_path: presetPath(index) }).eq("id", user_id)
+    .select().single();
+  if (error) throw error;
+
+  if (prev?.avatar_path && !isPreset(prev.avatar_path)) {
+    await supabase.storage.from("avatars").remove([prev.avatar_path]);
+  }
+  return data;
+}
+
 /** A viewing URL for a stored avatar. Private bucket, so it expires. */
 export async function avatarUrl(path) {
-  if (!path) return null;
+  // A preset is drawn, not stored, so there is nothing to sign. Returning null
+  // lets the caller fall through to rendering it directly.
+  if (!path || isPreset(path)) return null;
   const { data } = await supabase.storage.from("avatars").createSignedUrl(path, 3600);
   return data?.signedUrl || null;
 }

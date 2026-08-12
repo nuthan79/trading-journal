@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, updatePassword } from "@/lib/db";
+import { MIN_PASSWORD } from "@/lib/password";
 
 /**
  * Where the recovery email lands.
@@ -17,8 +18,6 @@ import { supabase, updatePassword } from "@/lib/db";
  * someone simply typing /reset while signed in are all turned away, each told
  * what to do instead rather than shown a form that fails on submit.
  */
-
-const MIN = 8;
 
 /**
  * The fragment as it was when the document loaded.
@@ -118,9 +117,9 @@ export default function ResetPage() {
     return () => { clearTimeout(grace); sub.subscription.unsubscribe(); };
   }, []);
 
-  const tooShort = password.length > 0 && password.length < MIN;
+  const tooShort = password.length > 0 && password.length < MIN_PASSWORD;
   const mismatch = confirm.length > 0 && password !== confirm;
-  const valid = password.length >= MIN && password === confirm;
+  const valid = password.length >= MIN_PASSWORD && password === confirm;
 
   const submit = async () => {
     if (!valid || busy) return;
@@ -178,7 +177,7 @@ export default function ResetPage() {
                      onChange={(e) => setConfirm(e.target.value)}
                      onKeyDown={(e) => e.key === "Enter" && submit()} /></label>
 
-            {tooShort && <div className="hint">At least {MIN} characters.</div>}
+            {tooShort && <div className="hint">At least {MIN_PASSWORD} characters.</div>}
             {mismatch && <div className="hint">Those two don&apos;t match.</div>}
             {err && <div className="warn">{err}</div>}
 

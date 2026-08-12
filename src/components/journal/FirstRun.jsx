@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { track } from "@/lib/db";
 import { pageEvent } from "@/lib/pageEvents";
+import AvatarChoice from "./AvatarChoice";
 import { Check } from "lucide-react";
 import { rupee, pct } from "@/lib/format";
 import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
@@ -22,7 +23,7 @@ import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
 
 const PRESET_RISK = [0.5, 0.75, 1.0, 1.5];
 
-export default function FirstRun({ onComplete, initialName = "" }) {
+export default function FirstRun({ onComplete, initialName = "", profile, avatar, onProfileChange }) {
   const persisted = loadDraft(DRAFT_KEYS.firstRun);
 
   const [name, setName] = useState(persisted?.name ?? (initialName || ""));
@@ -67,7 +68,7 @@ export default function FirstRun({ onComplete, initialName = "" }) {
     <div className="fr-wrap">
       <div className="fr-intro">
         <div className="eyebrow">Before you start</div>
-        <h1 className="disp fr-h1">Two things to set</h1>
+        <h1 className="disp fr-h1">A few things to set</h1>
         <p className="fr-lede">
           Every figure in this journal is measured against these. They can be changed
           later in settings, but the numbers will only mean what they say once
@@ -140,6 +141,23 @@ export default function FirstRun({ onComplete, initialName = "" }) {
           />
         </label>
 
+        {/* Saved on click rather than with the rest of the form. It writes
+            straight to the profile row, which already exists — the trigger on
+            auth.users made it at sign-up — so there is nothing to hold back
+            and waiting would only mean losing the choice if setup is abandoned
+            halfway. */}
+        {onProfileChange && (
+          <div className="fr-field">
+            <span className="fr-label">Picture — optional</span>
+            <AvatarChoice
+              profile={profile}
+              avatar={avatar}
+              onChanged={onProfileChange}
+              compact
+            />
+          </div>
+        )}
+
         {err && <div className="warn">{err}</div>}
 
         <button
@@ -166,6 +184,10 @@ export default function FirstRun({ onComplete, initialName = "" }) {
           display: flex; flex-direction: column; gap: 22px;
         }
         .fr-field { display: block; }
+        .fr-label {
+          display: block; font-size: 10px; font-weight: 600; letter-spacing: 0.12em;
+          text-transform: uppercase; color: var(--ink3); margin-bottom: 9px;
+        }
         .fr-big { font-size: 19px; padding: 11px; }
         .fr-help {
           font-size: 11.5px; color: var(--ink3); line-height: 1.6;

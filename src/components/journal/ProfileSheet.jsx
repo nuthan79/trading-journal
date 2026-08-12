@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { X, LogOut, Camera, Trash2, Crown, Download } from "lucide-react";
+import { useEffect, useState } from "react";
+import { X, LogOut, Trash2, Crown, Download } from "lucide-react";
 import {
   supabase, reauthenticate, updatePassword, sendPasswordReset, signOut,
-  uploadAvatar, removeAvatar, exportEverything,
-  signOutEverywhere, deleteMyAccount,
+  exportEverything, signOutEverywhere, deleteMyAccount,
 } from "@/lib/db";
 import { rupee } from "@/lib/format";
+import { MIN_PASSWORD } from "@/lib/password";
+import AvatarChoice from "./AvatarChoice";
 
 /**
  * The account, as opposed to the journal's settings.
@@ -18,7 +19,6 @@ import { rupee } from "@/lib/format";
  * keystroke to localStorage.
  */
 
-const MIN_PASSWORD = 8;
 
 /**
  * Change the password without leaving the journal.
@@ -158,73 +158,33 @@ const fmtDate = (d) => {
     : "—";
 };
 
-const MAX_UPLOAD = 8 * 1024 * 1024;
-
-/** The picture, and the two things you can do to it. */
+/**
+ * The picture as it currently stands, beside the ways to change it.
+ *
+ * The uploading, the presets and the clearing all moved into AvatarChoice when
+ * first run started offering the same thing — this keeps only the large
+ * preview, because a face is worth seeing at a size the 42px chooser can't
+ * give it. It is display, not a control: the actions are all one component
+ * along, and a preview that also opened a file dialog gave the same job two
+ * places to be done from.
+ */
 function AvatarPicker({ profile, avatar, onChanged }) {
-  const fileRef = useRef(null);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
-
   const initials = ((profile?.journal_name || "?").trim().slice(0, 2)).toUpperCase();
-
-  const choose = async (e) => {
-    const file = e.target.files?.[0];
-    // Cleared straight away so picking the same file twice still fires change.
-    e.target.value = "";
-    if (!file) return;
-
-    if (!/^image\//.test(file.type)) { setErr("That needs to be an image."); return; }
-    if (file.size > MAX_UPLOAD) { setErr("That image is over 8 MB — pick a smaller one."); return; }
-
-    setBusy(true); setErr("");
-    try {
-      onChanged(await uploadAvatar(file));
-    } catch (e2) {
-      setErr(e2.message?.includes("Bucket not found")
-        ? "Migration 010 hasn't been run — supabase/010_avatars.sql creates the bucket this needs."
-        : e2.message || "Could not save that picture.");
-    }
-    setBusy(false);
-  };
-
-  const clear = async () => {
-    setBusy(true); setErr("");
-    try {
-      onChanged(await removeAvatar());
-    } catch (e2) {
-      setErr(e2.message || "Could not remove it.");
-    }
-    setBusy(false);
-  };
 
   return (
     <div className="pf-av">
-      <button className="pf-av-img" onClick={() => fileRef.current?.click()} disabled={busy}
-              aria-label={avatar ? "Change picture" : "Add a picture"}>
+      <div className="pf-av-img" aria-hidden="true">
         {avatar ? <img src={avatar} alt="" /> : <span>{initials}</span>}
-        <span className="pf-av-over"><Camera size={15} /></span>
-      </button>
-
-      <div className="pf-av-side">
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button className="btn ghost sm" onClick={() => fileRef.current?.click()} disabled={busy}>
-            {busy ? "Working…" : avatar ? "Change picture" : "Add a picture"}
-          </button>
-          {avatar && (
-            <button className="btn ghost sm danger" onClick={clear} disabled={busy}>
-              <Trash2 size={13} />Remove
-            </button>
-          )}
-        </div>
-        <div className="hint" style={{ marginTop: 6 }}>
-          Cropped square and shrunk to 256px in the browser, so a photo off a phone
-          doesn&apos;t get uploaded at full size.
-        </div>
-        {err && <div className="warn" style={{ marginTop: 8 }}>{err}</div>}
       </div>
 
-      <input ref={fileRef} type="file" accept="image/*" hidden onChange={choose} />
+      {/* The shared chooser — the same ten faces offered during first run, so
+          changing your mind later is the same decision in the same shape
+          rather than a different screen with different options. It owns the
+          upload and the clearing too, which is why nothing but the preview
+          above is left here. */}
+      <div className="pf-av-side">
+        <AvatarChoice profile={profile} avatar={avatar} onChanged={onChanged} />
+      </div>
     </div>
   );
 }
@@ -490,10 +450,12 @@ export default function ProfileSheet({ profile, avatar, counts, onClose, onlyPas
         <style jsx global>{`
           .pf-av { display: flex; align-items: flex-start; gap: 16px; }
           .pf-av-side { min-width: 0; flex: 1 1 auto; }
+          /* A preview now, not a button — the hover camera badge and the
+             disabled state went with the click handler. */
           .pf-av-img {
-            position: relative; width: 72px; height: 72px; flex: none;
+            width: 72px; height: 72px; flex: none;
             border-radius: 50%; border: 1px solid var(--rule);
-            background: var(--card); cursor: pointer; padding: 0;
+            background: var(--card);
             display: flex; align-items: center; justify-content: center;
             overflow: hidden;
           }
@@ -504,16 +466,6 @@ export default function ProfileSheet({ profile, avatar, counts, onClose, onlyPas
           .pf-av-img :global(img) {
             width: 100%; height: 100%; object-fit: cover; display: block;
           }
-          /* Only on hover: a camera badge sitting there permanently would
-             read as part of the picture rather than a thing to press. */
-          .pf-av-over {
-            position: absolute; inset: 0; display: flex;
-            align-items: center; justify-content: center;
-            background: rgba(19, 28, 26, 0.5); color: #fff;
-            opacity: 0; transition: opacity 0.15s ease;
-          }
-          .pf-av-img:hover .pf-av-over { opacity: 1; }
-          .pf-av-img:disabled { opacity: 0.6; cursor: default; }
           .pf-ok { color: var(--long); }
           .pf-plan {
             display: flex; align-items: flex-start; gap: 10px; margin-top: 10px;
