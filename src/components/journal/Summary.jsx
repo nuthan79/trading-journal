@@ -97,10 +97,18 @@ export default function Summary({ closed, openingCapital, flows = [] }) {
           line-height: 1.62;
           color: var(--ink);
           text-align: left;
-          /* No max-width here — the card itself is already bounded by
-             .jwrap's 1180px container, same as every other dashboard
-             section, so that's the readability limit. A tighter fixed
-             cap left a dead gap on the right at desktop widths. */
+          /* This used to have no cap, on the grounds that .jwrap's 1180px was
+             already the readability limit. It was — until .jwrap went to
+             1440px for the sake of the Holdings table, at which point this
+             paragraph quietly became a 150-character line.
+             So it is capped in ch units rather than pixels: the measure is
+             stated in characters because characters are what make a line hard
+             to
+             read, and it then holds whatever the container does next. A fixed
+             px cap was tried before and rejected for leaving a dead gap on
+             the right — this leaves the same gap, which is the honest cost of
+             not making people track a line that far. */
+          max-width: 92ch;
           /* Keeps the last line from orphaning a word or two */
           text-wrap: pretty;
         }

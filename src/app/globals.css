@@ -149,11 +149,32 @@ label.f > span {
 /*  Journal app                                                        */
 /* ------------------------------------------------------------------ */
 
-.jwrap { max-width: 1180px; margin: 0 auto; padding: 0 20px 72px; }
+/**
+ * How wide the app is allowed to get.
+ *
+ * One variable because the topbar and the content below it must agree: they
+ * are separate elements with separate rules, and a number typed twice is a
+ * number that eventually differs, which would show as the page title sitting
+ * a few pixels out of line with the table beneath it.
+ *
+ * Raised from 1180px, which was a reading width. It suited the Diary and the
+ * Review but was being paid for by Holdings, whose table has sixteen columns
+ * and was clipping on the right while 166px of empty page sat either side of
+ * it on a 1512pt laptop.
+ *
+ * Not fluid, and not wider than this. On a large external monitor a full-width
+ * layout puts the account name at one edge and the avatar at the other with a
+ * foot of nothing between them, and every table row becomes a line the eye has
+ * to track a long way to read. Prose is separately capped further down, so
+ * this only governs how much room the wide things get.
+ */
+:root { --app-w: 1440px; }
+
+.jwrap { max-width: var(--app-w); margin: 0 auto; padding: 0 20px 72px; }
 
 .topbar { border-bottom: 1px solid var(--rule); background: var(--paper);
           position: sticky; top: 0; z-index: 20; }
-.topin { max-width: 1180px; margin: 0 auto; padding: 16px 20px 0;
+.topin { max-width: var(--app-w); margin: 0 auto; padding: 16px 20px 0;
          display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .brand { display: flex; align-items: baseline; gap: 10px; }
 .brand h1 { margin: 0; font-size: 19px; }
@@ -229,7 +250,14 @@ select.in { font-family: 'Archivo', sans-serif; }
 
 .entry { border: 1px solid var(--rule); background: var(--card); border-radius: 3px;
          padding: 16px 18px; margin-bottom: 10px; }
-.entry .body { white-space: pre-wrap; font-size: 14px; line-height: 1.65; margin: 10px 0 0; }
+/* Capped in characters for the same reason as the dashboard summary: this was
+   relying on the page being 1180px wide, and the page is now 1440px for the
+   sake of the Holdings table. A diary entry is somebody's own writing, often
+   several paragraphs of it, and it is the text on this app most likely to be
+   read start to finish rather than scanned — so it is the last thing that
+   should be set as a 175-character line. */
+.entry .body { white-space: pre-wrap; font-size: 14px; line-height: 1.65; margin: 10px 0 0;
+               max-width: 88ch; }
 .entry img { max-width: 100%; border: 1px solid var(--rule); border-radius: 2px; margin-top: 12px; display: block; }
 /* The chart is a button so it can be opened full size. Stripped back to
    nothing so it still reads as an image, not a control. */
