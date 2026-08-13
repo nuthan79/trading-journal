@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import ImportTrades from "@/components/ImportTrades";
 import RestoreExport from "@/components/RestoreExport";
+import ImportHistory from "@/components/journal/ImportHistory";
 import { listImportTargets, importTrades } from "@/lib/db";
 import { useJournal } from "../JournalContext";
 
@@ -62,6 +63,12 @@ export default function ImportPage() {
           own are coming back after deleting an account, and they know what
           they are looking for. */}
       <RestoreExport onRestored={reloadTrades} />
+
+      {/* Last, because it is the way back rather than the way in. It is also
+          what the restore screen points at when it says an import can be
+          undone from the history — which was true of the database and not of
+          the app until now. */}
+      <ImportHistory onChanged={reloadTrades} />
     </div>
   );
 }

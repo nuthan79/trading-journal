@@ -703,6 +703,37 @@ export async function undoImport(batchId) {
   return data;
 }
 
+/**
+ * How many trades each batch still owns, right now.
+ *
+ * `import_batches.trades_count` is what the import claimed when it ran, and
+ * on this database it is badly out of date: batches recording 244, 177 and
+ * 132 trades have none left, because those rows were removed by the split
+ * merge and other cleanups since. Summed across every batch it says 3,151
+ * against 1,657 actually linked.
+ *
+ * Showing the recorded figure on an undo button would offer to delete 244
+ * trades that are not there — the precise kind of wrong number that ruins a
+ * screen whose whole purpose is making somebody feel safe pressing a
+ * destructive button.
+ *
+ * Counted client-side from one column rather than by a grouped query, because
+ * PostgREST has no group-by and the alternative is another database function
+ * to maintain. One narrow column over a few thousand rows is cheap.
+ */
+export async function importBatchCounts() {
+  const rows = await fetchAllPages(() =>
+    supabase
+      .from("trades")
+      .select("id,import_batch")
+      .not("import_batch", "is", null)
+      .order("id", { ascending: true })
+  );
+  const counts = {};
+  for (const r of rows) counts[r.import_batch] = (counts[r.import_batch] || 0) + 1;
+  return counts;
+}
+
 export async function listImportBatches() {
   const { data, error } = await supabase
     .from("import_batches").select("*").order("created_at", { ascending: false });
