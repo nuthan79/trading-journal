@@ -35,21 +35,32 @@ export default function ImportHistory({ onChanged }) {
    * importBatchCounts. The undo button must offer to remove what is actually
    * there.
    */
-  const [counts, setCounts] = useState({});
+  const [counts, setCounts] = useState(null);   // null = not loaded yet
   const [arming, setArming] = useState(null);   // batch id awaiting confirmation
   const [busy, setBusy] = useState(null);
   const [err, setErr] = useState("");
   const [done, setDone] = useState("");
 
   const load = () => {
-    Promise.all([listImportBatches(), importBatchCounts().catch(() => ({}))])
+    Promise.all([listImportBatches(), importBatchCounts().catch(() => null)])
       .then(([bs, cs]) => { setBatches(bs); setCounts(cs); })
       .catch((e) => { setErr(e.message || "Could not read the import history."); setBatches([]); });
   };
 
-  // Falls back to the recorded figure only when the live count could not be
-  // read at all — never when it is legitimately zero.
-  const liveCount = (b) => (counts[b.id] != null ? counts[b.id] : b.trades_count);
+  /**
+   * The recorded figure is used only when the counts could not be read at all.
+   *
+   * The first version keyed off `counts[b.id] != null`, which looked right and
+   * was exactly wrong: a batch with no trades left has no key in the tally, so
+   * it fell through to the stale recorded number — 126 for restores whose rows
+   * had all been re-stamped to a later batch. The very case the fallback was
+   * written to avoid.
+   *
+   * So the distinction is made once, on whether the tally loaded at all. A
+   * loaded tally with no entry for a batch means zero, because that is what it
+   * means.
+   */
+  const liveCount = (b) => (counts === null ? b.trades_count : counts[b.id] || 0);
   useEffect(load, []);
 
   const go = async (b) => {
@@ -162,14 +173,27 @@ export default function ImportHistory({ onChanged }) {
  * label that hides which one it was.
  */
 function label(b) {
-  const map = {
-    "zerodha": "Zerodha tax P&L",
-    "zerodha-taxpnl": "Zerodha tax P&L",
-    "groww": "Groww capital gains",
-    "dhan": "Dhan tax P&L",
-    "ledgerr-export": "Restored from an export",
+  const src = String(b.source || "");
+  if (src === "ledgerr-export") return "Restored from an export";
+
+  /**
+   * The importer writes `${broker.id}-taxpnl`, so the suffix is stripped
+   * rather than every combination being listed. A broker added next month
+   * gets a readable label here without anyone remembering to come back — and
+   * forgetting is exactly what happened with Groww, which shipped and then
+   * displayed as the raw string `groww-taxpnl`.
+   */
+  const id = src.replace(/-taxpnl$/, "");
+  const names = {
+    zerodha: "Zerodha tax P&L",
+    groww: "Groww capital gains",
+    dhan: "Dhan tax P&L",
+    angelone: "Angel One tax P&L",
+    iifl: "IIFL tax P&L",
   };
-  return map[b.source] || b.source || "Import";
+  // An unknown id shows as itself. A raw string somebody can search for beats
+  // a tidy "Unknown import" that hides which one it was.
+  return names[id] || src || "Import";
 }
 
 function fmtWhen(ts) {
