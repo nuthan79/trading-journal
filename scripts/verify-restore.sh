@@ -31,6 +31,14 @@ cd "$(dirname "$0")/.."
 DIR="${1:-}"
 TARGET="${2:-}"
 
+# The same placeholder artefact backup.sh strips — see the note there. Kept in
+# both because the scratch project's string is pasted by hand exactly once,
+# under exactly the conditions that produce this mistake.
+if printf '%s' "$TARGET" | grep -qE '^postgresql://[^:]+:\[.*\]@'; then
+  TARGET="$(printf '%s' "$TARGET" | sed -E 's#^(postgresql://[^:]+:)\[(.*)\](@.+)$#\1\2\3#')"
+  echo "(removed the [ ] around the password — that is a placeholder artefact)"
+fi
+
 if [ -z "$DIR" ] || [ -z "$TARGET" ]; then
   cat <<'MSG'
 Usage: bash scripts/verify-restore.sh <backup-dir> <scratch-db-url>

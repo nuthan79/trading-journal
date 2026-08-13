@@ -40,7 +40,21 @@ fi
 
 # Read the one variable without sourcing the file — .env.local holds other
 # things, and sourcing it would put all of them into this shell.
-DB_URL="$(grep -E '^SUPABASE_DB_URL=' .env.local | head -1 | cut -d= -f2- | tr -d '"'"'"'')"
+DB_URL="$(grep -E '^SUPABASE_DB_URL=' .env.local | head -1 | cut -d= -f2- | tr -d '"'"'"'' | tr -d '\r')"
+
+# Supabase prints the string with the password as a placeholder in square
+# brackets. Substituting the password while leaving the brackets is the most
+# natural mistake available, and it has been made twice here — once on the
+# live project and once on the scratch one. It surfaces as "password
+# authentication failed", which sends you looking at the password rather than
+# at the two characters around it.
+#
+# A bracket cannot appear in a Supabase-generated password, so stripping a
+# matched pair that wraps the whole field is safe and never eats a real one.
+if printf '%s' "$DB_URL" | grep -qE '^postgresql://[^:]+:\[.*\]@'; then
+  DB_URL="$(printf '%s' "$DB_URL" | sed -E 's#^(postgresql://[^:]+:)\[(.*)\](@.+)$#\1\2\3#')"
+  echo "  (removed the [ ] around the password — that is a placeholder artefact)"
+fi
 
 if [ -z "${DB_URL:-}" ]; then
   cat <<'MSG'
