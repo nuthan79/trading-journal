@@ -436,15 +436,11 @@ export default function Holdings({
                   than counted as flat."
             tone={isFinite(totals.today) ? (totals.today >= 0 ? "pos" : "neg") : undefined}
           />
-          <Summary
-            label="Realised all-time"
-            value={rupee(realised.all)}
-            sub={isFinite(realised.allR)
-              ? `${rfmt(realised.allR)}${curve.n > 0 ? ` · ${curve.n} trades` : ""}`
-              : "—"}
-            tone={realised.all >= 0 ? "pos" : "neg"}
-          />
-          <Summary label="Exposure" value={rupee(totals.exposure)} sub="at CMP" />
+          {/* Ordered by how close each figure is to right now: today, then
+              what is still riding on the open book, then what that book is
+              worth, then the year, then all of it. Realised all-time last
+              also puts the longest sub-line at the end of the row, where
+              running on has nothing to push out of line. */}
           <Summary
             label="Unrealised"
             value={rupee(totals.unrealised)}
@@ -455,11 +451,20 @@ export default function Holdings({
 
             tone={totals.unrealised >= 0 ? "pos" : "neg"}
           />
+          <Summary label="Exposure" value={rupee(totals.exposure)} sub="at CMP" />
           <Summary
             label={`Realised ${realised.fyLabel}`}
             value={rupee(realised.year)}
             sub={isFinite(realised.yearR) ? rfmt(realised.yearR) : "—"}
             tone={realised.year >= 0 ? "pos" : "neg"}
+          />
+          <Summary
+            label="Realised all-time"
+            value={rupee(realised.all)}
+            sub={isFinite(realised.allR)
+              ? `${rfmt(realised.allR)}${curve.n > 0 ? ` · ${curve.n} trades` : ""}`
+              : "—"}
+            tone={realised.all >= 0 ? "pos" : "neg"}
           />
         </div>
       </div>
@@ -657,14 +662,23 @@ export default function Holdings({
           line-height: 1.45; text-wrap: pretty;
         }
         .ps-strip {
-          display: grid; grid-template-columns: repeat(4, 1fr);
+          display: grid; grid-template-columns: repeat(5, 1fr);
           border: 1px solid var(--rule); border-radius: 3px;
           background: var(--card); overflow: hidden;
         }
-        /* Below this the strip cannot hold four figures beside a 290px card
-           without clipping them, so it takes its own full-width row. */
-        @media (max-width: 1100px) {
+        /* Below this the strip cannot hold five figures beside a 290px card
+           without clipping them, so it takes its own full-width row. Raised
+           from 1100px when Today made it five: the same wrap happens sooner
+           with one more column to fit. */
+        @media (max-width: 1320px) {
           .ps-top { grid-template-columns: 1fr; }
+        }
+        /* Three and two rather than five, because five 1fr columns in a phone
+           width give each figure about 70px and ₹17.16 L does not fit in it.
+           The odd one sits alone on the second row, which is untidy but
+           legible — the alternative is an ellipsis in the middle of a number. */
+        @media (max-width: 900px) {
+          .ps-strip { grid-template-columns: repeat(3, 1fr); }
         }
         @media (max-width: 720px) {
           .ps-strip { grid-template-columns: repeat(2, 1fr); }
@@ -761,14 +775,18 @@ export default function Holdings({
         }
         .ps-sub-flag svg { fill: currentColor; }
 
-        .ps-sum { padding: 12px 15px; border-right: 1px solid var(--rule); min-width: 0; }
+        /* Tightened when the strip went from four figures to five. The value
+           gives up 2px rather than the padding giving up more: shrinking the
+           gutters instead would run the numbers into the dividing rules and
+           make the row look denser than it reads. */
+        .ps-sum { padding: 11px 13px; border-right: 1px solid var(--rule); min-width: 0; }
         .ps-sum:last-child { border-right: 0; }
         .ps-sum-l {
           font-size: 9px; font-weight: 600; letter-spacing: 0.1em;
           text-transform: uppercase; color: var(--ink3);
         }
         .ps-sum-v {
-          font-size: 19px; font-weight: 500; margin-top: 5px;
+          font-size: 17px; font-weight: 500; margin-top: 4px;
           font-variant-numeric: tabular-nums; white-space: nowrap;
           overflow: hidden; text-overflow: ellipsis;
         }
