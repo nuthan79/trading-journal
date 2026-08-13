@@ -81,6 +81,21 @@ if [ -n "${LIVE_REF:-}" ] && printf '%s' "$TARGET" | grep -q "$LIVE_REF"; then
   exit 1
 fi
 
+# --------------------------------------------------- check we can connect
+# The same guard backup.sh has, and for a sharper reason here: the restore
+# steps below deliberately ignore statement errors, so a connection that never
+# opened would be swallowed too and the run would carry on to compare nothing
+# against nothing. Better to stop at the door.
+if ! ERR="$("$PSQL" "$TARGET" -Atc 'select 1' 2>&1)"; then
+  echo "Cannot connect to the scratch project:"
+  echo "  $(printf '%s' "$ERR" | head -1)"
+  echo
+  echo "If that says password authentication failed, the most likely cause is a"
+  echo "placeholder left in the string — replace YOURPASSWORD (or [YOUR-PASSWORD])"
+  echo "with the password you set when you created the project."
+  exit 1
+fi
+
 # ------------------------------------------------------------- restore
 # ON_ERROR_STOP is off deliberately. A Supabase dump replays statements for
 # roles and extensions that a fresh project already has, and those errors are
