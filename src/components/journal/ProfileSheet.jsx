@@ -112,41 +112,71 @@ function PasswordChange({ autoFocus }) {
 
 
 /**
- * The plan, and the way to extend it.
+ * What this account is entitled to, said honestly.
  *
- * Everything here is honest about not existing yet. The button is real and
- * says what it will do rather than pretending to do it — a control that
- * silently no-ops is worse than one that explains itself, and this is the
- * place people will look for renewal once there is something to renew.
+ * Reads `profiles.plan` rather than asking a payment provider, which is the
+ * whole point of 031: an app that gates on "is there an active subscription"
+ * cannot give anybody anything for nothing without faking a payment. Here a
+ * complimentary account is simply a value, and it says so — "Complimentary"
+ * rather than a "Paid" that nobody paid, because someone you gave the app to
+ * should be able to see that is what happened.
  */
-function Subscription() {
+function Subscription({ profile }) {
   const [asked, setAsked] = useState(false);
+
+  const plan = profile?.plan || "free";
+  const until = profile?.plan_until ? new Date(profile.plan_until) : null;
+  const lapsed = !!until && until.getTime() < Date.now();
+
+  const label = plan === "comp" ? "Complimentary" : plan === "paid" ? "Paid" : "Free";
+  // Nothing is charged yet, so nothing can have lapsed in a way that matters.
+  const status = lapsed ? "Expired" : "Active";
 
   return (
     <div>
       <div className="eyebrow" style={{ marginBottom: 8 }}>Subscription</div>
       <div className="pf-card">
-        <div className="pf-row"><span>Plan</span><b className="mono">Free</b></div>
-        <div className="pf-row"><span>Status</span><b className="mono pf-ok">Active</b></div>
-        <div className="pf-row"><span>Renews</span><b className="mono">—</b></div>
+        <div className="pf-row"><span>Plan</span><b className="mono">{label}</b></div>
+        <div className="pf-row">
+          <span>Status</span>
+          <b className={`mono ${lapsed ? "" : "pf-ok"}`}>{status}</b>
+        </div>
+        <div className="pf-row">
+          <span>{plan === "comp" ? "Until" : "Renews"}</span>
+          <b className="mono">{until ? fmtDate(until) : "—"}</b>
+        </div>
       </div>
 
-      <div className="pf-plan">
-        <Crown size={14} />
-        <div style={{ flex: "1 1 auto", minWidth: 0 }}>
-          <b>Free while this is being built</b>
-          <div className="pf-plan-sub">
-            {asked
-              ? "Billing isn't live yet. When it is, renewal happens here and " +
-                "nothing you've logged is ever locked behind it — an expired " +
-                "plan still reads and exports."
-              : "Nothing to pay for yet."}
+      {plan === "comp" ? (
+        <div className="pf-plan">
+          <Crown size={14} />
+          <div style={{ flex: "1 1 auto", minWidth: 0 }}>
+            <b>This one is on us</b>
+            <div className="pf-plan-sub">
+              {until
+                ? `Complimentary access until ${fmtDate(until)}. Nothing to pay, and no card is held.`
+                : "Complimentary access, with no end date. Nothing to pay, and no card is held."}
+            </div>
           </div>
         </div>
-        <button className="btn ghost sm" onClick={() => setAsked(true)} disabled={asked}>
-          Extend subscription
-        </button>
-      </div>
+      ) : (
+        <div className="pf-plan">
+          <Crown size={14} />
+          <div style={{ flex: "1 1 auto", minWidth: 0 }}>
+            <b>Free while this is being built</b>
+            <div className="pf-plan-sub">
+              {asked
+                ? "Billing isn't live yet. When it is, renewal happens here and " +
+                  "nothing you've logged is ever locked behind it — an expired " +
+                  "plan still reads and exports."
+                : "Nothing to pay for yet."}
+            </div>
+          </div>
+          <button className="btn ghost sm" onClick={() => setAsked(true)} disabled={asked}>
+            Extend subscription
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -405,7 +435,7 @@ export default function ProfileSheet({ profile, avatar, counts, onClose, onlyPas
                 {row("Trades logged", `${counts?.total ?? 0}`)}
               </div>
 
-              <Subscription />
+              <Subscription profile={profile} />
             </>
           )}
 
