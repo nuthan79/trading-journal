@@ -19,6 +19,9 @@ import { rupee, rfmt, pct } from "@/lib/format";
 
 const num = (v) => (v === "" || v == null ? NaN : Number(v));
 
+/** A stop the importer guessed, not one anybody recorded. */
+const isAssumed = (t) => t.stop_source === "assumed" && t.stop_loss != null;
+
 export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
   const [values, setValues] = useState({});      // id -> raw input
   const [saved, setSaved] = useState({});        // id -> true once written
@@ -37,6 +40,39 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
     [trades, saved]
   );
 
+  /**
+   * What the box shows: what you have typed, or the assumed stop already
+   * there, or nothing.
+   *
+   * Derived rather than seeded into state on mount, so `values` keeps meaning
+   * exactly one thing — what this person typed. That distinction is the whole
+   * of the next paragraph.
+   */
+  const shown = useCallback(
+    (t) => (values[t.id] !== undefined
+      ? values[t.id]
+      : isAssumed(t) ? String(t.stop_loss) : ""),
+    [values]
+  );
+
+  /**
+   * Only edited rows are saved.
+   *
+   * A screen full of pre-filled 7% guesses with a Save button would, on one
+   * click, relabel every one of them as recorded — turning "nobody has checked
+   * these" into "somebody confirmed these" without anybody having done so.
+   * That is worse than leaving them assumed, because the flag is the only
+   * thing that remembers they were guesses.
+   *
+   * So an untouched row stays assumed and stays on this list. Reviewing a
+   * stop means changing it, or typing the same number back to say you meant
+   * it.
+   */
+  const touched = useCallback((t) => values[t.id] !== undefined, [values]);
+
+  const missingCount = pending.filter((t) => t.stop_loss == null).length;
+  const assumedCount = pending.length - missingCount;
+
   const slice = useMemo(
     () => pending.slice(page * pageSize, (page + 1) * pageSize),
     [pending, page, pageSize]
@@ -44,7 +80,7 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
 
   /** R the moment a stop is typed — the check against what you remember. */
   const preview = useCallback((t) => {
-    const stop = num(values[t.id]);
+    const stop = num(shown(t));
     const entry = Number(t.entry_price);
     const qty = Number(t.quantity);
     if (!(stop > 0) || !(entry > 0)) return null;
@@ -78,23 +114,26 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
       wide: slPct > 12,
       suspicious,
     };
-  }, [values]);
+  }, [shown]);
 
+  // What Save will actually write — typed and valid. Counting pre-filled rows
+  // here would promise to save rows that are deliberately left alone.
   const readyCount = slice.filter((t) => {
     const p = preview(t);
-    return p && !p.invalid;
+    return touched(t) && p && !p.invalid;
   }).length;
 
   const saveBatch = async () => {
     const rows = slice
       .map((t) => ({ t, p: preview(t) }))
-      .filter(({ p }) => p && !p.invalid)
+      // Typed, and valid. An untouched pre-filled row is not a decision.
+      .filter(({ t, p }) => touched(t) && p && !p.invalid)
       // The trade's existing 1R rides along so saveStops can tell "never had a
       // stop" from "already has one". These rows are all the former today, but
       // sending it means re-filling a stop can never re-base an existing 1R.
       .map(({ t }) => ({
         id: t.id,
-        stop_loss: Number(values[t.id]),
+        stop_loss: Number(shown(t)),
         // Typed in here by hand, whatever the row started as. Filling one over
         // an assumed stop is the act that turns it into a real one.
         stop_source: "recorded",
@@ -176,8 +215,11 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
     return (
       <section className="sf-done">
         <div className="sf-tick"><Check size={18} /></div>
-        <h2 className="disp sf-h">Every trade has a stop</h2>
-        <p>Expectancy, R distribution and the review page now include them all.</p>
+        <h2 className="disp sf-h">Nothing left to check</h2>
+        <p>
+          Every trade has a stop you have recorded, so expectancy, the R
+          distribution and the review page are reading your own numbers.
+        </p>
         <button className="btn" onClick={() => onDone?.()}>Back to the journal</button>
         <style jsx>{`
           .sf-done {
@@ -200,10 +242,27 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
     <section>
       <div className="sf-head">
         <div>
-          <div className="eyebrow">Add the missing stops</div>
+          <div className="eyebrow">
+            {missingCount && assumedCount ? "Stops to add and check"
+              : missingCount ? "Add the missing stops"
+              : "Check the assumed stops"}
+          </div>
           <div className="sf-sub">
-            {pending.length} trade{pending.length === 1 ? "" : "s"} without one.
+            {/* Said separately because they are not the same problem. A trade
+                with no stop has no R at all; a trade with an assumed one has an
+                R computed from a percentage nobody chose for it, which reads
+                like a real number and is not. */}
+            {missingCount > 0 && (
+              <>{missingCount} without one{assumedCount ? ", " : ". "}</>
+            )}
+            {assumedCount > 0 && (
+              <>
+                {assumedCount} carrying a stop the importer assumed
+                {missingCount ? "" : " — a percentage below entry, not what you used"}.{" "}
+              </>
+            )}
             R appears as you type — check it against what you remember.
+            {assumedCount > 0 && " Leave one alone and it stays marked assumed."}
           </div>
         </div>
         <button className="btn ghost sm" onClick={() => onDone?.()}>Do this later</button>
@@ -289,7 +348,7 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
                       className="in sf-in"
                       inputMode="decimal"
                       placeholder="—"
-                      value={values[t.id] ?? ""}
+                      value={shown(t)}
                       onChange={(e) =>
                         setValues((v) => ({ ...v, [t.id]: e.target.value.replace(/[^0-9.]/g, "") }))
                       }
