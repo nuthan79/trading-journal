@@ -90,6 +90,32 @@ if [ "$PV" -lt 14 ]; then
   exit 1
 fi
 
+# ------------------------------------------------- check we can connect first
+#
+# Added after three runs that printed "schema…" and then sat there. pg_dump
+# says nothing at all when a connection is refused this way — it simply waits,
+# so a wrong username or region looks exactly like a slow dump, and the only
+# way to find out was to run psql by hand.
+#
+# psql reports the same failure in under a second, so it is asked first and the
+# error is shown as given. The two mistakes it catches are both easy to make
+# from a copied example: a username still reading postgres.xxxx, and a pooler
+# host in a region the project is not in. Both come back as "tenant/user not
+# found", which does not sound like either.
+PSQL="${PSQL:-$(dirname "$PGDUMP")/psql}"
+if [ -x "$PSQL" ]; then
+  if ! ERR="$("$PSQL" "$DB_URL" -Atc 'select 1' 2>&1)"; then
+    echo "Cannot connect to the database:"
+    echo "  $(printf '%s' "$ERR" | head -1)"
+    echo
+    echo "Check SUPABASE_DB_URL in .env.local. Copy it from Supabase → Connect →"
+    echo "Session pooler and replace only [YOUR-PASSWORD] — hand-editing an"
+    echo "example leaves the wrong project ref or the wrong region behind, and"
+    echo "both report as 'tenant/user not found'."
+    exit 1
+  fi
+fi
+
 STAMP="$(date +%Y-%m-%d-%H%M)"
 OUT="backups/$STAMP"
 mkdir -p "$OUT"
