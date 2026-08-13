@@ -85,7 +85,19 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
   const [error, setError] = useState("");
   const [drag, setDrag] = useState(false);
   const [result, setResult] = useState(null);
-  const [rawRows, setRawRows] = useState(null);
+  /**
+   * The adapter's output with symbols already resolved — not the raw rows.
+   *
+   * It used to hold raw rows and re-run the parser whenever the assumed stop
+   * changed, which quietly undid the ISIN resolution: the first parse resolved
+   * symbols and the re-parse did not, so the preview showed ROUTE and the
+   * import wrote "Route Mobile". Resolution needs a fetch, so it cannot happen
+   * inside a synchronous effect anyway.
+   *
+   * Parsing once and re-assembling is also simply less work: the stop
+   * percentage changes what toTradeRows produces, never how the file reads.
+   */
+  const [parsedFile, setParsedFile] = useState(null);
   // Remembered so re-parsing at a different assumed stop uses the same
   // adapter that read the file, rather than defaulting back to one of them.
   const [broker, setBroker] = useState(null);
@@ -149,16 +161,15 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
        * never price, never dedupe against the same trade from another broker,
        * and group under a label nothing else in the journal shares.
        */
-      const parsed = broker.parseRows(rows);
-      const { lots, unresolved } = await resolveSymbols(parsed.lots);
-      const out = assembleImport(
-        {
-          ...parsed,
+      const raw = broker.parseRows(rows);
+      const { lots, unresolved } = await resolveSymbols(raw.lots);
+      const resolved = {
+          ...raw,
           lots,
           // Named rather than counted. A security that stayed a company name
           // is not noticed until a position refuses to price weeks later.
           warnings: [
-            ...(parsed.warnings || []),
+            ...(raw.warnings || []),
             ...unresolved.slice(0, 5).map(
               (u) => `Could not identify ${u.name || u.isin} (${u.isin}) — imported under the name in the file.`
             ),
@@ -166,9 +177,9 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
               ? [`…and ${unresolved.length - 5} more that could not be identified.`]
               : []),
           ],
-        },
-        { targets, assumeStopPct: stopPct, broker: broker.id }
-      );
+      };
+      const out = assembleImport(resolved,
+        { targets, assumeStopPct: stopPct, broker: broker.id });
       if (!out.trades.length && !out.completions.length && !out.duplicates.length) {
         throw new Error(
           "No equity trades found. This report may cover a period with no closed positions."
@@ -176,12 +187,12 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
       }
       setFile(f);
       setBroker(broker);
-      setRawRows(rows);
+      setParsedFile(resolved);
       setParsed(out);
     } catch (e) {
       setError(e.message || "Could not read that file.");
       setFile(null);
-      setRawRows(null);
+      setParsedFile(null);
     }
     setBusy(false);
   }, [targets, stopPct]);
@@ -193,11 +204,11 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
    * screen describing an import different from the one about to happen.
    */
   useEffect(() => {
-    if (!rawRows) return;
+    if (!parsedFile) return;
     const b = broker || zerodha;
-    setParsed(assembleImport(b.parseRows(rawRows),
+    setParsed(assembleImport(parsedFile,
       { targets, assumeStopPct: stopPct, broker: b.id }));
-  }, [rawRows, targets, stopPct]);
+  }, [parsedFile, broker, targets, stopPct]);
 
   const confirm = async () => {
     if (!parsed?.trades.length && !parsed?.completions.length) return;
