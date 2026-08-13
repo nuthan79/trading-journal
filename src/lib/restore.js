@@ -110,6 +110,18 @@ export function planRestore(json, userId) {
     rows[table] = src.map((r) => {
       // Every id is kept. Only ownership changes.
       const out = { ...r, user_id: userId };
+
+      /**
+       * Except this one, which must not survive.
+       *
+       * A trade that came from a broker import carries the id of the batch it
+       * arrived in, and import_batches is not restored — so the reference
+       * points at a row that no longer exists anywhere and the insert fails
+       * on the foreign key. Cleared here and stamped with the restore's own
+       * batch by the writer, which also makes the whole restore undoable by
+       * the machinery that already exists.
+       */
+      if ("import_batch_id" in out) out.import_batch_id = null;
       if (table === "diary_entries" && out.image_path) {
         const external = /^https?:\/\//i.test(out.image_path);
         // A pasted TradingView link is an ordinary URL and still works.
