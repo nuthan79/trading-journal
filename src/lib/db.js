@@ -2,6 +2,9 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { isPreset, presetPath } from "./avatars";
+// The pure half of restore. Kept in its own file so it can be run against a
+// real export in plain node, with no Supabase client anywhere near it.
+import { inspectExport, planRestore, RESTORE_ORDER, SKIPPED_TABLES } from "./restore";
 
 /**
  * The whole storage layer. In the prototype this was window.storage; here it
@@ -405,6 +408,108 @@ export async function listImportTargets() {
  * `_preview` is display-only scaffolding from the parser and is stripped here;
  * sending it would fail on a column that doesn't exist.
  */
+/**
+ * Write a journal back from the app's own export.
+ *
+ * The deciding half — validation, re-keying, foreign keys, keeping charge
+ * overrides — lives in lib/restore.js and is pure, so it can be run against a
+ * real export file without a database. This is only the part that talks to
+ * Supabase, and it is here rather than there so importing the planner into a
+ * test never drags a Supabase client along with it.
+ *
+ * UPSERT, NOT INSERT. Every id in the export is kept, so re-running the same
+ * file overwrites the same rows instead of creating a second copy. Somebody
+ * who is not sure whether the first attempt worked can simply do it again —
+ * which is exactly what people do, and is normally how a restore turns into
+ * a duplicated journal.
+ *
+ * PARENTS BEFORE CHILDREN, one table at a time. A trade_exit whose trade has
+ * not been written yet fails on the foreign key.
+ *
+ * The batch exists so this is undoable by the machinery that already undoes
+ * broker imports. It is deleted again if anything fails, so a half-finished
+ * restore does not leave a batch describing work that did not happen.
+ */
+export async function restoreFromExport(json, filename = null) {
+  const user_id = await uid();
+  if (!user_id) throw new Error("Sign in first.");
+
+  const info = inspectExport(json);
+  if (!info.ok) throw new Error(info.error);
+  if (!info.total) throw new Error("That export has nothing in it to restore.");
+
+  const { rows, profilePatch } = planRestore(json, user_id);
+
+  const { data: batch, error: batchErr } = await supabase
+    .from("import_batches")
+    .insert({
+      user_id,
+      filename,
+      source: "ledgerr-export",
+      trades_count: rows.trades.length,
+      lots_count: info.total,
+    })
+    .select()
+    .single();
+  if (batchErr) throw batchErr;
+
+  const undoBatch = async () => {
+    try { await supabase.from("import_batches").delete().eq("id", batch.id); } catch {}
+  };
+
+  // Stamped now rather than in the planner, because only here is there a
+  // batch to point at. This is what makes the restore undoable.
+  const trades = rows.trades.map((t) => ({ ...t, import_batch: batch.id }));
+
+  /**
+   * In chunks. A journal of any age runs to hundreds of rows and a single
+   * request carrying all of them is the one most likely to be rejected for
+   * its size — on a restore, where the person is already anxious about
+   * whether their data survived.
+   */
+  const CHUNK = 200;
+  const written = {};
+
+  const writeAll = async (table, list) => {
+    written[table] = 0;
+    for (let i = 0; i < list.length; i += CHUNK) {
+      const slice = list.slice(i, i + CHUNK);
+      const { error } = await supabase.from(table).upsert(slice, { onConflict: "id" });
+      if (error) {
+        await undoBatch();
+        throw new Error(
+          `Restore stopped while writing ${table.replace(/_/g, " ")} ` +
+          `(${written[table]} of ${list.length} done). ` +
+          `${migrationHint(error) || error.message} ` +
+          `Nothing further was written — running the same file again is safe.`
+        );
+      }
+      written[table] += slice.length;
+    }
+  };
+
+  await writeAll("trades", trades);
+  for (const table of RESTORE_ORDER.filter((t) => t !== "trades")) {
+    if (rows[table].length) await writeAll(table, rows[table]);
+    else written[table] = 0;
+  }
+
+  /**
+   * The profile last, and never fatal.
+   *
+   * By this point the journal itself is back, which is what the person came
+   * for. Failing the whole restore over an account size would be telling them
+   * their trades did not survive when they did.
+   */
+  let profileRestored = false;
+  if (Object.keys(profilePatch).length) {
+    const { error } = await supabase.from("profiles").update(profilePatch).eq("id", user_id);
+    profileRestored = !error;
+  }
+
+  return { batchId: batch.id, written, profileRestored, skipped: SKIPPED_TABLES };
+}
+
 export async function importTrades({ trades, completions = [], meta }) {
   const user_id = await uid();
 

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import ImportTrades from "@/components/ImportTrades";
+import RestoreExport from "@/components/RestoreExport";
 import { listImportTargets, importTrades } from "@/lib/db";
 import { useJournal } from "../JournalContext";
 
@@ -55,6 +56,12 @@ export default function ImportPage() {
           router.push(choice === "fill-stops" ? "/stops" : "/trades");
         }}
       />
+
+      {/* Below the broker importer rather than beside it. Almost everyone
+          arriving here has a broker file; the people with an export of their
+          own are coming back after deleting an account, and they know what
+          they are looking for. */}
+      <RestoreExport onRestored={reloadTrades} />
     </div>
   );
 }

@@ -121,7 +121,11 @@ export function planRestore(json, userId) {
        * batch by the writer, which also makes the whole restore undoable by
        * the machinery that already exists.
        */
-      if ("import_batch_id" in out) out.import_batch_id = null;
+      // The column is `import_batch`, not `import_batch_id` — 006 named it
+      // without the suffix and undo_import matches on that name. The suffixed
+      // spelling is a column that does not exist, and PostgREST rejects the
+      // whole write rather than ignoring it.
+      if ("import_batch" in out) out.import_batch = null;
       if (table === "diary_entries" && out.image_path) {
         const external = /^https?:\/\//i.test(out.image_path);
         // A pasted TradingView link is an ordinary URL and still works.
