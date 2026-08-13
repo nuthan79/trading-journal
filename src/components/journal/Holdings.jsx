@@ -205,6 +205,36 @@ export default function Holdings({
         // count the same as a 2% move on ₹2L.
         const todayBase = canToday ? prevClose * qtyOpen : NaN;
 
+        /**
+         * Where the price sits inside today's own range, 0 at the low and 1
+         * at the high — and then only kept when it is near an end.
+         *
+         * Closing near the high means demand held into the close; giving the
+         * day's gain back and closing near the low means supply met it. On a
+         * breakout that reads on whether the setup is working.
+         *
+         * A fifth at each end, so most rows say nothing. The point is a
+         * signal, not a reading: the same number on all eight rows would be
+         * eight things to compare, which is the column this deliberately
+         * isn't.
+         *
+         * The guard is `span > 0`, not `day_high != null`. A stock that has
+         * not traded today — a halt, or a fetch before the open — reports the
+         * same figure for high and low, and dividing by that zero span gives
+         * Infinity or NaN, either of which would flag every such row as being
+         * at its high.
+         */
+        const dHigh = Number(t.day_high);
+        const dLow = Number(t.day_low);
+        const span = dHigh - dLow;
+        const inDay = isFinite(t.mark) && isFinite(span) && span > 0
+          ? (t.mark - dLow) / span
+          : NaN;
+        const dayEnd = !isFinite(inDay) ? null
+          : inDay >= 0.8 ? "high"
+          : inDay <= 0.2 ? "low"
+          : null;
+
         // How far CMP has to fall before the stop is hit, as a share of CMP —
         // the same reading the dashboard's open positions give. Breached means
         // price is already through it and the position is running on borrowed
@@ -224,6 +254,9 @@ export default function Holdings({
           changePct,
           todayAmt,
           todayBase,
+          dayEnd,
+          dayHigh: dHigh,
+          dayLow: dLow,
           toStop,
           breached,
           // Decided once, here, because it was being decided twice: the row
@@ -578,7 +611,27 @@ export default function Holdings({
                       }} />
                     </div>
                   </td>
-                  <td className="num">{isFinite(r.mark) ? Number(r.mark).toFixed(2) : "—"}</td>
+                  {/* The mark, and — only when it is near an end of the day's
+                      range — where in that day it landed. Under the price
+                      rather than beside the symbol, because it is a fact
+                      about this number and the association should not need
+                      explaining. Lowercase like `breached` in the To stop
+                      column, which is the same kind of remark. */}
+                  <td className="num">
+                    {isFinite(r.mark) ? Number(r.mark).toFixed(2) : "—"}
+                    {r.dayEnd && (
+                      <span className={`hd-dayend ${r.dayEnd === "high" ? "pos" : "neg"}`}
+                            title={`Today's range ${Number(r.dayLow).toFixed(2)}–`
+                              + `${Number(r.dayHigh).toFixed(2)}. `
+                              + (r.dayEnd === "high"
+                                ? "Price is in the top fifth of it — demand held into the close."
+                                : "Price is in the bottom fifth of it — the day's gain was given back.")
+                              + " As fresh as the last price fetch, so before the first Refresh"
+                              + " of a session this describes the previous one."}>
+                        {r.dayEnd === "high" ? "at high" : "at low"}
+                      </span>
+                    )}
+                  </td>
                   <td className={`num ${r.changePct >= 0 ? "pos" : "neg"}`}>
                     {isFinite(r.changePct) ? signedPct(r.changePct) : "—"}
                   </td>
@@ -639,6 +692,14 @@ export default function Holdings({
       </div>
 
       <style jsx>{`
+        /* Under the price, quiet enough that a row without one does not look
+           like it is missing something. It fires on about a fifth of rows, so
+           it has to read as a remark rather than as a column that happens to
+           be blank. */
+        .hd-dayend {
+          display: block; font-size: 10px; margin-top: 1px;
+          letter-spacing: 0.01em; font-weight: 500; opacity: 0.9;
+        }
         .ps-head {
           display: flex; align-items: flex-end; justify-content: space-between;
           gap: 14px; flex-wrap: wrap; margin-bottom: 12px;

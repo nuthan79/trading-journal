@@ -314,12 +314,17 @@ export async function markOpenPositions(openTrades) {
       last_price: hit.price,
       last_price_at: hit.at,
       prev_close: hit.prevClose ?? null,
+      // Same rule again: written together with the price they are measured
+      // against, nulled rather than kept, so a mark is never placed inside
+      // some other day's range.
+      day_high: hit.dayHigh ?? null,
+      day_low: hit.dayLow ?? null,
     };
     const { data, error } = await supabase
       .from("trades")
       .update(patch)
       .eq("id", t.id)
-      .select("id,last_price,last_price_at,prev_close")
+      .select("id,last_price,last_price_at,prev_close,day_high,day_low")
       .single();
 
     if (!error && data) marked.push(data);

@@ -5,7 +5,15 @@
  * returns the same shape, so swapping Yahoo for your broker's API later means
  * editing this file and nothing else.
  *
- *   { symbol, exchange, price, prevClose, change, changePct, currency, at }
+ *   { symbol, exchange, price, prevClose, dayHigh, dayLow,
+ *     change, changePct, currency, at }
+ *
+ * Any of prevClose, dayHigh and dayLow may be null — a replacement provider is
+ * allowed not to have them, and the app degrades to hiding the figures that
+ * need them rather than inventing values. What a replacement must NOT do is
+ * return them from a different moment than `price`: they are compared against
+ * it, so a stale close or range would place a holding inside a day it never
+ * traded in.
  *
  * A swing journal needs a handful of quotes on page load, not a tick stream.
  * That is why a cached serverless fetch is enough and a WebSocket is not.
@@ -61,6 +69,11 @@ async function yahooOne({ symbol, exchange }) {
         exchange,
         price,
         prevClose,
+        // The session's own extremes, for judging where a close landed
+        // inside its day. Present in the same meta object as the price, so
+        // reading them costs nothing extra.
+        dayHigh: meta.regularMarketDayHigh ?? null,
+        dayLow: meta.regularMarketDayLow ?? null,
         change,
         changePct: change != null && prevClose ? (change / prevClose) * 100 : null,
         currency: meta.currency || "INR",
