@@ -199,7 +199,11 @@ export default function Holdings({
         const canToday = isFinite(t.mark) && isFinite(prevClose) && prevClose > 0;
         const dir = t.side === "short" ? -1 : 1;
         const todayAmt = canToday ? (t.mark - prevClose) * qtyOpen * dir : NaN;
-        const todayPct = canToday ? ((t.mark - prevClose) / prevClose) * 100 * dir : NaN;
+        // What this holding was worth at yesterday's close. Only used to
+        // total the book: a day's move across several positions has to be
+        // weighted by what each had at stake, or a 2% move on ₹20k would
+        // count the same as a 2% move on ₹2L.
+        const todayBase = canToday ? prevClose * qtyOpen : NaN;
 
         // How far CMP has to fall before the stop is hit, as a share of CMP —
         // the same reading the dashboard's open positions give. Breached means
@@ -219,7 +223,7 @@ export default function Holdings({
           atR,
           changePct,
           todayAmt,
-          todayPct,
+          todayBase,
           toStop,
           breached,
           // Decided once, here, because it was being decided twice: the row
@@ -240,9 +244,31 @@ export default function Holdings({
     // row shows. The R figure below already worked this way; the rupee one did
     // not, which is the whole of the discrepancy.
     const openRisk = sum((r) => (r.riskFree ? 0 : r.openRiskAmt));
+    /**
+     * The day's move across the whole book.
+     *
+     * `sum` counts a non-finite contribution as zero, which is right for a
+     * position that genuinely moved nothing and badly wrong here: with no
+     * previous close stored anywhere — before the first price refresh, or
+     * after a fetch that returned none — every row contributes zero and the
+     * total reads a confident ₹0, a flat day. That is indistinguishable from
+     * a real flat day and is the number somebody would act on.
+     *
+     * So the count of priced rows decides whether there is an answer at all.
+     * None priced, no figure.
+     */
+    const todayN = rows.filter((r) => isFinite(r.todayAmt)).length;
+    const todayBase = sum((r) => r.todayBase);
+    const today = todayN ? sum((r) => r.todayAmt) : NaN;
+
     return {
       exposure: sum((r) => r.liveExposure),
       openRisk,
+      today,
+      todayN,
+      // Weighted by what each position was worth at yesterday's close, so
+      // this is the book's move rather than the average of its rows'.
+      todayPct: todayN && todayBase > 0 ? (today / todayBase) * 100 : NaN,
       // Each position contributes what it can still lose, floored at zero: a
       // winner already banked past its risk shouldn't net off against a fresh
       // full-risk position and hide it. Same figure the per-row bars show.
@@ -390,6 +416,26 @@ export default function Holdings({
             back. The figure it described is a figure, so it sits with the
             others. */}
         <div className="ps-strip">
+          {/* First in the strip, so it reads straight on from the risk dial:
+              what is at stake, then what today did to it. It is the only
+              figure here that changes between one visit and the next, which
+              is why it sits at the front rather than in a column somebody
+              has to scroll sideways to find. */}
+          <Summary
+            label="Today"
+            value={isFinite(totals.today) ? rupee(totals.today) : "—"}
+            sub={!totals.todayN
+              ? "no previous close yet — hit Refresh prices"
+              : `${signedPct(totals.todayPct)}${totals.todayN < rows.length
+                  ? ` · ${totals.todayN} of ${rows.length} priced`
+                  : ` · ${rows.length} holding${rows.length === 1 ? "" : "s"}`}`}
+            hint="What the open book made or lost against the previous close, and the same as a
+                  percentage of what it was worth then. As fresh as the last price fetch — before
+                  the first Refresh of a session this is still the last session's move, not
+                  today's. Positions with no stored close are left out of both figures rather
+                  than counted as flat."
+            tone={isFinite(totals.today) ? (totals.today >= 0 ? "pos" : "neg") : undefined}
+          />
           <Summary
             label="Realised all-time"
             value={rupee(realised.all)}
@@ -439,11 +485,6 @@ export default function Holdings({
               <th className="num">Open risk R</th>
               <th className="num">CMP</th>
               <th className="num">Change %</th>
-              {/* Next to CMP, because it is a fact about the price rather
-                  than about the trade. "Today" rather than "Day change" so
-                  it cannot be read as a second since-entry figure alongside
-                  the Change % beside it. */}
-              <th className="num">Today</th>
               <th className="num">Banked</th>
               <th className="num">Unrealised</th>
               <th className="num">Now at</th>
@@ -536,19 +577,6 @@ export default function Holdings({
                   <td className={`num ${r.changePct >= 0 ? "pos" : "neg"}`}>
                     {isFinite(r.changePct) ? signedPct(r.changePct) : "—"}
                   </td>
-                  <td className={`num ${isFinite(r.todayAmt) && r.todayAmt < 0 ? "neg" : "pos"}`}
-                      title={isFinite(r.todayAmt)
-                        ? "Against the previous close, for the shares still held. As fresh as the "
-                          + "last price fetch — before the first Refresh of the day this is still "
-                          + "showing the last session's move."
-                        : "No previous close on the last price fetch, so today's move can't be worked out."}>
-                    {isFinite(r.todayAmt) ? (
-                      <>
-                        {rupee(r.todayAmt)}
-                        <span className="hd-today">{signedPct(r.todayPct)}</span>
-                      </>
-                    ) : <span className="ps-dim">—</span>}
-                  </td>
                   <td className={`num ${r.realisedPnl >= 0 ? "pos" : "neg"}`}>
                     {isFinite(r.realisedPnl) && r.qtyExited > 0 ? rupee(r.realisedPnl) : <span className="ps-dim">—</span>}
                   </td>
@@ -606,14 +634,6 @@ export default function Holdings({
       </div>
 
       <style jsx>{`
-        /* The percentage under the rupees, not beside them — the column is
-           already one of many and a second figure on the same line would
-           widen every row. Colour is inherited from the cell so the two
-           always agree; only the weight and size separate them. */
-        .hd-today {
-          display: block; font-size: 11px; opacity: 0.72;
-          line-height: 1.35; font-variant-numeric: tabular-nums;
-        }
         .ps-head {
           display: flex; align-items: flex-end; justify-content: space-between;
           gap: 14px; flex-wrap: wrap; margin-bottom: 12px;
