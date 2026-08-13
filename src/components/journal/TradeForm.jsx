@@ -353,6 +353,32 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
   const qtySold = (t.exits || []).reduce((a, e) => a + (num(e.quantity) || 0), 0);
   const qtyLeft = num(t.quantity) - qtySold;
   const oversold = isFinite(qtyLeft) && qtyLeft < -1e-6;
+
+  /**
+   * A sell dated before the buy, which produced a holding period of −1 day.
+   *
+   * Compared as strings, which is safe and deliberate: both come from date
+   * inputs as ISO "YYYY-MM-DD", and that format sorts lexicographically in
+   * date order. Parsing them into Date objects would introduce a timezone
+   * where none exists — these are calendar days, not moments.
+   *
+   * A warning rather than a block. The same shape appears in imported rows
+   * and in a mistyped year, and refusing to save would leave somebody stuck
+   * with a form they cannot submit and no way to see what else is wrong.
+   *
+   * Note this is wrong for a short too, which is the part worth saying out
+   * loud: on a short the sell IS the entry, so the dates still run forwards.
+   * "Make it a short" is not a way to record a sale that precedes its own
+   * purchase — it means putting the sell date in Entry date instead.
+   */
+  const backwardsSells = t.exits.filter(
+    (e) => e.exit_date && t.entry_date && e.exit_date < t.entry_date
+  );
+  const backwardsExit = !backwardsSells.length
+    ? null
+    : backwardsSells.length === 1
+      ? `The sell on ${backwardsSells[0].exit_date} is`
+      : `${backwardsSells.length} sells are`;
   const derivedStatus = statusFromExits(t.exits, t.quantity);
 
   const setExit = (i, key) => (e) =>
@@ -769,6 +795,15 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
               {oversold && (
                 <span className="ex-warn">
                   Sold {qtySold} of a {t.quantity} position — more than you hold.
+                </span>
+              )}
+              {backwardsExit && (
+                <span className="ex-warn">
+                  {backwardsExit} before the entry on {t.entry_date}. A holding
+                  period cannot run backwards.{" "}
+                  {t.side === "short"
+                    ? "On a short the sell IS the entry, so put the date you sold in Entry date and the date you bought back here."
+                    : "If you sold first and bought back later, set Direction to Short and put the sell date in Entry date."}
                 </span>
               )}
             </div>
