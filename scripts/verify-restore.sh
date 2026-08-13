@@ -106,14 +106,33 @@ awk '
 ' "$TMP/data.sql" | sort -k2 > "$TMP/counts.txt"
 
 echo
-printf "  %-28s %8s %10s\n" "table" "backup" "restored"
+printf "  %-30s %8s %10s\n" "table" "backup" "restored"
 FAIL=0
 while IFS=$'\t' read -r want table; do
   got="$(awk -v t="$table" '$2==t {print $1}' "$TMP/counts.txt")"
   got="${got:-0}"
-  mark="ok"
-  if [ "$want" != "$got" ]; then mark="MISMATCH"; FAIL=1; fi
-  printf "  %-28s %8s %10s   %s\n" "$table" "$want" "$got" "$mark"
+
+  # Which disagreements actually matter.
+  #
+  # A fresh Supabase project is not empty: it arrives with its own auth
+  # plumbing already populated — schema_migrations especially, and whatever
+  # else its version of GoTrue writes at startup. Those rows will not match
+  # the ones in the backup and are not supposed to, so failing on them would
+  # report a perfectly good backup as broken.
+  #
+  # What must match is everything the journal is made of — every public table
+  # — plus auth.users, because without the accounts the journal rows belong to
+  # nothing. Anything else is noted and not counted against the result.
+  case "$table" in
+    '"public".'*|'"auth"."users"') critical=1 ;;
+    *)                             critical=0 ;;
+  esac
+
+  if [ "$want" = "$got" ]; then mark="ok"
+  elif [ "$critical" = 1 ]; then mark="MISMATCH"; FAIL=1
+  else mark="differs (not part of your data)"
+  fi
+  printf "  %-30s %8s %10s   %s\n" "$table" "$want" "$got" "$mark"
 done < "$DIR/counts.txt"
 
 rm -rf "$TMP"
