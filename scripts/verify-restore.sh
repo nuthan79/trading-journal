@@ -8,13 +8,12 @@
 # that authenticated against the wrong database, the restore that needed a role
 # nobody had written down.
 #
-# WHY psql AND NOT THE SUPABASE CLI. The CLI can dump but has no command to run
-# arbitrary SQL against a remote database — `db push` applies migrations and
-# needs a project structure, which a restore is not. So loading a dump needs
-# psql, and it must be a modern one: the psql on this machine is 9.3, from 2014,
-# and cannot talk to the Postgres Supabase runs. Install Postgres.app
-# (postgresapp.com), which needs no Homebrew and no Docker, then either add its
-# bin directory to PATH or pass PSQL=/path/to/psql.
+# WHY psql AND NOT THE SUPABASE CLI. The CLI runs pg_dump inside a container
+# and so needs Docker Desktop, and it has no command to run SQL against a
+# remote database anyway. psql does both jobs with no container — but it must
+# be modern: the psql on this machine is 9.3, from 2014. Postgres.app supplies
+# it, needs neither Homebrew nor Docker, and is the same install backup.sh
+# wants for pg_dump.
 #
 # THIS MUST NOT TOUCH THE REAL PROJECT. It restores into a scratch Supabase
 # project made for the purpose and deleted afterwards. Restoring a schema over
@@ -96,7 +95,9 @@ echo "Restoring data…"
 # ---------------------------------------------------------- verification
 echo "Re-dumping what actually landed…"
 TMP="$(mktemp -d)"
-npx --yes supabase@2 db dump --db-url "$TARGET" --data-only --use-copy -f "$TMP/data.sql"
+PGDUMP="${PGDUMP:-$(dirname "$PSQL")/pg_dump}"
+"$PGDUMP" "$TARGET" --schema=public --schema=auth --data-only \
+  --no-owner --no-privileges --quote-all-identifiers -f "$TMP/data.sql"
 
 awk '
   /^COPY /           { t=$2; n=0; inside=1; next }

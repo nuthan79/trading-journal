@@ -12,12 +12,15 @@
 # whole of non-negotiable #6. "Supabase has backups" is a belief. A dump you
 # have loaded into an empty project and counted rows in is a fact.
 #
-# Three files, because they restore in this order and the split is what makes
+# Two files, because they restore in this order and the split is what makes
 # a partial restore possible:
 #
-#   roles.sql   cluster roles — rarely changes, needed first
 #   schema.sql  tables, policies, functions, triggers
 #   data.sql    the rows, as COPY statements (far faster to load than inserts)
+#
+# No roles file. pg_dump cannot dump cluster roles (that is pg_dumpall, which
+# Supabase does not permit), and a fresh project already has the roles a
+# restore needs — which is why --no-owner is passed below.
 #
 # The connection string is read from .env.local and never printed. It contains
 # the database password, so it must not reach a terminal that gets screenshotted
@@ -53,25 +56,67 @@ MSG
   exit 1
 fi
 
+# ------------------------------------------------------------- pg_dump
+#
+# Directly, not through the Supabase CLI. `supabase db dump` runs pg_dump
+# inside a container and so requires Docker Desktop — a large install to do a
+# job pg_dump already does, and one more moving part between you and your data
+# at the moment you most want fewer.
+#
+# Postgres.app supplies pg_dump AND the psql that verify-restore.sh needs, so
+# one download covers taking a backup and proving it restores.
+#
+# The version check is not ceremony: pg_dump refuses outright to dump a server
+# newer than itself, and the pg_dump on PATH here is 9.3, from 2014.
+PGDUMP="${PGDUMP:-}"
+if [ -z "$PGDUMP" ]; then
+  for c in /Applications/Postgres.app/Contents/Versions/latest/bin/pg_dump \
+           /opt/homebrew/bin/pg_dump /usr/local/bin/pg_dump; do
+    [ -x "$c" ] && PGDUMP="$c" && break
+  done
+fi
+[ -n "$PGDUMP" ] || PGDUMP="$(command -v pg_dump || true)"
+
+if [ -z "$PGDUMP" ]; then
+  echo "No pg_dump found. Install Postgres.app from postgresapp.com and re-run."
+  exit 1
+fi
+
+PV="$("$PGDUMP" --version | grep -oE '[0-9]+' | head -1)"
+if [ "$PV" -lt 14 ]; then
+  echo "pg_dump $PV is too old for a Supabase database (found: $PGDUMP)."
+  echo "Install Postgres.app from postgresapp.com, then re-run."
+  echo "It installs alongside what you have and changes nothing else."
+  exit 1
+fi
+
 STAMP="$(date +%Y-%m-%d-%H%M)"
 OUT="backups/$STAMP"
 mkdir -p "$OUT"
 
-echo "Backing up to $OUT"
+echo "Backing up to $OUT  (pg_dump $PV)"
 
-# --yes so a fresh machine does not stop on the install prompt. Pinned to a
-# major version: a CLI that silently moves on could change the dump format
-# between the backup you take and the one you try to restore.
-SB="npx --yes supabase@2 db dump --db-url $DB_URL"
+# public holds the journal; auth holds the accounts those rows belong to.
+# Without auth, every trade points at a user that does not exist and the
+# restore fails on the foreign key — so a public-only dump would look fine
+# and be unrestorable, which is the exact failure this whole exercise is
+# meant to catch.
+SCHEMAS="--schema=public --schema=auth"
 
-echo "  roles…";  $SB --role-only            -f "$OUT/roles.sql"
-echo "  schema…"; $SB                        -f "$OUT/schema.sql"
-echo "  data…";   $SB --data-only --use-copy -f "$OUT/data.sql"
+# --no-owner and --no-privileges because the roles on a restored project are
+# not the roles here, and a dump that insists on them fails on every line.
+echo "  schema…"
+"$PGDUMP" "$DB_URL" $SCHEMAS --schema-only --no-owner --no-privileges \
+  --quote-all-identifiers -f "$OUT/schema.sql"
+
+echo "  data…"
+"$PGDUMP" "$DB_URL" $SCHEMAS --data-only --no-owner --no-privileges \
+  --quote-all-identifiers -f "$OUT/data.sql"
 
 # A dump that "succeeded" and wrote nothing is the failure this catches. It has
 # happened on other projects — credentials that authenticate but reach an empty
 # database produce a valid, useless file.
-for f in roles schema data; do
+for f in schema data; do
   bytes=$(wc -c < "$OUT/$f.sql" | tr -d ' ')
   if [ "$bytes" -lt 100 ]; then
     echo "  !! $f.sql is only ${bytes} bytes — that is not a real dump."; exit 1
