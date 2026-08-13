@@ -170,6 +170,24 @@ label.f > span {
  */
 :root { --app-w: 1440px; }
 
+/* The reveal control on password fields. Global rather than scoped to one
+   component because three separate forms — sign in, change password, reset —
+   apply these classes to their own markup, and the button has to sit
+   identically on all three or it reads as a different control. */
+.pw-wrap { position: relative; }
+.pw-wrap .in { padding-right: 44px; }
+.pw-eye {
+  position: absolute; right: 1px; top: 1px; bottom: 1px; width: 42px;
+  display: grid; place-items: center;
+  background: none; border: 0; padding: 0; cursor: pointer;
+  color: var(--ink3); border-radius: 0 3px 3px 0;
+}
+.pw-eye:hover { color: var(--ink); }
+/* Keyboard users land on this between two password boxes, so the ring has to
+   be visible — the default outline overlaps the input's own border and is
+   hard to read there. */
+.pw-eye:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+
 .jwrap { max-width: var(--app-w); margin: 0 auto; padding: 0 20px 72px; }
 
 .topbar { border-bottom: 1px solid var(--rule); background: var(--paper);

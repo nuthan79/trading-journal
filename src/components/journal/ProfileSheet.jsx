@@ -8,6 +8,7 @@ import {
 } from "@/lib/db";
 import { rupee } from "@/lib/format";
 import { MIN_PASSWORD } from "@/lib/password";
+import { RevealToggle, pwType } from "@/components/PasswordEye";
 import AvatarChoice from "./AvatarChoice";
 
 /**
@@ -43,6 +44,8 @@ function PasswordChange({ autoFocus }) {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
+  // One switch for all three boxes on this form — see PasswordEye.
+  const [reveal, setReveal] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [done, setDone] = useState(false);
@@ -81,15 +84,22 @@ function PasswordChange({ autoFocus }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 320 }}>
+      {/* The eye goes on the current-password box too, not only the new ones.
+          Getting the existing password wrong is the commonest way this form
+          fails, and it is the one field the person cannot simply retype from
+          memory if they are unsure what they typed. */}
       <label className="f"><span>Current password</span>
-        <input className="in" type="password" value={current} autoComplete="current-password"
-               autoFocus={autoFocus}
-               onChange={(e) => { setCurrent(e.target.value); setDone(false); }} /></label>
+        <div className="pw-wrap">
+          <input className="in" type={pwType(reveal)} value={current}
+                 autoComplete="current-password" autoFocus={autoFocus}
+                 onChange={(e) => { setCurrent(e.target.value); setDone(false); }} />
+          <RevealToggle on={reveal} onToggle={() => setReveal((v) => !v)} />
+        </div></label>
       <label className="f"><span>New password</span>
-        <input className="in" type="password" value={next} autoComplete="new-password"
+        <input className="in" type={pwType(reveal)} value={next} autoComplete="new-password"
                onChange={(e) => { setNext(e.target.value); setDone(false); }} /></label>
       <label className="f"><span>Again</span>
-        <input className="in" type="password" value={confirm} autoComplete="new-password"
+        <input className="in" type={pwType(reveal)} value={confirm} autoComplete="new-password"
                onChange={(e) => { setConfirm(e.target.value); setDone(false); }}
                onKeyDown={(e) => e.key === "Enter" && submit()} /></label>
 

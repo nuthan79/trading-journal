@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, updatePassword } from "@/lib/db";
 import { MIN_PASSWORD } from "@/lib/password";
+import { RevealToggle, pwType } from "@/components/PasswordEye";
 
 /**
  * Where the recovery email lands.
@@ -66,6 +67,7 @@ export default function ResetPage() {
   const [recovery, setRecovery] = useState(false);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [reveal, setReveal] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [done, setDone] = useState(false);
@@ -165,14 +167,20 @@ export default function ResetPage() {
           </>
         ) : (
           <>
+            {/* This screen is reached from an email link by someone who has
+                already forgotten one password, often on a phone. Being able
+                to see what is being typed matters more here than anywhere. */}
             <label className="f"><span>New password</span>
-              <input className="in" type="password" value={password} autoFocus
-                     autoComplete="new-password"
-                     onChange={(e) => setPassword(e.target.value)}
-                     onKeyDown={(e) => e.key === "Enter" && submit()} /></label>
+              <div className="pw-wrap">
+                <input className="in" type={pwType(reveal)} value={password} autoFocus
+                       autoComplete="new-password"
+                       onChange={(e) => setPassword(e.target.value)}
+                       onKeyDown={(e) => e.key === "Enter" && submit()} />
+                <RevealToggle on={reveal} onToggle={() => setReveal((v) => !v)} />
+              </div></label>
 
             <label className="f"><span>Again</span>
-              <input className="in" type="password" value={confirm}
+              <input className="in" type={pwType(reveal)} value={confirm}
                      autoComplete="new-password"
                      onChange={(e) => setConfirm(e.target.value)}
                      onKeyDown={(e) => e.key === "Enter" && submit()} /></label>
