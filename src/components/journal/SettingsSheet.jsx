@@ -137,12 +137,13 @@ export default function SettingsSheet({ profile, onSave, onClose, onNavigate, ne
           <div style={{ borderTop: "1px solid var(--rule)", paddingTop: 18 }}>
             <div className="eyebrow" style={{ marginBottom: 4 }}>Trades</div>
             <div className="hint" style={{ marginTop: 0, marginBottom: 12 }}>
-              Bring in closed trades from a Zerodha Tax P&amp;L export. Charges come
-              from the file itself rather than an estimate.
+              Bring in closed trades from your broker's tax P&amp;L or capital gains
+              report. Charges come from the file where the broker states them, and
+              are worked out from the statutory rates where they don&apos;t.
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button className="btn ghost" onClick={() => onNavigate?.("/import")}>
-                <Upload size={13} />Import from Zerodha
+                <Upload size={13} />Import trades
               </button>
               {/* Filling stops is a chore done over several sittings, so it needs
                   its own way in rather than living only at the end of an import. */}

@@ -171,7 +171,7 @@ export default function Landing({ signIn, view = "signin" }) {
           </Feature>
 
           <Feature title="Import what you have already traded">
-            Bring in a Zerodha tax P&amp;L file and start with your history rather than
+            Bring in a tax P&amp;L file from your broker and start with your history rather than
             a blank page. Entry, exit, quantity and charges come across.
           </Feature>
 

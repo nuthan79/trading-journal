@@ -8,7 +8,8 @@ import * as zerodha from "@/lib/brokers/zerodha";
 import { rupee, pct } from "@/lib/format";
 
 /**
- * Import from a Zerodha Tax P&L export.
+ * Import from a broker's tax P&L export — Zerodha, Groww or Dhan, decided
+ * by reading the file rather than by asking.
  *
  * Nothing is written until the preview has been seen and confirmed. The
  * preview is the point of the screen: the report splits one position across
@@ -127,8 +128,9 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
         const sheet = broker.findSheet(wb);
         if (!sheet) {
           throw new Error(
-            "No 'Tradewise Exits' sheet in this file. Download the Tax P&L report " +
-            "from Console → Reports → Tax P&L, not the tradebook."
+            `This looks like a ${broker.label} file, but not the report we need — ` +
+            `download the tax P&L or capital gains statement rather than the tradebook ` +
+            `or a ledger.`
           );
         }
         rows = XLSX.utils.sheet_to_json(wb.Sheets[sheet], { header: 1, raw: false, defval: null });
@@ -274,7 +276,7 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
   if (!parsed) {
     return (
       <section>
-        <div className="eyebrow" style={{ marginBottom: 9 }}>Import from Zerodha</div>
+        <div className="eyebrow" style={{ marginBottom: 9 }}>Import from your broker</div>
         <div
           className="im-drop"
           data-drag={drag ? 1 : 0}
@@ -292,8 +294,11 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
             {busy ? "Reading…" : "Drop your Tax P&L file here, or click to choose"}
           </div>
           <div className="im-drop-sub">
-            Console → Reports → Tax P&amp;L → download. One file per financial year.
-            Re-importing an overlapping year is safe; anything already in your
+            {/* The list comes from the registry, so a broker added next month
+                appears here without anyone remembering to edit this line. */}
+            The tax P&amp;L or capital gains report from {brokerNames().join(", ")}.
+            The file says which one it is, so there is nothing to choose.
+            Re-importing an overlapping period is safe; anything already in your
             journal is skipped.
           </div>
         </div>

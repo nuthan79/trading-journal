@@ -26,16 +26,22 @@ const FAQ = [
        "lists every one still waiting.",
   },
   {
-    q: "Can I import from a broker other than Zerodha?",
-    a: "Not yet. Each broker's tax report has its own columns and sections, and an " +
-       "adapter written from a guess produces numbers that look right and are not. " +
-       "Send the file through the form above and it can be added properly.",
+    q: "Which brokers can I import from?",
+    a: "Zerodha, Groww and Dhan. Drop the file in and it works out which one it is — " +
+       "there is nothing to choose. Others are added as real export files turn up: " +
+       "each broker's report has its own columns and sections, and an adapter written " +
+       "from a guess produces numbers that look right and are not. Send yours through " +
+       "the form above and it can be added properly.",
   },
   {
     q: "Why don't my charges match my contract note exactly?",
-    a: "They are computed from the statutory rates and the broker settings in Setup, " +
-       "so a different brokerage plan will differ. Any trade's figure can be " +
-       "overridden by typing it, and an overridden figure is never recalculated.",
+    a: "It depends where they came from. Zerodha and Dhan state a figure per trade, " +
+       "and an imported one is kept exactly as the broker gave it. Everywhere else — " +
+       "trades you log yourself, and Groww files, which only total charges for the " +
+       "whole period — they are computed from the statutory rates and the broker " +
+       "settings in Setup, so a different brokerage plan will differ. Any trade's " +
+       "figure can be overridden by typing it, and an overridden figure is never " +
+       "recalculated.",
   },
   {
     q: "What happened to the sample data?",
