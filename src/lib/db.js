@@ -990,6 +990,28 @@ export async function reauthenticate(email, password) {
  * in private storage, so a short-lived signed link is included beside its path.
  * Those expire — which is said in the file rather than left to be discovered.
  */
+/**
+ * How many bytes of chart images an export will carry before it stops.
+ *
+ * Counted on the raw images, not the encoded text: base64 inflates by about
+ * a third, so this is roughly a 21MB file's worth of pictures. A browser has
+ * to hold the whole thing as a string to save it, and an export that runs the
+ * tab out of memory produces nothing at all — which is worse than an export
+ * carrying most of the charts and saying which ones it left out.
+ */
+const CHART_EMBED_LIMIT = 16 * 1024 * 1024;
+
+/** Blob to `data:` URI. FileReader rather than manual base64 because it gets
+ *  the MIME type from the blob and does not build a huge intermediate array. */
+function blobToDataUri(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(blob);
+  });
+}
+
 export async function exportEverything() {
   const user_id = await uid();
 
@@ -1007,22 +1029,67 @@ export async function exportEverything() {
     raw("client_errors", "created_at").catch(() => []),
   ]);
 
-  // Only the ones actually in storage. A pasted link needs no signing and
-  // asking for one would fail on every entry.
+  /**
+   * Uploaded charts, carried INSIDE the file rather than linked from it.
+   *
+   * They used to be signed URLs, which the note honestly said expire within
+   * the hour — and that is the problem. Somebody exporting "everything" is
+   * doing it precisely so they have it later, and later is exactly when a
+   * signed URL is worthless. Worse, the one moment the export truly matters
+   * is after the account is deleted, and deletion purges the bucket, so both
+   * the link and the file behind it are gone.
+   *
+   * So each image is read once and embedded as a data URI. The file gets
+   * bigger; it also becomes true.
+   *
+   * Only genuinely stored images. A pasted TradingView link is already a
+   * durable URL and asking storage to sign it would fail on every entry.
+   *
+   * Sequential, not Promise.all: the running total is what decides whether
+   * the next image is embedded, and concurrent workers all reading a stale
+   * total would sail past the cap together.
+   */
   const stored = diary.filter((d) => d.image_path && !/^https?:\/\//i.test(d.image_path));
   const charts = {};
-  await Promise.all(stored.map(async (d) => {
-    try { charts[d.image_path] = await chartUrl(d.image_path); } catch { /* skip */ }
-  }));
+  let embedded = 0;
+  let skipped = 0;
+
+  for (const d of stored) {
+    try {
+      const url = await chartUrl(d.image_path);
+      // Past the cap, fall back to the old behaviour rather than failing the
+      // whole export. A link that expires beats no export at all, and the
+      // note below says which ones those are.
+      if (embedded >= CHART_EMBED_LIMIT) { charts[d.image_path] = url; skipped++; continue; }
+
+      const blob = await (await fetch(url)).blob();
+      if (embedded + blob.size > CHART_EMBED_LIMIT) {
+        charts[d.image_path] = url; skipped++; continue;
+      }
+      charts[d.image_path] = await blobToDataUri(blob);
+      embedded += blob.size;
+    } catch {
+      skipped++;
+    }
+  }
 
   return {
     exported_at: new Date().toISOString(),
     account: { user_id, email: (await supabase.auth.getUser()).data?.user?.email ?? null },
     note:
-      "Everything this account holds. Chart links under `chart_links` are " +
-      "temporary and stop working within the hour; the TradingView links stored " +
-      "on diary entries do not expire. Trades and their sells are joined by " +
-      "trade_exits.trade_id; diary entries point at a trade through trade_id.",
+      "Everything this account holds. Uploaded charts are embedded in " +
+      "`chart_links` as data: URIs — the image itself is in this file, so it " +
+      "still opens after the account is gone. Paste one into a browser's " +
+      "address bar to view it." +
+      (skipped
+        ? ` ${skipped} could not be embedded and are temporary links that stop ` +
+          "working within the hour — open and save those now if you want them."
+        : "") +
+      " TradingView links stored on diary entries are ordinary URLs and do not " +
+      "expire. Trades and their sells are joined by trade_exits.trade_id; diary " +
+      "entries point at a trade through trade_id.",
+    chart_images_embedded: stored.length - skipped,
+    chart_images_missing: skipped,
     profile,
     trades,
     trade_exits: exits,
