@@ -438,7 +438,7 @@ export async function restoreFromExport(json, filename = null) {
   if (!info.ok) throw new Error(info.error);
   if (!info.total) throw new Error("That export has nothing in it to restore.");
 
-  const { rows, profilePatch } = planRestore(json, user_id);
+  const { rows, profilePatch } = await planRestore(json, user_id);
 
   const { data: batch, error: batchErr } = await supabase
     .from("import_batches")

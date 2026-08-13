@@ -26,6 +26,9 @@ export default function RestoreExport({ onRestored }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [done, setDone] = useState(null);
+  // Worked out once when the file is read. planRestore is async now — it
+  // derives ids with crypto.subtle — so it cannot be called during render.
+  const [summary, setSummary] = useState("");
 
   const pick = async (file) => {
     setErr(""); setDone(null); setInfo(null); setJson(null);
@@ -39,6 +42,7 @@ export default function RestoreExport({ onRestored }) {
       setFilename(file.name);
       setJson(parsed);
       setInfo(seen);
+      setSummary(describePlan(await planRestore(parsed, data?.user?.id || "preview")));
     } catch {
       // A CSV, a broker file, or a JSON file that is simply something else.
       setErr("That file isn't a journal export. Use the JSON from My profile → Export everything.");
@@ -90,7 +94,7 @@ export default function RestoreExport({ onRestored }) {
             <b>{filename}</b> — exported {String(info.exportedAt).slice(0, 10)}
           </div>
           <div style={{ fontSize: 13, color: "var(--ink2)", lineHeight: 1.65 }}>
-            About to restore {describePlan(planRestore(json, "preview"))}.
+            About to restore {summary}.
           </div>
           <div className="hint" style={{ marginTop: 6 }}>
             Charts cannot come back — the images were deleted with the account. Usage and

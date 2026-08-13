@@ -26,6 +26,36 @@
  * a real export without a database.
  */
 
+/**
+ * A uuid derived from the signed-in user and an id out of the export.
+ *
+ * Shaped as a v5 uuid — SHA-256 rather than v5's SHA-1, with the version and
+ * variant bits set so Postgres accepts it as a uuid and nothing downstream
+ * has to know it was computed rather than generated.
+ *
+ * The two properties that matter:
+ *
+ *   DETERMINISTIC — the same file restored twice derives the same ids, so the
+ *   second run overwrites the first instead of building a duplicate journal.
+ *   This is what makes the restore safe to retry, which people do.
+ *
+ *   NAMESPACED TO THE USER — the user's own id is part of the input, so ids
+ *   derived for one account can never collide with another account's rows.
+ *   The original design reused the export's ids and had neither property when
+ *   the source account still existed.
+ *
+ * crypto.subtle is why planRestore is async. It is present in browsers and in
+ * Node 18+, so the pure half still runs under plain node for testing.
+ */
+async function derivedId(userId, oldId) {
+  const data = new TextEncoder().encode(`ledgerr-restore:${userId}:${oldId}`);
+  const buf = new Uint8Array(await crypto.subtle.digest("SHA-256", data)).slice(0, 16);
+  buf[6] = (buf[6] & 0x0f) | 0x50;   // version 5
+  buf[8] = (buf[8] & 0x3f) | 0x80;   // RFC 4122 variant
+  const h = [...buf].map((b) => b.toString(16).padStart(2, "0")).join("");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
 /** Tables restored, parents before children. Order matters: a trade_exit
  *  whose trade does not exist yet violates the foreign key. */
 export const RESTORE_ORDER = ["trades", "trade_exits", "diary_entries", "capital_flows"];
@@ -101,15 +131,46 @@ export function inspectExport(json) {
  * still in the export under `chart_links` as a data URI, so re-uploading is
  * possible later; this is the honest floor, not the ceiling.
  */
-export function planRestore(json, userId) {
+export async function planRestore(json, userId) {
   if (!userId) throw new Error("planRestore needs the signed-in user's id.");
+
+  /**
+   * Ids are DERIVED, not reused. This is the correction to the original
+   * design, which kept them.
+   *
+   * Keeping them only works if the account they came from is gone. It is not
+   * always: somebody testing a restore, or moving a journal into a second
+   * account, still has the original. The old ids then collide with live rows
+   * belonging to another user, and the upsert's UPDATE half is refused by
+   * row-level security — "new row violates row-level security policy (USING
+   * expression)". Which is RLS doing exactly its job: without it, a restore
+   * would have overwritten another account's trades.
+   *
+   * So each id becomes a hash of the signed-in user plus the original id.
+   * That keeps the property the whole design rests on — the same file
+   * restored twice produces the same ids, so it overwrites rather than
+   * duplicates — while guaranteeing those ids belong to this user's
+   * namespace and can never land on somebody else's row.
+   *
+   * The map is built before anything is rewritten because children reference
+   * parents: trade_exits.trade_id and diary_entries.trade_id have to be moved
+   * to the same new ids the trades got.
+   */
+  const idMap = new Map();
+  for (const table of RESTORE_ORDER) {
+    for (const r of json[SOURCE_KEY[table]] || []) {
+      if (r?.id && !idMap.has(r.id)) idMap.set(r.id, await derivedId(userId, r.id));
+    }
+  }
 
   const rows = {};
   for (const table of RESTORE_ORDER) {
     const src = json[SOURCE_KEY[table]] || [];
     rows[table] = src.map((r) => {
-      // Every id is kept. Only ownership changes.
-      const out = { ...r, user_id: userId };
+      const out = { ...r, user_id: userId, id: idMap.get(r.id) ?? r.id };
+      // Point children at the trade's new id. A reference left on the old one
+      // would fail the foreign key, since that trade was never written here.
+      if (out.trade_id) out.trade_id = idMap.get(out.trade_id) ?? out.trade_id;
 
       /**
        * Except this one, which must not survive.
