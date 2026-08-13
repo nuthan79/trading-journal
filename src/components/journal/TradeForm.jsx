@@ -730,14 +730,7 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                              onChange={setExit(i, "quantity")} /></label>
                     <label className="f"><span>{i === 0 ? "Price" : ""}</span>
                       <input className="in" inputMode="decimal" value={e.price}
-                             onChange={setExit(i, "price")} />
-                      {/* Only under the last sell row. Repeating the same
-                          market price under every tranche would say nothing
-                          new three times and crowd a row that is already four
-                          fields wide. */}
-                      {i === t.exits.length - 1 && (
-                        <CmpHint cmp={cmp} closed={derivedStatus === "closed"} />
-                      )}</label>
+                             onChange={setExit(i, "price")} /></label>
                     <label className="f"><span>{i === 0 ? "Why" : ""}</span>
                       <select className="in" value={e.reason} onChange={setExit(i, "reason")}>
                         <option value="">—</option>
@@ -747,6 +740,20 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                             onClick={() => removeExit(i)}><X size={14} /></button>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* Below the rows, not inside a cell.
+                .ex-row is bottom-aligned on purpose — every row after the
+                first has empty label text, and aligning to the bottom is what
+                keeps their inputs level with the first row's. A hint inside
+                one cell makes that cell taller, and bottom-alignment then
+                lifts its input and label above the rest of the row. So this
+                sits under the whole block, where it still reads as being
+                about the sell price and cannot pull the grid out of line. */}
+            {t.exits.length > 0 && (
+              <div style={{ marginTop: 7 }}>
+                <CmpHint cmp={cmp} closed={derivedStatus === "closed"} />
               </div>
             )}
 
