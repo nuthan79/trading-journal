@@ -2,3 +2,6 @@ node_modules
 .next
 .env.local
 data/
+
+# Database dumps. Never commit these — they contain every user's data.
+backups/
