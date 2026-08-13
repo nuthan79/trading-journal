@@ -151,7 +151,11 @@ export default function MonthlyReturns({ closed }) {
 
         .mr-foot {
           font-size: 12.5px; color: var(--ink2);
-          margin: 13px 0 0; line-height: 1.6; max-width: 76ch; min-height: 40px;
+          /* Shared with the note under profit concentration, which had its own
+             number. min-height stays: the text swaps to a per-cell reading on
+             hover, and without it the card resizes under the cursor. */
+          margin: 13px 0 0; line-height: 1.6; max-width: var(--note-w);
+          min-height: 40px; text-wrap: pretty;
         }
       `}</style>
     </section>

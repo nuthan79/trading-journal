@@ -170,6 +170,23 @@ label.f > span {
  */
 :root { --app-w: 1440px; }
 
+/**
+ * The measure for the explanatory note under a chart.
+ *
+ * One variable because these notes sit under different components that each
+ * had their own number — 76ch on the monthly grid, 600px on profit
+ * concentration — so the two wrapped at visibly different points on the same
+ * page, which is what made them look broken rather than merely narrow.
+ *
+ * Wide, and deliberately wider than would be right for body prose. These are
+ * one- or two-line captions under something you have just looked at, not
+ * paragraphs to be read at length, and the usual objection to a long measure
+ * is losing your place returning to the start of the next line — which barely
+ * applies when there is no next line. Widening the real prose this far would
+ * be wrong; see the ch caps on the dashboard summary and diary entries.
+ */
+:root { --note-w: 132ch; }
+
 /* The reveal control on password fields. Global rather than scoped to one
    component because three separate forms — sign in, change password, reset —
    apply these classes to their own markup, and the button has to sit

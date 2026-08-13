@@ -133,7 +133,7 @@ export default function ProfitConcentration({ closed }) {
               border:1px solid var(--rule); border-radius:3px; overflow:hidden;
             }
             .pc-foot { font-size:12.5px; color:var(--ink2); line-height:1.65;
-                       margin:13px 0 0; max-width:600px; text-align:left;
+                       margin:13px 0 0; max-width:var(--note-w); text-align:left;
                        text-wrap:pretty; }
             .pc-foot b { font-weight:600; font-variant-numeric:tabular-nums;
                          white-space:nowrap; color:var(--ink); }
