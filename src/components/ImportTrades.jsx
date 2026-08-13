@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Upload, Check, AlertTriangle, X, FileSpreadsheet } from "lucide-react";
 import { detectBroker, brokerNames, assembleImport } from "@/lib/brokers";
+import { resolveSymbols } from "@/lib/isin";
 import * as zerodha from "@/lib/brokers/zerodha";
 import { rupee, pct } from "@/lib/format";
 
@@ -138,8 +139,34 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
         throw new Error("Expected an .xlsx or .csv file.");
       }
 
-      const out = assembleImport(broker.parseRows(rows),
-        { targets, assumeStopPct: stopPct, broker: broker.id });
+      /**
+       * Symbols come from the ISIN, not from the file's own naming.
+       *
+       * Only Zerodha states a trading symbol; every other report gives a
+       * company name, and "Route Mobile" is ROUTE. Left alone, those trades
+       * never price, never dedupe against the same trade from another broker,
+       * and group under a label nothing else in the journal shares.
+       */
+      const parsed = broker.parseRows(rows);
+      const { lots, unresolved } = await resolveSymbols(parsed.lots);
+      const out = assembleImport(
+        {
+          ...parsed,
+          lots,
+          // Named rather than counted. A security that stayed a company name
+          // is not noticed until a position refuses to price weeks later.
+          warnings: [
+            ...(parsed.warnings || []),
+            ...unresolved.slice(0, 5).map(
+              (u) => `Could not identify ${u.name || u.isin} (${u.isin}) — imported under the name in the file.`
+            ),
+            ...(unresolved.length > 5
+              ? [`…and ${unresolved.length - 5} more that could not be identified.`]
+              : []),
+          ],
+        },
+        { targets, assumeStopPct: stopPct, broker: broker.id }
+      );
       if (!out.trades.length && !out.completions.length && !out.duplicates.length) {
         throw new Error(
           "No equity trades found. This report may cover a period with no closed positions."
