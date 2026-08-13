@@ -64,10 +64,15 @@ function DayEdgeHint({ cmp, side }) {
 function CmpHint({ cmp, closed }) {
   if (!cmp?.price) return null;
   const chg = cmp.changePct;
+  // The label stays quiet and the number does not. It is the only part anyone
+  // is here to read, and at hint size a 600 weight did not separate it from
+  // the words around it. The dimming on a closed trade eases off in step, or
+  // the emphasis would be cancelled by the thing it is fighting.
   return (
-    <div className="hint" style={closed ? { opacity: 0.55 } : undefined}>
+    <div className="hint" style={closed ? { opacity: 0.75 } : undefined}>
       {closed ? "Trading now at " : "Now "}
-      <b style={{ fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
+      <b style={{ fontWeight: 700, fontSize: "1.08em", color: "var(--ink)",
+                  fontVariantNumeric: "tabular-nums" }}>
         {Number(cmp.price).toFixed(2)}
       </b>
       {/* Null first, and not for tidiness: isFinite(null) is true, because
@@ -778,7 +783,7 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                 sits under the whole block, where it still reads as being
                 about the sell price and cannot pull the grid out of line. */}
             {t.exits.length > 0 && (
-              <div style={{ marginTop: 7 }}>
+              <div className="ex-cmp">
                 <CmpHint cmp={cmp} closed={derivedStatus === "closed"} />
               </div>
             )}
@@ -915,6 +920,23 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
           gap: 9px; align-items: end;
         }
         .ex-del { align-self: end; margin-bottom: 5px; }
+        /**
+         * The market price, under the Price column.
+         *
+         * Its own row rather than a cell inside .ex-row, repeating that grid's
+         * columns so it lands under Price anyway. The row is bottom-aligned —
+         * see the note in the markup — so a taller cell there lifts its own
+         * input and label above the rest of the line. This gets the position
+         * without touching the alignment.
+         *
+         * The template must stay in step with .ex-row above. If that changes
+         * and this does not, the hint quietly slides under the wrong column.
+         */
+        .ex-cmp {
+          display: grid; grid-template-columns: 1.1fr 0.7fr 0.8fr 1.1fr auto;
+          gap: 9px; margin-top: 5px;
+        }
+        .ex-cmp > * { grid-column: 3; }
         .ex-actions {
           display: flex; align-items: center; gap: 9px;
           margin-top: 11px; flex-wrap: wrap;
@@ -922,6 +944,11 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
         .ex-warn { font-size: 11.5px; color: var(--short); }
         @media (max-width: 640px) {
           .ex-row { grid-template-columns: 1fr 1fr; }
+          /* Two columns here, so there is no third to sit under — the hint
+             would otherwise be placed in a column that does not exist and
+             push the grid wider than the sheet. */
+          .ex-cmp { grid-template-columns: 1fr; }
+          .ex-cmp > * { grid-column: 1; }
           .ex-del { grid-column: 2; justify-self: end; }
         }
       `}</style>
