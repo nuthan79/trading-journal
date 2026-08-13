@@ -74,6 +74,16 @@ export default function SignInCard({
    */
   const [confirm, setConfirm] = useState("");
   const [agreed, setAgreed] = useState(false);
+  /**
+   * One switch for both password fields, not one each.
+   *
+   * The reason anybody reveals a password is to find the typo they just made,
+   * and on a sign-up form the typo is as likely to be in the repeat box as in
+   * the first. Two separate eyes would mean noticing that, then hunting for
+   * the second control. Nothing is revealed that the person at the keyboard
+   * did not just type themselves.
+   */
+  const [reveal, setReveal] = useState(false);
   useEffect(() => { setConfirm(""); setAgreed(false); }, [view]);
 
   const shortPassword = password.length > 0 && password.length < MIN_PASSWORD;
@@ -110,10 +120,18 @@ export default function SignInCard({
                onKeyDown={(e) => e.key === "Enter" && submit()} /></label>
 
       <label className="f"><span>Password</span>
-        <input className="in" type="password" value={password}
-               autoComplete={signup ? "new-password" : "current-password"}
-               onChange={(e) => setPassword(e.target.value)}
-               onKeyDown={(e) => e.key === "Enter" && submit()} />
+        <div className="sic-pw">
+          <input className="in" type={reveal ? "text" : "password"} value={password}
+                 autoComplete={signup ? "new-password" : "current-password"}
+                 onChange={(e) => setPassword(e.target.value)}
+                 onKeyDown={(e) => e.key === "Enter" && submit()} />
+          <button type="button" className="sic-eye" onClick={() => setReveal((v) => !v)}
+                  aria-label={reveal ? "Hide password" : "Show password"}
+                  aria-pressed={reveal}
+                  title={reveal ? "Hide password" : "Show password"}>
+            <Eye off={reveal} />
+          </button>
+        </div>
         {signup && (
           <>
             {/* Five segments, filled to the score. Shown only once there is
@@ -136,7 +154,9 @@ export default function SignInCard({
 
       {signup && (
         <label className="f"><span>Repeat password</span>
-          <input className="in" type="password" value={confirm} autoComplete="new-password"
+          {/* Follows the same switch. No second eye — see `reveal` above. */}
+          <input className="in" type={reveal ? "text" : "password"} value={confirm}
+                 autoComplete="new-password"
                  onChange={(e) => setConfirm(e.target.value)}
                  onKeyDown={(e) => e.key === "Enter" && submit()} />
           {mismatch && <div className="hint" style={{ color: "var(--short)" }}>Those two don&apos;t match.</div>}
@@ -203,6 +223,24 @@ export default function SignInCard({
           font-size: 12.5px; color: var(--ink3);
         }
 
+        /* The eye sits over the field's right edge, so the input keeps its
+           full width and nothing below it shifts. The padding is what stops a
+           long password sliding underneath the button. */
+        .sic-pw { position: relative; }
+        .sic-pw .in { padding-right: 44px; }
+        .sic-eye {
+          position: absolute; right: 1px; top: 1px; bottom: 1px; width: 42px;
+          display: grid; place-items: center;
+          background: none; border: 0; padding: 0; cursor: pointer;
+          color: var(--ink-3, #8a8a86); border-radius: 0 6px 6px 0;
+        }
+        .sic-eye:hover { color: var(--ink-1, #2b2b28); }
+        /* Keyboard users land here between the two password boxes, so the
+           focus ring has to be visible — not the default outline, which the
+           overlap with the input's own border makes hard to read. */
+        .sic-eye:focus-visible {
+          outline: 2px solid var(--brass, #9a7b3f); outline-offset: -2px;
+        }
         .sic-meter {
           display: flex; align-items: center; gap: 4px; margin-top: 7px;
         }
@@ -241,6 +279,26 @@ export default function SignInCard({
 
 /** Google's mark, inline — the CSP blocks a remote asset and a bare button
  *  reads as unofficial next to every other app's version of this. */
+/**
+ * The eye, and the eye struck through.
+ *
+ * Drawn rather than typed as an emoji so it inherits the button's colour and
+ * stays the same shape on every platform — the emoji eye renders as a full
+ * colour cartoon on Apple devices and would be the loudest thing on a form
+ * whose whole job is to be quiet.
+ */
+function Eye({ off }) {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none"
+         stroke="currentColor" strokeWidth="1.7"
+         strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M1.8 12S5.5 5.2 12 5.2 22.2 12 22.2 12 18.5 18.8 12 18.8 1.8 12 1.8 12Z" />
+      <circle cx="12" cy="12" r="3.1" />
+      {off && <path d="M4 20 20 4" />}
+    </svg>
+  );
+}
+
 function GoogleMark() {
   return (
     <svg width="14" height="14" viewBox="0 0 48 48" aria-hidden="true">

@@ -179,6 +179,28 @@ export default function Holdings({
         const changePct = isFinite(t.mark) && Number(t.entry_price) > 0
           ? ((t.mark - Number(t.entry_price)) / Number(t.entry_price)) * 100 * (t.side === "short" ? -1 : 1)
           : NaN;
+        /**
+         * What the position did today, in rupees and as a percentage.
+         *
+         * Deliberately measured against prev_close rather than against
+         * anything the journal knows, because "today" is a market fact, not
+         * a journal one — a position entered two years ago still had a day.
+         *
+         * The percentage divides by the value of the holding at yesterday's
+         * close, which is arithmetically the same as the move in the share
+         * price: the quantity cancels. So the two figures in this cell never
+         * disagree, whatever size the position is.
+         *
+         * Both are NaN unless prev_close is present AND positive. A missing
+         * close leaves the cell blank rather than treating it as zero, which
+         * would print the entire value of the holding as one day's gain.
+         */
+        const prevClose = Number(t.prev_close);
+        const canToday = isFinite(t.mark) && isFinite(prevClose) && prevClose > 0;
+        const dir = t.side === "short" ? -1 : 1;
+        const todayAmt = canToday ? (t.mark - prevClose) * qtyOpen * dir : NaN;
+        const todayPct = canToday ? ((t.mark - prevClose) / prevClose) * 100 * dir : NaN;
+
         // How far CMP has to fall before the stop is hit, as a share of CMP —
         // the same reading the dashboard's open positions give. Breached means
         // price is already through it and the position is running on borrowed
@@ -196,6 +218,8 @@ export default function Holdings({
           buyValue,
           atR,
           changePct,
+          todayAmt,
+          todayPct,
           toStop,
           breached,
           // Decided once, here, because it was being decided twice: the row
@@ -415,6 +439,11 @@ export default function Holdings({
               <th className="num">Open risk R</th>
               <th className="num">CMP</th>
               <th className="num">Change %</th>
+              {/* Next to CMP, because it is a fact about the price rather
+                  than about the trade. "Today" rather than "Day change" so
+                  it cannot be read as a second since-entry figure alongside
+                  the Change % beside it. */}
+              <th className="num">Today</th>
               <th className="num">Banked</th>
               <th className="num">Unrealised</th>
               <th className="num">Now at</th>
@@ -507,6 +536,19 @@ export default function Holdings({
                   <td className={`num ${r.changePct >= 0 ? "pos" : "neg"}`}>
                     {isFinite(r.changePct) ? signedPct(r.changePct) : "—"}
                   </td>
+                  <td className={`num ${isFinite(r.todayAmt) && r.todayAmt < 0 ? "neg" : "pos"}`}
+                      title={isFinite(r.todayAmt)
+                        ? "Against the previous close, for the shares still held. As fresh as the "
+                          + "last price fetch — before the first Refresh of the day this is still "
+                          + "showing the last session's move."
+                        : "No previous close on the last price fetch, so today's move can't be worked out."}>
+                    {isFinite(r.todayAmt) ? (
+                      <>
+                        {rupee(r.todayAmt)}
+                        <span className="hd-today">{signedPct(r.todayPct)}</span>
+                      </>
+                    ) : <span className="ps-dim">—</span>}
+                  </td>
                   <td className={`num ${r.realisedPnl >= 0 ? "pos" : "neg"}`}>
                     {isFinite(r.realisedPnl) && r.qtyExited > 0 ? rupee(r.realisedPnl) : <span className="ps-dim">—</span>}
                   </td>
@@ -564,6 +606,14 @@ export default function Holdings({
       </div>
 
       <style jsx>{`
+        /* The percentage under the rupees, not beside them — the column is
+           already one of many and a second figure on the same line would
+           widen every row. Colour is inherited from the cell so the two
+           always agree; only the weight and size separate them. */
+        .hd-today {
+          display: block; font-size: 11px; opacity: 0.72;
+          line-height: 1.35; font-variant-numeric: tabular-nums;
+        }
         .ps-head {
           display: flex; align-items: flex-end; justify-content: space-between;
           gap: 14px; flex-wrap: wrap; margin-bottom: 12px;

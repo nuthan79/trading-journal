@@ -300,12 +300,26 @@ export async function markOpenPositions(openTrades) {
     const hit = byKey.get(key(t.exchange, t.symbol));
     if (!hit?.price) continue;
 
-    const patch = { last_price: hit.price, last_price_at: hit.at };
+    /**
+     * prev_close rides along with last_price, and is written even when the
+     * quote came back without one.
+     *
+     * Keeping an older close when a fetch omits it would look like the kind
+     * thing to do, but it would pair a close from one day with a price from
+     * another, and today's change would be computed across the gap. That is
+     * a wrong number rather than a missing one, and it would appear in
+     * rupees beside correct figures with nothing marking it as doubtful.
+     */
+    const patch = {
+      last_price: hit.price,
+      last_price_at: hit.at,
+      prev_close: hit.prevClose ?? null,
+    };
     const { data, error } = await supabase
       .from("trades")
       .update(patch)
       .eq("id", t.id)
-      .select("id,last_price,last_price_at")
+      .select("id,last_price,last_price_at,prev_close")
       .single();
 
     if (!error && data) marked.push(data);
