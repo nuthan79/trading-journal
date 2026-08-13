@@ -24,6 +24,7 @@
 
 import * as zerodha from "./zerodha";
 import * as groww from "./groww";
+import * as dhan from "./dhan";
 
 export { assembleImport } from "../import-pipeline";
 
@@ -39,7 +40,7 @@ export { assembleImport } from "../import-pipeline";
  * P&L" message into a silent bad parse, which is a worse answer than the one
  * being replaced.
  */
-export const BROKERS = [zerodha, groww];
+export const BROKERS = [zerodha, groww, dhan];
 
 export const brokerById = (id) => BROKERS.find((b) => b.id === id) || null;
 

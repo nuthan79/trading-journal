@@ -260,8 +260,47 @@ export const label = "Zerodha";
  * than by asking the user, because a person who has just downloaded one
  * report should not have to know what shape it is.
  */
+/**
+ * A "Tradewise" sheet is not enough on its own.
+ *
+ * IIFL's tax P&L has a sheet called "Tradewise Exists from 20250401" and
+ * column headings that match this one field for field — Symbol, ISIN, Entry
+ * Date, Exit Date, Quantity, Buy Value, Sell Value, Profit, Period of
+ * Holding. All nine. Matching on the sheet name alone, this adapter claimed
+ * that file and would have parsed it *successfully*: every trade correct, and
+ * every charge zero, because IIFL states none.
+ *
+ * Which is the dangerous shape of wrong. An imported zero is treated as a
+ * fact the broker stated — right for demerged shares that genuinely cost
+ * nothing — so the trades would sit there permanently costless, flattering
+ * every R, with nothing anywhere saying so. A file that fails to import is a
+ * message; a file that imports wrongly is a lie in the journal.
+ *
+ * So the charge columns decide it. They are what this report has and IIFL's
+ * does not, which makes them the actual difference rather than a proxy for
+ * it.
+ */
 export function detect(workbook) {
-  return !!findSheet(workbook);
+  const sheet = findSheet(workbook);
+  if (!sheet) return false;
+  const text = sheetText(workbook, sheet);
+  return CHARGE_COLS.some((c) => text.includes(c));
+}
+
+/** Cell text straight off the worksheet — detection runs before anything has
+ *  decided to load a parser, so it must not need one. */
+function sheetText(workbook, name, limit = 400) {
+  const ws = workbook?.Sheets?.[name];
+  if (!ws) return "";
+  const out = [];
+  let n = 0;
+  for (const ref of Object.keys(ws)) {
+    if (ref[0] === "!") continue;
+    const v = ws[ref]?.w ?? ws[ref]?.v;
+    if (v != null) out.push(String(v));
+    if (++n > limit) break;
+  }
+  return out.join(" | ").toLowerCase();
 }
 
 /**
