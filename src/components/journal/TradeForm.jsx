@@ -31,6 +31,36 @@ import { quoteFor } from "@/lib/db";
  * component function, and a non-global <style jsx> in TradeForm would not
  * reach the markup rendered here.
  */
+/**
+ * The far edge of today's range, under the stop field.
+ *
+ * A stop wants to sit beyond where the stock has actually traded today —
+ * inside the day's range it is already in the noise the session has shown it
+ * can produce. So this is the reference number for placing one, and it was
+ * another reason to leave the form and open a chart.
+ *
+ * Which edge depends on the direction, and getting that wrong would be worse
+ * than showing nothing: a short's stop sits ABOVE the price, so the day's low
+ * is not merely unhelpful there, it is on the side the trade is hoping to
+ * reach. Long takes the low, short takes the high.
+ *
+ * Shown only while a trade is open. On a closed one the stop is history and
+ * the field already carries the distance reading that matters.
+ */
+function DayEdgeHint({ cmp, side }) {
+  const short = side === "short";
+  const edge = Number(short ? cmp?.dayHigh : cmp?.dayLow);
+  if (!isFinite(edge) || edge <= 0) return null;
+  return (
+    <div className="hint">
+      Today&apos;s {short ? "high" : "low"}{" "}
+      <b style={{ fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
+        {edge.toFixed(2)}
+      </b>
+    </div>
+  );
+}
+
 function CmpHint({ cmp, closed }) {
   if (!cmp?.price) return null;
   const chg = cmp.changePct;
@@ -537,7 +567,8 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                 <input className="in" inputMode="decimal" value={t.stop_loss} onChange={set("stop_loss")} />
                 <div className="hint" style={{ color: slBandLabel === "wide" || slBandLabel === "very wide" ? "var(--brass)" : undefined }}>
                   {isFinite(d.slPct) ? `${d.slPct.toFixed(1)}% from entry — ${slBandLabel}` : "How far the stop sits from entry"}
-                </div></label>
+                </div>
+                {derivedStatus !== "closed" && <DayEdgeHint cmp={cmp} side={t.side} />}</label>
               <label className="f"><span>Quantity</span>
                 <input className="in" inputMode="numeric" value={t.quantity} onChange={set("quantity")} /></label>
             </div>
