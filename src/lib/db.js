@@ -273,6 +273,32 @@ export async function deleteTrade(id) {
  * Returns the rows that were actually marked, so the caller can merge them
  * into state without a full refetch.
  */
+/**
+ * One quote, for the form to show beside a price being typed.
+ *
+ * Separate from markOpenPositions because it must not write anything. That
+ * function's job is to stamp the book; this one is answering "what is it
+ * trading at right now" while somebody fills in a field, and a form that
+ * silently updated stored marks as you typed in it would be a surprising
+ * thing to have built.
+ *
+ * Returns null on anything going wrong rather than throwing. A missing price
+ * beside an input is a blank hint; an exception is a form that will not open.
+ */
+export async function quoteFor(symbol, exchange) {
+  if (!symbol || !exchange) return null;
+  try {
+    const res = await apiFetch(
+      `/api/quotes?s=${encodeURIComponent(`${symbol}:${exchange}`)}`
+    );
+    const json = await res.json();
+    const q = (json.quotes || [])[0];
+    return q?.price != null ? q : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function markOpenPositions(openTrades) {
   if (!openTrades?.length) return { marked: [], error: null };
 

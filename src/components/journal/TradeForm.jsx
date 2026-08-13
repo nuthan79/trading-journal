@@ -10,6 +10,47 @@ import { PATTERNS, EXIT_REASONS, MISTAKES, STAGES, slBand } from "@/lib/constant
 import { resolveTradingViewChart } from "@/lib/charts";
 import { entryCharges, mergeConfig } from "@/lib/charges";
 import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
+import { quoteFor } from "@/lib/db";
+
+/**
+ * The market price, under a price field.
+ *
+ * Useful while deciding a number — opening a position, or selling one — and
+ * deliberately quieter on a trade that is already closed. A closed trade's
+ * prices are a record of what happened, and today's price beside them is
+ * context, not a suggestion; put it there at full strength and it starts to
+ * look like the field is wrong and wants correcting. That is the same shape
+ * as the charges rule, where an entered figure is a decision somebody made
+ * and must not be quietly overwritten by a computed one.
+ *
+ * Renders nothing at all without a price, rather than a placeholder. A blank
+ * beneath the field is the honest answer when the quote source is down, and
+ * the app already degrades that way everywhere else.
+ *
+ * Uses the global `.hint` class rather than styled-jsx: this is its own
+ * component function, and a non-global <style jsx> in TradeForm would not
+ * reach the markup rendered here.
+ */
+function CmpHint({ cmp, closed }) {
+  if (!cmp?.price) return null;
+  const chg = cmp.changePct;
+  return (
+    <div className="hint" style={closed ? { opacity: 0.55 } : undefined}>
+      {closed ? "Trading now at " : "Now "}
+      <b style={{ fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
+        {Number(cmp.price).toFixed(2)}
+      </b>
+      {/* Null first, and not for tidiness: isFinite(null) is true, because
+          Number(null) is 0. Testing finiteness alone would print "+0.0%
+          today" for a quote that never reported a change. */}
+      {chg != null && isFinite(chg) && (
+        <span style={{ color: chg >= 0 ? "var(--long)" : "var(--short)" }}>
+          {" "}({chg >= 0 ? "+" : ""}{chg.toFixed(1)}% today)
+        </span>
+      )}
+    </div>
+  );
+}
 
 const num = (v) => (v === "" || v === null || v === undefined ? NaN : Number(v));
 
@@ -394,6 +435,28 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
    */
   const [showMore, setShowMore] = useState(false);
 
+  /**
+   * What the stock is trading at right now, shown under the price fields.
+   *
+   * Keyed on symbol and exchange, never on the price being typed — otherwise
+   * every keystroke in a price box would fire a request, and the endpoint is
+   * shared with the rest of the app.
+   *
+   * The `live` flag in the effect is the ordinary async guard: type three
+   * symbols quickly and three requests are in flight, which can land out of
+   * order and leave the last symbol showing the second symbol's price. A
+   * wrong price next to a field somebody is about to copy is worse than no
+   * price, so a superseded response is dropped rather than rendered.
+   */
+  const [cmp, setCmp] = useState(null);
+  useEffect(() => {
+    let live = true;
+    setCmp(null);
+    if (!t.symbol || !t.exchange) return;
+    quoteFor(t.symbol, t.exchange).then((q) => { if (live) setCmp(q); });
+    return () => { live = false; };
+  }, [t.symbol, t.exchange]);
+
   const [chartLink, setChartLink] = useState("");
   const [chartOk, setChartOk] = useState(null);
   const chart = resolveTradingViewChart(chartLink);
@@ -468,7 +531,8 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
             </div>
             <div className="grid3" style={{ gap: 12, marginTop: 12 }}>
               <label className="f"><span>Entry price</span>
-                <input className="in" inputMode="decimal" value={t.entry_price} onChange={set("entry_price")} /></label>
+                <input className="in" inputMode="decimal" value={t.entry_price} onChange={set("entry_price")} />
+                <CmpHint cmp={cmp} closed={derivedStatus === "closed"} /></label>
               <label className="f"><span>Stop loss</span>
                 <input className="in" inputMode="decimal" value={t.stop_loss} onChange={set("stop_loss")} />
                 <div className="hint" style={{ color: slBandLabel === "wide" || slBandLabel === "very wide" ? "var(--brass)" : undefined }}>
@@ -635,7 +699,14 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                              onChange={setExit(i, "quantity")} /></label>
                     <label className="f"><span>{i === 0 ? "Price" : ""}</span>
                       <input className="in" inputMode="decimal" value={e.price}
-                             onChange={setExit(i, "price")} /></label>
+                             onChange={setExit(i, "price")} />
+                      {/* Only under the last sell row. Repeating the same
+                          market price under every tranche would say nothing
+                          new three times and crowd a row that is already four
+                          fields wide. */}
+                      {i === t.exits.length - 1 && (
+                        <CmpHint cmp={cmp} closed={derivedStatus === "closed"} />
+                      )}</label>
                     <label className="f"><span>{i === 0 ? "Why" : ""}</span>
                       <select className="in" value={e.reason} onChange={setExit(i, "reason")}>
                         <option value="">—</option>
