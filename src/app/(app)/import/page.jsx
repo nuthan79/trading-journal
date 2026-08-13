@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import ImportTrades from "@/components/ImportTrades";
 import RestoreExport from "@/components/RestoreExport";
@@ -14,15 +14,34 @@ export default function ImportPage() {
   const [targets, setTargets] = useState(null);
   const [keysErr, setKeysErr] = useState("");
 
-  // Loaded before the picker is usable. Without the positions already here,
-  // an overlapping file can't tell a trade it has never seen from one that
-  // has simply been scaled out further since the last import — and would
-  // insert a second copy carrying sells the first already holds.
-  useEffect(() => {
-    listImportTargets()
+  /**
+   * The positions already here, which the importer needs before the picker is
+   * usable: without them an overlapping file cannot tell a trade it has never
+   * seen from one merely scaled out further since the last import, and would
+   * insert a second copy carrying sells the first already holds.
+   *
+   * Re-read after anything changes the journal, not only on mount.
+   *
+   * These keys are what tells the importer a trade is already here. Loaded
+   * once, they go stale the moment an import is undone on the same visit — and
+   * the symptom is baffling: undo removes fourteen trades, the file is dropped
+   * again, and the screen insists all fourteen are "already in your journal".
+   * The journal was right and the page was remembering.
+   */
+  const loadTargets = useCallback(() => {
+    return listImportTargets()
       .then(setTargets)
       .catch((e) => setKeysErr(e.message || "Could not read existing trades."));
   }, []);
+
+  useEffect(() => { loadTargets(); }, [loadTargets]);
+
+  // Both the journal and the keys — the first drives every screen, the second
+  // drives what the importer thinks it already has.
+  const refreshAll = useCallback(
+    async () => { await Promise.all([reloadTrades(), loadTargets()]); },
+    [reloadTrades, loadTargets]
+  );
 
   if (keysErr) {
     return (
@@ -49,7 +68,7 @@ export default function ImportPage() {
         targets={targets}
         onImport={async (payload) => {
           const res = await importTrades(payload);
-          await reloadTrades();
+          await refreshAll();
           return res;
         }}
         onDone={(choice) => {
@@ -62,13 +81,13 @@ export default function ImportPage() {
           arriving here has a broker file; the people with an export of their
           own are coming back after deleting an account, and they know what
           they are looking for. */}
-      <RestoreExport onRestored={reloadTrades} />
+      <RestoreExport onRestored={refreshAll} />
 
       {/* Last, because it is the way back rather than the way in. It is also
           what the restore screen points at when it says an import can be
           undone from the history — which was true of the database and not of
           the app until now. */}
-      <ImportHistory onChanged={reloadTrades} />
+      <ImportHistory onChanged={refreshAll} />
     </div>
   );
 }
