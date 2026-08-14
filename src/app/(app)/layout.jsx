@@ -219,7 +219,15 @@ export default function AppLayout({ children }) {
     // The difference between this count and the signed_in that follows IS the
     // number of people who got as far as the consent screen and refused.
     pageEvent("google_clicked");
-    const { error } = await signInWithGoogle(window.location.origin);
+    /**
+     * Back to /dashboard, not to the origin.
+     *
+     * The origin was right when `/` was the app. It is now a static marketing
+     * page, so Google returned people to an advertisement for the product they
+     * had just signed into — signed in, and looking at a Sign in link. Which
+     * is precisely what gets reported as "login is broken".
+     */
+    const { error } = await signInWithGoogle(`${window.location.origin}/dashboard`);
     if (error) { setAuthErr(error.message); setBusy(false); }
   };
 

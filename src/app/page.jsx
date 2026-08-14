@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BRAND } from "@/lib/brand";
+import SignedInLink from "@/components/SignedInLink";
 
 /**
  * The marketing page, and the only page on this domain a search engine can
@@ -128,7 +129,7 @@ export default function HomePage() {
 
       <header className="mk-top">
         <span className="mk-brand">{BRAND.name}</span>
-        <Link className="mk-signin" href="/dashboard">Sign in</Link>
+        <SignedInLink className="mk-signin" />
       </header>
 
       <section className="mk-hero">
@@ -209,7 +210,7 @@ export default function HomePage() {
       </section>
 
       <footer className="mk-foot">
-        <Link href="/dashboard">Sign in</Link>
+        <SignedInLink />
         <Link href="/privacy">Privacy</Link>
         <Link href="/terms">Terms</Link>
         <Link href="/contact">Contact</Link>
