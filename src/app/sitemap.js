@@ -30,6 +30,10 @@ export default function sitemap() {
   return [
     { url: `${base}/`,        lastModified: now, changeFrequency: "weekly",  priority: 1 },
     { url: `${base}/support`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
+    // Articles. These are what can be found by somebody who does not yet know
+    // this app exists, which is why they rank above the legal pages.
+    { url: `${base}/learn/what-is-an-r-multiple`, lastModified: now,
+      changeFrequency: "monthly", priority: 0.8 },
     { url: `${base}/contact`, lastModified: now, changeFrequency: "yearly",  priority: 0.4 },
     { url: `${base}/privacy`, lastModified: now, changeFrequency: "yearly",  priority: 0.3 },
     { url: `${base}/terms`,   lastModified: now, changeFrequency: "yearly",  priority: 0.3 },
