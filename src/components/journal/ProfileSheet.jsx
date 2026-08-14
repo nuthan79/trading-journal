@@ -5,6 +5,7 @@ import { X, LogOut, Trash2, Crown, Download } from "lucide-react";
 import {
   supabase, reauthenticate, updatePassword, sendPasswordReset, signOut,
   exportEverything, signOutEverywhere, deleteMyAccount,
+  saveNominee, setAnalyticsOptOut,
 } from "@/lib/db";
 import { rupee } from "@/lib/format";
 import { MIN_PASSWORD } from "@/lib/password";
@@ -240,6 +241,166 @@ function AvatarPicker({ profile, avatar, onChanged }) {
  * The filename carries the date. Somebody who exports twice a year wants to
  * know which one they are looking at without opening it.
  */
+/**
+ * Who may act for you if you cannot.
+ *
+ * Section 14 of the DPDP Act, and something the privacy policy has told
+ * people they can do since the day it shipped — with nowhere in the app to do
+ * it. A published right nobody can exercise is a representation being failed,
+ * which is worse than a gap.
+ *
+ * Two fields and no more. A nominee is a third party who has agreed to
+ * nothing here, so the app asks for the least that could identify them:
+ * whoever is settling an estate will have the relationship and the documents,
+ * and none of that needs to sit in this database in the meantime.
+ */
+function Nominee({ profile, onSaved }) {
+  const [name, setName] = useState("");
+  const [contact, setContact] = useState("");
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [done, setDone] = useState("");
+
+  useEffect(() => {
+    setName(profile?.nominee_name || "");
+    setContact(profile?.nominee_contact || "");
+  }, [profile?.nominee_name, profile?.nominee_contact]);
+
+  const has = !!profile?.nominee_name;
+  const changed = (name.trim() !== (profile?.nominee_name || "")) ||
+                  (contact.trim() !== (profile?.nominee_contact || ""));
+
+  const save = async () => {
+    if (busy) return;
+    setBusy(true); setErr(""); setDone("");
+    try {
+      const { cleared } = await saveNominee({ name, contact });
+      setDone(cleared ? "Nomination removed." : "Nominee saved.");
+      await onSaved?.();
+      if (cleared) setOpen(false);
+    } catch (e) {
+      setErr(e.message || "Could not save that.");
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div style={{ marginTop: 18 }}>
+      <div className="eyebrow" style={{ marginBottom: 6 }}>Nominee</div>
+      <p style={{ fontSize: 12.5, color: "var(--ink2)", lineHeight: 1.6, margin: "0 0 10px" }}>
+        Someone who may ask for your journal, or ask for it to be deleted, if you die
+        or become unable to. Optional, and changeable whenever you like. We only store
+        a name and one way to reach them.
+      </p>
+
+      {has && !open ? (
+        <div className="pf-card">
+          <div className="pf-row"><span>Nominated</span><b>{profile.nominee_name}</b></div>
+          {profile.nominee_contact && (
+            <div className="pf-row"><span>Contact</span><b className="mono">{profile.nominee_contact}</b></div>
+          )}
+          {/* Shown because a nomination made years ago is worth re-reading,
+              and only the date tells you it is old. */}
+          {profile.nominee_set_at && (
+            <div className="pf-row">
+              <span>Recorded</span><b className="mono">{fmtDate(new Date(profile.nominee_set_at))}</b>
+            </div>
+          )}
+          <div style={{ padding: "10px 0 0" }}>
+            <button className="btn ghost sm" onClick={() => setOpen(true)}>Change or remove</button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 9, maxWidth: 330 }}>
+          <label className="f"><span>Their name</span>
+            <input className="in" value={name} onChange={(e) => setName(e.target.value)} /></label>
+          <label className="f"><span>Email or phone</span>
+            <input className="in" value={contact} onChange={(e) => setContact(e.target.value)} /></label>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <button className="btn ghost sm" onClick={save} disabled={busy || !changed}>
+              {busy ? "Saving…" : name.trim() ? "Save nominee" : "Remove nomination"}
+            </button>
+            {has && (
+              <button className="btn ghost sm" type="button" onClick={() => setOpen(false)}>
+                Cancel
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {err && <div className="warn" style={{ marginTop: 8 }}>{err}</div>}
+      {done && <div className="hint" style={{ color: "var(--long)", marginTop: 8 }}>{done}</div>}
+    </div>
+  );
+}
+
+/**
+ * Declining the two things collected about you rather than for you.
+ *
+ * Product events and crash reports are not needed to run a journal — the app
+ * behaves identically without them. They exist because they are useful to
+ * whoever is building it, which is exactly the processing somebody should be
+ * able to refuse while keeping the service.
+ *
+ * Until now the only way to stop them was deleting the account, which is not
+ * withdrawal but abandonment.
+ *
+ * Turning it off also erases what was already collected, and says how much.
+ * A switch that stops future collection while keeping the existing pile
+ * answers a different question from the one being asked.
+ */
+function AnalyticsChoice({ profile, onSaved }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [done, setDone] = useState("");
+  const off = !!profile?.analytics_opt_out;
+
+  const toggle = async () => {
+    if (busy) return;
+    setBusy(true); setErr(""); setDone("");
+    try {
+      const { erased } = await setAnalyticsOptOut(!off);
+      setDone(
+        !off
+          ? erased
+            ? `Turned off, and ${erased} record${erased === 1 ? "" : "s"} already collected were deleted.`
+            : "Turned off. There was nothing collected to delete."
+          : "Turned back on."
+      );
+      await onSaved?.();
+    } catch (e) {
+      setErr(e.message || "Could not change that.");
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div style={{ marginTop: 18 }}>
+      <div className="eyebrow" style={{ marginBottom: 6 }}>Usage and crash records</div>
+      <p style={{ fontSize: 12.5, color: "var(--ink2)", lineHeight: 1.6, margin: "0 0 10px" }}>
+        Which screens get used, and what breaks. Never a symbol, a price or anything
+        from your journal. It only helps decide what to build next, so you can turn it
+        off and the app works exactly the same.
+      </p>
+      <div className="pf-card">
+        <div className="pf-row">
+          <span>Recording</span>
+          <b className={off ? "" : "pf-ok"}>{off ? "Off" : "On"}</b>
+        </div>
+        <div style={{ padding: "10px 0 0" }}>
+          <button className="btn ghost sm" onClick={toggle} disabled={busy}>
+            {busy ? "Saving…" : off ? "Turn it back on" : "Turn it off and delete what's collected"}
+          </button>
+        </div>
+      </div>
+      {err && <div className="warn" style={{ marginTop: 8 }}>{err}</div>}
+      {done && <div className="hint" style={{ color: "var(--long)", marginTop: 8 }}>{done}</div>}
+    </div>
+  );
+}
+
 function ExportEverything() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -458,6 +619,12 @@ export default function ProfileSheet({ profile, avatar, counts, onClose, onlyPas
                 nothing is summarised.
               </p>
               <ExportEverything />
+
+              {/* Between exporting and deleting on purpose: these are the
+                  middle ground — things you can change your mind about
+                  without leaving. */}
+              <Nominee profile={profile} onSaved={onProfileChange} />
+              <AnalyticsChoice profile={profile} onSaved={onProfileChange} />
 
               <div style={{ marginTop: 18 }}>
                 <DangerZone email={email} />

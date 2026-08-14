@@ -10,8 +10,7 @@ import {
   listDiary, saveDiary as dbSaveDiary, deleteDiary as dbDeleteDiary,
   listFlows, markOpenPositions, signInWithPassword, signOut,
   signUpWithPassword, signInWithGoogle,
-  sendPasswordReset, avatarUrl, trackVisit,
-} from "@/lib/db";
+  sendPasswordReset, avatarUrl, trackVisit, setAnalyticsFlag } from "@/lib/db";
 import { stats } from "@/lib/calc";
 import { derivePosition } from "@/lib/positions";
 import FirstRun from "@/components/journal/FirstRun";
@@ -141,7 +140,13 @@ export default function AppLayout({ children }) {
    */
   useEffect(() => {
     if (!userId) { setProfile(null); return; }
-    getProfile().then(setProfile);
+    getProfile().then((p) => {
+      setProfile(p);
+      // So track() knows the answer before the first event rather than paying
+      // for its own lookup — and so a change made in My profile takes effect
+      // immediately rather than at the next sign-in.
+      setAnalyticsFlag(p?.analytics_opt_out);
+    });
   }, [userId]);
 
   /**

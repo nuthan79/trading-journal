@@ -1,6 +1,6 @@
 "use client";
 
-import { supabase } from "./db";
+import { supabase, analyticsPermitted } from "./db";
 
 /**
  * Where a crash goes.
@@ -49,6 +49,20 @@ export function reportError(error, { source = "unknown", path } = {}) {
       const { data } = await supabase.auth.getSession();
       const uid = data?.session?.user?.id;
       if (!uid) return;                     // see 025 — signed-in only, on purpose
+
+      /**
+       * The same switch that governs product events.
+       *
+       * A crash report is a record ABOUT the person — where they were and what
+       * broke — rather than anything they asked us to keep, so somebody who
+       * has declined analytics has declined this too. Honouring it only for
+       * the events and not the crashes would make the toggle a half-truth.
+       *
+       * Checked after the dedupe deliberately: the key is still marked seen,
+       * so nothing accumulates in memory waiting to be sent if the preference
+       * changes mid-session.
+       */
+      if (!(await analyticsPermitted())) return;
 
       await supabase.from("client_errors").insert({
         user_id: uid,

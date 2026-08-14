@@ -108,9 +108,47 @@ async function fetchAllPages(build) {
  * `props` is for counts and enums. Never a symbol, a price, or anything about
  * the positions — see the note on the table in 016.
  */
+/**
+ * Whether this account has declined analytics. null means not yet known.
+ *
+ * Held here rather than passed in, because track() is called from a dozen
+ * places that have no business knowing about a preference.
+ *
+ * The three states matter. Starting at `false` would record events for
+ * somebody who opted out, in the window before their profile loads — and the
+ * first event of a session fires on the first page. So the unknown state is
+ * distinct, and the first event pays for one lookup that every later event
+ * reuses.
+ */
+let analyticsOptOut = null;
+
+/** Set from the profile once it loads, and by the toggle itself, so a change
+ *  takes effect on the next event rather than the next sign-in. */
+export function setAnalyticsFlag(optedOut) {
+  analyticsOptOut = !!optedOut;
+}
+
+async function analyticsAllowed() {
+  if (analyticsOptOut !== null) return !analyticsOptOut;
+  try {
+    const id = await uid();
+    if (!id) return false;
+    const { data } = await supabase
+      .from("profiles").select("analytics_opt_out").eq("id", id).single();
+    // A missing column means 034 has not been run; collecting as before is
+    // the honest default there, since nobody has been offered the choice yet.
+    analyticsOptOut = !!data?.analytics_opt_out;
+    return !analyticsOptOut;
+  } catch {
+    analyticsOptOut = false;
+    return true;
+  }
+}
+
 export function track(event, props = {}) {
   (async () => {
     try {
+      if (!(await analyticsAllowed())) return;
       const { data } = await supabase.auth.getSession();
       const uid = data?.session?.user?.id;
       if (!uid) return;
@@ -120,6 +158,10 @@ export function track(event, props = {}) {
     }
   })();
 }
+
+/** Read by the crash reporter, which must obey the same switch — a crash
+ *  report is a record about the person, not about their journal. */
+export const analyticsPermitted = () => analyticsAllowed();
 
 /**
  * The one event that answers "is anyone still using this".
@@ -300,6 +342,81 @@ export async function quoteFor(symbol, exchange) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Record, change or clear the nominee.
+ *
+ * Section 14 of the DPDP Act, and promised in the privacy policy since it
+ * shipped: somebody to exercise these rights if the account holder dies or is
+ * incapacitated. Until now there was nowhere to put one.
+ *
+ * Clearing is passing empty strings, and is not a lesser action than setting:
+ * a nomination that no longer reflects what somebody wants should be
+ * removable without deleting the account around it.
+ */
+export async function saveNominee({ name, contact }) {
+  const id = await uid();
+  if (!id) throw new Error("Sign in first.");
+
+  const clean = (v) => (typeof v === "string" ? v.trim() : "");
+  const nominee_name = clean(name);
+  const nominee_contact = clean(contact);
+  const clearing = !nominee_name && !nominee_contact;
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({
+      nominee_name: clearing ? null : nominee_name || null,
+      nominee_contact: clearing ? null : nominee_contact || null,
+      // Stamped so a nomination can be shown with its date — a nominee named
+      // four years ago is worth re-reading, and only the date says so.
+      nominee_set_at: clearing ? null : new Date().toISOString(),
+    })
+    .eq("id", id);
+  if (error) throw new Error(migrationHint(error) || error.message);
+  return { cleared: clearing };
+}
+
+/**
+ * Turn product events and crash reports off, or back on.
+ *
+ * TURNING THEM OFF ALSO DELETES WHAT WAS COLLECTED. A switch that stops
+ * future collection while quietly keeping the existing pile is the weaker
+ * half of the promise — somebody declining analytics means they would rather
+ * this did not exist, not that it may continue existing provided nothing is
+ * added to it. Both tables are records ABOUT them rather than anything they
+ * asked us to hold, so there is nothing of theirs to lose.
+ *
+ * The flag is written first. If the deletes fail, collection has still
+ * stopped, which is the half that matters most; the rows can be cleared
+ * again. The reverse order could leave a switch that reads "off" while
+ * events keep arriving.
+ */
+export async function setAnalyticsOptOut(optedOut) {
+  const id = await uid();
+  if (!id) throw new Error("Sign in first.");
+
+  const { error } = await supabase
+    .from("profiles").update({ analytics_opt_out: !!optedOut }).eq("id", id);
+  if (error) throw new Error(migrationHint(error) || error.message);
+
+  // In effect from the next event, not the next sign-in.
+  setAnalyticsFlag(!!optedOut);
+
+  let erased = 0;
+  if (optedOut) {
+    for (const table of ["user_events", "client_errors"]) {
+      try {
+        const { count } = await supabase
+          .from(table).delete({ count: "exact" }).eq("user_id", id);
+        erased += count || 0;
+      } catch {
+        // Reported as zero rather than thrown: the switch is already off.
+      }
+    }
+  }
+  return { erased };
 }
 
 export async function markOpenPositions(openTrades) {
