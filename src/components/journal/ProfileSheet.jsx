@@ -275,9 +275,10 @@ function Nominee({ profile, onSaved }) {
     if (busy) return;
     setBusy(true); setErr(""); setDone("");
     try {
-      const { cleared } = await saveNominee({ name, contact });
+      const { cleared, profile: updated } = await saveNominee({ name, contact });
       setDone(cleared ? "Nomination removed." : "Nominee saved.");
-      await onSaved?.();
+      // The updated row, not nothing — onSaved is setProfile.
+      onSaved?.(updated);
       if (cleared) setOpen(false);
     } catch (e) {
       setErr(e.message || "Could not save that.");
@@ -361,15 +362,33 @@ function AnalyticsChoice({ profile, onSaved }) {
     if (busy) return;
     setBusy(true); setErr(""); setDone("");
     try {
-      const { erased } = await setAnalyticsOptOut(!off);
-      setDone(
-        !off
-          ? erased
-            ? `Turned off, and ${erased} record${erased === 1 ? "" : "s"} already collected were deleted.`
-            : "Turned off. There was nothing collected to delete."
-          : "Turned back on."
-      );
-      await onSaved?.();
+      const { erased, remaining = [], profile: updated } = await setAnalyticsOptOut(!off);
+      onSaved?.(updated);
+      if (remaining.length) {
+        /**
+         * Said as a failure, not folded into the success line.
+         *
+         * Collection has stopped — that part worked — but rows the person
+         * asked to be erased are still there, and quietly reporting the
+         * erasure that did happen would leave them believing the rest went
+         * too. This is what the screen said last time, incorrectly, when a
+         * missing RLS policy meant nothing was deleted at all.
+         */
+        const left = remaining.reduce((a, r) => a + r.rows, 0);
+        setErr(
+          `Recording is off, but ${left} record${left === 1 ? "" : "s"} could not be ` +
+          `deleted. Migration 035 may not have been run. Nothing new is being ` +
+          `collected — try again, and tell us if it keeps failing.`
+        );
+      } else {
+        setDone(
+          !off
+            ? erased
+              ? `Turned off, and ${erased} record${erased === 1 ? "" : "s"} already collected were deleted.`
+              : "Turned off. There was nothing collected to delete."
+            : "Turned back on."
+        );
+      }
     } catch (e) {
       setErr(e.message || "Could not change that.");
     }

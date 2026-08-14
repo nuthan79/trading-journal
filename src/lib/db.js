@@ -364,7 +364,16 @@ export async function saveNominee({ name, contact }) {
   const nominee_contact = clean(contact);
   const clearing = !nominee_name && !nominee_contact;
 
-  const { error } = await supabase
+  /**
+   * Returns the updated profile, because the caller hands it straight to
+   * setProfile — the same contract saveAvatarPreset already follows.
+   *
+   * Returning nothing is not harmless here: the layout renders "Opening the
+   * ledger" whenever the profile is falsy, so setProfile(undefined) unmounts
+   * the whole app until a reload. The comment above that gate warns about
+   * exactly this, and it caught me anyway.
+   */
+  const { data, error } = await supabase
     .from("profiles")
     .update({
       nominee_name: clearing ? null : nominee_name || null,
@@ -373,9 +382,11 @@ export async function saveNominee({ name, contact }) {
       // four years ago is worth re-reading, and only the date says so.
       nominee_set_at: clearing ? null : new Date().toISOString(),
     })
-    .eq("id", id);
+    .eq("id", id)
+    .select()
+    .single();
   if (error) throw new Error(migrationHint(error) || error.message);
-  return { cleared: clearing };
+  return { cleared: clearing, profile: data };
 }
 
 /**
@@ -397,26 +408,57 @@ export async function setAnalyticsOptOut(optedOut) {
   const id = await uid();
   if (!id) throw new Error("Sign in first.");
 
-  const { error } = await supabase
-    .from("profiles").update({ analytics_opt_out: !!optedOut }).eq("id", id);
+  // Returns the row for the same reason saveNominee does — see the note there.
+  const { data: profile, error } = await supabase
+    .from("profiles").update({ analytics_opt_out: !!optedOut }).eq("id", id)
+    .select().single();
   if (error) throw new Error(migrationHint(error) || error.message);
 
   // In effect from the next event, not the next sign-in.
   setAnalyticsFlag(!!optedOut);
 
+  /**
+   * Delete, then COUNT WHAT IS LEFT. Never trust the delete.
+   *
+   * The first version reported whatever `count` came back with and called it
+   * done. It came back zero — because these tables had INSERT and SELECT
+   * policies and no DELETE policy, so the statement matched no rows and
+   * succeeded. 388 events survived a request to erase them while the screen
+   * said there had been nothing to delete.
+   *
+   * An RLS-blocked DELETE is not an error: the rows are invisible to the
+   * statement rather than protected from it, so nothing is thrown. This is
+   * the third time that shape has bitten this project — it is what made
+   * account deletion silently do nothing, twice, before /api/account started
+   * re-fetching the user afterwards.
+   *
+   * So the answer comes from a second query rather than from the first one's
+   * optimism, and anything left over is returned and said out loud. 035 adds
+   * the missing policies; this makes sure a future missing one is noticed
+   * within a second instead of never.
+   */
   let erased = 0;
+  const remaining = [];
+
   if (optedOut) {
     for (const table of ["user_events", "client_errors"]) {
       try {
-        const { count } = await supabase
-          .from(table).delete({ count: "exact" }).eq("user_id", id);
-        erased += count || 0;
+        const { count: before } = await supabase
+          .from(table).select("id", { count: "exact", head: true }).eq("user_id", id);
+        await supabase.from(table).delete().eq("user_id", id);
+        const { count: after } = await supabase
+          .from(table).select("id", { count: "exact", head: true }).eq("user_id", id);
+
+        erased += Math.max(0, (before || 0) - (after || 0));
+        if (after > 0) remaining.push({ table, rows: after });
       } catch {
-        // Reported as zero rather than thrown: the switch is already off.
+        // A table that isn't there yet has nothing to erase. Anything else
+        // shows up as `remaining` on the next attempt rather than as silence.
       }
     }
   }
-  return { erased };
+
+  return { erased, remaining, profile };
 }
 
 export async function markOpenPositions(openTrades) {
