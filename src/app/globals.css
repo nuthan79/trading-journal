@@ -362,3 +362,48 @@ select.in { font-family: 'Archivo', sans-serif; }
 }
 .mk-foot a { color: var(--ink2); text-decoration: none; }
 .mk-foot a:hover { color: var(--ink); text-decoration: underline; }
+
+/* ------------------------------------------------------------------ */
+/*  Support / FAQ                                                      */
+/*                                                                     */
+/*  Plain CSS for the same reason the legal pages use it: this page is  */
+/*  a server component and styled-jsx would force it back into a client */
+/*  bundle — which is exactly what stopped a crawler reading it before. */
+/*  It borrows .legal for the frame and adds only what differs.         */
+/* ------------------------------------------------------------------ */
+
+.sp { max-width: 680px; }
+.sp-h1 { font-size: 26px; line-height: 1.2; margin: 0 0 12px; }
+.sp-lede {
+  font-size: 14.5px; line-height: 1.7; color: var(--ink2);
+  margin: 0 0 22px; max-width: 66ch; text-wrap: pretty;
+}
+.sp-faqhead {
+  font-family: 'Archivo', sans-serif; font-stretch: 125%; font-weight: 600;
+  font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--ink3); margin: 38px 0 10px;
+}
+.sp-faq { border-top: 1px solid var(--rule); }
+
+.sp-q { border-bottom: 1px solid var(--rule); }
+.sp-q > summary {
+  display: flex; justify-content: space-between; align-items: center; gap: 14px;
+  padding: 14px 2px; font-size: 13.5px; color: var(--ink);
+  cursor: pointer; list-style: none;
+}
+/* The default markers are a triangle in Safari and a disclosure arrow
+   elsewhere; a drawn one is the same everywhere and matches the old plus. */
+.sp-q > summary::-webkit-details-marker { display: none; }
+.sp-q > summary::after {
+  content: "+"; font-size: 17px; color: var(--ink3); flex: none;
+}
+.sp-q[open] > summary::after { content: "−"; }
+.sp-q > summary:hover { color: var(--ink2); }
+.sp-q p {
+  font-size: 13px; line-height: 1.7; color: var(--ink2);
+  margin: 0 0 15px; max-width: 66ch; text-wrap: pretty;
+}
+
+.sp-foot { font-size: 12.5px; color: var(--ink3); margin: 32px 0 0; }
+.sp-foot a { color: var(--ink2); text-decoration: none; }
+.sp-foot a:hover { color: var(--ink); text-decoration: underline; }
