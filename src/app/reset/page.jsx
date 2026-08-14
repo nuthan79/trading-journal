@@ -149,7 +149,7 @@ export default function ResetPage() {
             <p style={{ fontSize: 13, color: "var(--ink2)", lineHeight: 1.6, margin: 0 }}>
               You&apos;re signed in on this device already. Use the new password next time.
             </p>
-            <button className="btn" onClick={() => router.push("/")}>Go to the journal</button>
+            <button className="btn" onClick={() => router.push("/dashboard")}>Go to the journal</button>
           </>
         ) : !session || !recovery ? (
           <>

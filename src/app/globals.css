@@ -297,3 +297,68 @@ select.in { font-family: 'Archivo', sans-serif; }
 /* The chart is a button so it can be opened full size. Stripped back to
    nothing so it still reads as an image, not a control. */
 .dy-shot { display: block; width: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; }
+
+/* ------------------------------------------------------------------ */
+/*  The marketing page at /                                            */
+/*                                                                     */
+/*  In globals rather than styled-jsx because that page is a server     */
+/*  component — no client bundle at all, which is the point of it. Its  */
+/*  whole job is to arrive as finished HTML.                            */
+/* ------------------------------------------------------------------ */
+
+.mk { max-width: 760px; margin: 0 auto; padding: 0 22px 90px; }
+
+.mk-top {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 22px 0 0;
+}
+.mk-brand { font-family: var(--display, inherit); font-weight: 600; font-size: 18px; }
+.mk-signin {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--ink2); text-decoration: none;
+}
+.mk-signin:hover { color: var(--ink); }
+
+.mk-hero { padding: 54px 0 40px; border-bottom: 1px solid var(--rule); }
+.mk-eyebrow {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--ink3); margin: 0 0 14px;
+}
+/* Fluid rather than a stack of breakpoints — one line of CSS instead of three
+   media queries, and it never lands between two sizes awkwardly. */
+.mk h1 {
+  font-size: clamp(30px, 6vw, 46px); line-height: 1.1; margin: 0 0 18px;
+  letter-spacing: -0.02em; text-wrap: balance;
+}
+.mk-lead {
+  font-size: 16px; line-height: 1.62; color: var(--ink2);
+  margin: 0 0 26px; max-width: 60ch; text-wrap: pretty;
+}
+.mk-cta {
+  display: inline-block; background: var(--ink); color: var(--paper);
+  text-decoration: none; padding: 11px 20px; border-radius: 3px;
+  font-size: 13px; font-weight: 500;
+}
+.mk-cta:hover { opacity: 0.9; }
+.mk-note { font-size: 12px; color: var(--ink3); margin: 12px 0 0; }
+
+.mk-sec { padding: 30px 0; border-bottom: 1px solid var(--rule); }
+.mk-sec h2 { font-size: 17px; margin: 0 0 10px; letter-spacing: -0.01em; }
+.mk-sec p {
+  font-size: 14px; line-height: 1.68; color: var(--ink2);
+  margin: 0; max-width: 68ch; text-wrap: pretty;
+}
+
+.mk-faq dt { font-size: 14px; font-weight: 600; margin: 18px 0 6px; }
+.mk-faq dt:first-child { margin-top: 0; }
+.mk-faq dd {
+  font-size: 14px; line-height: 1.68; color: var(--ink2);
+  margin: 0; max-width: 68ch; text-wrap: pretty;
+}
+
+.mk-foot {
+  display: flex; gap: 16px; flex-wrap: wrap; align-items: center;
+  padding: 26px 0 0; font-size: 12px; color: var(--ink3);
+}
+.mk-foot a { color: var(--ink2); text-decoration: none; }
+.mk-foot a:hover { color: var(--ink); text-decoration: underline; }

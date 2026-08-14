@@ -1,7 +1,7 @@
 "use client";
 
 import Dashboard from "@/components/journal/Dashboard";
-import { useJournal } from "./JournalContext";
+import { useJournal } from "../JournalContext";
 
 export default function DashboardPage() {
   const { closed, accountSize, diary, flows } = useJournal();

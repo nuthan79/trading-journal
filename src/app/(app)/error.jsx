@@ -40,7 +40,7 @@ export default function AppError({ error, reset }) {
 
       <div style={{ display: "flex", gap: 10, marginTop: 22, flexWrap: "wrap" }}>
         <button className="btn" onClick={() => reset()}>Try again</button>
-        <a className="btn ghost" href="/" style={{ textDecoration: "none" }}>
+        <a className="btn ghost" href="/dashboard" style={{ textDecoration: "none" }}>
           Back to the dashboard
         </a>
       </div>

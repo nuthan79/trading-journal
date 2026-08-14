@@ -48,7 +48,7 @@ function withExits(t, exitsByTrade) {
 }
 
 const TABS = [
-  { id: "dash", href: "/", label: "Dashboard", icon: LayoutGrid },
+  { id: "dash", href: "/dashboard", label: "Dashboard", icon: LayoutGrid },
   { id: "holdings", href: "/holdings", label: "Holdings", icon: Layers },
   { id: "trades", href: "/trades", label: "Trades", icon: Table2 },
   { id: "perf", href: "/performance", label: "Performance", icon: LineChart },
