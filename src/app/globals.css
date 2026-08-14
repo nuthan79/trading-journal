@@ -445,3 +445,30 @@ select.in { font-family: 'Archivo', sans-serif; }
   margin-top: 44px; padding-top: 26px; border-top: 1px solid var(--rule);
 }
 .art-cta p { font-size: 14px; line-height: 1.7; color: var(--ink2); margin: 0 0 16px; }
+
+/* ---- /learn index ------------------------------------------------- */
+
+.lrn-list { margin-top: 26px; display: flex; flex-direction: column; gap: 12px; }
+.lrn-card {
+  display: block; text-decoration: none; padding: 16px 18px;
+  background: var(--card); border: 1px solid var(--rule); border-radius: 3px;
+}
+.lrn-card:hover { border-color: var(--ink3); }
+.lrn-card h2 {
+  font-family: 'Archivo', sans-serif; font-weight: 600;
+  font-size: 15.5px; line-height: 1.35; color: var(--ink);
+  margin: 0; letter-spacing: -0.005em;
+}
+.lrn-card p {
+  font-size: 13.5px; line-height: 1.6; color: var(--ink2);
+  margin: 7px 0 0; max-width: 62ch;
+}
+.lrn-meta {
+  display: block; margin-top: 9px; font-size: 11px; color: var(--ink3);
+  font-family: 'Spline Sans Mono', ui-monospace, monospace;
+}
+.lrn-note {
+  font-size: 13px; line-height: 1.7; color: var(--ink3);
+  margin: 22px 0 0; max-width: 64ch;
+}
+.lrn-note a { color: var(--ink2); }

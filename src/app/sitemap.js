@@ -1,4 +1,5 @@
 import { BRAND } from "@/lib/brand";
+import { ARTICLES } from "@/lib/articles";
 
 /**
  * The pages worth indexing, which is only the ones with content.
@@ -30,10 +31,24 @@ export default function sitemap() {
   return [
     { url: `${base}/`,        lastModified: now, changeFrequency: "weekly",  priority: 1 },
     { url: `${base}/support`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
-    // Articles. These are what can be found by somebody who does not yet know
-    // this app exists, which is why they rank above the legal pages.
-    { url: `${base}/learn/what-is-an-r-multiple`, lastModified: now,
-      changeFrequency: "monthly", priority: 0.8 },
+    { url: `${base}/learn`,   lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+
+    /**
+     * Articles, derived from the manifest rather than listed here.
+     *
+     * The first one WAS listed here by hand, which meant writing a second and
+     * forgetting this file would publish a page no search engine was ever told
+     * about — silent, and nobody checks a sitemap. One list, three consumers.
+     *
+     * They rank above the legal pages because they are what somebody who has
+     * never heard of this app can actually find.
+     */
+    ...ARTICLES.map((a) => ({
+      url: `${base}/learn/${a.slug}`,
+      lastModified: a.published ? new Date(a.published) : now,
+      changeFrequency: "monthly",
+      priority: 0.8,
+    })),
     { url: `${base}/contact`, lastModified: now, changeFrequency: "yearly",  priority: 0.4 },
     { url: `${base}/privacy`, lastModified: now, changeFrequency: "yearly",  priority: 0.3 },
     { url: `${base}/terms`,   lastModified: now, changeFrequency: "yearly",  priority: 0.3 },
