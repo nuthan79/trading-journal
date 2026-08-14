@@ -161,7 +161,11 @@ export default function ResetPage() {
                   : "This link has expired or has already been used. Recovery links are " +
                     "good once and not for long.")}
             </p>
-            <button className="btn ghost" onClick={() => router.push("/")}>
+            {/* /dashboard, not "/". The root is the marketing page now and has
+                no sign-in form on it, so somebody whose recovery link had
+                expired was being sent to an advertisement instead of a way
+                back in. */}
+            <button className="btn ghost" onClick={() => router.push("/dashboard")}>
               {session ? "Back to the journal" : "Back to sign in"}
             </button>
           </>
