@@ -178,12 +178,36 @@ export function buildDemo({ userId = "demo", accountSize = 1000000, riskPct = 0.
     if (open) {
       // Marked so Holdings has something to value, and so the open-risk
       // reading on the dashboard is not zero.
+      const mark = round2(entryPrice * (0.97 + r() * 0.12));
+
+      /**
+       * A previous close and a day's range, so the Today card reads.
+       *
+       * Without these it said "no previous close yet — hit Refresh prices",
+       * and pressing Refresh changed nothing: the sample book lives only in
+       * the browser, so markOpenPositions has no row to write prev_close to.
+       * A dead end on the first screen a new account sees, offering an action
+       * that cannot work.
+       *
+       * The move is small on purpose — a day, not a story. A sample book that
+       * opens on a spectacular session is the kind of thing that makes
+       * somebody distrust every other number on the page.
+       */
+      const dayMove = (r() - 0.45) * 0.02;              // roughly ±1%
+      const prevClose = round2(mark / (1 + dayMove));
+      const spread = Math.abs(dayMove) + 0.004 + r() * 0.006;
+
       trades.push({
         ...base,
         status: "open",
         exit_date: null, exit_price: null, exit_reason: null,
-        last_price: round2(entryPrice * (0.97 + r() * 0.12)),
+        last_price: mark,
         last_price_at: new Date().toISOString(),
+        prev_close: prevClose,
+        // Bracketing the mark, so the "at high" / "at low" flag fires on some
+        // rows and not others — which is what it does with real prices.
+        day_high: round2(Math.max(mark, prevClose) * (1 + spread / 2)),
+        day_low: round2(Math.min(mark, prevClose) * (1 - spread / 2)),
       });
       continue;
     }
