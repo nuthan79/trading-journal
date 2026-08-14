@@ -142,6 +142,19 @@ export default function HomePage() {
         </p>
         <Link className="mk-cta" href="/dashboard">Start your journal — it&apos;s free</Link>
         <p className="mk-note">No card. Export or delete everything whenever you like.</p>
+
+        {/* The only image loaded eagerly — it is above the fold, and lazy
+            loading something already in view just delays it. Width and height
+            are set so the browser reserves the space before the file arrives;
+            without them the text below jumps when it lands, which is a Core
+            Web Vital and would cost the ranking these are meant to help. */}
+        <figure className="shot">
+          <img src="/shots/dashboard-summary.jpg" width={1800} height={511}
+               alt="A journal summary reading: 40 closed trades over 7 months, expectancy +0.24R per trade at a 42.5% win rate, for +9.73R total. Below it, headline numbers in rupees and in R — net P&L, win rate, profit factor, payoff ratio, average win and loss, maximum drawdown." />
+          <figcaption>
+            The dashboard, on a sample book. Every figure in R alongside the rupee one.
+          </figcaption>
+        </figure>
       </section>
 
       <section className="mk-sec">
@@ -172,6 +185,15 @@ export default function HomePage() {
           enough trades, and a breakdown of which patterns, stop distances and holding
           periods actually earn. Your chart and your notes stay attached to the trade.
         </p>
+
+        <figure className="shot">
+          <img src="/shots/edge-by-pattern.jpg" width={1800} height={578} loading="lazy" decoding="async"
+               alt="A table of base patterns ranked by expectancy: Flat Base +0.92R over 6 trades, Ascending Base +0.72R over 16, and at the bottom Pullback Entry at −0.84R and High Tight Flag at −0.59R. Rows with fewer than fifteen trades are faded as noise rather than signal." />
+          <figcaption>
+            The same trades cut by setup. Two patterns paying, three losing — which is the
+            question the rupee column cannot answer.
+          </figcaption>
+        </figure>
       </section>
 
       <section className="mk-sec">

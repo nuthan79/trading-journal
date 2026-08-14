@@ -141,6 +141,15 @@ R multiple  =  profit or loss ÷ 1R`}
         time you take one. That is the number worth knowing, and it only exists in R.
       </p>
 
+      <figure className="shot">
+        <img src="/shots/performance-by-period.jpg" width={1800} height={535} loading="lazy" decoding="async"
+             alt="Performance by financial year: FY26 with 17 trades at −0.11R expectancy and a 29% win rate, FY27 with 23 trades at +0.51R and 52%. Total R, net P&L, average risk and maximum drawdown for each." />
+        <figcaption>
+          Expectancy per financial year. The same account, one year losing and one
+          paying — visible because both are in R.
+        </figcaption>
+      </figure>
+
       <h3>Which setups deserve your money</h3>
       <p>
         Sort your trades by pattern, or by how far price was extended when you entered,
