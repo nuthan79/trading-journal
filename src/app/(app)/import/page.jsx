@@ -10,7 +10,7 @@ import { useJournal } from "../JournalContext";
 
 export default function ImportPage() {
   const router = useRouter();
-  const { reloadTrades, say } = useJournal();
+  const { reloadTrades, say, profile } = useJournal();
   const [targets, setTargets] = useState(null);
   const [keysErr, setKeysErr] = useState("");
 
@@ -64,8 +64,13 @@ export default function ImportPage() {
 
   return (
     <div className="sec">
+      {/* chargeConfig is only used by adapters that have to compute charges —
+          today that is Groww alone, whose report totals them for the period
+          rather than stating them per trade. Zerodha and Dhan state a figure
+          and ignore it. */}
       <ImportTrades
         targets={targets}
+        chargeConfig={profile?.charge_config}
         onImport={async (payload) => {
           const res = await importTrades(payload);
           await refreshAll();

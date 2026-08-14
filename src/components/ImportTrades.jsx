@@ -78,7 +78,7 @@ function HeldBack({ rows, children }) {
   );
 }
 
-export default function ImportTrades({ targets = [], onImport, onDone }) {
+export default function ImportTrades({ targets = [], chargeConfig = null, onImport, onDone }) {
   const [file, setFile] = useState(null);
   const [parsed, setParsed] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -161,7 +161,15 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
        * never price, never dedupe against the same trade from another broker,
        * and group under a label nothing else in the journal shares.
        */
-      const raw = broker.parseRows(rows);
+      /**
+       * The user's own broker rates, for the adapters that have to compute.
+       *
+       * Groww states no per-trade charge, only a period total, so its adapter
+       * works each one out — and without this it worked them out at the
+       * defaults and then correctly warned that the result was understated.
+       * The warning was right; the settings simply never arrived.
+       */
+      const raw = broker.parseRows(rows, { chargeConfig });
       const { lots, unresolved } = await resolveSymbols(raw.lots);
       const resolved = {
           ...raw,
@@ -195,7 +203,7 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
       setParsedFile(null);
     }
     setBusy(false);
-  }, [targets, stopPct]);
+  }, [targets, stopPct, chargeConfig]);
 
   /**
    * Re-parse when the assumption changes, rather than patching the stop in at
@@ -373,8 +381,25 @@ export default function ImportTrades({ targets = [], onImport, onDone }) {
           <> {s.scaledOut} of them {s.scaledOut === 1 ? "was" : "were"} scaled out of
           across {s.tranches - (s.trades - s.scaledOut)} sells rather than closed in one go.</>
         )}
-        {" "}Charges come from the file itself, not an estimate:{" "}
-        {pct(s.chargesPctOfTurnover, 3)} of turnover. Covering {s.from} to {s.to}.
+        {/* Said per broker, because it is not the same claim for all of them.
+            Zerodha and Dhan state a charge on every row and those are imported
+            untouched; Groww totals them for the period, so each trade's share
+            is computed from the statutory rates and your own brokerage plan.
+            Telling somebody a computed number "comes from the file" is the
+            kind of small lie that makes them trust the next figure less. */}
+        {parsedFile?.chargesComputed ? (
+          <>
+            {" "}This report totals charges for the whole period rather than per trade,
+            so each one is worked out from the statutory rates and your brokerage
+            settings — {pct(s.chargesPctOfTurnover, 3)} of turnover.
+          </>
+        ) : (
+          <>
+            {" "}Charges come from the file itself, not an estimate:{" "}
+            {pct(s.chargesPctOfTurnover, 3)} of turnover.
+          </>
+        )}
+        {" "}Covering {s.from} to {s.to}.
       </p>
 
       {/* A column the parser couldn't find zeroes the price on every row under
