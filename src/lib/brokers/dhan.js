@@ -151,6 +151,9 @@ export function parseRows(rows) {
 
   let section = null;
   let cols = null;
+  // Tracked so a format change is noticed rather than absorbed — see the note
+  // where this is reported, below.
+  let sawChargeColumn = false;
 
   rows.forEach((row, i) => {
     if (!Array.isArray(row)) return;
@@ -159,7 +162,11 @@ export function parseRows(rows) {
 
     const head = sectionOf(cells[0]);
     if (head) { section = head; cols = null; return; }
-    if (isHeaderRow(row)) { cols = headerMap(row); return; }
+    if (isHeaderRow(row)) {
+      cols = headerMap(row);
+      if (cols.charges !== undefined) sawChargeColumn = true;
+      return;
+    }
     if (!section || !cols) return;
 
     // "Sub total" and similar summary lines carry no ISIN and would otherwise
@@ -208,10 +215,34 @@ export function parseRows(rows) {
     });
   });
 
+  /**
+   * If the Total Charges column ever disappears, say so instead of importing
+   * everything as free.
+   *
+   * `num(row[undefined])` is 0, so a dropped column would give every trade a
+   * charge of zero — and an imported zero is treated as a fact the broker
+   * stated, because on a demerger it genuinely is one. The result would be a
+   * whole file of permanently costless trades flattering every R, with nothing
+   * anywhere saying so. Exactly the failure that made Zerodha's adapter
+   * claiming IIFL's file dangerous rather than merely wrong.
+   *
+   * Reported rather than computed silently: this adapter exists because Dhan
+   * states its charges, and if it stops, that is a change somebody should
+   * decide about rather than one the parser papers over.
+   */
+  if (lots.length && !sawChargeColumn) {
+    warnings.push(
+      "No 'Total Charges' column in this report, so every trade would import " +
+      "with no cost at all. Dhan's format may have changed — send us the file " +
+      "rather than importing it, or the charges will read as zero for good."
+    );
+  }
+
   return {
     lots,
     warnings,
     sectionCounts,
+    chargesStated: sawChargeColumn,
     missingColumns: [],
     skippedSections: Object.entries(sectionCounts)
       .filter(([s]) => !INCLUDED_SECTIONS.includes(s))

@@ -185,6 +185,26 @@ const COLS = {
   sellPrice: ["sell price"],
   sellValue: ["sell value"],
   profit: ["realised p&l", "realized p&l"],
+  /**
+   * Not in the report today. Looked for anyway.
+   *
+   * Brokers change these files — Groww has already changed this one's shape
+   * once. If a charges column ever appears, the failure without this would be
+   * silent and permanent: a stated figure sitting in the file, ignored, while
+   * the journal used a number computed from whatever brokerage plan the user
+   * happens to have configured. The cross-check below would warn forever, and
+   * no setting could honestly silence it.
+   *
+   * Several spellings because it is a guess about a future file. A name that
+   * never appears costs nothing; the one that does appear is the one that
+   * matters. Zerodha calls its columns "Brokerage" and "STT", Dhan uses
+   * "Total Charges", Angel One "Charges and Statutory Levies" — so the
+   * plausible set is small and worth listing.
+   */
+  charges: [
+    "charges", "total charges", "charges and statutory levies",
+    "taxes and charges", "total charges and levies",
+  ],
 };
 
 function headerMap(row) {
@@ -217,6 +237,8 @@ export function parseRows(rows, { chargeConfig = null, exchange = "NSE" } = {}) 
 
   let section = null;
   let cols = null;
+  let statedRows = 0;
+  let computedRows = 0;
 
   rows.forEach((row, i) => {
     if (!Array.isArray(row)) return;
@@ -252,9 +274,23 @@ export function parseRows(rows, { chargeConfig = null, exchange = "NSE" } = {}) 
     const buyPrice = num(row[cols.buyPrice]) || (quantity ? buyValue / quantity : 0);
     const sellPrice = num(row[cols.sellPrice]) || (quantity ? sellValue / quantity : 0);
 
-    // Computed, because this report does not state them. See the note at the
-    // top of the file for why the summary totals are not divided up instead.
-    const c = tradeCharges(
+    /**
+     * A stated figure beats a computed one, always.
+     *
+     * The report has no charges column today, so this computes — see the note
+     * at the top for why the period totals are not divided up instead. But if
+     * one ever appears, what the broker actually billed is a fact and this
+     * calculator is a model of the rules, and a model is only ever as right as
+     * the brokerage plan someone remembered to configure.
+     *
+     * Decided per row rather than per file, because a column can exist and be
+     * blank on some rows — a corporate action, a transfer — and computing the
+     * gaps is better than importing them as free.
+     */
+    const stated = cols.charges !== undefined ? num(row[cols.charges]) : NaN;
+    const hasStated = Number.isFinite(stated) && stated > 0;
+
+    const c = hasStated ? null : tradeCharges(
       {
         exchange,
         quantity,
@@ -263,6 +299,7 @@ export function parseRows(rows, { chargeConfig = null, exchange = "NSE" } = {}) 
       },
       chargeConfig
     );
+    if (hasStated) statedRows++; else computedRows++;
 
     lots.push({
       section,
@@ -274,8 +311,10 @@ export function parseRows(rows, { chargeConfig = null, exchange = "NSE" } = {}) 
       buyValue,
       sellValue,
       profit: num(row[cols.profit]) || sellValue - buyValue,
-      charges: Number(c?.total ?? c?.sellTotal ?? 0),
-      chargesComputed: true,
+      charges: hasStated ? stated : Number(c?.total ?? c?.sellTotal ?? 0),
+      // Per lot, so a mixed file is described honestly rather than by
+      // whichever kind happened to be in the majority.
+      chargesComputed: !hasStated,
       holdingDays: null,
     });
   });
@@ -296,7 +335,15 @@ export function parseRows(rows, { chargeConfig = null, exchange = "NSE" } = {}) 
   const summary = parseSummary(rows);
   const computedTotal = Math.round(lots.reduce((a, l) => a + l.charges, 0) * 100) / 100;
 
-  if (summary?.comparable && lots.length) {
+  /**
+   * Only worth checking against a figure we produced.
+   *
+   * Once the file states its own charges there is nothing to second-guess:
+   * the summary and the rows both come from Groww, and a disagreement between
+   * them is Groww's arithmetic, not a mis-set brokerage plan. Warning about it
+   * would send somebody to change a setting that is no longer used.
+   */
+  if (summary?.comparable && lots.length && computedRows > 0 && statedRows === 0) {
     const diff = computedTotal - summary.comparable;
     const tolerance = Math.max(50, summary.comparable * 0.05);
     if (Math.abs(diff) > tolerance) {
@@ -323,8 +370,18 @@ export function parseRows(rows, { chargeConfig = null, exchange = "NSE" } = {}) 
     skippedSections: Object.entries(sectionCounts)
       .filter(([s]) => !INCLUDED_SECTIONS.includes(s))
       .map(([s, n]) => ({ section: s, rows: n })),
-    // Read by the import screen, which must say the charges were worked out
-    // rather than read from the file.
-    chargesComputed: true,
+    /**
+     * Whether these charges were worked out or read, said from what actually
+     * happened rather than asserted.
+     *
+     * There is no charges column today, so this is true — but the columns are
+     * looked for, and if Groww adds one this flips on its own and the import
+     * screen stops claiming the numbers were estimated. A file with the column
+     * on some rows only reports true, because some of them were computed and
+     * that is the part worth disclosing.
+     */
+    chargesComputed: computedRows > 0,
+    chargesStatedRows: statedRows,
+    chargesComputedRows: computedRows,
   };
 }
