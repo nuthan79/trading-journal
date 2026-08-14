@@ -37,7 +37,7 @@ const SAMPLE = [
 ];
 const SAMPLE_MAX = Math.max(...SAMPLE.map((t) => Math.abs(t.r)));
 
-export default function Landing({ signIn, view = "signin" }) {
+export default function Landing({ signIn, view = "signin", switchAuthView }) {
   const signup = view === "signup";
 
   return (
@@ -67,11 +67,30 @@ export default function Landing({ signIn, view = "signin" }) {
             <div className="disp lp-formtitle">
               {signup ? "Create your journal" : "Start your journal"}
             </div>
+            {/* The way to the other form lives HERE, as a link, rather than
+                at the foot of the card. It used to be bold text pointing at a
+                button three hundred pixels further down — and the end of a
+                sentence is where a reader has already stopped. */}
             <p className="lp-formnote">
-              {signup
-                ? "An email and a password of your choosing. Nothing to verify, nothing to pay, and you can export or delete everything whenever you like."
-                : <>Already have one? Sign in below. New here — <b>Create an account</b> at the
-                   bottom of the card takes about a minute.</>}
+              {signup ? (
+                <>
+                  An email and a password of your choosing. Nothing to verify, nothing to
+                  pay, and you can export or delete everything whenever you like.{" "}
+                  <button type="button" className="lnk lp-swap"
+                          onClick={() => switchAuthView?.("signin")}>
+                    Already have one? Sign in
+                  </button>
+                </>
+              ) : (
+                <>
+                  Already have one? Sign in below. New here?{" "}
+                  <button type="button" className="lnk lp-swap"
+                          onClick={() => switchAuthView?.("signup")}>
+                    Create an account
+                  </button>{" "}
+                  — it takes about a minute.
+                </>
+              )}
             </p>
           </div>
           {signIn}

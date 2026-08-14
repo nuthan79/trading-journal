@@ -192,17 +192,10 @@ export default function SignInCard({
           : "Forgotten it? The reset link above sets a new one."}
       </div>
 
-      <div className="sic-swap">
-        {signup ? (
-          <>Already have an account?{" "}
-            <button type="button" className="lnk sic-swaplink"
-                    onClick={() => switchAuthView("signin")}>Sign in</button></>
-        ) : (
-          <>New here?{" "}
-            <button type="button" className="lnk sic-swaplink"
-                    onClick={() => switchAuthView("signup")}>Create an account</button></>
-        )}
-      </div>
+      {/* The swap between signing in and signing up moved to the intro above
+          this card, where somebody is still reading. Nothing here replaces it —
+          two links doing the same thing on one screen is how a reader ends up
+          unsure which is the real one. */}
 
       <style jsx>{`
         /* A rule with the word sitting in it, rather than a bare divider —

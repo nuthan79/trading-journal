@@ -502,3 +502,12 @@ select.in { font-family: 'Archivo', sans-serif; }
   font-size: 11.5px; color: var(--ink3); margin: 9px 2px 0;
   line-height: 1.55;
 }
+
+/* The sign-in / sign-up swap, in the intro above the form rather than under
+   it. Sized to the sentence it sits in, and underlined so it reads as a link
+   in running text — where a bare colour change is easy to miss. */
+.lp-swap {
+  font-size: inherit; color: var(--ink);
+  border-bottom: 1px solid var(--brass);
+}
+.lp-swap:hover:not(:disabled) { color: var(--ink); border-bottom-color: var(--ink); }
