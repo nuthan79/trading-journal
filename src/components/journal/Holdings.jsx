@@ -680,9 +680,23 @@ export default function Holdings({
                     </div>
                   </td>
                   <td className="num">{Number(r.entry_price).toFixed(2)}</td>
+                  {/* Marked assumed here as it is on the trade sheet, and for a
+                      sharper reason: this screen already prints ASSUMED beside
+                      the entry date two columns to the left. Both values come
+                      from the same import and are equally invented, so marking
+                      one and not the other reads as a statement that the stop
+                      IS yours — the exact belief the flag exists to prevent.
+                      Every R on the row follows from this number. */}
                   <td className={`num ${r.stopAboveEntry ? "ps-locked" : ""}`}
-                      title={r.stopAboveEntry ? "Stop is past entry — this position can no longer lose" : undefined}>
+                      title={r.stop_source === "assumed"
+                        ? "Assumed at import, not a stop you set — every R on this row follows from it"
+                        : r.stopAboveEntry
+                        ? "Stop is past entry — this position can no longer lose"
+                        : undefined}>
                     {isFinite(r.stop) ? r.stop.toFixed(2) : "—"}
+                    {r.stop_source === "assumed" && isFinite(r.stop) && (
+                      <span className="ps-tag">assumed</span>
+                    )}
                   </td>
                   <td className="num ps-dim">{isFinite(r.slPct) ? pct(r.slPct) : "—"}</td>
                   <td className="num ps-tostop"
