@@ -22,8 +22,22 @@ const num = (v) => (v === "" || v == null ? NaN : Number(v));
 /** A stop the importer guessed, not one anybody recorded. */
 const isAssumed = (t) => t.stop_source === "assumed" && t.stop_loss != null;
 
+/** A purchase date the importer invented, because the file carried none. */
+const dateAssumed = (t) => t.entry_date_source === "assumed";
+
 export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
   const [values, setValues] = useState({});      // id -> raw input
+  /**
+   * Purchase dates typed here, by trade id.
+   *
+   * A second map rather than a field on `values`, and deliberately so: the two
+   * are answered independently. A holdings import leaves both the stop and the
+   * date missing on the same row, but somebody may know one and not the other,
+   * and a single map would make "typed a stop" and "typed a date" impossible
+   * to tell apart — which is exactly the distinction that decides whether a
+   * guess gets relabelled as a fact.
+   */
+  const [dates, setDates] = useState({});        // id -> YYYY-MM-DD
   const [saved, setSaved] = useState({});        // id -> true once written
   const [page, setPage] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -70,8 +84,50 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
    */
   const touched = useCallback((t) => values[t.id] !== undefined, [values]);
 
+  /**
+   * The same rule for dates, and it matters more here than for stops.
+   *
+   * The box is pre-filled with the assumed date, because an empty date field
+   * gives somebody nothing to correct — they would have to remember the whole
+   * date rather than adjust one. But a pre-filled value is not an answer, so
+   * only a row that was actually edited is written back as recorded. Saving
+   * the untouched ones would relabel ten guesses as ten checked facts on one
+   * click, and the flag is the only thing that remembers they were guesses.
+   */
+  const dateTouched = useCallback((t) => dates[t.id] !== undefined, [dates]);
+  const dateShown = useCallback(
+    (t) => (dates[t.id] !== undefined ? dates[t.id] : t.entry_date || ""),
+    [dates]
+  );
+  /** Typed, different from the guess, and not in the future. */
+  const dateReady = useCallback((t) => {
+    if (!dateTouched(t)) return false;
+    const v = dates[t.id];
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(v || "")) return false;
+    if (v > new Date().toISOString().slice(0, 10)) return false;
+    return true;
+  }, [dates, dateTouched]);
+
   const missingCount = pending.filter((t) => t.stop_loss == null).length;
-  const assumedCount = pending.length - missingCount;
+  const assumedCount = pending.filter(
+    (t) => t.stop_loss != null && t.stop_source === "assumed"
+  ).length;
+  /** Rows on this list only because their purchase date was invented. */
+  const needDateCount = pending.filter(dateAssumed).length;
+
+  /**
+   * Rows the bulk fill is allowed to touch, which is NOT everything pending.
+   *
+   * Since dates joined this queue, a row can be here with a perfectly good
+   * stop it only needs a date. `fillAll` walks this list rather than `pending`
+   * because walking `pending` would write a 7% guess over a stop somebody
+   * recorded by hand — a one-click, silent overwrite of the one number this
+   * whole app divides by.
+   */
+  const stopPending = useMemo(
+    () => pending.filter((t) => t.stop_loss == null || t.stop_source === "assumed"),
+    [pending]
+  );
 
   const slice = useMemo(
     () => pending.slice(page * pageSize, (page + 1) * pageSize),
@@ -118,26 +174,41 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
 
   // What Save will actually write — typed and valid. Counting pre-filled rows
   // here would promise to save rows that are deliberately left alone.
-  const readyCount = slice.filter((t) => {
+  /** A stop typed and valid — the row's other half is judged separately. */
+  const stopReady = useCallback((t) => {
     const p = preview(t);
     return touched(t) && p && !p.invalid;
-  }).length;
+  }, [preview, touched]);
+
+  // Either answer counts. A row where somebody knew the purchase date but not
+  // the stop is still progress, and a button that ignored it would look broken.
+  const readyCount = slice.filter((t) => stopReady(t) || dateReady(t)).length;
 
   const saveBatch = async () => {
     const rows = slice
-      .map((t) => ({ t, p: preview(t) }))
-      // Typed, and valid. An untouched pre-filled row is not a decision.
-      .filter(({ t, p }) => touched(t) && p && !p.invalid)
-      // The trade's existing 1R rides along so saveStops can tell "never had a
-      // stop" from "already has one". These rows are all the former today, but
-      // sending it means re-filling a stop can never re-base an existing 1R.
-      .map(({ t }) => ({
-        id: t.id,
-        stop_loss: Number(shown(t)),
-        // Typed in here by hand, whatever the row started as. Filling one over
-        // an assumed stop is the act that turns it into a real one.
-        stop_source: "recorded",
-      }));
+      .map((t) => {
+        const wantStop = stopReady(t);
+        const wantDate = dateReady(t);
+        if (!wantStop && !wantDate) return null;
+        return {
+          id: t.id,
+          // Only the half that was answered. saveStops builds its patch from
+          // the keys present, so an untouched stop is left exactly as it is
+          // rather than overwritten with undefined.
+          ...(wantStop
+            ? {
+                stop_loss: Number(shown(t)),
+                // Typed in here by hand, whatever the row started as. Filling
+                // one over an assumed stop is what turns it into a real one.
+                stop_source: "recorded",
+              }
+            : {}),
+          ...(wantDate
+            ? { entry_date: dates[t.id], entry_date_source: "recorded" }
+            : {}),
+        };
+      })
+      .filter(Boolean);
 
     if (!rows.length) return;
     setBusy(true); setErr("");
@@ -170,7 +241,8 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
     if (!pctOk || busy) return;
     setBusy(true); setErr(""); setConfirming(false);
 
-    const rows = pending
+    // stopPending, never pending — see the note where it is defined.
+    const rows = stopPending
       .map((t) => {
         const entry = Number(t.entry_price);
         if (!(entry > 0)) return null;
@@ -217,8 +289,9 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
         <div className="sf-tick"><Check size={18} /></div>
         <h2 className="disp sf-h">Nothing left to check</h2>
         <p>
-          Every trade has a stop you have recorded, so expectancy, the R
-          distribution and the review page are reading your own numbers.
+          Every trade has a stop you have recorded and a purchase date you have
+          confirmed, so expectancy, the R distribution, holding period and the
+          review page are all reading your own numbers rather than guesses.
         </p>
         <button className="btn" onClick={() => onDone?.()}>Back to the journal</button>
         <style jsx>{`
@@ -243,7 +316,12 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
       <div className="sf-head">
         <div>
           <div className="eyebrow">
-            {missingCount && assumedCount ? "Stops to add and check"
+            {/* Dates only get top billing when they are the whole job. A
+                holdings import leaves both missing on the same rows, and
+                "Stops to add and check" is still the bigger of the two —
+                without a stop there is no R at all. */}
+            {!missingCount && !assumedCount && needDateCount ? "Add the missing purchase dates"
+              : missingCount && assumedCount ? "Stops to add and check"
               : missingCount ? "Add the missing stops"
               : "Check the assumed stops"}
           </div>
@@ -261,18 +339,38 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
                 {missingCount ? "" : " — a percentage below entry, not what you used"}.{" "}
               </>
             )}
-            R appears as you type — check it against what you remember.
-            {assumedCount > 0 && " Leave one alone and it stays marked assumed."}
+            {(missingCount > 0 || assumedCount > 0) &&
+              "R appears as you type — check it against what you remember."}
+            {/* Third sentence, and only when there is something to say. A
+                holdings file states what you own and never when you bought it,
+                so these rows arrive missing both answers — and the date is the
+                one nobody expects to be missing, because every other import
+                has carried it. */}
+            {needDateCount > 0 && (
+              <>
+                {" "}
+                <b>{needDateCount} {needDateCount === 1 ? "has" : "have"} a purchase date
+                that was invented</b>, because a holdings file carries none — look
+                {needDateCount === 1 ? " it" : " them"} up at your broker and the
+                holding period starts counting.
+              </>
+            )}
+            {(assumedCount > 0 || needDateCount > 0) &&
+              " Leave one alone and it stays marked assumed."}
           </div>
         </div>
         <button className="btn ghost sm" onClick={() => onDone?.()}>Do this later</button>
       </div>
 
+      {/* Hidden when every remaining row already has a stop it recorded and is
+          only here for its date. A control offering to fill stops that are all
+          filled reads as a screen that has not noticed what you did. */}
+      {stopPending.length > 0 && (
       <div className="sf-bulk">
         {confirming ? (
           <>
             <div className="sf-bulk-ask">
-              Give all {pending.length} of them a stop {pctNum}% from entry?
+              Give all {stopPending.length} of them a stop {pctNum}% from entry?
               They&apos;ll be marked assumed, and the R figures they produce describe a
               steady {pctNum}% risk rather than what you actually took. Replace any of
               them by typing over it.
@@ -281,7 +379,7 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
               <button className="btn" onClick={fillAll} disabled={busy}>
                 {busy
                   ? progress ? `Filling ${progress.n} of ${progress.total}…` : "Filling…"
-                  : `Yes, fill all ${pending.length}`}
+                  : `Yes, fill all ${stopPending.length}`}
               </button>
               <button className="btn ghost" onClick={() => setConfirming(false)} disabled={busy}>
                 Cancel
@@ -298,7 +396,7 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
               <span>% from entry</span>
             </div>
             <button className="btn ghost sm" onClick={() => setConfirming(true)} disabled={!pctOk}>
-              Fill the remaining {pending.length}
+              Fill the remaining {stopPending.length}
             </button>
             <div className="sf-bulk-note">
               {pctOk
@@ -309,6 +407,7 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
           </>
         )}
       </div>
+      )}
 
       <div className="card scroll">
         <table className="t">
@@ -336,7 +435,29 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
               return (
                 <tr key={t.id}>
                   <td><b className="disp">{t.symbol}</b></td>
-                  <td className="num mono sf-dim">{t.entry_date}</td>
+                  {/* Editable only where the importer invented it. A date that
+                      came from a tax P&L or was typed by hand is a fact, and
+                      offering to change it here would invite editing the one
+                      thing on the row that is not in question. */}
+                  <td className="num mono sf-dim">
+                    {dateAssumed(t) ? (
+                      <>
+                        <input
+                          className="in sf-in sf-date"
+                          type="date"
+                          max={new Date().toISOString().slice(0, 10)}
+                          value={dateShown(t)}
+                          onChange={(e) =>
+                            setDates((d) => ({ ...d, [t.id]: e.target.value }))
+                          }
+                          title="Your holdings file carried no purchase date, so this one was invented. Look it up at your broker and it starts counting."
+                        />
+                        {!dateTouched(t) && <i className="sf-assumed">assumed</i>}
+                      </>
+                    ) : (
+                      t.entry_date
+                    )}
+                  </td>
                   <td className="num mono sf-dim">{t.exit_date}</td>
                   <td className="num">{t.quantity}</td>
                   <td className="num">{Number(t.entry_price).toFixed(2)}</td>
@@ -432,6 +553,18 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
           width: 82px; padding: 5px 8px; font-size: 13px; text-align: right;
         }
         .sf-in[data-bad="1"] { border-color: var(--short); }
+        /* Wider than the stop box because a date control carries its own
+           picker button, and left-aligned because it reads as a date rather
+           than a quantity. */
+        .sf-date {
+          width: 142px; text-align: left; font-variant-numeric: tabular-nums;
+        }
+        /* Sits under the box like the stop column's own hints, so the row's
+           two unanswered questions look the same as each other. */
+        .sf-assumed {
+          display: block; font-style: normal; font-size: 9px; margin-top: 2px;
+          letter-spacing: 0.06em; text-transform: uppercase; color: var(--brass);
+        }
       `}</style>
     </section>
   );

@@ -836,6 +836,30 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                     : "If you sold first and bought back later, set Direction to Short and put the sell date in Entry date."}
                 </span>
               )}
+              {/**
+                * Asked here because this is the moment the guess starts to
+                * matter.
+                *
+                * While a position is open an invented entry date costs almost
+                * nothing — it is excluded from holding period and there is no
+                * closed trade for the period breakdowns to place. Recording a
+                * sell changes that: the trade becomes a data point in
+                * expectancy by holding period, in the FY it lands in, and in
+                * XIRR. Every one of those reads the entry date.
+                *
+                * A warning rather than a block. Somebody may genuinely not
+                * remember when they bought it, and refusing to record a real
+                * sell over a date they cannot supply would be the app losing
+                * the more important of the two facts.
+                */}
+              {t.entry_date_source === "assumed" && qtySold > 0 && (
+                <span className="ex-warn">
+                  The entry date above ({t.entry_date}) was assumed at import — your
+                  holdings file carried none. Closing this now files it under that
+                  date, so its holding period and the period it counts towards will
+                  both be wrong. Set the real one before saving if you can.
+                </span>
+              )}
             </div>
 
             <div style={{ marginTop: 12 }}>

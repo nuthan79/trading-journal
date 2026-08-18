@@ -925,11 +925,41 @@ export async function saveStops(rows, onProgress) {
    * discard the nine hundred that saved beside it. Failures are counted and
    * reported at the end, and the rows that worked stay saved.
    */
-  // Both columns, always the same value. The old form left an existing
-  // initial_stop_loss alone so a re-fill could not rebase 1R, which is how a
-  // row ended up holding two different stops.
-  const patchFor = ({ stop_loss, stop_source }) =>
-    ({ stop_loss, initial_stop_loss: stop_loss, stop_source: stop_source || "recorded" });
+  /**
+   * Whatever the row actually decided, and nothing else.
+   *
+   * This used to write the stop columns unconditionally, which was right when
+   * a stop was the only thing this screen could fix. It now also carries a
+   * purchase date, because a holdings import leaves both missing on the same
+   * rows and sending somebody to two screens for one chore is worse than the
+   * gap it closes.
+   *
+   * Building the patch from the keys PRESENT matters: a row that only answered
+   * the date must not also write `stop_loss: undefined` over a stop that is
+   * already there. Absent means untouched, and untouched means leave alone —
+   * the same rule `charges_auto` follows.
+   *
+   * Both stop columns still take the same value. The old form left an existing
+   * initial_stop_loss alone so a re-fill could not rebase 1R, which is how a
+   * row ended up holding two different stops.
+   */
+  const patchFor = (r) => ({
+    ...(r.stop_loss !== undefined
+      ? {
+          stop_loss: r.stop_loss,
+          initial_stop_loss: r.stop_loss,
+          stop_source: r.stop_source || "recorded",
+        }
+      : {}),
+    ...(r.entry_date !== undefined
+      ? {
+          entry_date: r.entry_date,
+          // Typing the date is what makes it real — see migration 036 and the
+          // matching line in TradeForm's payload.
+          entry_date_source: r.entry_date_source || "recorded",
+        }
+      : {}),
+  });
 
   track("stops_filled", { n: rows.length });
 

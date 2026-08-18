@@ -379,6 +379,19 @@ export default function AppLayout({ children }) {
     [trades]
   );
   /**
+   * Purchase dates the importer invented and nobody has confirmed.
+   *
+   * Its own count rather than folded into the one above, because they are
+   * different absences with different consequences: no stop means no R at all,
+   * an invented date means the holding period, XIRR and every period breakdown
+   * quietly skip that trade. Somebody who has filled all their stops should not
+   * see the nudge disappear while ten dates are still guesses.
+   */
+  const needDatesCount = useMemo(
+    () => trades.filter((t) => t.entry_date_source === "assumed").length,
+    [trades]
+  );
+  /**
    * What the topbar counts.
    *
    * The same rows every screen below is reading, which these three were not:
@@ -715,6 +728,18 @@ export default function AppLayout({ children }) {
                       {" · "}
                       <Link href="/stops" className="brand-todo">
                         {needStopsCount} need a stop
+                      </Link>
+                    </>
+                  )}
+                  {/* Same queue, said separately. Both are shown when both
+                      apply — a holdings import produces exactly that, and
+                      collapsing them into one number would hide that the two
+                      chores cost different things to leave undone. */}
+                  {needDatesCount > 0 && (
+                    <>
+                      {" · "}
+                      <Link href="/stops" className="brand-todo">
+                        {needDatesCount} need a date
                       </Link>
                     </>
                   )}
