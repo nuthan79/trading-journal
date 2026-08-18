@@ -47,7 +47,15 @@ const DIAL_R = 52;
 const DIAL_SW = 14;
 const DIAL_C = 2 * Math.PI * DIAL_R;
 
-function RiskDial({ riskR }) {
+/**
+ * `measured` is how many holdings actually contributed to `riskR`.
+ *
+ * Zero of them means the ring is drawn over nothing, and every word underneath
+ * would be a claim about a book the journal cannot see — "Room to the 5R line"
+ * over ten stopless positions is an all-clear derived from an absence.
+ */
+function RiskDial({ riskR, measured = null }) {
+  const blind = measured === 0;
   const magnitude = isFinite(riskR) ? Math.abs(riskR) : 0;
   const swept = Math.min(magnitude, RISK_WARN_R);
   const past = magnitude > RISK_WARN_R;
@@ -83,7 +91,12 @@ function RiskDial({ riskR }) {
           {[1, 2, 3, 4, 5].map((n) => <line key={n} className="ps-dial-mark" {...mark(n)} />)}
         </svg>
         <div className="ps-dial-mid">
-          <span className="ps-dial-v mono">{magnitude.toFixed(2)}<i>R</i></span>
+          {/* A dash rather than 0.00R when nothing was measurable. The figure
+              is the most confident thing on the page and it should not be
+              confident about a book with no stops in it. */}
+          <span className="ps-dial-v mono">
+            {blind ? "—" : <>{magnitude.toFixed(2)}<i>R</i></>}
+          </span>
           <span className="ps-dial-s mono">of {RISK_WARN_R}R</span>
         </div>
       </div>
@@ -91,7 +104,9 @@ function RiskDial({ riskR }) {
           left exactly 5.00R — five untrailed positions, which is not a rare
           place to be — showing a red ring over the words "room to the line". */}
       <div className="ps-dial-note">
-        {level === "hot"
+        {blind
+          ? "Nothing to measure yet — no stops recorded."
+          : level === "hot"
           ? past
             ? `Past the ${RISK_WARN_R}R line — more is riding on this than usual.`
             : `Right on the ${RISK_WARN_R}R line.`
@@ -259,12 +274,29 @@ export default function Holdings({
           dayLow: dLow,
           toStop,
           breached,
+          /**
+           * A STOP WE WERE NEVER GIVEN IS NOT A RISK OF ZERO.
+           *
+           * These are opposite facts that produced the same number. A position
+           * whose stop sits above its entry genuinely cannot lose; a position
+           * with no stop recorded can lose all of it, and we simply do not
+           * know how much. Both arrived here as `openRiskAmt` not being greater
+           * than zero, so both were called risk-free.
+           *
+           * That is the worst direction for this app to be wrong in. A
+           * holdings import lands every position without a stop, so ten
+           * holdings and ₹42 lakh of exposure drew the risk-free flag on every
+           * row, printed ₹0 in the open-risk column, contributed nothing to
+           * the rupee or R totals, and left the dial reporting "room to the 5R
+           * line" — an all-clear, computed from an absence of information.
+           */
+          unknownRisk: t.stop_loss == null,
           // Decided once, here, because it was being decided twice: the row
           // printed 0 for a position that had banked past its own risk, while
           // the dial beside it went on adding that position's full openRiskAmt
           // to the rupee total. Same page, same word, two answers — the table
           // said nothing left to lose and the figure said fifty-eight thousand.
-          riskFree: t.isRiskFree || !(t.openRiskAmt > 0),
+          riskFree: t.stop_loss != null && (t.isRiskFree || !(t.openRiskAmt > 0)),
           days: isFinite(t.heldDays) ? t.heldDays : NaN,
         };
       })
@@ -276,7 +308,29 @@ export default function Holdings({
     // A position with nothing left to lose contributes nothing, exactly as its
     // row shows. The R figure below already worked this way; the rupee one did
     // not, which is the whole of the discrepancy.
-    const openRisk = sum((r) => (r.riskFree ? 0 : r.openRiskAmt));
+    //
+    // A position with no stop also contributes nothing, because there is
+    // nothing to add — but that is a gap in the total rather than a zero in
+    // it, so it is COUNTED and said out loud beside the figure. A number that
+    // silently omits part of the book is the one thing worse than no number.
+    const openRisk = sum((r) => (r.riskFree || r.unknownRisk ? 0 : r.openRiskAmt));
+    const unknownCount = rows.filter((r) => r.unknownRisk).length;
+    /**
+     * What is not being counted, so the caption can weigh the omission rather
+     * than just mention it. Ten holdings missing a stop matters differently at
+     * ₹42 lakh than at ₹4,000.
+     *
+     * `liveExposure`, the same measure the Exposure card totals, NOT the cost
+     * basis. Both exist on the row and they differ by the whole unrealised
+     * P&L — on this book ₹49.87L against ₹42.46L — so taking the other one put
+     * two different numbers under the same word on one screen. Falls back to
+     * cost only where there is no mark yet, which is the one case where cost
+     * is the best available answer rather than a different question.
+     */
+    const unknownExposure = rows
+      .filter((r) => r.unknownRisk)
+      .reduce((a, r) => a + (isFinite(r.liveExposure) ? r.liveExposure
+                            : isFinite(r.exposure) ? r.exposure : 0), 0);
     /**
      * The day's move across the whole book.
      *
@@ -297,6 +351,8 @@ export default function Holdings({
     return {
       exposure: sum((r) => r.liveExposure),
       openRisk,
+      unknownCount,
+      unknownExposure,
       today,
       todayN,
       // Weighted by what each position was worth at yesterday's close, so
@@ -428,16 +484,47 @@ export default function Holdings({
           separate band that has to be tied back to a number above it. */}
       <div className="ps-top">
         <div className="ps-riskcard">
-          <RiskDial riskR={totals.openRiskR} />
+          <RiskDial riskR={totals.openRiskR}
+                    measured={rows.length - totals.unknownCount} />
           <div className="ps-riskfig">
             <div className="ps-sum-l">Open risk</div>
-            <div className="ps-sum-v mono neg">{rupee(-Math.abs(totals.openRisk))}</div>
+            {/* Matches the dial. With nothing measured, ₹0 is a claim and "—"
+                is the fact — and the two sitting side by side, one hedging and
+                one certain, is worse than either alone. */}
+            <div className={`ps-sum-v mono ${totals.unknownCount === rows.length && rows.length ? "ps-dim" : "neg"}`}>
+              {totals.unknownCount === rows.length && rows.length
+                ? "—"
+                : rupee(-Math.abs(totals.openRisk))}
+            </div>
             <div className="ps-sum-s mono">
-              across {rows.length} holding{rows.length === 1 ? "" : "s"}
+              {/* Counts only what the figure above actually covers. Saying
+                  "across 10 holdings" over a total that measured none of them
+                  is the specific way this read as an all-clear. */}
+              across {rows.length - totals.unknownCount} of {rows.length} holding
+              {rows.length === 1 ? "" : "s"}
             </div>
-            <div className="ps-riskfig-note">
-              {RISK_WARN_R}R is a warning line, not a limit — hold as many as you like.
-            </div>
+            {totals.unknownCount > 0 ? (
+              /**
+               * The gap, said before the reassurance.
+               *
+               * A dial reading 0.00R next to "room to the 5R line" is an
+               * all-clear, and it was being drawn over positions whose risk is
+               * not zero but unmeasured — every holdings import lands that way.
+               * The exposure is named because it is the part that is known:
+               * we cannot say what is at risk, but we can say how much is on
+               * the table while nobody has said where to get out.
+               */
+              <div className="ps-riskfig-note ps-riskfig-gap">
+                <b>{totals.unknownCount} of these {rows.length} {totals.unknownCount === 1 ? "has" : "have"} no stop</b>,
+                so {totals.unknownCount === 1 ? "it is" : "they are"} not in that figure —
+                {" "}{rupee(totals.unknownExposure)} of exposure with nothing recorded to get out at.
+                {" "}<a href="/stops">Set them</a> and this starts counting.
+              </div>
+            ) : (
+              <div className="ps-riskfig-note">
+                {RISK_WARN_R}R is a warning line, not a limit — hold as many as you like.
+              </div>
+            )}
           </div>
         </div>
 
@@ -612,13 +699,25 @@ export default function Holdings({
                   </td>
                   <td className="num" title="What the shares still held cost — entry price × open quantity">
                     {rupee(r.buyValue)}</td>
-                  <td className={`num ${riskFree ? "ps-dim" : "neg"}`}>
-                    {riskFree ? "0" : rupee(-Math.abs(r.openRiskAmt))}
+                  {/* A dash, not a zero, when no stop was ever recorded. "0"
+                      here is a measurement saying there is nothing to lose;
+                      the dash says nobody has told us. The column already uses
+                      "—" for every other figure it cannot compute. */}
+                  <td className={`num ${r.unknownRisk ? "ps-dim" : riskFree ? "ps-dim" : "neg"}`}
+                      title={r.unknownRisk
+                        ? "No stop recorded, so there is no risk figure — not a risk of zero. Set a stop and this fills in."
+                        : undefined}>
+                    {r.unknownRisk ? "—" : riskFree ? "0" : rupee(-Math.abs(r.openRiskAmt))}
                   </td>
                   <td className="num">
+                    {/* Same distinction as the rupee column, and the bar is
+                        drawn at zero width either way — but "0.00R" claims a
+                        measurement the journal does not have. */}
                     <div className="ps-riskbar" data-free={riskFree ? 1 : 0}>
                       <span className="mono">
-                        {riskFree ? "0.00R" : `−${Math.abs(r.netRiskR ?? 0).toFixed(2)}R`}
+                        {r.unknownRisk ? "—"
+                          : riskFree ? "0.00R"
+                          : `−${Math.abs(r.netRiskR ?? 0).toFixed(2)}R`}
                       </span>
                       <i style={{
                         width: `${Math.min(100, (Math.abs(r.netRiskR || 0) / RISK_WARN_R) * 100)}%`,
@@ -736,6 +835,16 @@ export default function Holdings({
           font-size: 10.5px; color: var(--ink3); margin-top: 8px;
           line-height: 1.45; text-wrap: pretty;
         }
+        /* Reads at the weight of the figure it qualifies, not as small print
+           under it. This is the sentence that stops a 0.00R dial being taken
+           as an all-clear, so it cannot be the quietest thing in the card. */
+        .ps-riskfig-gap { color: var(--ink2); }
+        .ps-riskfig-gap b { color: var(--short); font-weight: 600; }
+        .ps-riskfig-gap a {
+          color: var(--ink); text-underline-offset: 2px;
+          border-bottom: 1px solid var(--rule);
+        }
+        .ps-riskfig-gap a:hover { border-bottom-color: var(--brass); }
         .ps-strip {
           display: grid; grid-template-columns: repeat(5, 1fr);
           border: 1px solid var(--rule); border-radius: 3px;
