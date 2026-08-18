@@ -572,10 +572,22 @@ export default function ImportTrades({
               count them instead of skipping them. Nothing else was changed: no trade
               was created, and no price or quantity was touched.</>
           ) : parsed?.kind === "holdings" ? (
-            <>Your open positions are in. They have no stop yet, so R and expectancy
-              stay blank for them until you set one — and any purchase date you
-              didn&apos;t fill in is marked assumed, which keeps it out of holding
-              period, XIRR and the period breakdowns rather than quietly skewing them.</>
+            <>
+              Your open positions are in.{" "}
+              {/* Was written when this path always imported stopless and said so
+                  unconditionally — which became a plain untruth the moment the
+                  assumed stop was offered here, on the one screen whose job is
+                  telling a guess from a measurement. */}
+              {assume
+                ? <>Each got a stop {stopPct}% below its entry, marked assumed, so R and
+                    the plots read from the start — replace them at <b>Stops</b> as you
+                    work out what you really used.</>
+                : <>They have no stop yet, so R and expectancy stay blank for them until
+                    you set one.</>}
+              {" "}Any purchase date you didn&apos;t fill in is marked assumed too, which
+              keeps it out of holding period, XIRR and the period breakdowns rather than
+              quietly skewing them.
+            </>
           ) : result.inserted > 0 && assume ? (
             <>Each one got a stop {stopPct}% below its entry, marked as assumed — so R,
               expectancy and the plots all read. Replace them with what you actually
@@ -1117,8 +1129,13 @@ export default function ImportTrades({
           the same reason a tax P&L does not, and the consequence is the same:
           without one there is no 1R, and the position is invisible to
           expectancy and the R distribution. Not offered for a tradebook, which
-          writes no trade for a stop to belong to. */}
-      {!tradebook && (
+          writes no trade for a stop to belong to.
+
+          Nor when there is nothing new to import — a re-dropped file whose
+          rows are all already here would otherwise show a control offering to
+          set stops on no trades, beside a note explaining a decision that
+          cannot apply. Same reason the empty table is hidden above. */}
+      {!tradebook && parsed.trades.length > 0 && (
       <div className="im-assume">
         <label className="im-assume-on">
           <input type="checkbox" checked={assume}
