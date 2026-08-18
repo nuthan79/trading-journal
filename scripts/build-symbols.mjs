@@ -10,14 +10,24 @@
  *
  * SOURCES
  *   NSE — fetched automatically from the NSE archives.
- *   BSE — NSE blocks nothing, but BSE's list sits behind a form. Download it
- *         yourself once and drop the CSV in ./data/ :
- *           https://www.bseindia.com/corporates/List_Scrips.html
- *           (Segment: Equity, Status: Active → download)
- *         The script picks up any CSV in ./data/ automatically.
+ *   BSE — fetched automatically from BSE's own ListofScripData endpoint, the
+ *         one the List of Scrips page calls to fill its table.
+ *   ./data/*.csv — any CSV dropped in there, still read, as a manual fallback.
  *
- * If a download fails the script still writes whatever it did get, so you can
- * start with NSE only and add BSE later.
+ * BSE USED TO BE A MANUAL STEP and the note here said its list "sits behind a
+ * form". The form posts to a JSON endpoint that answers a plain GET, so the
+ * download was never actually necessary — and because it was manual it never
+ * happened. symbols.json shipped NSE-only for months, which is why the
+ * exchange picker was written and then reverted the same day (08549ca): there
+ * were no BSE rows for it to offer, so a dual-listed name silently stayed NSE.
+ *
+ * WHAT THE SCRIP CODE IS FOR. BSE rows carry `c`, the numeric scrip code.
+ * Yahoo resolves the well-known BSE listings by ticker, but many smaller
+ * BSE-only scrips answer only to the number, so the quote path tries the
+ * symbol first and falls back to the code. NSE rows have no `c` and need none.
+ *
+ * If a download fails the script still writes whatever it did get, so a BSE
+ * outage leaves you with a working NSE-only file rather than no file.
  */
 
 import { writeFile, mkdir, readdir, readFile } from "node:fs/promises";
@@ -98,6 +108,126 @@ async function nse() {
   }
 }
 
+/* ---------------------------------- BSE -------------------------------- */
+
+/**
+ * The endpoint the List of Scrips page calls to fill its own table.
+ *
+ * It answers a plain GET with the whole active equity universe — roughly five
+ * thousand rows — provided a browser User-Agent and a bseindia.com Referer are
+ * sent. Without the Referer it returns 403.
+ */
+const BSE_URL =
+  "https://api.bseindia.com/BseIndiaAPI/api/ListofScripData/w" +
+  "?Group=&Scripcode=&industry=&segment=Equity&status=Active";
+
+/**
+ * Fetch with a couple of retries, because BSE rate-limits.
+ *
+ * Observed while building this: the endpoint answered fine, then refused the
+ * next few calls made in quick succession, then recovered. A single attempt
+ * therefore turns a working build into an NSE-only one at random, which is
+ * precisely the outcome the guard at the bottom of this file exists to catch —
+ * but not failing in the first place is better than being told you failed.
+ */
+async function fetchRetry(url, opts, tries = 3) {
+  let last;
+  for (let i = 0; i < tries; i++) {
+    try {
+      const res = await fetch(url, opts);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res;
+    } catch (err) {
+      last = err;
+      if (i < tries - 1) await new Promise((r) => setTimeout(r, 1500 * (i + 1)));
+    }
+  }
+  throw last;
+}
+
+async function bse() {
+  try {
+    const res = await fetchRetry(BSE_URL, {
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        Accept: "application/json",
+        Referer: "https://www.bseindia.com/",
+      },
+    });
+    const rows = await res.json();
+    if (!Array.isArray(rows)) throw new Error("unexpected response shape");
+
+    const out = rows
+      /**
+       * Every group is kept — A, B, T, X, Z and the rest. They describe
+       * surveillance and settlement rather than whether a thing is a share:
+       * a T-group scrip is compulsory-delivery, and Z is a company behind on
+       * its filings, but both are stock somebody can be holding and therefore
+       * needs to log. The filter that matters is Equity, which excludes debt
+       * and the mutual-fund segment.
+       */
+      .filter((r) => r.Segment === "Equity" && r.Status === "Active")
+      .map((r) => {
+        const isin = String(r.ISIN_NUMBER || "").trim();
+        const scripId = String(r.scrip_id || "").trim().toUpperCase();
+        /**
+         * An INF ISIN is a fund rather than a company. Two very different
+         * things arrive under it and only one of them belongs here — see the
+         * filter below.
+         */
+        const fund = isin.startsWith("INF");
+        return {
+          s: scripId,
+          /**
+           * Which name, and it depends on what the row is.
+           *
+           * For a company, Issuer_Name is the legal name ("ABB India Limited")
+           * and matches the shape NSE supplies, so search behaves the same
+           * across both halves of the file.
+           *
+           * For a fund it is the asset manager — every Nippon ETF would be
+           * called "Nippon India Mutual Fund", making two hundred rows
+           * indistinguishable in an autocomplete. Scrip_Name is the actual
+           * product there: "Kotak S&P BSE Sensex ETF", "Motilal Oswal NASDAQ
+           * 100 ETF".
+           */
+          n: String((fund ? r.Scrip_Name : r.Issuer_Name) || r.Scrip_Name || "").trim(),
+          e: "BSE",
+          i: isin,
+          c: String(r.SCRIP_CD || "").trim(),
+          _fund: fund,
+        };
+      })
+      /**
+       * ETFs stay, mutual fund scheme codes go.
+       *
+       * BSE files both under segment "Equity", but they are not the same
+       * animal. An ETF trades on the exchange like a share and somebody can
+       * genuinely be holding BANKBEES or NIFTYIETF — 227 of those. The other
+       * 30 are BSE StAR MF platform codes for ordinary open-ended schemes,
+       * which arrive as symbols like `08ABB` and `08ADD`; they are bought from
+       * the fund, not traded, and no swing trading journal has a use for them.
+       *
+       * The tell is the symbol: a traded instrument has a ticker, a StAR MF
+       * scheme has a number. Checked against the whole list rather than
+       * assumed — every digit-leading INF row was a scheme code and every
+       * named one was a real ETF.
+       */
+      .filter((x) => !(x._fund && /^[0-9]/.test(x.s)))
+      .map(({ _fund, ...x }) => x)
+      .filter((x) => x.s && x.n && x.c);
+
+    console.log(`BSE  → ${out.length} symbols`);
+    return out;
+  } catch (err) {
+    console.warn(
+      `BSE  → failed (${err.message}). Falling back to any CSV in ./data/ — ` +
+      `download one from https://www.bseindia.com/corporates/List_Scrips.html`
+    );
+    return [];
+  }
+}
+
 /* -------------------------- Local CSVs (BSE etc.) ---------------------- */
 async function local() {
   if (!existsSync(DATA_DIR)) return [];
@@ -121,7 +251,7 @@ async function local() {
 }
 
 /* ---------------------------------- run -------------------------------- */
-const all = [...(await nse()), ...(await local())];
+const all = [...(await nse()), ...(await bse()), ...(await local())];
 
 // De-dupe on symbol+exchange, prefer NSE when a name exists on both
 const seen = new Map();
@@ -130,12 +260,67 @@ for (const x of all) {
   if (!seen.has(key)) seen.set(key, x);
 }
 
+/**
+ * NSE FIRST FOR A SHARED SYMBOL, AND THIS ORDERING IS LOAD-BEARING.
+ *
+ * `isin.js` builds its lookup with `if (!by.has(r.i))` — first row wins — so
+ * whichever listing appears first in this file is the one every broker import
+ * resolves to. Roughly 2,270 companies are listed on both exchanges and carry
+ * the same ISIN, so without this the exchange an imported trade lands on would
+ * be decided by alphabetical accident.
+ *
+ * NSE is the right winner: it is where the volume is, and every broker tax
+ * P&L seen so far reports NSE trades. A trade that really happened on BSE is
+ * still selectable by hand in the picker, which is what the `e` field is for.
+ *
+ * Verified when BSE was added: of the dual-listed names, zero disagree with
+ * NSE on the ticker, so this only decides the exchange, never the symbol.
+ */
 const list = [...seen.values()].sort((a, b) =>
   a.s === b.s ? (a.e === "NSE" ? -1 : 1) : a.s.localeCompare(b.s)
 );
 
 if (!list.length) {
   console.error("\nNothing to write. Put at least one CSV in ./data/ and retry.");
+  process.exit(1);
+}
+
+/**
+ * A SHRINKING FILE IS A FAILED BUILD, NOT A SMALLER UNIVERSE.
+ *
+ * This script used to write whatever it managed to collect, on the reasoning
+ * that a partial file beats no file. That is true the first time and wrong
+ * every time after: BSE rate-limited one run during development and the script
+ * cheerfully replaced 7,524 symbols with 2,553, reporting the failure in a
+ * warning line above a confident success message. Nothing downstream would
+ * have noticed — the autocomplete would simply have stopped offering half the
+ * market, and an import resolving a BSE ISIN would quietly keep the company
+ * name instead.
+ *
+ * So a build that loses more than a tenth of what is already there stops and
+ * says which source came back empty. `--force` is there for the legitimate
+ * case of a genuinely shorter list, which is rare enough to be worth typing.
+ */
+const FORCE = process.argv.includes("--force");
+let previous = [];
+if (existsSync(OUT)) {
+  try {
+    previous = JSON.parse(await readFile(OUT, "utf8"));
+  } catch {
+    // An unreadable existing file is not a reason to refuse to write a good
+    // one — that would leave the project stuck with a corrupt symbols.json.
+  }
+}
+
+if (!FORCE && previous.length && list.length < previous.length * 0.9) {
+  const was = (e) => previous.filter((x) => x.e === e).length;
+  const now = (e) => list.filter((x) => x.e === e).length;
+  const lost = ["NSE", "BSE"].filter((e) => now(e) < was(e) * 0.9);
+  console.error(
+    `\nRefusing to write: ${list.length} symbols would replace ${previous.length}.` +
+    `\n  ${lost.map((e) => `${e} ${was(e)} → ${now(e)}`).join("  ·  ") || "no single source accounts for it"}` +
+    `\nA source probably failed above. Re-run, or pass --force if the list really did shrink.`
+  );
   process.exit(1);
 }
 
