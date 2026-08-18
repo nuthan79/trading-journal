@@ -89,8 +89,6 @@ export const STAGES = [
   { v: 4, label: "4 — Declining" },
 ];
 
-export const EXCHANGES = ["NSE", "BSE"];
-
 /**
  * Stop width guidance, in percent from entry.
  *

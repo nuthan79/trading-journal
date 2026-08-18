@@ -1,0 +1,37 @@
+-- ===================================================================
+--  Migration 038 — drop my_trade_keys(), which nothing calls
+--
+--  006 added it so the importer could ask "which positions do I already
+--  have" before writing, and re-importing an overlapping financial year
+--  would be safe. That job now belongs to `listImportTargets()` in
+--  db.js, which needs more than a key string — it reads id, symbol,
+--  entry_date, quantity, status, imported, broker and entry_date_source,
+--  because reconciliation has to tell a trade it has never seen from one
+--  merely scaled out further since, and refuses to match a position
+--  against one from a different broker.
+--
+--  So the function has been unreachable for a while. Nothing in src/
+--  references it.
+--
+--  WHY BOTHER DROPPING SOMETHING NOBODY CALLS. It is `security definer`
+--  and `granted to authenticated`, which means every signed-in user can
+--  execute it and it runs with the owner's rights rather than theirs.
+--  It happens to be safe — it filters on auth.uid() itself — but a
+--  privileged, publicly-executable function that no longer has a reason
+--  to exist is a thing to remove rather than to keep explaining.
+--
+--  Reversible: the definition is in 006 if it is ever wanted back.
+--  `if exists`, so it is safe to run against a database where 006 was
+--  never applied.
+--
+--  Supabase → SQL Editor → New query → Run.
+-- ===================================================================
+
+drop function if exists public.my_trade_keys();
+
+-- ===================================================================
+--  Check it is gone. Expect zero rows.
+-- ===================================================================
+-- select p.proname
+--   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+--  where n.nspname = 'public' and p.proname = 'my_trade_keys';
