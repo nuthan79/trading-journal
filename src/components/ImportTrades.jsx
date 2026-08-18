@@ -505,20 +505,33 @@ export default function ImportTrades({ targets = [], chargeConfig = null, onImpo
             {s.longTerm > 0 && <div><b>{s.longTerm}</b><span>held over a year</span></div>}
           </div>
 
-          <p className="im-note">
-            {/* The one thing somebody must understand before confirming. Said
-                here rather than only in the review queue afterwards, because
-                by then the rows exist and the surprise has already happened. */}
-            {dateCaveat(s.positions, parsed.asOf)}
-            {" "}They also arrive without a stop, so they have no R until you set one —
-            the same queue at <b>Stops</b> that a tax P&amp;L import fills.
-            {!parsed.asOf && (
-              <>
-                {" "}For real purchase dates and ISINs, the <b>Console</b> holdings
-                statement is the better file — this one is Kite&apos;s, which carries neither.
-              </>
-            )}
-          </p>
+          {/* Two notes, because with nothing to add the first one is a
+              sentence about positions that do not exist — it opened "They also
+              arrive without a stop" with no antecedent, and claimed every
+              purchase date was filled in when there were no dates at all. */}
+          {s.positions > 0 ? (
+            <p className="im-note">
+              {/* The one thing somebody must understand before confirming. Said
+                  here rather than only in the review queue afterwards, because
+                  by then the rows exist and the surprise has already happened. */}
+              {dateCaveat(s.positions, parsed.asOf)}
+              {" "}They also arrive without a stop, so they have no R until you set one —
+              the same queue at <b>Stops</b> that a tax P&amp;L import fills.
+              {!parsed.asOf && (
+                <>
+                  {" "}For real purchase dates and ISINs, the <b>Console</b> holdings
+                  statement is the better file — this one is Kite&apos;s, which carries neither.
+                </>
+              )}
+            </p>
+          ) : (
+            <p className="im-note">
+              Everything in this file is already in your journal, so there is nothing
+              to add. Re-importing a holdings statement is always safe: positions are
+              matched by symbol, so the same file can be dropped in as often as you
+              like without doubling anything.
+            </p>
+          )}
         </>
       ) : (
       <>
@@ -687,6 +700,10 @@ export default function ImportTrades({ targets = [], chargeConfig = null, onImpo
         </div>
       )}
 
+      {/* A header row over nothing reads as a table that failed to load. When
+          every position in the file is already held there is no list to show,
+          and the note above has already said so. */}
+      {parsed.trades.length > 0 && (
       <div className="card scroll im-table">
         <table className="t">
           <thead>
@@ -779,6 +796,7 @@ export default function ImportTrades({ targets = [], chargeConfig = null, onImpo
           </tbody>
         </table>
       </div>
+      )}
 
       {error && <div className="warn im-err">{error}</div>}
 
@@ -822,6 +840,8 @@ export default function ImportTrades({ targets = [], chargeConfig = null, onImpo
         <span className="im-dim">
           {holdings ? (
             (() => {
+              // Nothing to import is not the same as every date being answered.
+              if (!parsed.trades.length) return "Nothing new in this file.";
               const dated = parsed.trades.filter((t) => dateEdits[t.symbol]).length;
               const left = parsed.trades.length - dated;
               if (!left) return "Every purchase date filled in. Stops are next.";

@@ -183,13 +183,18 @@ function label(b) {
    * forgetting is exactly what happened with Groww, which shipped and then
    * displayed as the raw string `groww-taxpnl`.
    */
-  const id = src.replace(/-taxpnl$/, "");
+  const id = src.replace(/-(taxpnl|holdings)$/, "");
   const names = {
     zerodha: "Zerodha tax P&L",
     groww: "Groww capital gains",
     dhan: "Dhan tax P&L",
     angelone: "Angel One tax P&L",
     iifl: "IIFL tax P&L",
+    // The kind is part of the id here, not only the suffix, because there are
+    // two Zerodha adapters reading two different files. Without this the row
+    // read "zerodha_holdings-holdings", which is the raw-string fallback
+    // working exactly as intended and still being the wrong thing to show.
+    zerodha_holdings: "Zerodha holdings",
   };
   // An unknown id shows as itself. A raw string somebody can search for beats
   // a tidy "Unknown import" that hides which one it was.
