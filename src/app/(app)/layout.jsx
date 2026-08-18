@@ -312,7 +312,22 @@ export default function AppLayout({ children }) {
    * and disappears the moment there is something real to look at instead. See
    * the note in lib/demo.js for why it is never written to the database.
    */
-  const demoOn = !!profile && !profile.demo_dismissed_at && trades.length === 0;
+  /**
+   * ...or because they asked for it back.
+   *
+   * Pinning overrides both tests. Somebody who logged one trade to see what
+   * would happen, and now cannot work out what the Performance page is for,
+   * should not have to delete real data to get the sample back — which was the
+   * only remedy before 039, and is exactly the wrong way round.
+   *
+   * While pinned, their own trades are hidden from the VIEW and nowhere else;
+   * see `shown` below, which simply picks one list or the other. The banner
+   * says so, because a screen that swaps forty invented trades in for your
+   * three real ones without a word is indistinguishable from having lost them.
+   */
+  const demoPinned = !!profile?.demo_pinned_at;
+  const demoOn = !!profile &&
+    (demoPinned || (!profile.demo_dismissed_at && trades.length === 0));
   const demo = useMemo(
     () => (demoOn
       ? buildDemo({
@@ -336,6 +351,14 @@ export default function AppLayout({ children }) {
   const demoClosed = useRef(false);
   useEffect(() => {
     if (!profile || profile.demo_dismissed_at || trades.length === 0) return;
+    /**
+     * Unless it was asked for back, which is the whole point of pinning.
+     *
+     * Without this the effect fires the instant it sees a trade — which is
+     * always, for the person who pinned it — and switches the sample straight
+     * off again. The button would appear to do nothing.
+     */
+    if (profile.demo_pinned_at) return;
     // Once per session. Before 028 has been run the column does not exist and
     // the write fails every time — harmlessly, but there is no reason to ask
     // the database the same question on every mount to get the same no.
@@ -583,7 +606,19 @@ export default function AppLayout({ children }) {
    */
   const dismissDemo = async () => {
     try {
-      setProfile(await dbSaveProfile({ demo_dismissed_at: new Date().toISOString() }));
+      setProfile(await dbSaveProfile({
+        demo_dismissed_at: new Date().toISOString(),
+        /**
+         * Clearing the pin as well, or the button does nothing.
+         *
+         * Pinning outranks the dismissal — that is what makes it work at all —
+         * so writing only the dismissal would leave a sample the user has just
+         * asked to be rid of still sitting there, with the button apparently
+         * broken. Whichever of the two was set last should win, and this is
+         * the one they clicked.
+         */
+        demo_pinned_at: null,
+      }));
     } catch (e) {
       say(e.message?.includes("demo_dismissed_at")
         ? "Run 028_demo_dismissed.sql to keep this dismissed."
@@ -816,7 +851,11 @@ export default function AppLayout({ children }) {
               somebody is actually reading. */}
           {demo && (
             <div style={{ paddingTop: 16 }}>
-              <DemoBanner onDismiss={dismissDemo} />
+              {/* `trades` is the real list, untouched by the sample — so its
+                  length is exactly what is being hidden right now. */}
+              <DemoBanner onDismiss={dismissDemo}
+                          pinned={demoPinned}
+                          hiddenCount={trades.length} />
             </div>
           )}
           {children}

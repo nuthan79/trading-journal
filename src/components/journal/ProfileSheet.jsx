@@ -5,7 +5,7 @@ import { X, LogOut, Trash2, Crown, Download } from "lucide-react";
 import {
   supabase, reauthenticate, updatePassword, sendPasswordReset, signOut,
   exportEverything, signOutEverywhere, deleteMyAccount,
-  saveNominee, setAnalyticsOptOut,
+  saveNominee, setAnalyticsOptOut, setDemoPinned,
 } from "@/lib/db";
 import { rupee } from "@/lib/format";
 import { MIN_PASSWORD } from "@/lib/password";
@@ -254,6 +254,71 @@ function AvatarPicker({ profile, avatar, onChanged }) {
  * whoever is settling an estate will have the relationship and the documents,
  * and none of that needs to sit in this database in the meantime.
  */
+/**
+ * Bringing the sample book back.
+ *
+ * The reason this exists rather than a support address: the sample goes for
+ * good the first time a trade is logged, and somebody who logged one to see
+ * what would happen has no way back. The only remedy before this was deleting
+ * their own trade — destroying real data to restore fiction.
+ *
+ * Sits with Export and the nominee rather than in Setup, because it is about
+ * what you are looking at rather than how the journal counts.
+ *
+ * Hidden entirely for an account with no trades AND no dismissal: the sample
+ * is already on screen for them, and a button offering to show it would read
+ * as though something were wrong with what they can plainly see.
+ */
+function SampleData({ profile, counts, onSaved }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const pinned = !!profile?.demo_pinned_at;
+  const owns = counts?.total ?? 0;
+  if (!pinned && !profile?.demo_dismissed_at && owns === 0) return null;
+
+  const go = async () => {
+    if (busy) return;
+    setBusy(true); setErr("");
+    try {
+      onSaved?.(await setDemoPinned(!pinned));
+    } catch (e) {
+      setErr(e.message || "Could not change that.");
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div style={{ marginTop: 18 }}>
+      <div className="eyebrow" style={{ marginBottom: 6 }}>Sample data</div>
+      <p style={{ fontSize: 12.5, color: "var(--ink2)", lineHeight: 1.6, margin: "0 0 10px" }}>
+        {pinned ? (
+          <>
+            The made-up book is showing, so the charts have something in them while
+            you look around.{" "}
+            {owns > 0 && (
+              <>
+                Your own {owns} trade{owns === 1 ? "" : "s"} {owns === 1 ? "is" : "are"}{" "}
+                hidden while it is on — still saved, and back as soon as you turn it off.
+              </>
+            )}
+          </>
+        ) : (
+          <>
+            A made-up book you can switch on to explore the charts and the review
+            page. Your own trades stay exactly where they are — they are hidden from
+            view while it is on, and come back the moment you turn it off.
+          </>
+        )}
+      </p>
+      {err && <div className="warn" style={{ marginBottom: 8 }}>{err}</div>}
+      <button className="btn ghost sm" onClick={go} disabled={busy}>
+        {busy ? "Saving…" : pinned ? "Back to my trades" : "Show sample data"}
+      </button>
+    </div>
+  );
+}
+
 function Nominee({ profile, onSaved }) {
   const [name, setName] = useState("");
   const [contact, setContact] = useState("");
@@ -642,6 +707,7 @@ export default function ProfileSheet({ profile, avatar, counts, onClose, onlyPas
               {/* Between exporting and deleting on purpose: these are the
                   middle ground — things you can change your mind about
                   without leaving. */}
+              <SampleData profile={profile} counts={counts} onSaved={onProfileChange} />
               <Nominee profile={profile} onSaved={onProfileChange} />
               <AnalyticsChoice profile={profile} onSaved={onProfileChange} />
 

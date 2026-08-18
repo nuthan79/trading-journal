@@ -404,6 +404,34 @@ export async function saveNominee({ name, contact }) {
  * again. The reverse order could leave a switch that reads "off" while
  * events keep arriving.
  */
+/**
+ * Show the sample book again, or put it away.
+ *
+ * Pinning writes both columns: the pin that makes it show, and a cleared
+ * dismissal so the two cannot disagree. Unpinning does the reverse and marks
+ * it dismissed, because somebody turning it off has decided — they should not
+ * find it back tomorrow because their trade count happened to be zero.
+ *
+ * Returns the row, as every profile writer here does; onProfileChange is
+ * setProfile and handing it nothing blanks the app.
+ */
+export async function setDemoPinned(pinned) {
+  const id = await uid();
+  if (!id) throw new Error("Sign in first.");
+
+  const now = new Date().toISOString();
+  const patch = pinned
+    ? { demo_pinned_at: now, demo_dismissed_at: null }
+    : { demo_pinned_at: null, demo_dismissed_at: now };
+
+  const { data, error } = await supabase
+    .from("profiles").update(patch).eq("id", id).select().single();
+  if (error) throw new Error(migrationHint(error) || error.message);
+
+  track(pinned ? "demo_pinned" : "demo_unpinned");
+  return data;
+}
+
 export async function setAnalyticsOptOut(optedOut) {
   const id = await uid();
   if (!id) throw new Error("Sign in first.");

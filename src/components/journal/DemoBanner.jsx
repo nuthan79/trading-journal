@@ -21,7 +21,7 @@ import { Info, X } from "lucide-react";
  * dismiss anything to stop their first genuine trade being averaged in with
  * fiction.
  */
-export default function DemoBanner({ onDismiss }) {
+export default function DemoBanner({ onDismiss, pinned = false, hiddenCount = 0 }) {
   const [busy, setBusy] = useState(false);
 
   const go = async () => {
@@ -33,13 +33,37 @@ export default function DemoBanner({ onDismiss }) {
   return (
     <div className="db" role="status">
       <Info size={15} />
-      <p>
-        <b>This is sample data.</b> A made-up book so the charts have something to
-        show. It disappears the moment you log a trade of your own — nothing here
-        is saved, and none of it counts towards your figures.
-      </p>
+      {/**
+        * Two different situations, and conflating them would be the cruel
+        * version. Normally the sample is filling an empty journal and there is
+        * nothing of yours to worry about. Pinned, it is sitting ON TOP of real
+        * trades — and a screen that silently swaps forty invented trades in for
+        * your three is indistinguishable from having lost them. So when
+        * anything is hidden, that is the first thing said, with the count, and
+        * the promise that it comes straight back.
+        */}
+      {pinned ? (
+        <p>
+          <b>This is sample data, shown at your request.</b>{" "}
+          {hiddenCount > 0 && (
+            <>
+              Your own {hiddenCount} trade{hiddenCount === 1 ? "" : "s"}{" "}
+              {hiddenCount === 1 ? "is" : "are"} hidden while this is on — still
+              saved, and back the moment you turn it off.{" "}
+            </>
+          )}
+          Nothing here counts towards your figures.
+        </p>
+      ) : (
+        <p>
+          <b>This is sample data.</b> A made-up book so the charts have something to
+          show. It disappears the moment you log a trade of your own — nothing here
+          is saved, and none of it counts towards your figures.
+        </p>
+      )}
       <button className="btn ghost sm" onClick={go} disabled={busy}>
-        <X size={13} />{busy ? "Clearing…" : "Clear sample data"}
+        <X size={13} />
+        {busy ? "Clearing…" : pinned ? "Back to my trades" : "Clear sample data"}
       </button>
 
       <style jsx>{`
