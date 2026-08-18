@@ -355,39 +355,6 @@ export async function quoteFor(symbol, exchange) {
  * a nomination that no longer reflects what somebody wants should be
  * removable without deleting the account around it.
  */
-/**
- * Rename the journal.
- *
- * It was only ever editable in Setup, alongside account size and brokerage
- * rates — configuration, things that decide how the journal COUNTS. The name
- * decides nothing; it is what the thing is called, which is identity, and
- * belongs where the avatar and the email are.
- *
- * Empty falls back to the same default the rest of the app already prints when
- * the column is null, so clearing the box cannot leave a nameless journal or a
- * heading that reads "undefined".
- *
- * Returns the updated row for the reason saveNominee does — see the note
- * there; setProfile(undefined) unmounts the app.
- */
-export async function saveJournalName(name) {
-  const id = await uid();
-  if (!id) throw new Error("Sign in first.");
-
-  const journal_name = String(name ?? "").trim().slice(0, 60) || "Breakout Ledger";
-
-  const { data, error } = await supabase
-    .from("profiles")
-    .update({ journal_name })
-    .eq("id", id)
-    .select()
-    .single();
-  if (error) throw error;
-
-  track("journal_renamed");
-  return data;
-}
-
 export async function saveNominee({ name, contact }) {
   const id = await uid();
   if (!id) throw new Error("Sign in first.");

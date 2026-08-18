@@ -5,7 +5,7 @@ import { X, LogOut, Trash2, Crown, Download } from "lucide-react";
 import {
   supabase, reauthenticate, updatePassword, sendPasswordReset, signOut,
   exportEverything, signOutEverywhere, deleteMyAccount,
-  saveNominee, setAnalyticsOptOut, saveJournalName,
+  saveNominee, setAnalyticsOptOut,
 } from "@/lib/db";
 import { rupee } from "@/lib/format";
 import { MIN_PASSWORD } from "@/lib/password";
@@ -254,87 +254,6 @@ function AvatarPicker({ profile, avatar, onChanged }) {
  * whoever is settling an estate will have the relationship and the documents,
  * and none of that needs to sit in this database in the meantime.
  */
-/**
- * The journal's name, edited where it is displayed.
- *
- * It has always been shown as this sheet's heading and only editable over in
- * Setup, which is where account size and brokerage rates live — the settings
- * that decide how the journal COUNTS. A name counts nothing. Somebody wanting
- * to rename it looks at the name, and the name was the one thing here that
- * could not be touched.
- *
- * Inline rather than a section of its own: one field does not deserve a
- * heading, and putting it beside the thing it labels is what makes it
- * findable. Setup keeps its copy — this is a second door, not a move, so
- * nobody's habit breaks.
- */
-function JournalName({ profile, onSaved }) {
-  const current = profile?.journal_name || "Breakout Ledger";
-  const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState(current);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
-
-  // Reset when the profile changes underneath — a rename in Setup while this
-  // sheet is open would otherwise leave the box holding the old name.
-  useEffect(() => { setValue(current); }, [current]);
-
-  const save = async () => {
-    if (busy) return;
-    const next = value.trim();
-    // Nothing typed, or nothing changed. Closing quietly is the honest answer
-    // to "save" when there is nothing to save.
-    if (!next || next === current) { setEditing(false); setValue(current); return; }
-    setBusy(true); setErr("");
-    try {
-      onSaved?.(await saveJournalName(next));
-      setEditing(false);
-    } catch (e) {
-      setErr(e.message || "Could not rename that.");
-    }
-    setBusy(false);
-  };
-
-  if (!editing) {
-    return (
-      <div className="pf-name">
-        <div className="disp" style={{ fontSize: 17, marginTop: 2 }}>{current}</div>
-        <button className="lnk pf-rename" type="button" onClick={() => setEditing(true)}>
-          Rename
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="pf-name">
-      <input
-        className="in"
-        value={value}
-        autoFocus
-        maxLength={60}
-        aria-label="Journal name"
-        onChange={(e) => setValue(e.target.value)}
-        // Enter saves and Escape abandons, because this is one field and
-        // reaching for a button to commit a single word is the slow way.
-        onKeyDown={(e) => {
-          if (e.key === "Enter") save();
-          if (e.key === "Escape") { setEditing(false); setValue(current); }
-        }}
-        style={{ maxWidth: 260 }}
-      />
-      <button className="btn sm" type="button" onClick={save} disabled={busy}>
-        {busy ? "Saving…" : "Save"}
-      </button>
-      <button className="btn ghost sm" type="button"
-              onClick={() => { setEditing(false); setValue(current); setErr(""); }}>
-        Cancel
-      </button>
-      {err && <div className="warn" style={{ width: "100%", marginTop: 8 }}>{err}</div>}
-    </div>
-  );
-}
-
 function Nominee({ profile, onSaved }) {
   const [name, setName] = useState("");
   const [contact, setContact] = useState("");
@@ -675,13 +594,9 @@ export default function ProfileSheet({ profile, avatar, counts, onClose, onlyPas
         <div className="sheethead">
           <div>
             <div className="eyebrow">{onlyPassword ? "Password" : "My profile"}</div>
-            {onlyPassword ? (
-              <div className="disp" style={{ fontSize: 17, marginTop: 2 }}>
-                Change your password
-              </div>
-            ) : (
-              <JournalName profile={profile} onSaved={onProfileChange} />
-            )}
+            <div className="disp" style={{ fontSize: 17, marginTop: 2 }}>
+              {onlyPassword ? "Change your password" : profile?.journal_name || "Breakout Ledger"}
+            </div>
           </div>
           <button className="x" onClick={onClose} aria-label="Close"><X size={19} /></button>
         </div>
@@ -759,18 +674,6 @@ export default function ProfileSheet({ profile, avatar, counts, onClose, onlyPas
             block only reaches elements rendered by the component that declares
             it. Scoped, every one of these silently did nothing. */}
         <style jsx global>{`
-          /* JournalName is its own component function, so these have to be
-             global for the same reason every rule below is — see the note
-             above. */
-          .pf-name {
-            display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-          }
-          /* Quiet until wanted. The name is what is being read here; the way
-             to change it should be available without competing with it. */
-          .pf-rename {
-            font-size: 11.5px; color: var(--ink3);
-          }
-          .pf-name:hover .pf-rename { color: var(--ink); }
           .pf-av { display: flex; align-items: flex-start; gap: 16px; }
           .pf-av-side { min-width: 0; flex: 1 1 auto; }
           /* A preview now, not a button — the hover camera badge and the
