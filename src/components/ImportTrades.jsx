@@ -8,6 +8,7 @@ import * as zerodha from "@/lib/brokers/zerodha";
 import * as zerodhaHoldings from "@/lib/brokers/zerodha-holdings";
 import { toHoldingRows, dateCaveat } from "@/lib/holdings";
 import { matchFifo, openPositions, datesForHeldPositions } from "@/lib/tradebook";
+import { buildReport } from "@/lib/importReport";
 import { rupee, pct } from "@/lib/format";
 
 /**
@@ -41,24 +42,33 @@ const SECTION_LABEL = {
 };
 
 /** A file can bring new trades, finish ones already here, or both. */
-function importLabel(newCount, completeCount) {
+function importLabel(newCount, completeCount, hasReport = false) {
   const trades = `${newCount} trade${newCount === 1 ? "" : "s"}`;
   const done = `${completeCount} position${completeCount === 1 ? "" : "s"}`;
   if (newCount && completeCount) return `Import ${trades}, complete ${done}`;
   if (newCount) return `Import ${trades}`;
   if (completeCount) return `Complete ${done}`;
+  // Nothing new, but something to explain — which is the case somebody comes
+  // back asking about. Saving records why, rather than leaving a dead button
+  // over the only account of it.
+  if (hasReport) return "Keep this record";
   return "Nothing to import";
 }
 
 /** What actually happened, which is not always "n trades imported". */
 function doneHeadline({ inserted = 0, completed = 0, dated = null }) {
   // A tradebook imports nothing, so "0 trades imported" would be both true
-  // and the wrong summary of what just happened.
+  // and the wrong summary of what just happened. Zero is its own case: the
+  // run succeeded and its result was an explanation, not a change.
+  if (dated === 0) return "Saved to your import history";
   if (dated != null) return `${dated} purchase date${dated === 1 ? "" : "s"} filled in`;
   const trades = `${inserted} trade${inserted === 1 ? "" : "s"}`;
   const done = `${completed} position${completed === 1 ? "" : "s"}`;
   if (inserted && completed) return `${trades} imported, ${done} completed`;
   if (completed) return `${done} completed`;
+  // Reachable since a file with nothing new can now be saved for its record.
+  // "0 trades imported" is true and reads as a failure rather than the point.
+  if (!inserted) return "Saved to your import history";
   return `${trades} imported`;
 }
 
@@ -385,6 +395,17 @@ export default function ImportTrades({
       { targets, assumeStopPct: stopPct, broker: b.id }));
   }, [parsedFile, broker, targets, stopPct]);
 
+  /**
+   * Something was held back and is worth a record even if nothing arrived.
+   *
+   * Re-dropping a file you already imported is the ordinary way to reach this:
+   * every row is a duplicate, nothing is created, and the screen used to offer
+   * a dead "Nothing to import" button over the only explanation of why.
+   */
+  const explainable =
+    (parsed?.duplicates?.length || 0) + (parsed?.conflicts?.length || 0) +
+    (parsed?.rejected?.length || 0) > 0;
+
   const confirm = async () => {
     /**
      * The tradebook path saves dates and nothing else, so it cannot go through
@@ -392,7 +413,19 @@ export default function ImportTrades({
      * check would read that as an empty file and refuse.
      */
     if (parsed?.kind === "tradebook") {
-      if (!parsed.changing.length) return;
+      /**
+       * A run that changes nothing still has something to say, and this is
+       * the case that matters most.
+       *
+       * "Why did none of them load?" is exactly the question the record
+       * exists to answer, and a tradebook that dates nothing — because it
+       * covers the wrong years — is the commonest way to ask it. Refusing to
+       * save because there was no change would throw away the explanation
+       * precisely when it is the only thing produced.
+       */
+      const nothingToSay = !parsed.changing.length &&
+        !parsed.short.length && !parsed.absent.length;
+      if (nothingToSay) return;
       setBusy(true); setError("");
       try {
         const n = await onSetDates(
@@ -402,7 +435,22 @@ export default function ImportTrades({
             // A date read out of the user's own tradebook is as recorded as
             // one they typed — it came from the broker's record of the trade.
             entry_date_source: "recorded",
-          }))
+          })),
+          /**
+           * Recorded as a batch even though it creates no trade, because the
+           * things it could NOT do are exactly what somebody comes back
+           * asking about — KAYNES not dated, three positions absent. A run
+           * that explains itself only on screen explains itself to nobody.
+           */
+          {
+            filename: file?.name,
+            source: `${(broker || zerodha).id}-tradebook`,
+            trades_count: 0,
+            lots_count: parsed.summary.rowsRead,
+            date_from: parsed.summary.from,
+            date_to: parsed.summary.to,
+            report: buildReport(parsed),
+          }
         );
         setResult({ dated: n ?? parsed.changing.length });
       } catch (e) {
@@ -412,7 +460,9 @@ export default function ImportTrades({
       return;
     }
 
-    if (!parsed?.trades.length && !parsed?.completions.length) return;
+    // Nothing new is still worth recording when something was held back —
+    // see importLabel. Only a file with nothing to say at all is a no-op.
+    if (!parsed?.trades.length && !parsed?.completions.length && !explainable) return;
     setBusy(true); setError("");
     try {
       const isHoldings = parsed.kind === "holdings";
@@ -450,6 +500,12 @@ export default function ImportTrades({
           // to show instead of an empty range.
           date_from: isHoldings ? (parsed.asOf || parsed.entryDate) : parsed.summary.from,
           date_to: isHoldings ? (parsed.asOf || parsed.entryDate) : parsed.summary.to,
+          /**
+           * Built from the same `parsed` the preview rendered, so what is kept
+           * is exactly what the user was shown rather than a second derivation
+           * that can drift from it.
+           */
+          report: buildReport(parsed),
         },
       });
       setResult(res || { inserted: parsed.trades.length, completed: parsed.completions.length });
@@ -467,7 +523,15 @@ export default function ImportTrades({
         <div className="im-tick"><Check size={20} /></div>
         <h2 className="disp im-h">{doneHeadline(result)}</h2>
         <p className="im-lede">
-          {result.dated != null ? (
+          {/* Nothing created, by either path — a re-dropped file whose rows
+              were all already here, or a tradebook that could prove no dates.
+              Both saved for the same reason and are told the same thing. */}
+          {result.dated === 0 || (result.dated == null && !result.inserted && !result.completed) ? (
+            <>Nothing new came out of this file, so nothing was changed — but what it
+              held back, and why, is now in your import history. Look a symbol up there
+              whenever you wonder where it went, rather than having to remember this
+              screen.</>
+          ) : result.dated != null ? (
             <>Those positions now carry the date you actually bought them, read from
               your own tradebook — so holding period, XIRR and the period breakdowns
               count them instead of skipping them. Nothing else was changed: no trade
@@ -1041,7 +1105,8 @@ export default function ImportTrades({
             parsed.changing.length
               ? `Only the dates change. Stops, prices, quantities and charges stay ` +
                 `exactly as they are.`
-              : "Nothing here to set."
+              : `No dates this file can prove — saving keeps the reason in your ` +
+                `import history, so you can check it later instead of re-reading this.`
           ) : holdings ? (
             (() => {
               // Nothing to import is not the same as every date being answered.
@@ -1066,19 +1131,21 @@ export default function ImportTrades({
         </span>
         <button className="btn" onClick={confirm}
                 disabled={busy || (tradebook
-                  ? !parsed.changing.length
-                  : !stopPctOk || (!parsed.trades.length && !parsed.completions?.length))}>
+                  ? !parsed.changing.length && !parsed.short.length && !parsed.absent.length
+                  : !stopPctOk || (!parsed.trades.length && !parsed.completions?.length && !explainable))}>
           <Upload size={13} />{" "}
           {busy
             ? (tradebook ? "Saving…" : "Importing…")
             : tradebook
             // Says what it does, which is not importing. "Import 0 trades" on
             // a file that fills in eight dates would describe nothing that is
-            // about to happen.
+            // about to happen — and with no dates to set, what it saves is the
+            // explanation of why, which is worth keeping on its own.
             ? parsed.changing.length
               ? `Set ${parsed.changing.length} date${parsed.changing.length === 1 ? "" : "s"}`
-              : "No dates to set"
-            : importLabel(s.trades, parsed.completions?.length || 0)}
+              : "Keep this record"
+            : importLabel(holdings ? parsed.trades.length : s.trades,
+                          parsed.completions?.length || 0, explainable)}
         </button>
       </div>
 

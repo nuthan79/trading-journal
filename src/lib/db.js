@@ -671,6 +671,25 @@ export async function restoreFromExport(json, filename = null) {
   return { batchId: batch.id, written, profileRestored, skipped: SKIPPED_TABLES };
 }
 
+/**
+ * A batch row on its own, for a run that changed something without importing.
+ *
+ * The tradebook path is the case: it creates no trade, so it has nothing for
+ * importTrades to insert — but it very much has something to explain, since
+ * the positions it could NOT date are what somebody comes back asking about.
+ * A run that leaves no trace in the history is a run nobody can ask about.
+ */
+export async function recordBatch(meta) {
+  const user_id = await uid();
+  const { data, error } = await supabase
+    .from("import_batches")
+    .insert({ ...meta, user_id })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 export async function importTrades({ trades, completions = [], meta }) {
   const user_id = await uid();
 

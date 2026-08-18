@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import ImportTrades from "@/components/ImportTrades";
 import RestoreExport from "@/components/RestoreExport";
 import ImportHistory from "@/components/journal/ImportHistory";
-import { listImportTargets, importTrades, saveStops } from "@/lib/db";
+import { listImportTargets, importTrades, saveStops, recordBatch } from "@/lib/db";
 import { useJournal } from "../JournalContext";
 
 export default function ImportPage() {
@@ -83,8 +83,12 @@ export default function ImportPage() {
          * only entry_date leave every stop alone — the same mechanism the
          * stops queue uses when somebody answers one half of a row.
          */
-        onSetDates={async (rows) => {
+        onSetDates={async (rows, meta) => {
           const n = await saveStops(rows);
+          // The batch is the record, not the mechanism — nothing was imported,
+          // so this writes the row directly rather than going through
+          // importTrades, which exists to insert trades.
+          if (meta) await recordBatch(meta);
           await refreshAll();
           return n;
         }}
