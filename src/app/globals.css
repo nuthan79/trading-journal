@@ -385,6 +385,41 @@ select.in { font-family: 'Archivo', sans-serif; }
 }
 .sp-faq { border-top: 1px solid var(--rule); }
 
+/* The guide above the questions. Prose rather than an accordion, because a
+   visitor arriving from a search engine needs to be able to read it without
+   first working out that it folds open. */
+.sp-p {
+  font-size: 13.5px; line-height: 1.72; color: var(--ink2);
+  margin: 0 0 13px; max-width: 66ch; text-wrap: pretty;
+}
+.sp-h3 {
+  font-size: 14px; font-weight: 600; color: var(--ink);
+  margin: 26px 0 9px;
+}
+.sp-list {
+  font-size: 13.5px; line-height: 1.72; color: var(--ink2);
+  max-width: 66ch; margin: 0 0 13px; padding-left: 20px;
+}
+.sp-list li { margin-bottom: 6px; }
+/* Needs its own scroller: three columns of prose do not fit a phone, and the
+   page itself must never scroll sideways. */
+.sp-table-wrap { overflow-x: auto; margin: 0 0 16px; max-width: 100%; }
+.sp-table {
+  border-collapse: collapse; font-size: 12.5px; line-height: 1.6;
+  min-width: 520px; width: 100%;
+}
+.sp-table th, .sp-table td {
+  border: 1px solid var(--rule); padding: 9px 11px;
+  text-align: left; vertical-align: top; color: var(--ink2);
+}
+.sp-table th {
+  font-family: 'Archivo', sans-serif; font-size: 10px; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--ink3); font-weight: 600;
+  background: var(--card);
+}
+.sp-table b { color: var(--ink); font-weight: 600; }
+.sp-table .sp-dim { font-size: 11px; color: var(--ink3); }
+
 .sp-q { border-bottom: 1px solid var(--rule); }
 .sp-q > summary {
   display: flex; justify-content: space-between; align-items: center; gap: 14px;

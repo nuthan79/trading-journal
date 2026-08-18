@@ -213,6 +213,10 @@ export default function HomePage() {
         <SignedInLink />
         <Link href="/privacy">Privacy</Link>
         <Link href="/terms">Terms</Link>
+        {/* Between Terms and Contact on purpose: somebody heading for Contact
+            is about to ask a question, and this is where most of the answers
+            already are. It existed and was linked from nowhere. */}
+        <Link href="/support">Help</Link>
         <Link href="/contact">Contact</Link>
         <span>© {new Date().getFullYear()} {BRAND.name}</span>
       </footer>
