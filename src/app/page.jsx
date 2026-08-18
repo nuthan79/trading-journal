@@ -285,6 +285,10 @@ export default function HomePage() {
 
       <footer className="mk-foot">
         <SignedInLink />
+        {/* First among the content links because it is the only one a stranger
+            has a reason to open before signing up for anything. */}
+        <Link href="/expectancy-calculator">Expectancy calculator</Link>
+        <Link href="/learn">Guides</Link>
         <Link href="/privacy">Privacy</Link>
         <Link href="/terms">Terms</Link>
         {/* Between Terms and Contact on purpose: somebody heading for Contact

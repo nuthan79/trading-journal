@@ -546,3 +546,18 @@ select.in { font-family: 'Archivo', sans-serif; }
   border-bottom: 1px solid var(--brass);
 }
 .lp-swap:hover:not(:disabled) { color: var(--ink); border-bottom-color: var(--ink); }
+
+/* ------------------------------------------------------------------ */
+/*  Expectancy calculator                                              */
+/*                                                                     */
+/*  Only the frame lives here. The tool itself is a client island with  */
+/*  its own styled-jsx; what a server component has to supply is the    */
+/*  width, because .sp is capped at a reading measure and a two-column  */
+/*  calculator with a ten-column grid inside it is not prose.           */
+/* ------------------------------------------------------------------ */
+
+.ec-page { max-width: 1000px; }
+/* The prose keeps a readable measure even though the page is wider —
+   line length is a reading constraint, not a layout one. */
+.ec-page .sp-lede, .ec-page .sp-p { max-width: 68ch; }
+.ec-page .sp-faq { max-width: 68ch; }

@@ -31,6 +31,16 @@ export default function sitemap() {
   return [
     { url: `${base}/`,        lastModified: now, changeFrequency: "weekly",  priority: 1 },
     { url: `${base}/support`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
+
+    /**
+     * The calculator ranks alongside the landing page rather than below it,
+     * because it is the one URL here somebody links to voluntarily. A tool that
+     * answers "is my system profitable" gets shared in a way that no amount of
+     * product copy does, and shared links are the only honest way a domain this
+     * new builds any authority at all.
+     */
+    { url: `${base}/expectancy-calculator`, lastModified: now, changeFrequency: "monthly", priority: 0.9 },
+
     { url: `${base}/learn`,   lastModified: now, changeFrequency: "monthly", priority: 0.7 },
 
     /**
