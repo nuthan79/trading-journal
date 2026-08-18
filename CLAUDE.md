@@ -4,8 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A personal swing-trading journal for NSE/BSE (India), INR-only. Next.js 14 App
-Router + React 18, Supabase (Postgres, Auth via Google OAuth, Storage for chart
+A personal swing-trading journal for NSE/BSE (India), INR-only. Next.js 16 App
+Router + React 19, Supabase (Postgres, Auth via Google OAuth, Storage for chart
 images). Everything is measured in **R** (P&L ÷ risk taken on the trade), so a
 ₹8,000 win on a tight stop and a ₹40,000 win on a wide one are comparable.
 
@@ -14,8 +14,9 @@ images). Everything is measured in **R** (P&L ÷ risk taken on the trade), so a
 ```bash
 npm run dev       # http://localhost:3000
 npm run build     # production build — run this before committing any change
-npm run symbols   # rebuild public/symbols.json (NSE auto-downloads; BSE needs
-                   # a manually-downloaded CSV dropped into data/, see README)
+npm run symbols   # rebuild public/symbols.json — NSE and BSE both download
+                   # automatically. Refuses to write a file >10% smaller than
+                   # the existing one; pass --force only if it really shrank.
 ```
 
 There is no test suite and no lint script configured.
@@ -41,6 +42,35 @@ builds `public/symbols.json` once (NSE + BSE, series EQ/BE/BZ) and
 `src/components/SymbolSearch.jsx` searches it in-memory client-side — this is
 why the 3-character autocomplete is instant. Re-run `npm run symbols`
 periodically; nothing in the running app fetches this list dynamically.
+One row per *listing*, not per company, so a dual-listed name appears twice
+with its own `e`. **That ordering is load-bearing**: `isin.js` takes the first
+row per ISIN, so NSE coming first is what decides which exchange ~2,400
+dual-listed companies resolve to on import. BSE rows carry `c`, the scrip
+code — kept as the canonical BSE id and **never usable as a Yahoo ticker**
+(measured: `CODE.BO` returns a different security).
+
+**Three broker file kinds, three jobs, no overlap.** `brokers/index.js`
+dispatches on an adapter's `kind`, and `ImportTrades.jsx` branches on it:
+
+| kind | yields | writes trades? |
+|---|---|---|
+| `taxpnl` (default) | closed trades — real charges | yes |
+| `holdings` | open positions — complete, no purchase date | yes |
+| `tradebook` | entry dates for positions already held | **no** |
+
+A tradebook deliberately imports nothing: its closed lots would duplicate the
+tax P&L's while being worse (no charges, mis-pairs pre-file buys). Anything
+re-deriving a preview must test `kindOf(b) !== "taxpnl"` rather than naming
+kinds to skip — naming them is what crashed the screen when the third arrived.
+
+**An assumed value must be a flag the calculations consult, not a tint.**
+`stop_source` and `entry_date_source` (036) both mean "the importer invented
+this". `calc.js`/`positions.js` refuse to count days from an assumed date, and
+`analysis.js` excludes assumed stops from R statistics. Correcting the value
+anywhere — import preview, `/stops` queue, trade form — must clear the flag,
+or the correction never counts. **A missing stop is not zero risk**: Holdings
+distinguishes `unknownRisk` from `riskFree`, since treating them alike showed
+₹42L of exposure as an all-clear.
 
 **Position derivation pipeline.** The DB schema stores one exit per trade
 (`exit_price`/`exit_date`/`quantity` columns — not a tranche list), but

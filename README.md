@@ -36,10 +36,12 @@ cp .env.local.example .env.local     # paste your two Supabase values in
 npm run symbols
 ```
 
-NSE downloads automatically. BSE sits behind a form, so grab it once from
-[bseindia.com/corporates/List_Scrips.html](https://www.bseindia.com/corporates/List_Scrips.html)
-(Segment: Equity, Status: Active), drop the CSV into a `data/` folder in the
-project root, and re-run. The script picks up any CSV it finds there.
+NSE and BSE both download automatically — around 2,550 NSE symbols and 4,940
+BSE ones, including exchange-traded funds. If a source is unreachable the
+script **refuses to overwrite a much smaller file** and tells you which one
+came back empty, so a bad download cannot quietly halve your symbol list; pass
+`--force` if the universe really did shrink. Any CSV dropped into a `data/`
+folder is still read, as a manual fallback.
 
 This writes `public/symbols.json`, which the browser loads once and searches in
 memory — that's why the autocomplete responds instantly on the third character
