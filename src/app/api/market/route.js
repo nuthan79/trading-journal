@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { fetchIndexHistory, classifyRegime, INDEX_TICKERS } from "@/lib/market";
 import { userFromRequest } from "@/lib/apiAuth";
+import { rateLimit, tooMany } from "@/lib/rateLimit";
+
+// Heavier upstream than a quote and read once per Review visit, so the
+// ceiling is lower — a person cannot legitimately need twenty a minute.
+const LIMIT = { limit: 20, windowMs: 60_000 };
 
 /**
  * GET /api/market?index=NIFTY500&range=3y
@@ -13,9 +18,13 @@ import { userFromRequest } from "@/lib/apiAuth";
 export const runtime = "nodejs";
 
 export async function GET(req) {
-  if (!(await userFromRequest(req))) {
+  const userId = await userFromRequest(req);
+  if (!userId) {
     return NextResponse.json({ error: "Sign in first." }, { status: 401, headers: { "Cache-Control": "no-store" } });
   }
+
+  const gate = rateLimit(`market:${userId}`, LIMIT);
+  if (!gate.ok) return tooMany(gate.retryAfter, "Too many requests for market data.");
 
   const p = req.nextUrl.searchParams;
   const name = (p.get("index") || "NIFTY500").toUpperCase();

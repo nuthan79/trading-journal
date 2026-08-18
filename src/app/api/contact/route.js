@@ -1,4 +1,18 @@
 import { BRAND } from "@/lib/brand";
+import { rateLimit, callerIp, tooMany } from "@/lib/rateLimit";
+
+/**
+ * The strictest limit here, and the only route a stranger can reach.
+ *
+ * Every accepted request ends as an email in one inbox and spends from a
+ * 3,000/month, 100/day Resend allowance shared with password recovery — so the
+ * failure is not just spam, it is password resets bouncing for real users
+ * because somebody emptied the quota into the contact form.
+ *
+ * Five an hour is well above what a person with a genuine question needs, and
+ * far below what makes a form worth abusing.
+ */
+const LIMIT = { limit: 5, windowMs: 60 * 60 * 1000 };
 
 /**
  * The contact form's other end.
@@ -43,6 +57,18 @@ const escapeHtml = (s) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 export async function POST(req) {
+  /**
+   * Before the body is even read. There is no user to key on here, so it is
+   * the caller's address — and checking first means a flood costs this route
+   * a Map lookup rather than a JSON parse per request.
+   */
+  const gate = rateLimit(`contact:${callerIp(req)}`, LIMIT);
+  if (!gate.ok) {
+    return tooMany(gate.retryAfter,
+      "That's several messages in a short time. If the first one went through, " +
+      "it has been received — give it a little while.");
+  }
+
   let body;
   try {
     body = await req.json();

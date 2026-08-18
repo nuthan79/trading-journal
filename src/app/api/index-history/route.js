@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { getIndexHistory, INDICES } from "@/lib/quotes";
 import { userFromRequest } from "@/lib/apiAuth";
+import { rateLimit, tooMany } from "@/lib/rateLimit";
+
+// Cached upstream for six hours, so repeated calls mostly cost nothing —
+// this is here to stop a loop, not to ration a genuine reader.
+const LIMIT = { limit: 20, windowMs: 60_000 };
 
 /**
  * GET /api/index-history?index=nifty500&from=2025-02-01&to=2026-08-06
@@ -18,12 +23,16 @@ import { userFromRequest } from "@/lib/apiAuth";
 export const runtime = "nodejs";
 
 export async function GET(req) {
-  if (!(await userFromRequest(req))) {
+  const userId = await userFromRequest(req);
+  if (!userId) {
     return NextResponse.json(
       { points: [], error: "Sign in first." },
       { status: 401, headers: { "Cache-Control": "no-store" } }
     );
   }
+
+  const gate = rateLimit(`index-history:${userId}`, LIMIT);
+  if (!gate.ok) return tooMany(gate.retryAfter, "Too many requests for index history.");
 
   const q = req.nextUrl.searchParams;
   const index = q.get("index") || "nifty500";

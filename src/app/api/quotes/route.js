@@ -1,6 +1,16 @@
 import { NextResponse } from "next/server";
 import { getQuotes } from "@/lib/quotes";
 import { userFromRequest } from "@/lib/apiAuth";
+import { rateLimit, tooMany } from "@/lib/rateLimit";
+
+/**
+ * Generous, because the app itself is the busiest caller.
+ *
+ * Opening Holdings marks every open position in one request, and Refresh
+ * Prices does it again on demand; a person clicking impatiently is normal use
+ * and must not be told off for it. This is set to catch a loop, not a hurry.
+ */
+const LIMIT = { limit: 40, windowMs: 60_000 };
 
 /**
  * GET /api/quotes?s=RELIANCE:NSE,TATAMOTORS:NSE
@@ -17,8 +27,24 @@ export async function GET(req) {
   // Signed-in callers only. Left open, this hands anyone the deployment's
   // Yahoo quota, and an outsider's traffic getting this IP rate-limited is
   // what would leave paying users with no CMP.
-  if (!(await userFromRequest(req))) {
+  const userId = await userFromRequest(req);
+  if (!userId) {
     return NextResponse.json({ quotes: [], error: "Sign in first." }, { status: 401, headers: { "Cache-Control": "no-store" } });
+  }
+
+  /**
+   * Keyed on the user, not the IP. Two people behind one office NAT are two
+   * callers and should not share a budget; the same person on a phone and a
+   * laptop is one caller and should.
+   *
+   * After the auth check, so an unauthenticated flood is refused by the
+   * cheaper test and never occupies a slot belonging to a real user.
+   */
+  const gate = rateLimit(`quotes:${userId}`, LIMIT);
+  if (!gate.ok) {
+    return tooMany(gate.retryAfter,
+      "Too many price refreshes. Prices are cached for a minute anyway, so " +
+      "waiting costs you nothing.");
   }
 
   const raw = req.nextUrl.searchParams.get("s") || "";

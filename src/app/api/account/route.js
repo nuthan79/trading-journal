@@ -1,6 +1,16 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { userFromRequest } from "@/lib/apiAuth";
+import { rateLimit, tooMany } from "@/lib/rateLimit";
+
+/**
+ * Deleting an account is not something anybody does twice by accident.
+ *
+ * Low not to ration a legitimate user — one is enough — but because this route
+ * holds the service-role key and purges storage, and a loop hitting it is the
+ * most expensive mistake available here.
+ */
+const LIMIT = { limit: 3, windowMs: 60 * 60 * 1000 };
 
 /**
  * DELETE /api/account — remove the caller's account, permanently.
@@ -62,6 +72,11 @@ export async function DELETE(req) {
   const userId = await userFromRequest(req);
   if (!userId) {
     return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+  }
+
+  const gate = rateLimit(`account-delete:${userId}`, LIMIT);
+  if (!gate.ok) {
+    return tooMany(gate.retryAfter, "Too many delete attempts. Wait a little and try again.");
   }
 
   if (!url || !serviceKey) {
