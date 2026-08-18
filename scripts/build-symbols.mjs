@@ -21,10 +21,30 @@
  * exchange picker was written and then reverted the same day (08549ca): there
  * were no BSE rows for it to offer, so a dual-listed name silently stayed NSE.
  *
- * WHAT THE SCRIP CODE IS FOR. BSE rows carry `c`, the numeric scrip code.
- * Yahoo resolves the well-known BSE listings by ticker, but many smaller
- * BSE-only scrips answer only to the number, so the quote path tries the
- * symbol first and falls back to the code. NSE rows have no `c` and need none.
+ * WHAT THE SCRIP CODE IS FOR, AND WHAT IT IS EMPHATICALLY NOT FOR.
+ *
+ * BSE rows carry `c`, the numeric scrip code — the canonical identifier for a
+ * BSE listing, the one BSE's own endpoints are keyed on and the one a broker
+ * API will want. It is kept for that.
+ *
+ * IT IS NOT A YAHOO TICKER. The reverted commit 4e6db9b intended exactly that:
+ * ask Yahoo for `SYMBOL.BO` and fall back to `CODE.BO`, on the stated grounds
+ * that "many smaller BSE-only scrips only answer to their numeric scrip code".
+ * That was never tested, and it is false in both halves:
+ *
+ *   - Twenty BSE-only names sampled across the alphabet ALL resolved by
+ *     ticker. There is nothing for a fallback to rescue.
+ *   - The code form returns a DIFFERENT SECURITY. Yahoo already uses numeric
+ *     tickers for other instruments, so `535910.BO` answers with a price —
+ *     ₹189.20 — while MMLF, the scrip that code belongs to, trades at ₹0.66.
+ *     RELIANCE resolves by ticker and returns nothing for `500325.BO`.
+ *
+ * So the fallback would not have filled gaps; it would have marked positions
+ * at another company's price, in rupees, beside correct figures, with nothing
+ * saying which was which. Left unbuilt on purpose. If a future quote source
+ * genuinely keys on scrip codes, the field is already here.
+ *
+ * NSE rows have no `c` and need none.
  *
  * If a download fails the script still writes whatever it did get, so a BSE
  * outage leaves you with a working NSE-only file rather than no file.
