@@ -65,6 +65,16 @@ export default function TermsPage() {
         if you think someone else is using your account.
       </p>
       <p>One person, one account. Do not share an account.</p>
+      {/* The Privacy Policy has said 18+ since it shipped; these Terms were
+          silent, which is the wrong way round — Privacy describes what is done
+          with data, Terms are what is actually agreed to. Under the DPDP Act
+          a child's data needs verifiable parental consent, which this service
+          has no way to obtain and therefore does not attempt. */}
+      <p>
+        <b>You must be 18 or over to use {BRAND.name}.</b> The service is not built
+        for children and no account is knowingly created for one. If we learn that an
+        account belongs to someone under 18 it will be closed and its data deleted.
+      </p>
 
       <h2>4. What you may not do</h2>
       <ul>

@@ -38,4 +38,29 @@ export const BRAND = {
    * a capitalised local part reads as a typo to anyone who notices.
    */
   contactEmail: "contact@ledgerr.app",
+
+  /**
+   * Who answers a privacy grievance, by name.
+   *
+   * The DPDP Act requires a readily available means of redress and the contact
+   * details of somebody able to answer questions about how data is processed.
+   * An address alone satisfies the letter of that; a name is what makes it
+   * feel answerable to the person writing, which is the point of the right.
+   *
+   * BLANK IS A WORKING STATE, NOT A BROKEN ONE. Left empty the policy names
+   * the role instead of a person and still gives the address, so the page is
+   * complete and honest either way — unlike `contactEmail`, whose absence
+   * genuinely does leave nowhere to write and lights the unfinished banner.
+   * Fill it in when you have decided whose name should be published.
+   */
+  grievanceOfficer: "",
+
+  /**
+   * Days to respond to a grievance, stated publicly.
+   *
+   * A promise, so it is deliberately one that can be kept by one person with
+   * a day job. The DPDP rules contemplate ninety days as an outer limit;
+   * saying thirty and meaning it is worth more than saying seven and missing.
+   */
+  grievanceDays: 30,
 };

@@ -159,6 +159,38 @@ export default function PrivacyPage() {
         leave with your data than feel stuck with us.
       </p>
 
+      {/* Its own section rather than a clause inside "Your rights", because a
+          right nobody can find the door for is a right on paper. The Act asks
+          for a readily available means of redress; a heading somebody can scan
+          to is most of what "readily available" means in practice. */}
+      <h2>Raising a grievance</h2>
+      <p>
+        If something here has not been honoured — an export that never arrived, data
+        you asked to have deleted and can still see, a question about processing that
+        went unanswered — say so and it will be dealt with.
+      </p>
+      <p>
+        {BRAND.grievanceOfficer ? (
+          <>
+            Grievances are handled by <b>{BRAND.grievanceOfficer}</b>
+            {mail ? <>, at <a href={`mailto:${mail}`}>{mail}</a></> : null}.
+          </>
+        ) : (
+          <>
+            Grievances are handled by the person responsible for privacy at{" "}
+            {BRAND.name}
+            {mail ? <>, at <a href={`mailto:${mail}`}>{mail}</a></> : null}.
+          </>
+        )}{" "}
+        You will get a reply within <b>{BRAND.grievanceDays} days</b>. Please say
+        which email address your account uses, so it can be found.
+      </p>
+      <p>
+        If you are not satisfied with the answer, or do not get one, you can complain
+        to the <b>Data Protection Board of India</b>. You do not need our permission
+        to do that, and nothing here asks you to come to us first.
+      </p>
+
       <h2>Children</h2>
       <p>
         This service is not intended for anyone under 18, and we do not knowingly
