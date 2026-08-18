@@ -52,6 +52,52 @@ export const BROKERS = [zerodha, groww, dhan, zerodhaHoldings, zerodhaTradebook]
 /** What a file yields. Absent means matched lots — the original assumption. */
 export const kindOf = (broker) => broker?.kind || "taxpnl";
 
+/**
+ * A recognised file that is the WRONG report, named so the message can help.
+ *
+ * "This doesn't look like a report we can read yet. Supported: Zerodha, Groww,
+ * Dhan" is a baffling thing to tell somebody holding a Zerodha file, and that
+ * is exactly who gets it: Console offers a P&L Statement and a Tax P&L, the
+ * first is the more obvious download, and only the second carries the tradewise
+ * exits with per-lot dates a journal needs.
+ *
+ * Matched on the file's own title text rather than on sheet names, because the
+ * titles are what differ — both reports have an "Equity" sheet.
+ *
+ * Returns a sentence or null. Deliberately not a broker object: the file is not
+ * importable, and returning one would invite something to try.
+ */
+export function wrongReportHint(workbook) {
+  const text = [];
+  for (const n of workbook?.SheetNames || []) {
+    const ws = workbook.Sheets?.[n];
+    for (const addr of Object.keys(ws || {})) {
+      if (addr[0] === "!") continue;
+      const v = ws[addr]?.v;
+      if (typeof v === "string" && v.length < 140) text.push(v.toLowerCase());
+      if (text.length > 500) break;
+    }
+  }
+  const all = text.join(" | ");
+  if (/tradewise/.test(all)) return null;   // it is the right report after all
+
+  if (/p&l statement for/.test(all)) {
+    return (
+      "That is Zerodha's P&L Statement, which summarises by scrip and carries no " +
+      "per-trade dates. The one to download is Console → Reports → Tax P&L, which " +
+      "has a Tradewise Exits sheet."
+    );
+  }
+  if (/tradebook for/.test(all)) {
+    return (
+      "That looks like a tradebook. Import your holdings first and then drop this " +
+      "in — it will fill in their purchase dates. Closed trades still have to come " +
+      "from the tax P&L, the only file carrying real charges."
+    );
+  }
+  return null;
+}
+
 export const brokerById = (id) => BROKERS.find((b) => b.id === id) || null;
 
 /**

@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Upload, Check, AlertTriangle, X, FileSpreadsheet } from "lucide-react";
-import { detectBroker, brokerNames, assembleImport, kindOf } from "@/lib/brokers";
+import { detectBroker, brokerNames, assembleImport, kindOf, wrongReportHint } from "@/lib/brokers";
 import { resolveSymbols } from "@/lib/isin";
 import * as zerodha from "@/lib/brokers/zerodha";
 import * as zerodhaHoldings from "@/lib/brokers/zerodha-holdings";
@@ -121,6 +121,7 @@ function holdingsPreview(raw, { brokerId, targets, stopPct }) {
     skippedSections: [],
     missingColumns: [],
     warnings: raw.warnings || [],
+    notes: raw.notes || [],
   };
 }
 
@@ -215,7 +216,17 @@ export default function ImportTrades({
         // with an unsupported export what is actually wrong.
         broker = detectBroker(wb);
         if (!broker) {
+          /**
+           * Say which wrong report it is, when it can be told.
+           *
+           * Listing the supported brokers to somebody holding a Zerodha file is
+           * a baffling answer, and that is precisely who gets it — Console's
+           * P&L Statement is the more obvious download and is not the one with
+           * per-trade dates.
+           */
+          const hint = wrongReportHint(wb);
           throw new Error(
+            hint ||
             `This doesn't look like a report we can read yet. ` +
             `Supported: ${brokerNames().join(", ")}. If it's from another broker, ` +
             `send us the file and we'll add it.`
@@ -857,7 +868,7 @@ export default function ImportTrades({
       {(parsed.skippedSections.length > 0 || parsed.duplicates.length > 0 ||
         parsed.conflicts?.length > 0 || parsed.rejected?.length > 0 ||
         parsed.short?.length > 0 || parsed.absent?.length > 0 ||
-        parsed.warnings?.length > 0) && (
+        parsed.notes?.length > 0 || parsed.warnings?.length > 0) && (
         <div className="im-skips">
           {parsed.skippedSections.map((x) => (
             <div key={x.section}>
@@ -986,6 +997,17 @@ export default function ImportTrades({
               </div>
             </details>
           )}
+          {/* Advisories, and NOT under the heading above. Groww's charge
+              reconciliation was being counted as "1 row unreadable — skipped
+              before anything was matched", which claims a loss that did not
+              happen and sends somebody hunting for a missing trade. Shown
+              plainly instead, because the useful ones name a setting to go
+              and check. */}
+          {parsed.notes?.length > 0 && parsed.notes.map((n, i) => (
+            <div key={`note-${i}`}>
+              <AlertTriangle size={11} /> {n}
+            </div>
+          ))}
         </div>
       )}
 

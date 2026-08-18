@@ -5,3 +5,8 @@ data/
 
 # Database dumps. Never commit these — they contain every user's data.
 backups/
+
+# Broker files staged in public/ for a browser test. Real exports carry a
+# PAN, a client id and somebody's whole trade history — one `git add -A`
+# with one still sitting there put five of them in a pushed commit.
+public/_*

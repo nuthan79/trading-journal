@@ -408,7 +408,7 @@ function rejectReason(g) {
  * and how the dates were written; from here on nothing knows or cares.
  */
 export function assembleImport(parsed, { targets, batchId, exchange, assumeStopPct, broker } = {}) {
-  const { lots, warnings = [], sectionCounts = {}, missingColumns = [], skippedSections = [] } = parsed;
+  const { lots, warnings = [], notes = [], sectionCounts = {}, missingColumns = [], skippedSections = [] } = parsed;
 
   const grouped = groupLots(lots);
   const { fresh: matched, completions, duplicates, conflicts } =
@@ -445,5 +445,15 @@ export function assembleImport(parsed, { targets, batchId, exchange, assumeStopP
     sectionCounts,
     skippedSections,
     warnings,
+    /**
+     * Advisories, kept apart from `warnings`.
+     *
+     * `warnings` means a row was skipped, and the screen says so in those
+     * words. Groww's charge reconciliation is not that — nothing was lost, the
+     * computed total simply disagrees with the file's own — and it was being
+     * reported as "1 row unreadable, skipped before anything was matched",
+     * which is a claim of data loss that did not happen.
+     */
+    notes,
   };
 }

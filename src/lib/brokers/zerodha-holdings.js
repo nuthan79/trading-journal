@@ -220,16 +220,17 @@ function asOfFrom(rows) {
  */
 export function parseRows(rows) {
   const warnings = [];
+  const notes = [];
   const found = findHeader(rows);
 
   if (!found) {
-    return { holdings: [], warnings: ["No holdings header row found in this sheet."], asOf: null };
+    return { holdings: [], warnings: ["No holdings header row found in this sheet."], notes: [], asOf: null };
   }
 
   const { row: h, map, shape } = found;
   const missing = ["symbol", "available", "avgPrice"].filter((k) => map[k] === undefined);
   if (missing.length) {
-    return { holdings: [], warnings: [`Missing columns: ${missing.join(", ")}`], asOf: null };
+    return { holdings: [], warnings: [`Missing columns: ${missing.join(", ")}`], notes: [], asOf: null };
   }
 
   const asOf = asOfFrom(rows);
@@ -294,12 +295,14 @@ export function parseRows(rows) {
   }
 
   if (pledgedSeen > 0) {
-    warnings.push(
+    // An advisory: nothing was dropped, the quantities simply came from a
+    // path no real file has exercised yet.
+    notes.push(
       `${pledgedSeen} ${pledgedSeen === 1 ? "holding is" : "holdings are"} partly pledged. ` +
       `Pledged shares are counted as held, since you still own them — check those ` +
       `quantities against your broker before relying on them.`
     );
   }
 
-  return { holdings, warnings, asOf, shape };
+  return { holdings, warnings, notes, asOf, shape };
 }

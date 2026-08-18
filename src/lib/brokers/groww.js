@@ -233,6 +233,8 @@ const isHeaderRow = (row) => {
 export function parseRows(rows, { chargeConfig = null, exchange = "NSE" } = {}) {
   const lots = [];
   const warnings = [];
+  // Advisories: things worth knowing that did NOT cost you a row.
+  const notes = [];
   const sectionCounts = {};
 
   let section = null;
@@ -347,7 +349,7 @@ export function parseRows(rows, { chargeConfig = null, exchange = "NSE" } = {}) 
     const diff = computedTotal - summary.comparable;
     const tolerance = Math.max(50, summary.comparable * 0.05);
     if (Math.abs(diff) > tolerance) {
-      warnings.push(
+      notes.push(
         `Charges worked out to ₹${computedTotal.toFixed(2)}, but this report says the ` +
         `period actually cost ₹${summary.comparable.toFixed(2)}` +
         (summary.mtfInterest ? ` (excluding ₹${summary.mtfInterest.toFixed(2)} MTF interest)` : "") +
@@ -363,6 +365,7 @@ export function parseRows(rows, { chargeConfig = null, exchange = "NSE" } = {}) 
   return {
     lots,
     warnings,
+    notes,
     sectionCounts,
     summary,
     computedTotal,
