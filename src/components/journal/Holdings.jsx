@@ -662,7 +662,7 @@ export default function Holdings({
                         indistinguishable from a date somebody checked. The
                         days column beside it already reads "—" for these. */}
                     {r.entry_date_source === "assumed" && (
-                      <span className="ps-tag" title={
+                      <span className="ps-assumed" title={
                         "Assumed — your holdings file didn't say when you bought this. " +
                         "Nothing counts it as a holding period until you correct it; " +
                         "open the trade and set the real date."
@@ -695,7 +695,7 @@ export default function Holdings({
                         : undefined}>
                     {isFinite(r.stop) ? r.stop.toFixed(2) : "—"}
                     {r.stop_source === "assumed" && isFinite(r.stop) && (
-                      <span className="ps-tag">assumed</span>
+                      <span className="ps-assumed">assumed</span>
                     )}
                   </td>
                   <td className="num ps-dim">{isFinite(r.slPct) ? pct(r.slPct) : "—"}</td>
@@ -1006,6 +1006,20 @@ export default function Holdings({
           text-transform: uppercase; color: var(--brass);
           border: 1px solid var(--brass); border-radius: 2px;
           padding: 1px 4px; margin-left: 6px;
+        }
+        /**
+         * The assumed markers, which are NOT the boxed tag above.
+         *
+         * "part sold" is a status and earns a box; "assumed" is a footnote on
+         * the number it sits under. Boxed and inline it competed with the
+         * figure and pushed the column wide — two of them on one row made it
+         * look like the row was mostly labels. Under the value, unboxed, it
+         * reads as a caption, which is what it is. Same rule as the trade
+         * sheet, which had it right already.
+         */
+        .ps-assumed {
+          display: block; font-style: normal; font-size: 9px;
+          letter-spacing: 0.06em; text-transform: uppercase; color: var(--brass);
         }
         .ps-openpct, .ps-riskbar { position: relative; display: block; min-width: 58px; }
         .ps-openpct > i, .ps-riskbar > i {
