@@ -339,7 +339,23 @@ select.in { font-family: 'Archivo', sans-serif; }
   text-decoration: none; padding: 11px 20px; border-radius: 3px;
   font-size: 13px; font-weight: 500;
 }
+/*
+  The CTA is a button that happens to be a link, so it has to out-specify the
+  blanket prose-link colour the long-form pages set.
+
+  `.legal a` is one class plus one element and `.mk-cta` is one class, so on a
+  page wrapped in .legal the prose rule wins on specificity no matter which is
+  written last — and it paints ink-coloured text onto the ink-coloured button.
+  The label does not look wrong, it disappears completely, which is why it sat
+  live on /learn unnoticed. Underline came back with it.
+
+  Written as .legal a.mk-cta rather than a.mk-cta so it wins on specificity
+  rather than on source order, which the next edit to this file could reverse.
+*/
 .mk-cta:hover { opacity: 0.9; }
+.legal a.mk-cta, a.mk-cta {
+  color: var(--paper); text-decoration: none;
+}
 .mk-note { font-size: 12px; color: var(--ink3); margin: 12px 0 0; }
 
 .mk-sec { padding: 30px 0; border-bottom: 1px solid var(--rule); }
