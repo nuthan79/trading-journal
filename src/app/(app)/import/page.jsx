@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import ImportTrades from "@/components/ImportTrades";
 import RestoreExport from "@/components/RestoreExport";
 import ImportHistory from "@/components/journal/ImportHistory";
-import { listImportTargets, importTrades } from "@/lib/db";
+import { listImportTargets, importTrades, saveStops } from "@/lib/db";
 import { useJournal } from "../JournalContext";
 
 export default function ImportPage() {
@@ -75,6 +75,18 @@ export default function ImportPage() {
           const res = await importTrades(payload);
           await refreshAll();
           return res;
+        }}
+        /**
+         * The tradebook path writes dates and nothing else.
+         *
+         * saveStops builds its patch from the keys present, so rows carrying
+         * only entry_date leave every stop alone — the same mechanism the
+         * stops queue uses when somebody answers one half of a row.
+         */
+        onSetDates={async (rows) => {
+          const n = await saveStops(rows);
+          await refreshAll();
+          return n;
         }}
         onDone={(choice) => {
           say(choice === "fill-stops" ? "" : "Imported trades are in your trade sheet.");

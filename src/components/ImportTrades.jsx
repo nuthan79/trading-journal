@@ -7,6 +7,7 @@ import { resolveSymbols } from "@/lib/isin";
 import * as zerodha from "@/lib/brokers/zerodha";
 import * as zerodhaHoldings from "@/lib/brokers/zerodha-holdings";
 import { toHoldingRows, dateCaveat } from "@/lib/holdings";
+import { matchFifo, openPositions, datesForHeldPositions } from "@/lib/tradebook";
 import { rupee, pct } from "@/lib/format";
 
 /**
@@ -50,7 +51,10 @@ function importLabel(newCount, completeCount) {
 }
 
 /** What actually happened, which is not always "n trades imported". */
-function doneHeadline({ inserted = 0, completed = 0 }) {
+function doneHeadline({ inserted = 0, completed = 0, dated = null }) {
+  // A tradebook imports nothing, so "0 trades imported" would be both true
+  // and the wrong summary of what just happened.
+  if (dated != null) return `${dated} purchase date${dated === 1 ? "" : "s"} filled in`;
   const trades = `${inserted} trade${inserted === 1 ? "" : "s"}`;
   const done = `${completed} position${completed === 1 ? "" : "s"}`;
   if (inserted && completed) return `${trades} imported, ${done} completed`;
@@ -80,7 +84,9 @@ function HeldBack({ rows, children }) {
   );
 }
 
-export default function ImportTrades({ targets = [], chargeConfig = null, onImport, onDone }) {
+export default function ImportTrades({
+  targets = [], chargeConfig = null, onImport, onSetDates, onDone,
+}) {
   const [file, setFile] = useState(null);
   const [parsed, setParsed] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -192,6 +198,61 @@ export default function ImportTrades({ targets = [], chargeConfig = null, onImpo
        * defaults and then correctly warned that the result was understated.
        * The warning was right; the settings simply never arrived.
        */
+      /**
+       * A tradebook creates nothing. It answers one question — when did I
+       * actually buy the things I already hold — and writes only that.
+       *
+       * See the note on datesForHeldPositions: importing its matched lots
+       * would duplicate the tax P&L's closed trades while being worse than
+       * them, and its open positions are a subset of what a holdings file
+       * already gave completely.
+       */
+      if (kindOf(broker) === "tradebook") {
+        const raw = broker.parseRows(rows);
+        if (!raw.trades.length) {
+          throw new Error(
+            raw.warnings[0] ||
+            "No equity trades found in this tradebook. Check it covers the segment you trade."
+          );
+        }
+
+        const { open, warnings: fifoWarnings } = matchFifo(raw.trades);
+        const positions = openPositions(open);
+        const out = datesForHeldPositions(positions, targets);
+
+        const changing = out.dated.filter((d) => !d.unchanged);
+        if (!changing.length && !out.short.length && !out.absent.length) {
+          throw new Error(
+            "Nothing here needs a date. Every position you hold already has a " +
+            "purchase date you recorded — import a holdings file first if your " +
+            "open positions are missing."
+          );
+        }
+
+        setFile(f);
+        setBroker(broker);
+        setParsedFile(raw);
+        setParsed({
+          kind: "tradebook",
+          dated: out.dated,
+          changing,
+          short: out.short,
+          absent: out.absent,
+          // Present and empty so the shared chrome renders. Nothing about a
+          // tradebook creates, completes or duplicates a trade.
+          trades: [], completions: [], duplicates: [], conflicts: [],
+          skippedSections: [], missingColumns: [],
+          summary: {
+            positions: positions.length,
+            rowsRead: raw.trades.length,
+            from: raw.trades.reduce((a, t) => (!a || t.date < a ? t.date : a), null),
+            to: raw.trades.reduce((a, t) => (!a || t.date > a ? t.date : a), null),
+          },
+          warnings: [...(raw.warnings || []), ...fifoWarnings],
+        });
+        return;
+      }
+
       /**
        * A holdings file is a different KIND of file, not a different broker.
        *
@@ -310,16 +371,47 @@ export default function ImportTrades({ targets = [], chargeConfig = null, onImpo
   useEffect(() => {
     if (!parsedFile) return;
     const b = broker || zerodha;
-    // Holdings never went through assembleImport and have no lots to re-match;
-    // the stop assumption does not apply to them either, since they import
-    // without a stop by design. Re-running this on that shape would throw on a
-    // missing `lots` and blank the preview the user is reading.
-    if (kindOf(b) === "holdings") return;
+    /**
+     * Only the tax P&L shape goes back through assembleImport.
+     *
+     * Tested as "not taxpnl" rather than by naming the kinds to skip, because
+     * naming them is what broke: this said `=== "holdings"` and the tradebook
+     * arrived later, went straight into assembleImport, and crashed the screen
+     * on `lots is not iterable`. A third kind would have done it again. Only
+     * lots can be re-grouped, so only lots are re-grouped.
+     */
+    if (kindOf(b) !== "taxpnl") return;
     setParsed(assembleImport(parsedFile,
       { targets, assumeStopPct: stopPct, broker: b.id }));
   }, [parsedFile, broker, targets, stopPct]);
 
   const confirm = async () => {
+    /**
+     * The tradebook path saves dates and nothing else, so it cannot go through
+     * the guard below — it has no trades to import by design, and the shared
+     * check would read that as an empty file and refuse.
+     */
+    if (parsed?.kind === "tradebook") {
+      if (!parsed.changing.length) return;
+      setBusy(true); setError("");
+      try {
+        const n = await onSetDates(
+          parsed.changing.map((d) => ({
+            id: d.id,
+            entry_date: d.to,
+            // A date read out of the user's own tradebook is as recorded as
+            // one they typed — it came from the broker's record of the trade.
+            entry_date_source: "recorded",
+          }))
+        );
+        setResult({ dated: n ?? parsed.changing.length });
+      } catch (e) {
+        setError(e.message || "Could not save. Nothing was changed.");
+      }
+      setBusy(false);
+      return;
+    }
+
     if (!parsed?.trades.length && !parsed?.completions.length) return;
     setBusy(true); setError("");
     try {
@@ -375,7 +467,12 @@ export default function ImportTrades({ targets = [], chargeConfig = null, onImpo
         <div className="im-tick"><Check size={20} /></div>
         <h2 className="disp im-h">{doneHeadline(result)}</h2>
         <p className="im-lede">
-          {parsed?.kind === "holdings" ? (
+          {result.dated != null ? (
+            <>Those positions now carry the date you actually bought them, read from
+              your own tradebook — so holding period, XIRR and the period breakdowns
+              count them instead of skipping them. Nothing else was changed: no trade
+              was created, and no price or quantity was touched.</>
+          ) : parsed?.kind === "holdings" ? (
             <>Your open positions are in. They have no stop yet, so R and expectancy
               stay blank for them until you set one — and any purchase date you
               didn&apos;t fill in is marked assumed, which keeps it out of holding
@@ -483,6 +580,7 @@ export default function ImportTrades({ targets = [], chargeConfig = null, onImpo
 
   const s = parsed.summary;
   const holdings = parsed.kind === "holdings";
+  const tradebook = parsed.kind === "tradebook";
 
   return (
     <section>
@@ -496,7 +594,29 @@ export default function ImportTrades({ targets = [], chargeConfig = null, onImpo
         </button>
       </div>
 
-      {holdings ? (
+      {tradebook ? (
+        <>
+          <div className="im-stats">
+            <div><b>{parsed.changing.length}</b><span>dates found</span></div>
+            <div><b>{s.rowsRead}</b><span>rows read</span></div>
+            {parsed.short.length > 0 &&
+              <div><b>{parsed.short.length}</b><span>can&apos;t be dated</span></div>}
+            {parsed.absent.length > 0 &&
+              <div><b>{parsed.absent.length}</b><span>not in this file</span></div>}
+          </div>
+
+          <p className="im-note">
+            {/* The thing to be clear about before confirming: this button does
+                not import. Somebody who has just imported two files could
+                reasonably expect a third to add more trades. */}
+            <b>Nothing is imported from a tradebook.</b> It is read only to find
+            when you actually bought the positions you already hold — no trade is
+            created, and no price, quantity or charge is touched. Closed trades keep
+            coming from your tax P&amp;L, which is the only file carrying real charges.
+            {s.from && <> Covering {s.from} to {s.to}.</>}
+          </p>
+        </>
+      ) : holdings ? (
         <>
           <div className="im-stats">
             <div><b>{s.positions}</b><span>open positions</span></div>
@@ -617,6 +737,7 @@ export default function ImportTrades({ targets = [], chargeConfig = null, onImpo
 
       {(parsed.skippedSections.length > 0 || parsed.duplicates.length > 0 ||
         parsed.conflicts?.length > 0 || parsed.rejected?.length > 0 ||
+        parsed.short?.length > 0 || parsed.absent?.length > 0 ||
         parsed.warnings?.length > 0) && (
         <div className="im-skips">
           {parsed.skippedSections.map((x) => (
@@ -639,6 +760,44 @@ export default function ImportTrades({ targets = [], chargeConfig = null, onImpo
               value that an open position simply does not have. What it needs
               said is the two quantities, because the disagreement between them
               IS the finding. */}
+          {/* THE HONEST HALF. A tradebook that only reaches back a year cannot
+              see the buys that opened an older position, so its earliest
+              surviving buy is not when that position started — it just looks
+              like it is. Both numbers are shown so the shortfall speaks for
+              itself, and the date is not applied. */}
+          {tradebook && parsed.short.length > 0 && (
+            <details className="im-rejected">
+              <summary>
+                <AlertTriangle size={11} /> {parsed.short.length}{" "}
+                {parsed.short.length === 1 ? "position" : "positions"} this file
+                can&apos;t date — it only accounts for part of what you hold
+              </summary>
+              <div className="im-rejlist">
+                {parsed.short.slice(0, 40).map((x, i) => (
+                  <div key={i}>
+                    <b>{x.symbol}</b>
+                    <span className="im-dim">
+                      {" "}you hold {x.held}, this file accounts for {x.found}.
+                      The rest was bought before it starts, so its earliest buy here
+                      ({x.earliest}) is not when you opened the position. Left as it
+                      was — download a tradebook covering more years, or set the date
+                      by hand.
+                    </span>
+                  </div>
+                ))}
+                {parsed.short.length > 40 && (
+                  <div className="im-dim">…and {parsed.short.length - 40} more</div>
+                )}
+              </div>
+            </details>
+          )}
+          {tradebook && parsed.absent.length > 0 && (
+            <div>
+              <AlertTriangle size={11} /> {parsed.absent.length} held{" "}
+              {parsed.absent.length === 1 ? "position is" : "positions are"} not in
+              this file at all — bought before it starts, or on another account
+            </div>
+          )}
           {holdings && parsed.conflicts?.length > 0 && (
             <details className="im-rejected">
               <summary>
@@ -697,6 +856,46 @@ export default function ImportTrades({ targets = [], chargeConfig = null, onImpo
               </div>
             </details>
           )}
+        </div>
+      )}
+
+      {/* The tradebook's own preview: what each date is now, and what the file
+          says it should be. Both shown, because this is a correction to
+          something already recorded rather than a blank being filled — and the
+          old value is the only way to see at a glance how far off the guess
+          was. */}
+      {tradebook && parsed.changing.length > 0 && (
+        <div className="card scroll im-table">
+          <table className="t">
+            <thead>
+              <tr>
+                <th>Symbol</th>
+                <th className="num">Qty</th>
+                <th>Recorded as</th>
+                <th>Actually bought</th>
+                <th className="num">Buys</th>
+              </tr>
+            </thead>
+            <tbody>
+              {parsed.changing.map((d) => (
+                <tr key={d.id}>
+                  <td><b className="disp">{d.symbol}</b></td>
+                  <td className="num">{d.quantity}</td>
+                  <td className="mono im-dim">{d.from}<i className="im-assumed">assumed</i></td>
+                  <td className="mono"><b>{d.to}</b></td>
+                  {/* How many separate purchases make up the holding. More
+                      than one means the date shown is the earliest of them —
+                      worth seeing, because it explains a date older than the
+                      person may remember. */}
+                  <td className="num im-dim" title={d.lots > 1
+                    ? `Built over ${d.lots} purchases on different days — this is the earliest still held`
+                    : undefined}>
+                    {d.lots > 1 ? <b className="im-scaled">{d.lots}</b> : <span className="im-dim">1</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
@@ -809,7 +1008,7 @@ export default function ImportTrades({ targets = [], chargeConfig = null, onImpo
           see toHoldingRows — so a control claiming to set one would describe an
           import that is not about to happen. The date inputs above are that
           path's equivalent decision. */}
-      {!holdings && (
+      {!holdings && !tradebook && (
       <div className="im-assume">
         <label className="im-assume-on">
           <input type="checkbox" checked={assume}
@@ -838,7 +1037,12 @@ export default function ImportTrades({ targets = [], chargeConfig = null, onImpo
 
       <div className="im-confirm">
         <span className="im-dim">
-          {holdings ? (
+          {tradebook ? (
+            parsed.changing.length
+              ? `Only the dates change. Stops, prices, quantities and charges stay ` +
+                `exactly as they are.`
+              : "Nothing here to set."
+          ) : holdings ? (
             (() => {
               // Nothing to import is not the same as every date being answered.
               if (!parsed.trades.length) return "Nothing new in this file.";
@@ -861,9 +1065,20 @@ export default function ImportTrades({ targets = [], chargeConfig = null, onImpo
           )}
         </span>
         <button className="btn" onClick={confirm}
-                disabled={busy || !stopPctOk || (!parsed.trades.length && !parsed.completions?.length)}>
+                disabled={busy || (tradebook
+                  ? !parsed.changing.length
+                  : !stopPctOk || (!parsed.trades.length && !parsed.completions?.length))}>
           <Upload size={13} />{" "}
-          {busy ? "Importing…" : importLabel(s.trades, parsed.completions?.length || 0)}
+          {busy
+            ? (tradebook ? "Saving…" : "Importing…")
+            : tradebook
+            // Says what it does, which is not importing. "Import 0 trades" on
+            // a file that fills in eight dates would describe nothing that is
+            // about to happen.
+            ? parsed.changing.length
+              ? `Set ${parsed.changing.length} date${parsed.changing.length === 1 ? "" : "s"}`
+              : "No dates to set"
+            : importLabel(s.trades, parsed.completions?.length || 0)}
         </button>
       </div>
 

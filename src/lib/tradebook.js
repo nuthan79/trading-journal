@@ -213,6 +213,107 @@ export function openPositions(open) {
 }
 
 /**
+ * Real purchase dates for positions the journal already holds.
+ *
+ * THE TRADEBOOK'S ONLY JOB ON THIS PATH, and it writes nothing else. A
+ * holdings file creates the positions — completely, since it lists everything
+ * you own — but carries no purchase date, so those rows land with an invented
+ * one flagged `assumed` (migration 036). FIFO over a tradebook can say what
+ * that date really was.
+ *
+ * WHY NOT LET IT CREATE TRADES TOO, which `toOpenTradeRows` below can do.
+ * Because then it competes with two files that are each better at their half:
+ * closed trades from the tax P&L carry real charges and correct corporate
+ * actions, and open positions from a holdings file are complete regardless of
+ * how far back the tradebook reaches. A tradebook that also imported would
+ * duplicate the first and add nothing to the second.
+ *
+ * THE QUANTITY MUST AGREE, and this is the whole correctness condition.
+ *
+ * A one-year tradebook has no opening position, so a holding bought before its
+ * start date shows up as fewer shares than you actually own — FIFO simply
+ * cannot see the earlier buys. Its earliest SURVIVING buy is then not when the
+ * position started; it is just the oldest one this file happens to contain,
+ * which reads exactly like an answer and is off by however long you held
+ * before the window. Measured on a real pair: five of ten holdings reproduced
+ * to the paisa, and every one of the five failures was a pre-file purchase.
+ *
+ * So a position is dated only when the file accounts for all of it. Anything
+ * short is reported with both numbers and left alone, because the alternative
+ * is replacing an honestly-flagged guess with a confident wrong date.
+ *
+ * `positions` comes from openPositions(); `targets` are the journal's trades.
+ */
+export function datesForHeldPositions(positions, targets = []) {
+  /** symbol → every still-open lot group the file knows about */
+  const bySymbol = new Map();
+  for (const p of positions) {
+    const k = String(p.symbol || "").toUpperCase();
+    if (!k) continue;
+    const e = bySymbol.get(k) || { quantity: 0, earliest: null, lots: 0 };
+    e.quantity += p.quantity;
+    e.lots += 1;
+    if (!e.earliest || p.entryDate < e.earliest) e.earliest = p.entryDate;
+    bySymbol.set(k, e);
+  }
+
+  const dated = [];
+  const short = [];
+  const absent = [];
+
+  for (const t of targets) {
+    // Only open positions carrying an invented date. A recorded date is a
+    // fact somebody supplied and is not this file's business to revise.
+    if (t.status === "closed") continue;
+    if (t.entry_date_source !== "assumed") continue;
+
+    const symbol = String(t.symbol || "").toUpperCase();
+    const hit = bySymbol.get(symbol);
+    if (!hit || !hit.earliest) { absent.push({ symbol, quantity: Number(t.quantity) }); continue; }
+
+    const held = Number(t.quantity);
+    const found = hit.quantity;
+
+    // Tolerance rather than equality: quantities travel through the file as
+    // text and a fractional share from a corporate action can leave a
+    // vanishing remainder. Anything visible is a real disagreement.
+    if (Math.abs(found - held) > 1e-6) {
+      short.push({ symbol, held, found, earliest: hit.earliest });
+      continue;
+    }
+
+    // Already right. Re-dating it to the same day is not a correction, and
+    // counting it as one overstates what the file did.
+    if (t.entry_date === hit.earliest) {
+      dated.push({ id: t.id, symbol, from: t.entry_date, to: hit.earliest,
+                   quantity: held, lots: hit.lots, unchanged: true });
+      continue;
+    }
+
+    dated.push({
+      id: t.id, symbol,
+      from: t.entry_date,
+      /**
+       * The EARLIEST surviving buy, which is a decision rather than an
+       * obvious reading. A position built over three purchases has three
+       * candidate dates; this is the one a trader means by "I have held this
+       * since March", and it is the conservative choice for holding period.
+       *
+       * Slightly inconsistent with the entry PRICE being a weighted average
+       * of those same buys, and deliberately so: a weighted-average date is a
+       * day nobody recognises and could not check against their broker.
+       */
+      to: hit.earliest,
+      quantity: held,
+      lots: hit.lots,
+      unchanged: false,
+    });
+  }
+
+  return { dated, short, absent };
+}
+
+/**
  * Open positions as journal rows, and the ones already there.
  *
  * WHAT THIS DELIBERATELY DOES NOT FILL IN. No stop, so no 1R and no R. The

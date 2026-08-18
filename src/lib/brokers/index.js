@@ -26,6 +26,7 @@ import * as zerodha from "./zerodha";
 import * as groww from "./groww";
 import * as dhan from "./dhan";
 import * as zerodhaHoldings from "./zerodha-holdings";
+import * as zerodhaTradebook from "./zerodha-tradebook";
 
 export { assembleImport } from "../import-pipeline";
 
@@ -38,17 +39,15 @@ export { assembleImport } from "../import-pipeline";
  * branches on it, so an adapter that returns a different shape can now be
  * registered without the screen mistaking its output for lots.
  *
- * STILL NOT LISTED: `zerodha-tradebook.js`. The screen can branch now, so the
- * old blocker is gone, but a tradebook is a genuinely harder case than a
- * holdings file: `matchFifo` returns closed lots as well as open positions,
- * and importing those lots would duplicate every closed trade the tax P&L
- * already provided — while being strictly worse than them, since a tradebook
- * carries no charges and mis-pairs anything bought before its start date.
- * Its role is to supply real entry dates for positions the holdings file has
- * already created, which is a different job from importing, and one this
- * screen does not have a place for yet.
+ * THE TRADEBOOK IS NOW LISTED, AND IT IMPORTS NOTHING. `matchFifo` returns
+ * closed lots as well as open positions, and it writes neither: those lots
+ * would duplicate every closed trade the tax P&L already gave, while being
+ * strictly worse than them — a tradebook carries no charges and mis-pairs
+ * anything bought before its own start date. Its whole job is supplying real
+ * entry dates for positions a holdings file has already created, which is why
+ * its kind is handled separately from the two that do write trades.
  */
-export const BROKERS = [zerodha, groww, dhan, zerodhaHoldings];
+export const BROKERS = [zerodha, groww, dhan, zerodhaHoldings, zerodhaTradebook];
 
 /** What a file yields. Absent means matched lots — the original assumption. */
 export const kindOf = (broker) => broker?.kind || "taxpnl";

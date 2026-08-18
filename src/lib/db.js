@@ -543,7 +543,9 @@ export async function listImportTargets() {
       supabase.from("trades")
         // broker included since 019: reconcile refuses to match a position
         // against one from a different broker, and cannot tell without it.
-        .select("id,symbol,entry_date,quantity,status,imported,broker")
+        // entry_date_source since 036: the tradebook path only offers to date
+        // positions whose date was invented, and cannot tell which without it.
+        .select("id,symbol,entry_date,quantity,status,imported,broker,entry_date_source")
         .order("id")),
     fetchAllPages(() =>
       supabase.from("trade_exits")
