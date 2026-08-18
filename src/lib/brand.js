@@ -51,9 +51,13 @@ export const BRAND = {
    * the role instead of a person and still gives the address, so the page is
    * complete and honest either way — unlike `contactEmail`, whose absence
    * genuinely does leave nowhere to write and lights the unfinished banner.
-   * Fill it in when you have decided whose name should be published.
+   *
+   * This is a real person's name on a public page, so changing it is a
+   * decision about somebody rather than a config tweak: whoever is named here
+   * is who a stranger writes to about their data, and who is expected to
+   * answer within `grievanceDays`.
    */
-  grievanceOfficer: "",
+  grievanceOfficer: "Bavya J R",
 
   /**
    * Days to respond to a grievance, stated publicly.
