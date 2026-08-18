@@ -102,7 +102,11 @@ export default function ImportPage() {
           arriving here has a broker file; the people with an export of their
           own are coming back after deleting an account, and they know what
           they are looking for. */}
-      <RestoreExport onRestored={refreshAll} />
+      {/* The same rows the broker importer dedupes against. Restore is
+          idempotent by derived id, which cannot see a trade that is already
+          here under a different one — so it needs the journal's own trades to
+          notice it is about to make a second copy. */}
+      <RestoreExport onRestored={refreshAll} targets={targets} />
 
       {/* Last, because it is the way back rather than the way in. It is also
           what the restore screen points at when it says an import can be

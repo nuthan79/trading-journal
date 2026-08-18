@@ -217,6 +217,60 @@ export async function planRestore(json, userId) {
 }
 
 /**
+ * Trades this account already holds that the file is about to add again.
+ *
+ * THE HOLE THIS COVERS. Restore is idempotent by DERIVED ID: the same file
+ * restored twice produces the same ids and overwrites itself. That is complete
+ * protection against re-running a restore, and none at all against the same
+ * trades already being here under different ids — which is exactly what a
+ * broker import produces. Restore one account's export into another that had
+ * already imported the same tax P&L and every trade lands twice. Fifty-four
+ * pairs, on the account this was found on.
+ *
+ * MATCHED ON CONTENT, because ids cannot see it. Symbol, entry date and
+ * quantity — the same notion of "the same trade" the broker importer uses,
+ * minus the exit, since a position part-sold since the export would otherwise
+ * slip past as new. That looseness is deliberate for a warning: over-reporting
+ * costs a second look, under-reporting costs a duplicated journal.
+ *
+ * A WARNING, NOT A BLOCK, and the distinction matters. The ordinary path —
+ * delete the account, come back, restore — runs against an empty journal and
+ * must stay one click. Somebody deliberately merging two accounts is doing
+ * something unusual but not wrong, and refusing them would leave a file the
+ * app itself wrote that the app will not read.
+ *
+ * `existing` is the account's current trades: { id, symbol, entry_date,
+ * quantity }. Pure, so this file still runs in plain node against a real
+ * export with no Supabase client anywhere near it.
+ */
+export function findContentDuplicates(plan, existing = []) {
+  const key = (t) =>
+    `${String(t.symbol || "").toUpperCase()}|${t.entry_date || ""}|${Number(t.quantity) || 0}`;
+
+  const held = new Map();
+  for (const t of existing) {
+    const k = key(t);
+    if (!held.has(k)) held.set(k, t);
+  }
+
+  const hits = [];
+  for (const r of plan.rows.trades || []) {
+    const match = held.get(key(r));
+    // Same id means the upsert will overwrite it, which is the design working
+    // rather than a duplicate — only a DIFFERENT row holding the same trade is
+    // a second copy waiting to happen.
+    if (match && match.id !== r.id) {
+      hits.push({
+        symbol: String(r.symbol || "").toUpperCase(),
+        entry_date: r.entry_date,
+        quantity: Number(r.quantity) || 0,
+      });
+    }
+  }
+  return hits;
+}
+
+/**
  * What the confirmation screen says before anything is written.
  *
  * Restores are not undoable by feel — they are undoable because of the batch

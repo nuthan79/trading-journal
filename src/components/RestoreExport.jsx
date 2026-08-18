@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Upload, RotateCcw } from "lucide-react";
 import { supabase, restoreFromExport } from "@/lib/db";
-import { inspectExport, describePlan, planRestore } from "@/lib/restore";
+import { inspectExport, describePlan, planRestore, findContentDuplicates } from "@/lib/restore";
 
 /**
  * Putting a journal back from the file the app gave you.
@@ -18,7 +18,7 @@ import { inspectExport, describePlan, planRestore } from "@/lib/restore";
  * about to happen. Reading is free and reversible; writing 300 rows into a
  * journal is neither.
  */
-export default function RestoreExport({ onRestored }) {
+export default function RestoreExport({ onRestored, targets = [] }) {
   const [info, setInfo] = useState(null);
   const [json, setJson] = useState(null);
   const [filename, setFilename] = useState("");
@@ -29,9 +29,17 @@ export default function RestoreExport({ onRestored }) {
   // Worked out once when the file is read. planRestore is async now — it
   // derives ids with crypto.subtle — so it cannot be called during render.
   const [summary, setSummary] = useState("");
+  /**
+   * Trades already here that the file would add a second copy of.
+   *
+   * Worked out with the summary, before the confirm button exists, because
+   * this is the one thing that turns an obviously-safe action into one worth
+   * pausing over — and afterwards there is nothing to pause about.
+   */
+  const [dupes, setDupes] = useState([]);
 
   const pick = async (file) => {
-    setErr(""); setDone(null); setInfo(null); setJson(null);
+    setErr(""); setDone(null); setInfo(null); setJson(null); setDupes([]);
     if (!file) return;
     try {
       const parsed = JSON.parse(await file.text());
@@ -42,7 +50,9 @@ export default function RestoreExport({ onRestored }) {
       setFilename(file.name);
       setJson(parsed);
       setInfo(seen);
-      setSummary(describePlan(await planRestore(parsed, data?.user?.id || "preview")));
+      const plan = await planRestore(parsed, data?.user?.id || "preview");
+      setSummary(describePlan(plan));
+      setDupes(findContentDuplicates(plan, targets));
     } catch {
       // A CSV, a broker file, or a JSON file that is simply something else.
       setErr("That file isn't a journal export. Use the JSON from My profile → Export everything.");
@@ -105,6 +115,28 @@ export default function RestoreExport({ onRestored }) {
             <div className="warn" style={{ marginTop: 10 }}>
               This file was exported by <b>{info.email}</b>, and you are signed in as{" "}
               <b>{myEmail}</b>. Carry on if that was you under an old address.
+            </div>
+          )}
+
+          {/* The one case where "restoring twice is safe" stops being true.
+              Said here rather than in the paragraph above, because it depends
+              on this file against this journal and cannot be promised in
+              general. */}
+          {dupes.length > 0 && (
+            <div className="warn" style={{ marginTop: 10 }}>
+              <b>{dupes.length} of these trades are already in this journal</b>, under
+              different ids — almost always because they were imported from a broker
+              file here as well as in the account this export came from. Restoring will
+              add a second copy of each.
+              <div className="hint" style={{ marginTop: 6 }}>
+                {dupes.slice(0, 8).map((d) => `${d.symbol} ${d.entry_date}`).join(" · ")}
+                {dupes.length > 8 && ` · …and ${dupes.length - 8} more`}
+              </div>
+              <div className="hint" style={{ marginTop: 6 }}>
+                Restoring into an empty journal — the usual path after deleting an
+                account — never hits this. If you meant to merge two accounts, carry on
+                and undo from the import history if it looks wrong.
+              </div>
             </div>
           )}
 
