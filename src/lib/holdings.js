@@ -72,6 +72,19 @@ export function toHoldingRows(holdings, {
   broker = null,
   targets = [],
   exchange = "NSE",
+  /**
+   * A stop assumed at this percentage below entry, or 0 for none.
+   *
+   * The same offer a tax P&L import makes, and for the same reason: without a
+   * stop there is no 1R, and without 1R the position is invisible to
+   * expectancy, the R distribution and most of the review page. A journal that
+   * shows nothing at all is harder to correct than one showing a figure marked
+   * as a guess.
+   *
+   * Marked `assumed` exactly like the date beside it, so `analysis.js` keeps
+   * it out of the discipline statistics and the /stops queue keeps asking.
+   */
+  assumeStopPct = 0,
 } = {}) {
   /** symbol → what the journal already holds open in it */
   const held = new Map();
@@ -114,6 +127,19 @@ export function toHoldingRows(holdings, {
       continue;
     }
 
+    /**
+     * Longs only, which is all a holdings file can contain — you cannot hold
+     * a short position in a demat account.
+     *
+     * Guarded on a positive entry price because a zero would put the stop at
+     * zero too, and a stop of zero is a 1R equal to the whole position: the
+     * kind of figure that turns three shares into an R of five thousand.
+     */
+    const entry = Number(h.avgPrice);
+    const stop = assumeStopPct > 0 && entry > 0
+      ? round2(entry * (1 - assumeStopPct / 100))
+      : null;
+
     rows.push({
       symbol,
       exchange: h.exchange || exchange,
@@ -134,14 +160,21 @@ export function toHoldingRows(holdings, {
       acquisition: "purchase",
 
       /**
-       * No stop, exactly as the tradebook path does it. A holdings file says
-       * what you own and never what you were risking, and an invented stop
-       * produces an R that somebody will believe. These land in /stops, which
-       * exists for this and already holds the imports from tax P&Ls.
+       * A stop only if one was asked for, and marked as invented when it is.
+       *
+       * A holdings file says what you own and never what you were risking, so
+       * anything here is a guess — but a guess the whole journal can be read
+       * through beats a blank that hides the position from every statistic.
+       * `stop_source` is what keeps the two apart: R exists, and nothing
+       * treats it as a measurement.
+       *
+       * Both columns take the same value. At import there is no history of
+       * trailing, so the stop it opened with is the stop it has — the same
+       * rule the tax P&L path follows.
        */
-      stop_loss: null,
-      initial_stop_loss: null,
-      stop_source: null,
+      stop_loss: stop,
+      initial_stop_loss: stop,
+      stop_source: stop == null ? null : "assumed",
 
       exit_date: null,
       exit_price: null,

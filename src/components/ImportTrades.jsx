@@ -72,6 +72,53 @@ function doneHeadline({ inserted = 0, completed = 0, dated = null }) {
   return `${trades} imported`;
 }
 
+/**
+ * The holdings preview, rebuilt from the parsed file.
+ *
+ * Its own function because it runs twice: once when the file is read, and
+ * again whenever the assumed-stop percentage changes — the same reason the
+ * tax P&L path re-runs `assembleImport`. Deriving it in two places instead
+ * would let the preview describe an import different from the one about to
+ * happen, which is the whole thing the preview exists to prevent.
+ *
+ * `raw.holdings` are already symbol-resolved and `raw.warnings` already carry
+ * the unresolved ones, so this is pure assembly.
+ */
+function holdingsPreview(raw, { brokerId, targets, stopPct }) {
+  const out = toHoldingRows(raw.holdings, {
+    asOf: raw.asOf,
+    broker: brokerId,
+    targets,
+    assumeStopPct: stopPct,
+  });
+  return {
+    kind: "holdings",
+    asOf: raw.asOf,
+    entryDate: out.entryDate,
+    trades: out.rows,
+    duplicates: out.duplicates,
+    conflicts: out.conflicts,
+    // Nothing here can complete an existing trade: a holdings file contains
+    // no sells. The key is present so the render can stay one component
+    // rather than two that drift apart.
+    completions: [],
+    summary: {
+      positions: out.rows.length,
+      symbols: new Set(out.rows.map((r) => r.symbol)).size,
+      invested: out.rows.reduce((a, r) => a + r._preview.buyValue, 0),
+      // Positions the file itself proves are over a year old. Worth its own
+      // figure because it is the count for which the assumed date is not
+      // merely unknown but demonstrably wrong.
+      longTerm: out.rows.filter((r) => r._preview.longTermQty > 0).length,
+    },
+    // Present and empty so the shared chrome below can stay one render. A
+    // holdings file has no sections to skip and no lot columns to miss.
+    skippedSections: [],
+    missingColumns: [],
+    warnings: raw.warnings || [],
+  };
+}
+
 /** One held-back list. The heading says why; each row says which. */
 function HeldBack({ rows, children }) {
   return (
@@ -285,40 +332,12 @@ export default function ImportTrades({
         // which a holding has. The Console file carries ISINs; the Kite CSV
         // does not, and there the file's own trading symbol stands.
         const { lots: resolved, unresolved } = await resolveSymbols(raw.holdings);
-        const out = toHoldingRows(resolved, {
-          asOf: raw.asOf,
-          broker: broker.id,
-          targets,
-        });
 
-        setFile(f);
-        setBroker(broker);
-        setParsedFile({ ...raw, holdings: resolved });
-        setParsed({
-          kind: "holdings",
-          asOf: raw.asOf,
-          entryDate: out.entryDate,
-          trades: out.rows,
-          duplicates: out.duplicates,
-          conflicts: out.conflicts,
-          summary: {
-            positions: out.rows.length,
-            symbols: new Set(out.rows.map((r) => r.symbol)).size,
-            invested: out.rows.reduce((a, r) => a + r._preview.buyValue, 0),
-            // Positions the file itself proves are over a year old. Worth its
-            // own figure because it is the count for which the assumed date is
-            // not merely unknown but demonstrably wrong.
-            longTerm: out.rows.filter((r) => r._preview.longTermQty > 0).length,
-          },
-          // Present and empty so the shared chrome below can stay one render
-          // rather than two that drift apart. A holdings file has no sections
-          // to skip and no lot columns to miss.
-          skippedSections: [],
-          missingColumns: [],
-          // Nothing here can complete an existing trade: a holdings file
-          // contains no sells. The key is present so the render can stay one
-          // component rather than two that drift apart.
-          completions: [],
+        // Warnings folded in here, so the rebuild on a percentage change does
+        // not have to resolve symbols again to reproduce them.
+        const withResolved = {
+          ...raw,
+          holdings: resolved,
           warnings: [
             ...(raw.warnings || []),
             ...unresolved.slice(0, 5).map(
@@ -328,7 +347,14 @@ export default function ImportTrades({
               ? [`…and ${unresolved.length - 5} more that could not be identified.`]
               : []),
           ],
-        });
+        };
+
+        setFile(f);
+        setBroker(broker);
+        setParsedFile(withResolved);
+        setParsed(holdingsPreview(withResolved, {
+          brokerId: broker.id, targets, stopPct,
+        }));
         return;
       }
 
@@ -382,7 +408,16 @@ export default function ImportTrades({
     if (!parsedFile) return;
     const b = broker || zerodha;
     /**
-     * Only the tax P&L shape goes back through assembleImport.
+     * Holdings re-derive too, since they now take the same assumed stop —
+     * but through their own builder, because they have no lots to re-group.
+     */
+    if (kindOf(b) === "holdings") {
+      setParsed(holdingsPreview(parsedFile, { brokerId: b.id, targets, stopPct }));
+      return;
+    }
+
+    /**
+     * Everything else that is not the tax P&L shape stays out.
      *
      * Tested as "not taxpnl" rather than by naming the kinds to skip, because
      * naming them is what broke: this said `=== "holdings"` and the tradebook
@@ -699,8 +734,11 @@ export default function ImportTrades({
                   here rather than only in the review queue afterwards, because
                   by then the rows exist and the surprise has already happened. */}
               {dateCaveat(s.positions, parsed.asOf)}
-              {" "}They also arrive without a stop, so they have no R until you set one —
-              the same queue at <b>Stops</b> that a tax P&amp;L import fills.
+              {assume
+                ? <> They also arrive with the assumed stop set below, so R reads from
+                    the start — marked assumed, and replaceable at <b>Stops</b>.</>
+                : <> They also arrive without a stop, so they have no R until you set one —
+                    the same queue at <b>Stops</b> that a tax P&amp;L import fills.</>}
               {!parsed.asOf && (
                 <>
                   {" "}For real purchase dates and ISINs, the <b>Console</b> holdings
@@ -976,6 +1014,7 @@ export default function ImportTrades({
                 <th>Bought</th>
                 <th className="num">Qty</th>
                 <th className="num">Avg cost</th>
+                <th className="num">Stop</th>
                 <th className="num">Invested</th>
               </tr>
             ) : (
@@ -1021,6 +1060,12 @@ export default function ImportTrades({
                   </td>
                   <td className="num">{t.quantity}</td>
                   <td className="num">{t.entry_price.toFixed(2)}</td>
+                  {/* Shown so the assumption is visible before it is written,
+                      the same as the tax P&L table beside it. */}
+                  <td className={`num ${t.stop_loss == null ? "im-dim" : ""}`}>
+                    {t.stop_loss == null ? "—" : t.stop_loss.toFixed(2)}
+                    {t.stop_source === "assumed" && <i className="im-assumed">assumed</i>}
+                  </td>
                   <td className="num">{rupee(t._preview.buyValue)}</td>
                 </tr>
               );
@@ -1068,11 +1113,12 @@ export default function ImportTrades({
           broken; with one, the whole thing reads — as a what-if, which is what
           the note underneath is for.
 
-          Not offered for holdings. Those import without a stop on purpose —
-          see toHoldingRows — so a control claiming to set one would describe an
-          import that is not about to happen. The date inputs above are that
-          path's equivalent decision. */}
-      {!holdings && !tradebook && (
+          Offered for holdings too. A holdings file states no stop for exactly
+          the same reason a tax P&L does not, and the consequence is the same:
+          without one there is no 1R, and the position is invisible to
+          expectancy and the R distribution. Not offered for a tradebook, which
+          writes no trade for a stop to belong to. */}
+      {!tradebook && (
       <div className="im-assume">
         <label className="im-assume-on">
           <input type="checkbox" checked={assume}
