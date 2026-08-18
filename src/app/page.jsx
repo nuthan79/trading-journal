@@ -17,11 +17,18 @@ import SignedInLink from "@/components/SignedInLink";
  * finished page.
  *
  * ON WRITING FOR SEARCH WITHOUT WRITING FOR ROBOTS. The words below are the
- * words somebody would use — "swing trading journal", "NSE and BSE", "R
- * multiple", "STT and stamp duty", "Zerodha tax P&L". They are here because
- * they describe the product, and that is the only reason they should be here:
+ * words somebody would use — "VCP", "stage 2", "RS rank", "R multiple", "STT
+ * and stamp duty", "Zerodha tax P&L". They are here because the app genuinely
+ * records every one of them, and that is the only reason they should be here:
  * a page stuffed with terms it does not honour bounces every visitor it wins,
  * which search engines measure and act on.
+ *
+ * IT NAMES A SCHOOL RATHER THAN A CATEGORY, and that is the whole positioning.
+ * "Trading journal" is a term Tradervue and Edgewonk have owned for a decade.
+ * The people this fits are narrower and easier to reach: they already say VCP,
+ * stage 2 and R, and nobody in India is writing for them. A page that speaks
+ * their vocabulary is recognised in seconds by the few hundred who matter and
+ * ignored by everyone else, which is the correct trade.
  *
  * WHAT THIS PAGE CANNOT DO is rank on its own. One page competes for one
  * subject. Traffic for a niche tool comes from answering the questions people
@@ -33,20 +40,33 @@ import SignedInLink from "@/components/SignedInLink";
 const url = BRAND.domain ? `https://${BRAND.domain}` : undefined;
 
 export const metadata = {
-  title: `${BRAND.name} — swing trading journal for NSE & BSE, measured in R`,
+  /**
+   * Written for the search somebody in this school actually types.
+   *
+   * "Swing trading journal" is a term Tradervue and Edgewonk have owned for a
+   * decade; there is no winning it from a standing start. "VCP", "stage
+   * analysis" and "R multiple" alongside NSE/BSE describe a much smaller set
+   * of people — who are precisely the ones this app fits, and whom nobody in
+   * India is currently writing for.
+   */
+  title: `${BRAND.name} — VCP & breakout trade journal for NSE, measured in R`,
   description:
-    "A trading journal for Indian swing traders. Every trade measured in R, " +
-    "charges worked out to the paisa including STT, stamp duty and GST, and " +
-    "your Zerodha, Groww or Dhan tax P&L imported in one file.",
+    "A trading journal for Indian breakout swing traders. Log the base pattern, " +
+    "Weinstein stage and RS rank, see expectancy in R by setup, and import your " +
+    "Zerodha, Groww or Dhan tax P&L with charges to the paisa.",
   keywords: [
-    "trading journal India", "swing trading journal", "NSE trading journal",
-    "R multiple", "trade journal with charges", "Zerodha tax P&L import",
+    "VCP trading journal", "breakout trading journal India", "stage analysis journal",
+    "R multiple journal", "swing trading journal India", "NSE trading journal",
+    "trade journal with charges", "Zerodha tax P&L import", "position sizing NSE",
   ],
   ...(url ? { alternates: { canonical: url } } : {}),
   openGraph: {
-    title: `${BRAND.name} — swing trading journal for NSE & BSE`,
+    // The link preview is what gets seen when this is shared into a trading
+    // group — so it leads with the words that group already uses.
+    title: `${BRAND.name} — VCP & breakout trade journal for NSE, in R`,
     description:
-      "Every trade in R, charges to the paisa, and your broker's tax P&L imported in one file.",
+      "Log the base pattern, stage and RS rank. See expectancy in R by setup, with " +
+      "charges to the paisa and your broker's tax P&L imported in one file.",
     type: "website",
     ...(url ? { url } : {}),
   },
@@ -71,7 +91,9 @@ const JSON_LD = {
   offers: { "@type": "Offer", price: "0", priceCurrency: "INR" },
   audience: {
     "@type": "Audience",
-    audienceType: "Swing traders on the Indian stock market (NSE and BSE)",
+    audienceType:
+      "Breakout swing traders on the Indian stock market (NSE and BSE) who " +
+      "trade base patterns such as VCP and measure results in R",
   },
 };
 
@@ -104,6 +126,16 @@ const FAQ = [
        "period skips what is already there, and any import can be undone.",
   },
   {
+    q: "Who is this actually for?",
+    a: "Swing traders who work from base patterns and a stop set before entry — " +
+       "VCPs, flat bases, cups, high tight flags — and who want to know which of " +
+       "those setups pays rather than only what the month made. It records the " +
+       "pattern, the Weinstein stage, the RS rank, the distance from the pivot and " +
+       "the breakout volume, then cuts your own expectancy by each of them. If you " +
+       "trade intraday, or hold for years without a stop, almost none of that will " +
+       "be useful to you.",
+  },
+  {
     q: "What does it cost?",
     a: "Nothing at the moment. It is free while it is being built and there is " +
        "no card to enter. You can export everything you have logged as a single " +
@@ -133,13 +165,39 @@ export default function HomePage() {
       </header>
 
       <section className="mk-hero">
-        <p className="mk-eyebrow">NSE &amp; BSE · swing trading</p>
+        <p className="mk-eyebrow">NSE &amp; BSE · breakout swing trading</p>
         {/* One h1, and it says what the product is rather than being clever. */}
         <h1>Know which of your setups actually pay.</h1>
+        {/**
+          * NAMES THE SCHOOL, DELIBERATELY.
+          *
+          * This used to say "a trading journal for Indian swing traders", which
+          * is true and competes for a term Tradervue and Edgewonk have owned
+          * for years. It also failed the only test that matters in the first
+          * ten seconds: somebody who trades VCPs off a stage-2 base could read
+          * the whole page without once seeing a word that told them it was
+          * built for them.
+          *
+          * The vocabulary below is not decoration — it is what the app actually
+          * records: PATTERNS carries VCP, Cup & Handle, Flat Base, High Tight
+          * Flag; STAGES carries Weinstein's four; there is an RS rank field and
+          * everything is denominated in R. Saying so costs nothing and is the
+          * difference between a visitor and a recognition.
+          *
+          * Kept readable by somebody who does NOT know the jargon: the first
+          * sentence works on its own, and the terms arrive as examples rather
+          * than as a password.
+          */}
         <p className="mk-lead">
-          {BRAND.name} is a trading journal for Indian swing traders. Every trade is
-          measured in <b>R</b> — profit or loss against the money you risked — so a
-          ₹8,000 win on a tight stop and a ₹40,000 win on a wide one finally compare.
+          A trading journal for Indian swing traders who work in <b>R</b> — profit or
+          loss against what you risked — so a ₹8,000 win on a tight stop and a ₹40,000
+          win on a wide one finally compare.
+        </p>
+        <p className="mk-lead">
+          Built for the way breakout traders actually work: <b>VCPs</b>, flat bases and
+          cup-and-handles, entries off <b>stage-2</b> advances, relative strength, and a
+          stop you set before you enter. Log those and the journal will tell you which
+          of them earns.
         </p>
         <Link className="mk-cta" href="/dashboard">Start your journal — it&apos;s free</Link>
         <p className="mk-note">No card. Export or delete everything whenever you like.</p>
@@ -179,12 +237,28 @@ export default function HomePage() {
       </section>
 
       <section className="mk-sec">
-        <h2>Built around the thing that decides everything</h2>
+        <h2>It records what you actually look at</h2>
+        {/* The recognition moment, and the reason this section exists. A
+            generic journal asks for symbol, price and quantity. Naming the
+            fields is how somebody who trades this way learns in one glance
+            that they will not be forcing their process into a spreadsheet
+            built for somebody else's. */}
         <p>
-          Position sizing from your account size and risk percentage, an open-risk
-          reading across every holding, expectancy and R distribution once you have
-          enough trades, and a breakdown of which patterns, stop distances and holding
-          periods actually earn. Your chart and your notes stay attached to the trade.
+          The base pattern — <b>VCP</b>, cup and handle, flat base, double bottom, high
+          tight flag, ascending base. The <b>Weinstein stage</b> it was in. Its{" "}
+          <b>RS rank</b> on the day you bought. How far the entry sat from the pivot,
+          and what the breakout volume was against its thirty-day average.
+        </p>
+        <p>
+          None of that is decoration. Every one of them becomes a cut of your own
+          record: expectancy by pattern, by stage, by how far you chased the pivot, by
+          how tight the stop was. That is the difference between a list of trades and
+          knowing which setup to take tomorrow.
+        </p>
+        <p>
+          Alongside it: position sizing from your account size and risk percentage, an
+          open-risk reading across every holding, and the R distribution once you have
+          enough trades to mean anything. Your chart and your notes stay with the trade.
         </p>
 
         <figure className="shot">

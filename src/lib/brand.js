@@ -22,9 +22,9 @@ export const BRAND = {
    * deciding in about four seconds whether to keep reading.
    */
   blurb:
-    "Log your NSE and BSE swing trades, and see what your setups actually earn. " +
-    "Every trade is measured in R, so a ₹8,000 win on a tight stop and a ₹40,000 " +
-    "win on a wide one finally compare.",
+    "A journal for Indian breakout swing traders. Log the base pattern, Weinstein " +
+    "stage and RS rank, and see what each setup actually earns — measured in R, so " +
+    "a ₹8,000 win on a tight stop and a ₹40,000 win on a wide one finally compare.",
 
   /** The canonical host. Used for absolute URLs in link previews. */
   domain: "ledgerr.app",
