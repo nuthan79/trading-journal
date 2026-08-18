@@ -139,9 +139,33 @@ function headerMap(row) {
   return map;
 }
 
+/**
+ * A column-header row, in any of this file's sections.
+ *
+ * IT USED TO REQUIRE "BUY DATE", AND THAT SILENTLY LOST A SECTION. Free
+ * Holdings has never been sold, so its header is Sr. / Security Name / ISIN /
+ * Buy Qty / Avg. Buy Price / Buy Value / Closing Rate / Unrealized P&L — an
+ * ISIN and no buy date. The header therefore failed this test, `cols` stayed
+ * null, and every row beneath returned early at the `!cols` guard — which sits
+ * ABOVE the line that counts rows per section.
+ *
+ * The rows were correctly not imported, since a free holding is an open
+ * position and would arrive as a closed trade sold for nothing. But they were
+ * also not counted, so `skippedSections` came back empty and the screen said
+ * nothing at all. A real holding — 120 Goldiam in the file this was found on —
+ * disappeared between the file and the journal with no line of explanation,
+ * which is precisely the question the import report exists to answer.
+ *
+ * Now any section's header is recognised, so its rows reach the counter and
+ * the excluded ones are reported as skipped rather than swallowed.
+ */
 const isHeaderRow = (row) => {
   const cells = row.map(key);
-  return cells.includes("isin") && cells.includes("buy date");
+  if (!cells.includes("isin")) return false;
+  // "isin" appears as a literal cell only in a header; the second label just
+  // confirms it is this file's tabular header rather than a stray mention.
+  return ["buy date", "buy qty", "avg. buy price", "buy value"]
+    .some((l) => cells.includes(l));
 };
 
 export function parseRows(rows) {

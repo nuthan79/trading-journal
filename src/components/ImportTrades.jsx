@@ -30,6 +30,11 @@ const COLUMN_LABEL = {
 };
 
 const SECTION_LABEL = {
+  // Dhan names its sections "Equity Segment - …"; Zerodha uses the shorter
+  // forms below. Both appear here because the label map is shared.
+  "equity segment - intraday / speculation": "Equity — intraday",
+  "equity segment - open sell": "Equity — open sell (short, still open)",
+  "equity segment - free holdings": "free-holding",
   "equity - intraday": "Equity — intraday",
   "equity - short term": "Equity — short term",
   "equity - long term": "Equity — long term",
@@ -856,7 +861,18 @@ export default function ImportTrades({
         <div className="im-skips">
           {parsed.skippedSections.map((x) => (
             <div key={x.section}>
-              <AlertTriangle size={11} /> Skipped {x.rows} {SECTION_LABEL[x.section] || x.section} rows
+              <AlertTriangle size={11} /> Skipped {x.rows}{" "}
+              {SECTION_LABEL[x.section] || x.section} row{x.rows === 1 ? "" : "s"}
+              {/* Free holdings are the one skip somebody can act on. They are
+                  shares you still own, so they belong in the journal — just
+                  not from this file, which has no purchase date for them and
+                  would record them as closed trades sold for nothing. */}
+              {/free holdings/i.test(x.section) && (
+                <span className="im-dim">
+                  {" "}— shares you still hold, with no sale to record. Bring them in
+                  with a holdings file instead.
+                </span>
+              )}
             </div>
           ))}
           {parsed.duplicates.length > 0 && (
