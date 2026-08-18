@@ -202,7 +202,10 @@ export function derivePosition(t, accountSize) {
   const firstExit = exits.length ? exits[0].exit_date : null;
   const lastExit = exits.length ? exits[exits.length - 1].exit_date : null;
   const endRef = status === "closed" && lastExit ? new Date(lastExit) : new Date();
-  const heldDays = t.entry_date
+  // Assumed dates do not count days — see the note in calc.js and migration
+  // 036. Both paths compute this, so both have to refuse it, or the number
+  // reappears depending on which one rendered the screen.
+  const heldDays = t.entry_date && t.entry_date_source !== "assumed"
     ? Math.round((endRef - new Date(t.entry_date)) / 86400000)
     : NaN;
 

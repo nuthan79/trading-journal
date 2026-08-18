@@ -567,7 +567,21 @@ export default function Holdings({
                     )}
                     {r.status === "partial" && <span className="ps-tag">part sold</span>}
                   </td>
-                  <td className="mono ps-dim">{r.entry_date}</td>
+                  <td className="mono ps-dim">
+                    {r.entry_date}
+                    {/* A holdings file carries no purchase date, so the import
+                        had to put one in. Marked here because this table is
+                        where those positions land, and an unmarked guess is
+                        indistinguishable from a date somebody checked. The
+                        days column beside it already reads "—" for these. */}
+                    {r.entry_date_source === "assumed" && (
+                      <span className="ps-tag" title={
+                        "Assumed — your holdings file didn't say when you bought this. " +
+                        "Nothing counts it as a holding period until you correct it; " +
+                        "open the trade and set the real date."
+                      }>assumed</span>
+                    )}
+                  </td>
                   <td className="num ps-dim">{isFinite(r.days) ? r.days : "—"}</td>
                   <td className="num">{r.qtyOpen}</td>
                   <td className="num">

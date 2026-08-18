@@ -2,9 +2,11 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Upload, Check, AlertTriangle, X, FileSpreadsheet } from "lucide-react";
-import { detectBroker, brokerNames, assembleImport } from "@/lib/brokers";
+import { detectBroker, brokerNames, assembleImport, kindOf } from "@/lib/brokers";
 import { resolveSymbols } from "@/lib/isin";
 import * as zerodha from "@/lib/brokers/zerodha";
+import * as zerodhaHoldings from "@/lib/brokers/zerodha-holdings";
+import { toHoldingRows, dateCaveat } from "@/lib/holdings";
 import { rupee, pct } from "@/lib/format";
 
 /**
@@ -107,6 +109,17 @@ export default function ImportTrades({ targets = [], chargeConfig = null, onImpo
   // as it stays labelled an assumption, which stop_source does.
   const [assume, setAssume] = useState(true);
   const [assumePct, setAssumePct] = useState("7");
+
+  /**
+   * Purchase dates typed into the preview, keyed by symbol.
+   *
+   * Asked for HERE rather than only in a queue afterwards, because this is the
+   * moment somebody has their broker open in the next tab — which is the
+   * cheapest possible time to answer, and the only time they are already
+   * thinking about these particular positions. Whatever is left blank still
+   * imports, flagged, and can be fixed later; nothing here is a gate.
+   */
+  const [dateEdits, setDateEdits] = useState({});
   const inputRef = useRef(null);
 
   const stopPct = assume ? Number(assumePct) : 0;
@@ -114,6 +127,9 @@ export default function ImportTrades({ targets = [], chargeConfig = null, onImpo
 
   const read = useCallback(async (f) => {
     setError(""); setParsed(null); setResult(null); setBusy(true);
+    // Dates typed for the last file say nothing about this one, and a symbol
+    // held in both would silently inherit the old answer.
+    setDateEdits({});
     try {
       let rows;
       // A CSV has no sheets to inspect, so there is nothing to detect from:
@@ -132,7 +148,7 @@ export default function ImportTrades({ targets = [], chargeConfig = null, onImpo
         broker = detectBroker(wb);
         if (!broker) {
           throw new Error(
-            `This doesn't look like a tax P&L report we can read yet. ` +
+            `This doesn't look like a report we can read yet. ` +
             `Supported: ${brokerNames().join(", ")}. If it's from another broker, ` +
             `send us the file and we'll add it.`
           );
@@ -149,6 +165,13 @@ export default function ImportTrades({ targets = [], chargeConfig = null, onImpo
       } else if (/\.csv$/i.test(f.name)) {
         const { parseCsv } = await import("@/lib/import");
         rows = parseCsv(await f.text());
+        /**
+         * "It is a CSV" used to be proof of a Zerodha tax P&L, because that was
+         * the only report anybody offered in the format. Kite's holdings export
+         * is a CSV as well, so the extension identifies nothing now and the
+         * header row has to say which it is.
+         */
+        if (zerodhaHoldings.detectRows(rows)) broker = zerodhaHoldings;
       } else {
         throw new Error("Expected an .xlsx or .csv file.");
       }
@@ -169,6 +192,75 @@ export default function ImportTrades({ targets = [], chargeConfig = null, onImpo
        * defaults and then correctly warned that the result was understated.
        * The warning was right; the settings simply never arrived.
        */
+      /**
+       * A holdings file is a different KIND of file, not a different broker.
+       *
+       * It yields open positions rather than matched lots, so it cannot go
+       * through `assembleImport` — there is nothing to match, nothing to
+       * complete, and no exit to reconcile. It gets its own short path and
+       * rejoins at the same preview.
+       */
+      if (kindOf(broker) === "holdings") {
+        const raw = broker.parseRows(rows);
+        if (!raw.holdings.length) {
+          throw new Error(
+            raw.warnings[0] ||
+            "No holdings found in this file. If it came from Kite's Holdings tab, " +
+            "check it downloaded fully."
+          );
+        }
+
+        // Same resolution the lot path uses — it only wants { isin, symbol },
+        // which a holding has. The Console file carries ISINs; the Kite CSV
+        // does not, and there the file's own trading symbol stands.
+        const { lots: resolved, unresolved } = await resolveSymbols(raw.holdings);
+        const out = toHoldingRows(resolved, {
+          asOf: raw.asOf,
+          broker: broker.id,
+          targets,
+        });
+
+        setFile(f);
+        setBroker(broker);
+        setParsedFile({ ...raw, holdings: resolved });
+        setParsed({
+          kind: "holdings",
+          asOf: raw.asOf,
+          entryDate: out.entryDate,
+          trades: out.rows,
+          duplicates: out.duplicates,
+          conflicts: out.conflicts,
+          summary: {
+            positions: out.rows.length,
+            symbols: new Set(out.rows.map((r) => r.symbol)).size,
+            invested: out.rows.reduce((a, r) => a + r._preview.buyValue, 0),
+            // Positions the file itself proves are over a year old. Worth its
+            // own figure because it is the count for which the assumed date is
+            // not merely unknown but demonstrably wrong.
+            longTerm: out.rows.filter((r) => r._preview.longTermQty > 0).length,
+          },
+          // Present and empty so the shared chrome below can stay one render
+          // rather than two that drift apart. A holdings file has no sections
+          // to skip and no lot columns to miss.
+          skippedSections: [],
+          missingColumns: [],
+          // Nothing here can complete an existing trade: a holdings file
+          // contains no sells. The key is present so the render can stay one
+          // component rather than two that drift apart.
+          completions: [],
+          warnings: [
+            ...(raw.warnings || []),
+            ...unresolved.slice(0, 5).map(
+              (u) => `Could not identify ${u.name || u.isin} (${u.isin}) — imported under the name in the file.`
+            ),
+            ...(unresolved.length > 5
+              ? [`…and ${unresolved.length - 5} more that could not be identified.`]
+              : []),
+          ],
+        });
+        return;
+      }
+
       const raw = broker.parseRows(rows, { chargeConfig });
       const { lots, unresolved } = await resolveSymbols(raw.lots);
       const resolved = {
@@ -201,8 +293,12 @@ export default function ImportTrades({ targets = [], chargeConfig = null, onImpo
       setError(e.message || "Could not read that file.");
       setFile(null);
       setParsedFile(null);
+    } finally {
+      // In a finally, not after the block: the holdings path returns early
+      // from inside the try, and a plain trailing call would be skipped —
+      // leaving the screen spinning on a file it had already read.
+      setBusy(false);
     }
-    setBusy(false);
   }, [targets, stopPct, chargeConfig]);
 
   /**
@@ -214,6 +310,11 @@ export default function ImportTrades({ targets = [], chargeConfig = null, onImpo
   useEffect(() => {
     if (!parsedFile) return;
     const b = broker || zerodha;
+    // Holdings never went through assembleImport and have no lots to re-match;
+    // the stop assumption does not apply to them either, since they import
+    // without a stop by design. Re-running this on that shape would throw on a
+    // missing `lots` and blank the preview the user is reading.
+    if (kindOf(b) === "holdings") return;
     setParsed(assembleImport(parsedFile,
       { targets, assumeStopPct: stopPct, broker: b.id }));
   }, [parsedFile, broker, targets, stopPct]);
@@ -222,18 +323,41 @@ export default function ImportTrades({ targets = [], chargeConfig = null, onImpo
     if (!parsed?.trades.length && !parsed?.completions.length) return;
     setBusy(true); setError("");
     try {
+      const isHoldings = parsed.kind === "holdings";
+
+      /**
+       * Dates typed in the preview replace the assumed one, and — this is the
+       * part that matters — clear the flag with it. A date somebody entered
+       * from their broker is a recorded date, so holding period, XIRR and the
+       * period breakdowns are entitled to count it. One left untouched keeps
+       * the guess AND the flag, so nothing counts it at all.
+       */
+      const trades = isHoldings
+        ? parsed.trades.map((t) => {
+            const typed = dateEdits[t.symbol];
+            return typed
+              ? { ...t, entry_date: typed, entry_date_source: "recorded" }
+              : t;
+          })
+        : parsed.trades;
+
       const res = await onImport({
-        trades: parsed.trades,
+        trades,
         completions: parsed.completions,
         meta: {
           filename: file?.name,
           // Was hardcoded when there was one adapter. The batch should say
           // which file it actually read, not which one it used to be.
-          source: `${(broker || zerodha).id}-taxpnl`,
-          trades_count: parsed.trades.length,
-          lots_count: parsed.summary.lots,
-          date_from: parsed.summary.from,
-          date_to: parsed.summary.to,
+          source: isHoldings
+            ? `${(broker || zerodha).id}-holdings`
+            : `${(broker || zerodha).id}-taxpnl`,
+          trades_count: trades.length,
+          lots_count: isHoldings ? trades.length : parsed.summary.lots,
+          // A holdings statement covers one instant, not a span. Both ends are
+          // that instant rather than null, so the import history has something
+          // to show instead of an empty range.
+          date_from: isHoldings ? (parsed.asOf || parsed.entryDate) : parsed.summary.from,
+          date_to: isHoldings ? (parsed.asOf || parsed.entryDate) : parsed.summary.to,
         },
       });
       setResult(res || { inserted: parsed.trades.length, completed: parsed.completions.length });
@@ -251,7 +375,12 @@ export default function ImportTrades({ targets = [], chargeConfig = null, onImpo
         <div className="im-tick"><Check size={20} /></div>
         <h2 className="disp im-h">{doneHeadline(result)}</h2>
         <p className="im-lede">
-          {result.inserted > 0 && assume ? (
+          {parsed?.kind === "holdings" ? (
+            <>Your open positions are in. They have no stop yet, so R and expectancy
+              stay blank for them until you set one — and any purchase date you
+              didn&apos;t fill in is marked assumed, which keeps it out of holding
+              period, XIRR and the period breakdowns rather than quietly skewing them.</>
+          ) : result.inserted > 0 && assume ? (
             <>Each one got a stop {stopPct}% below its entry, marked as assumed — so R,
               expectancy and the plots all read. Replace them with what you actually
               used whenever you work it out; the trade sheet shows which are which.</>
@@ -310,15 +439,17 @@ export default function ImportTrades({ targets = [], chargeConfig = null, onImpo
         >
           <FileSpreadsheet size={22} />
           <div className="im-drop-main">
-            {busy ? "Reading…" : "Drop your Tax P&L file here, or click to choose"}
+            {busy ? "Reading…" : "Drop a broker file here, or click to choose"}
           </div>
           <div className="im-drop-sub">
-            {/* The list comes from the registry, so a broker added next month
+            {/* Both lists come from the registry, so a broker added next month
                 appears here without anyone remembering to edit this line. */}
-            The tax P&amp;L or capital gains report from {brokerNames().join(", ")}.
-            The file says which one it is, so there is nothing to choose.
-            Re-importing an overlapping period is safe; anything already in your
-            journal is skipped.
+            <b>Closed trades:</b> the tax P&amp;L or capital gains report from{" "}
+            {brokerNames().join(", ")}.
+            {" "}<b>Open positions:</b> your holdings file — Console&apos;s Equity
+            Holdings Statement, or the CSV from Kite&apos;s Holdings tab.
+            {" "}The file says which it is, so there is nothing to choose.
+            Re-importing is safe; anything already in your journal is skipped.
           </div>
         </div>
         <input
@@ -351,6 +482,7 @@ export default function ImportTrades({ targets = [], chargeConfig = null, onImpo
   /* ------------------------------ preview -------------------------- */
 
   const s = parsed.summary;
+  const holdings = parsed.kind === "holdings";
 
   return (
     <section>
@@ -364,6 +496,32 @@ export default function ImportTrades({ targets = [], chargeConfig = null, onImpo
         </button>
       </div>
 
+      {holdings ? (
+        <>
+          <div className="im-stats">
+            <div><b>{s.positions}</b><span>open positions</span></div>
+            <div><b>{s.symbols}</b><span>symbols</span></div>
+            <div><b>{rupee(s.invested)}</b><span>invested</span></div>
+            {s.longTerm > 0 && <div><b>{s.longTerm}</b><span>held over a year</span></div>}
+          </div>
+
+          <p className="im-note">
+            {/* The one thing somebody must understand before confirming. Said
+                here rather than only in the review queue afterwards, because
+                by then the rows exist and the surprise has already happened. */}
+            {dateCaveat(s.positions, parsed.asOf)}
+            {" "}They also arrive without a stop, so they have no R until you set one —
+            the same queue at <b>Stops</b> that a tax P&amp;L import fills.
+            {!parsed.asOf && (
+              <>
+                {" "}For real purchase dates and ISINs, the <b>Console</b> holdings
+                statement is the better file — this one is Kite&apos;s, which carries neither.
+              </>
+            )}
+          </p>
+        </>
+      ) : (
+      <>
       <div className="im-stats">
         <div><b>{s.trades}</b><span>trades</span></div>
         <div><b>{s.lots}</b><span>rows in file</span></div>
@@ -401,6 +559,8 @@ export default function ImportTrades({ targets = [], chargeConfig = null, onImpo
         )}
         {" "}Covering {s.from} to {s.to}.
       </p>
+      </>
+      )}
 
       {/* A column the parser couldn't find zeroes the price on every row under
           it, so this is a parsing failure and not a data one — worth saying
@@ -461,7 +621,38 @@ export default function ImportTrades({ targets = [], chargeConfig = null, onImpo
               row has a value the journal can't store. Under one heading the
               conflicts read as though their prices were missing, which they
               plainly weren't. */}
-          {parsed.conflicts?.length > 0 && (
+          {/* A holdings conflict is a different animal and cannot borrow the
+              lot renderer above, which prints an entry-to-exit span and a sell
+              value that an open position simply does not have. What it needs
+              said is the two quantities, because the disagreement between them
+              IS the finding. */}
+          {holdings && parsed.conflicts?.length > 0 && (
+            <details className="im-rejected">
+              <summary>
+                <AlertTriangle size={11} /> {parsed.conflicts.length}{" "}
+                {parsed.conflicts.length === 1 ? "holding" : "holdings"} you already have,
+                at a different size — left for you to decide
+              </summary>
+              <div className="im-rejlist">
+                {parsed.conflicts.slice(0, 40).map((c, i) => (
+                  <div key={i}>
+                    <b>{c.symbol}</b>
+                    <span className="im-dim">
+                      {" "}your journal has {c.journalQuantity} across{" "}
+                      {c.journalTrades} {c.journalTrades === 1 ? "trade" : "trades"};
+                      this file says {c.quantity}. Nothing was changed — adding the
+                      difference would invent an entry price for it, and overwriting
+                      would throw away a date you may have entered yourself.
+                    </span>
+                  </div>
+                ))}
+                {parsed.conflicts.length > 40 && (
+                  <div className="im-dim">…and {parsed.conflicts.length - 40} more</div>
+                )}
+              </div>
+            </details>
+          )}
+          {!holdings && parsed.conflicts?.length > 0 && (
             <HeldBack rows={parsed.conflicts}>
               {parsed.conflicts.length} left for you to decide — importing these
               could attach the sells to the wrong trade
@@ -499,6 +690,15 @@ export default function ImportTrades({ targets = [], chargeConfig = null, onImpo
       <div className="card scroll im-table">
         <table className="t">
           <thead>
+            {holdings ? (
+              <tr>
+                <th>Symbol</th>
+                <th>Bought</th>
+                <th className="num">Qty</th>
+                <th className="num">Avg cost</th>
+                <th className="num">Invested</th>
+              </tr>
+            ) : (
             <tr>
               <th>Symbol</th>
               <th className="num">In</th>
@@ -510,9 +710,41 @@ export default function ImportTrades({ targets = [], chargeConfig = null, onImpo
               <th className="num">Stop</th>
               <th className="num">Sells</th>
             </tr>
+            )}
           </thead>
           <tbody>
-            {parsed.trades.map((t, i) => (
+            {holdings ? parsed.trades.map((t, i) => {
+              const lt = t._preview.longTermQty > 0;
+              const typed = dateEdits[t.symbol] || "";
+              return (
+                <tr key={i}>
+                  <td>
+                    <b className="disp">{t.symbol}</b>
+                    {/* The file's own evidence, not an inference of ours. Shown
+                        because it turns "I have no idea" into a date range the
+                        user can actually narrow down from memory. */}
+                    {lt && <span className="im-tag" title={
+                      `Your broker reports ${t._preview.longTermQty} of these shares as long term, ` +
+                      `so they were bought more than a year before ${parsed.asOf || "the statement"}.`
+                    }>over a year</span>}
+                  </td>
+                  <td>
+                    <input
+                      type="date"
+                      className="in im-date"
+                      value={typed}
+                      max={parsed.entryDate}
+                      placeholder={t.entry_date}
+                      onChange={(e) => setDateEdits((d) => ({ ...d, [t.symbol]: e.target.value }))}
+                    />
+                    {!typed && <i className="im-assumed">assumed</i>}
+                  </td>
+                  <td className="num">{t.quantity}</td>
+                  <td className="num">{t.entry_price.toFixed(2)}</td>
+                  <td className="num">{rupee(t._preview.buyValue)}</td>
+                </tr>
+              );
+            }) : parsed.trades.map((t, i) => (
               <tr key={i}>
                 <td>
                   <b className="disp">{t.symbol}</b>
@@ -553,7 +785,13 @@ export default function ImportTrades({ targets = [], chargeConfig = null, onImpo
       {/* The one decision on this screen. A tax report has no stops in it, so
           without an assumption every R figure lands blank and the journal looks
           broken; with one, the whole thing reads — as a what-if, which is what
-          the note underneath is for. */}
+          the note underneath is for.
+
+          Not offered for holdings. Those import without a stop on purpose —
+          see toHoldingRows — so a control claiming to set one would describe an
+          import that is not about to happen. The date inputs above are that
+          path's equivalent decision. */}
+      {!holdings && (
       <div className="im-assume">
         <label className="im-assume-on">
           <input type="checkbox" checked={assume}
@@ -578,10 +816,19 @@ export default function ImportTrades({ targets = [], chargeConfig = null, onImpo
               "fill them in yourself."}
         </div>
       </div>
+      )}
 
       <div className="im-confirm">
         <span className="im-dim">
-          {assume
+          {holdings ? (
+            (() => {
+              const dated = parsed.trades.filter((t) => dateEdits[t.symbol]).length;
+              const left = parsed.trades.length - dated;
+              if (!left) return "Every purchase date filled in. Stops are next.";
+              return `${dated > 0 ? `${dated} dated, ` : ""}${left} still assumed — ` +
+                `importable now and fixable any time from the trade sheet.`;
+            })()
+          ) : assume
             ? `Stops set ${stopPct}% below entry, flagged as assumed.`
             : "Stops are left empty — you'll be asked next."}
           {/* Said before the import, not discovered afterwards. A stopless,
@@ -678,6 +925,16 @@ export default function ImportTrades({ targets = [], chargeConfig = null, onImpo
           display: block; font-style: normal; font-size: 9px;
           letter-spacing: 0.06em; text-transform: uppercase; color: var(--brass);
         }
+        /* Narrow enough that the table still reads as a table rather than a
+           form. It sits at the row's own height so filling one in does not
+           shuffle every row below it. */
+        .im-date {
+          width: 145px; padding: 3px 6px; font-size: 12px;
+          font-variant-numeric: tabular-nums;
+        }
+        /* A typed date has answered the question, so the brass "assumed" line
+           disappears and the field goes quiet — the row stops asking. */
+        .im-date:invalid { color: var(--ink3); }
         .im-assume {
           display: grid; grid-template-columns: auto auto 1fr; gap: 10px 16px;
           align-items: center; margin-top: 14px; padding: 12px 14px;

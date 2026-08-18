@@ -25,22 +25,33 @@
 import * as zerodha from "./zerodha";
 import * as groww from "./groww";
 import * as dhan from "./dhan";
+import * as zerodhaHoldings from "./zerodha-holdings";
 
 export { assembleImport } from "../import-pipeline";
 
 /**
  * In the order they're tried. Zerodha first — it is the one with users.
  *
- * NOT YET LISTED: `zerodha-tradebook.js`, which is written and tested but
- * cannot be registered until the import screen knows what to do with it. A
- * tradebook is a different KIND of file rather than a different broker — a tax
- * P&L yields matched lots and closed trades, a tradebook yields open positions
- * — and everything downstream of `detectBroker` here assumes the former. Adding
- * it before the screen can branch would turn today's clear "this is not a tax
- * P&L" message into a silent bad parse, which is a worse answer than the one
- * being replaced.
+ * A FILE'S KIND MATTERS AS MUCH AS ITS BROKER, which is what `kind` is for.
+ * An adapter with no `kind` reads a tax P&L and yields matched lots; the
+ * holdings adapter yields open positions and nothing else. The import screen
+ * branches on it, so an adapter that returns a different shape can now be
+ * registered without the screen mistaking its output for lots.
+ *
+ * STILL NOT LISTED: `zerodha-tradebook.js`. The screen can branch now, so the
+ * old blocker is gone, but a tradebook is a genuinely harder case than a
+ * holdings file: `matchFifo` returns closed lots as well as open positions,
+ * and importing those lots would duplicate every closed trade the tax P&L
+ * already provided — while being strictly worse than them, since a tradebook
+ * carries no charges and mis-pairs anything bought before its start date.
+ * Its role is to supply real entry dates for positions the holdings file has
+ * already created, which is a different job from importing, and one this
+ * screen does not have a place for yet.
  */
-export const BROKERS = [zerodha, groww, dhan];
+export const BROKERS = [zerodha, groww, dhan, zerodhaHoldings];
+
+/** What a file yields. Absent means matched lots — the original assumption. */
+export const kindOf = (broker) => broker?.kind || "taxpnl";
 
 export const brokerById = (id) => BROKERS.find((b) => b.id === id) || null;
 
@@ -64,5 +75,17 @@ export function detectBroker(workbook) {
   return null;
 }
 
-/** Every broker's name, for the message shown when none of them matched. */
-export const brokerNames = () => BROKERS.map((b) => b.label);
+/**
+ * The tax P&L brokers, by name — for the message shown when nothing matched,
+ * and for the drop zone's own description of itself.
+ *
+ * Filtered by kind rather than listing every adapter, because the sentence
+ * these appear in is about capital gains reports. "Zerodha, Groww, Dhan and
+ * Zerodha holdings" reads as a fourth broker somebody has not heard of.
+ */
+export const brokerNames = () =>
+  BROKERS.filter((b) => kindOf(b) === "taxpnl").map((b) => b.label);
+
+/** The same, for files that carry open positions instead of closed trades. */
+export const holdingsNames = () =>
+  BROKERS.filter((b) => kindOf(b) === "holdings").map((b) => b.label);

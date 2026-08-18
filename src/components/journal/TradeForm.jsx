@@ -203,6 +203,10 @@ function fromInitial(row) {
     status: row.status, symbol: row.symbol, company: row.company || "",
     exchange: row.exchange, side: row.side,
     entry_date: row.entry_date, entry_price: str(row.entry_price),
+    // Carried for the same reason the assumed stop below is: so toPayload can
+    // tell a date the importer guessed from one this form has just been used
+    // to correct. Editing the date field clears it — see the input.
+    entry_date_source: row.entry_date_source,
     quantity: str(row.quantity), stop_loss: str(row.stop_loss),
     // Carried, never edited — the form has no field for it. Without this an
     // edit would re-pin 1R to whatever the stop has since been trailed to.
@@ -268,6 +272,20 @@ function toPayload(t) {
     side: t.side,
     status,
     entry_date: t.entry_date,
+    /**
+     * Typing a date is what makes it real.
+     *
+     * A holdings import writes 'assumed' here because the file had no purchase
+     * date and the column cannot be null. Without this line the flag would
+     * survive the correction: somebody looks the date up at their broker,
+     * enters it, saves — and holding period, XIRR and the period breakdowns go
+     * on ignoring the trade, because everything downstream still reads it as a
+     * guess. The whole point of asking was to stop that.
+     *
+     * A trade created here has never been anything but recorded, which is what
+     * the fallback covers.
+     */
+    entry_date_source: t.entry_date_source || "recorded",
     entry_price: Number(t.entry_price),
     quantity: Number(t.quantity),
     // Nullable since the import migration. Number("") is 0, which would record
@@ -588,7 +606,14 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                   <option value="long">Long</option><option value="short">Short</option>
                 </select></label>
               <label className="f"><span>Entry date</span>
-                <input className="in" type="date" value={t.entry_date} onChange={set("entry_date")} /></label>
+                {/* Not `set`, because changing this has to clear the assumed
+                    flag with it — an imported date that has now been checked
+                    is a recorded one, and leaving the flag on would keep the
+                    trade out of every date-based figure. */}
+                <input className="in" type="date" value={t.entry_date}
+                       onChange={(e) => setT((p) => ({
+                         ...p, entry_date: e.target.value, entry_date_source: "recorded",
+                       }))} /></label>
             </div>
             <div className="grid3" style={{ gap: 12, marginTop: 12 }}>
               <label className="f"><span>Entry price</span>

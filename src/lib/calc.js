@@ -29,8 +29,14 @@ export function derive(t, accountSize) {
   const pnl = hasMark ? grossPnl - charges : NaN;           // net of costs
   const r = riskAmt > 0 && isFinite(pnl) ? pnl / riskAmt : NaN;
 
+  // An assumed entry date is not a date. A holdings file states what you own
+  // and never when you bought it, so the importer has to put something in a
+  // NOT NULL column; counting days from that guess would report a two-year
+  // hold as a zero-day trade. NaN is already how "no entry date" travels here
+  // and every consumer filters on isFinite, so the guess simply does not
+  // become a measurement. See migration 036.
   let heldDays = NaN;
-  if (t.entry_date) {
+  if (t.entry_date && t.entry_date_source !== "assumed") {
     const end = t.status === "closed" && t.exit_date ? new Date(t.exit_date) : new Date();
     heldDays = Math.round((end - new Date(t.entry_date)) / 86400000);
   }
