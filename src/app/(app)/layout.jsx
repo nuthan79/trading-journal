@@ -379,6 +379,29 @@ export default function AppLayout({ children }) {
     [trades]
   );
   /**
+   * Stops the importer invented, which the topbar used to never mention.
+   *
+   * The count above is "no stop at all", and that was the whole nudge — so the
+   * moment an import assumed one, the prompt vanished and the /stops page went
+   * on listing every one of them. Twenty-four trades to review, and nothing
+   * anywhere above said so.
+   *
+   * Offering the assumption on holdings made it total rather than partial:
+   * every imported trade now has a stop, so the old counter is permanently
+   * zero and stops were never mentioned again.
+   *
+   * Counted apart from the missing ones because they are different jobs. No
+   * stop means no R at all; an assumed one produces an R from a percentage
+   * nobody chose for that trade, which reads like a measurement and is not.
+   */
+  const assumedStopsCount = useMemo(
+    () => trades.filter(
+      (t) => t.stop_loss != null && t.stop_source === "assumed" &&
+             t.acquisition !== "bonus"
+    ).length,
+    [trades]
+  );
+  /**
    * Purchase dates the importer invented and nobody has confirmed.
    *
    * Its own count rather than folded into the one above, because they are
@@ -728,6 +751,19 @@ export default function AppLayout({ children }) {
                       {" · "}
                       <Link href="/stops" className="brand-todo">
                         {needStopsCount} need a stop
+                      </Link>
+                    </>
+                  )}
+                  {/* Only when nothing is missing outright — otherwise the two
+                      stop counts sit side by side and read as one number split
+                      oddly. "Add the missing ones" is the bigger job and
+                      subsumes the review, which the Stops page then separates
+                      properly. */}
+                  {needStopsCount === 0 && assumedStopsCount > 0 && (
+                    <>
+                      {" · "}
+                      <Link href="/stops" className="brand-todo">
+                        {assumedStopsCount} stop{assumedStopsCount === 1 ? "" : "s"} to check
                       </Link>
                     </>
                   )}
