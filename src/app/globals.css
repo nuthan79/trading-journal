@@ -573,6 +573,11 @@ select.in { font-family: 'Archivo', sans-serif; }
 /* ------------------------------------------------------------------ */
 
 .ec-page { max-width: 1000px; }
+/* The button leads here and the note follows it, the reverse of an article's
+   CTA — so the shared `.art-cta p` bottom margin has to become a top one. */
+.ec-page .art-cta .ec-ctanote {
+  font-size: 12.5px; color: var(--ink3); margin: 12px 0 0;
+}
 /* The prose keeps a readable measure even though the page is wider —
    line length is a reading constraint, not a layout one. */
 .ec-page .sp-lede, .ec-page .sp-p { max-width: 68ch; }

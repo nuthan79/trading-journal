@@ -202,10 +202,16 @@ export default function ExpectancyPage() {
         is measured rather than estimated. Import a broker tax P&amp;L statement and
         the history is there in a minute.
       </p>
-      <p className="sp-p">
-        <Link href="/dashboard">Start a journal</Link> — free, no card —
-        or <Link href="/support">read how importing works</Link> first.
-      </p>
+      {/* A button rather than a sentence with a link in it. This is the page a
+          stranger lands on, so it is the one place on the site where the next
+          step has to be impossible to miss — and .art-cta already frames one
+          the same way at the foot of an article. */}
+      <div className="art-cta">
+        <Link className="mk-cta" href="/dashboard">Start your journal — it&apos;s free</Link>
+        <p className="ec-ctanote">
+          No card. Or <Link href="/support">read how importing works</Link> first.
+        </p>
+      </div>
 
       <p className="sp-foot">
         <Link href="/">Home</Link>
