@@ -38,10 +38,29 @@ button { font-family: inherit; cursor: pointer; }
   font-family: 'Archivo', sans-serif; font-stretch: 125%;
   font-weight: 600; letter-spacing: 0.02em;
 }
+/**
+ * Section headings, used ~77 times across the app.
+ *
+ * These were 10px/600 in --ink3, and read as a whisper — which is what
+ * prompted "can we make these bold". Weight was not the problem: they were
+ * already 600, and bumping to 700 in the same grey is very nearly invisible
+ * side by side. CONTRAST was the problem. --ink3 (#7C8B87) on --paper
+ * (#EDF0EE) is about 3:1, under the 4.5:1 floor for text this size, so the
+ * heading was losing to the body copy underneath it — which is exactly
+ * backwards. --ink2 is roughly 6.4:1 and reads as a heading without shouting.
+ *
+ * Tracking eased from 0.16em to 0.14em for the same reason: very wide letter
+ * spacing at 10px breaks up word shapes, so it costs legibility at precisely
+ * the size that can least afford it.
+ *
+ * Deliberately still small caps rather than a sentence-case heading. At 77
+ * instances — many of them labelling one field inside a form — a full heading
+ * would turn a lot of quiet labels into shouting.
+ */
 .eyebrow {
   font-family: 'Archivo', sans-serif; font-stretch: 125%; font-weight: 600;
-  font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase;
-  color: var(--ink3);
+  font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--ink2);
 }
 
 .wrap { max-width: 680px; margin: 0 auto; padding: 56px 20px 80px; }
