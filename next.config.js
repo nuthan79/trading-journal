@@ -15,10 +15,49 @@
  */
 const MOVED_TO_ANALYSIS = ["edge", "review", "mindset"];
 
+/**
+ * The Vercel production alias, which was serving the whole app in parallel.
+ *
+ * `trading-journal.vercel.app` returned 200 on every route, so the app had two
+ * live addresses. That costs twice:
+ *
+ *   SEARCH — two crawlable copies of every page. The canonical tags point at
+ *   ledgerr.app and mitigate it, but a canonical is a hint. A redirect is not.
+ *
+ *   MEASUREMENT — the analytics script is attributed by website id, not by
+ *   host, so a visit to the Vercel address lands in the same Umami site as a
+ *   real one and quietly pollutes the launch numbers.
+ *
+ * EXACT HOST, NOT A PATTERN. Branch and commit previews are
+ * `trading-journal-git-<branch>-<scope>.vercel.app` and
+ * `trading-journal-<hash>.vercel.app`; none of them equal this string, so the
+ * whole preview workflow is untouched. A wildcard here would redirect every
+ * preview to production and make it impossible to look at a branch before
+ * merging it — which is the failure mode to avoid, and the reason this is
+ * written out in full rather than as a regex.
+ */
+const VERCEL_ALIAS = "trading-journal.vercel.app";
+const CANONICAL_ORIGIN = "https://ledgerr.app";
+
 module.exports = {
   reactStrictMode: true,
   async redirects() {
     return [
+      /*
+        FIRST IN THE LIST, deliberately. The path redirects below apply on any
+        host, so if one of them matched first a visitor to the Vercel address
+        would be sent to another path on the Vercel address and only then to
+        the real domain — two hops and one of them pointless. Sending the host
+        home first means the path rules run once, on the domain that keeps
+        them.
+      */
+      {
+        source: "/:path*",
+        has: [{ type: "host", value: VERCEL_ALIAS }],
+        destination: `${CANONICAL_ORIGIN}/:path*`,
+        permanent: true,
+      },
+
       ...MOVED_TO_ANALYSIS.map((slug) => ({
         source: `/${slug}`,
         destination: `/analysis/${slug}`,
