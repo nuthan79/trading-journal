@@ -6,7 +6,10 @@ import SymbolSearch from "@/components/SymbolSearch";
 import ChargesField from "./ChargesField";
 import { derivePosition } from "@/lib/positions";
 import { rupee, pct } from "@/lib/format";
-import { PATTERNS, EXIT_REASONS, MISTAKES, STAGES, slBand } from "@/lib/constants";
+import {
+  PATTERNS, EXIT_REASONS, MISTAKES, STAGES, slBand,
+  ENTRY_EMOTIONS, EXIT_EMOTIONS,
+} from "@/lib/constants";
 import { resolveTradingViewChart } from "@/lib/charts";
 import { entryCharges, mergeConfig } from "@/lib/charges";
 import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
@@ -193,6 +196,8 @@ const blank = () => ({
   exits: [],
   charges: "0", charges_auto: true, charges_breakdown: null,
   mistakes: [], notes: "",
+  // "" is not recorded, which is a truthful state and never guessed at.
+  entry_emotion: "", exit_emotion: "",
 });
 
 const str = (v) => (v === null || v === undefined ? "" : String(v));
@@ -246,6 +251,7 @@ function fromInitial(row) {
     charges_auto: row.charges_auto === true,
     charges_breakdown: row.charges_breakdown || null,
     mistakes: row.mistakes || [], notes: row.notes || "",
+    entry_emotion: row.entry_emotion || "", exit_emotion: row.exit_emotion || "",
   };
 }
 
@@ -336,6 +342,11 @@ function toPayload(t) {
     charges_breakdown: t.charges_breakdown || null,
     mistakes: t.mistakes || [],
     notes: t.notes || null,
+    entry_emotion: t.entry_emotion || null,
+    /* Cleared when the position reopens. An exit feeling belongs to an exit
+       that happened; leaving "Satisfied" on a trade that is running again
+       would put a closed mood on an open position and count it in the flow. */
+    exit_emotion: status === "closed" ? (t.exit_emotion || null) : null,
   };
 }
 
@@ -370,6 +381,12 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
   const toggleMistake = (m) =>
     setT((p) => ({ ...p, mistakes: p.mistakes.includes(m)
       ? p.mistakes.filter((x) => x !== m) : [...p.mistakes, m] }));
+
+  /* One value per end, so picking is choosing rather than accumulating — and
+     tapping the chosen one again clears it, because "I would rather not say"
+     has to stay reachable once something has been picked. */
+  const pickEmotion = (field) => (v) =>
+    setT((p) => ({ ...p, [field]: p[field] === v ? "" : v }));
 
   /* ---- exit tranches ----------------------------------------------- */
 
@@ -751,6 +768,33 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                 All four are still on the chart later — add them now or when you review.
               </div>
             )}
+
+            {/*
+              Always visible, deliberately not behind the "+ Pattern, pivot"
+              toggle that hides the rest.
+
+              Pattern and pivot are still on the chart in a month; how you felt
+              is not. Asked later it gets answered by whatever the trade went on
+              to do — a winner gets remembered as confident and a loser as
+              rushed — and a field that reliably collects hindsight is worse
+              than no field. So it is on the screen at the moment the position
+              is being opened, and it stays optional.
+            */}
+            <div style={{ marginTop: 16 }}>
+              <div className="eyebrow" style={{ marginBottom: 8 }}>
+                How you feel taking this
+              </div>
+              <div className="chips">
+                {ENTRY_EMOTIONS.map((em) => (
+                  <button key={em} type="button" className="chip"
+                          data-on={t.entry_emotion === em ? 1 : 0}
+                          onClick={() => pickEmotion("entry_emotion")(em)}>{em}</button>
+                ))}
+              </div>
+              <div className="hint" style={{ marginTop: 6 }}>
+                Optional, and only useful if it is honest. Tap again to clear.
+              </div>
+            </div>
           </div>
 
           <div ref={exitRef}>
@@ -909,6 +953,22 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                       <div className="row"><span>Held</span><b>{d.heldDays} days</b></div>)}
                   </div>
                 )}
+                {/* Before the mistake tags, not after. This one is about the
+                    exit itself; the tags below are a verdict on the whole
+                    trade, and answering the verdict first colours the feeling. */}
+                <div style={{ marginTop: 14 }}>
+                  <div className="eyebrow" style={{ marginBottom: 8 }}>
+                    How you feel closing it
+                  </div>
+                  <div className="chips">
+                    {EXIT_EMOTIONS.map((em) => (
+                      <button key={em} type="button" className="chip"
+                              data-on={t.exit_emotion === em ? 1 : 0}
+                              onClick={() => pickEmotion("exit_emotion")(em)}>{em}</button>
+                    ))}
+                  </div>
+                </div>
+
                 <div style={{ marginTop: 14 }}>
                   <div className="eyebrow" style={{ marginBottom: 8 }}>Anything you got wrong</div>
                   <div className="chips">

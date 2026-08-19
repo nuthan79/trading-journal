@@ -63,6 +63,30 @@ const UNIVERSE = [
 const PATTERNS = ["VCP", "Flat Base", "Cup & Handle", "Pullback Entry",
                   "High Tight Flag", "Breakout Entry", "Ascending Base"];
 
+/**
+ * Feelings for the sample, correlated with outcome ON PURPOSE — and
+ * imperfectly on purpose too.
+ *
+ * The Mindset tab exists to show that the state you were in changed what you
+ * earned, so a sample where every state returns the same thing demonstrates
+ * nothing and the tab looks broken. But a sample where FOMO always loses and
+ * patience always wins is worse: it teaches a rule far cleaner than any real
+ * trading record, and the first thing a new user does is compare it to their
+ * own. So the bias below is about two thirds signal — enough that the table
+ * has a gradient, loose enough that both columns contain surprises.
+ *
+ * Kept as local arrays like PATTERNS and EXIT_REASONS above, and every word
+ * must stay a member of ENTRY_EMOTIONS / EXIT_EMOTIONS in constants.js — a
+ * demo row carrying a word the real vocabulary has retired would show up in
+ * the breakdown as its own permanent row.
+ */
+const SETTLED_IN = ["Calm", "Confident", "Patient", "Focused"];
+const REACTIVE_IN = ["Hesitant", "Impatient", "Anxious", "FOMO", "Euphoric"];
+const GOOD_OUT = ["Satisfied", "Content", "Relieved"];
+const BAD_OUT = ["Disappointed", "Frustrated", "Regret", "Angry"];
+
+const pick = (r, xs) => xs[Math.floor(r() * xs.length)];
+
 const EXIT_REASONS = ["Trailing stop", "Sold into strength", "Stop hit",
                       "Breached 20 SMA", "Time stop", "Target reached"];
 
@@ -173,6 +197,10 @@ export function buildDemo({ userId = "demo", accountSize = 1000000, riskPct = 0.
       mistakes: [],
       notes: "",
       exits: [],
+      // Open positions have no outcome to be correlated with, so this is an
+      // even draw. The closed branch overrides it with the biased pick.
+      entry_emotion: r() < 0.6 ? pick(r, SETTLED_IN) : pick(r, REACTIVE_IN),
+      exit_emotion: null,
     };
 
     if (open) {
@@ -230,6 +258,16 @@ export function buildDemo({ userId = "demo", accountSize = 1000000, riskPct = 0.
       exit_date: iso(exitDate),
       exit_price: exitPrice,
       exit_reason: EXIT_REASONS[Math.floor(r() * EXIT_REASONS.length)],
+      /* Two thirds signal. A loser is more often a trade that was chased, and
+         a winner more often one that was waited for — but not always, because
+         "not always" is the true part and the whole sample is a mirror. */
+      entry_emotion: (rMult > 0 ? r() < 0.7 : r() < 0.3)
+        ? pick(r, SETTLED_IN) : pick(r, REACTIVE_IN),
+      /* The exit feeling tracks the result more tightly, because it mostly
+         does in life — with enough leak that "Relieved" turns up on a winner
+         that got away and "Content" on a loss that was cut properly. */
+      exit_emotion: (rMult > 0 ? r() < 0.82 : r() < 0.18)
+        ? pick(r, GOOD_OUT) : pick(r, BAD_OUT),
       mistakes,
       exits: [{
         id: `demo-x-${i}`,
