@@ -593,18 +593,26 @@ select.in { font-family: 'Archivo', sans-serif; }
 /* ------------------------------------------------------------------ */
 
 .edge-src { font-size: 11.5px; color: var(--ink3); }
+/* Side by side, not stacked. Up to four of these can show at once, and four
+   narrow bands down the left edge of a 1440px page push the numbers they are
+   qualifying off the screen while leaving half the width empty. */
+.edge-notes {
+  display: grid; gap: 10px 16px;
+  grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+}
 /* Amber rather than red: none of these is an error. Each is a real limit on
    what the numbers below can be trusted to mean, which is a different thing
    from something having gone wrong. */
 .edge-note {
   font-size: 12.5px; line-height: 1.7; color: var(--ink2);
   border-left: 2px solid #C9A227; background: #FBF7EA;
-  padding: 10px 13px; border-radius: 3px; margin: 0 0 8px; max-width: 78ch;
+  padding: 10px 13px; border-radius: 3px; margin: 0;
 }
-.edge-note:last-child { margin-bottom: 0; }
 .edge-note b { color: var(--ink); font-weight: 600; }
 .edge-note a { color: var(--ink); }
+/* A two-line caption, so it takes the house caption measure (--note-w) rather
+   than a body-prose cap that would strand it against an empty right half. */
 .edge-foot {
   font-size: 12px; line-height: 1.7; color: var(--ink3);
-  margin: 22px 0 0; max-width: 78ch;
+  margin: 22px 0 0; max-width: var(--note-w);
 }

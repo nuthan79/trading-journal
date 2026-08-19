@@ -71,7 +71,13 @@ export default function Edge({ closed = [], accountSize, defaultRiskPct }) {
 
         {/* Every reason these figures might mislead, before the figures. A
             caveat printed underneath a confident number is read after the
-            number has already been believed. */}
+            number has already been believed.
+
+            Side by side in a grid rather than stacked: there can be four of
+            them, and four narrow bands down the left of a 1440px page pushes
+            the numbers below the fold to say things that are each one
+            sentence long. */}
+        <div className="edge-notes">
         {thin ? (
           <p className="edge-note">
             <b>Small sample.</b> {sampleSize} trades is enough to compute an expectancy
@@ -110,6 +116,7 @@ export default function Edge({ closed = [], accountSize, defaultRiskPct }) {
             one.
           </p>
         ) : null}
+        </div>
       </div>
 
       {/*

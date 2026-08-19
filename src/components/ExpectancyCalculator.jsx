@@ -564,9 +564,12 @@ export default function ExpectancyCalculator({ prefill = null, sampleSize = 0 })
         .ec-stat > small { font-size: 10.5px; color: var(--ink3); line-height: 1.45; }
 
         .ec-h2 { font-size: 17px; margin: 40px 0 7px; font-weight: 600; }
+        /* A one- or two-line caption under a heading, so it takes the house
+           caption measure rather than a body-prose one — there is barely a
+           next line to lose your place returning to. See --note-w. */
         .ec-sub {
           font-size: 13px; line-height: 1.7; color: var(--ink2);
-          margin: 0 0 16px; max-width: 68ch;
+          margin: 0 0 16px; max-width: var(--note-w, 132ch);
         }
 
         .ec-gridwrap { overflow-x: auto; max-width: 100%; }
@@ -646,9 +649,23 @@ export default function ExpectancyCalculator({ prefill = null, sampleSize = 0 })
         .ec-miles b { font-size: 15px; font-variant-numeric: tabular-nums; }
         .ec-miles small { font-size: 10.5px; color: var(--ink3); }
 
+        /*
+          FILL THE WIDTH, DO NOT LENGTHEN THE LINE.
+
+          These blocks were capped at 70ch and left the right half of a 1440px
+          page empty. The cap itself is right — past roughly 80 characters the
+          eye loses the start of the next line — but a cap is a rule about the
+          LINE, not permission to waste the column. A column WIDTH rather than
+          a column count lets the browser fit as many readable measures as the
+          container allows: two on the public page, three in the app, one on a
+          phone, without a media query deciding for it.
+        */
         .ec-drag, .ec-ruin {
           font-size: 12.5px; line-height: 1.72; color: var(--ink2);
-          margin: 16px 0 0; max-width: 70ch;
+          margin: 16px 0 0;
+        }
+        .ec-drag {
+          columns: 30em; column-gap: 34px; max-width: none;
         }
         .ec-drag b { color: var(--ink); }
         .ec-ruin {
@@ -658,12 +675,20 @@ export default function ExpectancyCalculator({ prefill = null, sampleSize = 0 })
         .ec-soft {
           font-size: 12.5px; line-height: 1.7; color: var(--ink2);
           border-left: 2px solid #C9A227; background: #FBF7EA;
-          padding: 11px 13px; border-radius: 3px; margin: 0 0 16px; max-width: 70ch;
+          padding: 11px 15px; border-radius: 3px; margin: 0 0 16px;
+          /* Real prose, so the measure stays readable and the width is filled
+             with columns instead of being left empty. */
+          columns: 30em; column-gap: 34px;
         }
         .ec-soft b { color: var(--ink); }
-        .ec-impl { margin-top: 0; }
-        .ec-impl p { margin: 0 0 10px; }
-        .ec-impl p:last-child { margin-bottom: 0; }
+        /* Three paragraphs, so they sit as three columns rather than as one
+           narrow stack beside an empty half-page. */
+        .ec-impl {
+          margin-top: 0;
+          display: grid; gap: 6px 28px;
+          grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        }
+        .ec-impl p { margin: 0; }
         .ec-impl b { color: var(--ink); }
         .ec-clip {
           font-size: 11px; color: var(--ink3); margin: 6px 2px 2px; line-height: 1.5;
@@ -675,11 +700,18 @@ export default function ExpectancyCalculator({ prefill = null, sampleSize = 0 })
           text-transform: uppercase; color: var(--ink3); margin: 0 0 10px;
           font-weight: 600;
         }
+        /* Five independent points, which is a set rather than a sequence — so
+           they lay out as a set. A single narrow column of bullets next to
+           half a page of nothing was the worst offender on the page. */
         .ec-caveat ul {
-          margin: 0; padding-left: 18px; max-width: 70ch;
+          margin: 0; padding: 0; list-style: none;
+          display: grid; gap: 14px 28px;
+          grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
           font-size: 12.5px; line-height: 1.7; color: var(--ink2);
         }
-        .ec-caveat li { margin-bottom: 8px; }
+        .ec-caveat li {
+          margin: 0; padding-left: 13px; border-left: 1px solid var(--rule);
+        }
         .ec-caveat b { color: var(--ink); font-weight: 600; }
       `}</style>
     </div>
