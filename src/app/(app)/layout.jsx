@@ -47,26 +47,55 @@ function withExits(t, exitsByTrade) {
   return { ...t, exits: [] };
 }
 
+/**
+ * Five tabs, because there are five kinds of thing here.
+ *
+ * Performance, Edge, Review and Mindset used to be four of eight, and all four
+ * are the same question at different angles — what happened, what it is worth,
+ * what went wrong, the state it went wrong in. They now live under Analysis
+ * with their own sub-tabs. What remains at the top are genuinely different
+ * things: what is true now, what is open, the ledger itself, what it all
+ * means, and words.
+ */
 const TABS = [
   { id: "dash", href: "/dashboard", label: "Dashboard", icon: LayoutGrid },
   { id: "holdings", href: "/holdings", label: "Holdings", icon: Layers },
   { id: "trades", href: "/trades", label: "Trades", icon: Table2 },
-  { id: "perf", href: "/performance", label: "Performance", icon: LineChart },
-  /* Next to Performance deliberately. Performance answers what happened;
-     this answers what it is worth per trade and where it goes if it holds —
-     the same question one step on, so they read in that order. */
-  { id: "edge", href: "/edge", label: "Edge", icon: Target },
-  { id: "mindset", href: "/mindset", label: "Mindset", icon: Brain },
+  /*
+    Points at the sub-page, not at /analysis.
+
+    A bare /analysis with a server-side redirect() to the first sub-tab was the
+    tidier idea and it does not work here: this layout is a client component
+    that renders a sign-in card instead of `children` until a session resolves,
+    so the redirect never runs and the tab landed on an empty frame. `match`
+    is what the active-state test uses instead, so the tab still lights up on
+    all four sub-pages. A config redirect covers anyone arriving at /analysis
+    from a bookmark.
+  */
+  { id: "analysis", href: "/analysis/performance", match: "/analysis",
+    label: "Analysis", icon: LineChart },
   { id: "diary", href: "/diary", label: "Diary", icon: BookOpen },
-  { id: "review", href: "/review", label: "Review", icon: ClipboardList },
 ];
 
 export default function AppLayout({ children }) {
   const pathname = usePathname();
   const router = useRouter();
-  // No fallback to "dash": /import and /stops match no tab, and defaulting
-  // would light up Dashboard while you're plainly somewhere else.
-  const activeTab = TABS.find((t) => t.href === pathname)?.id ?? null;
+  /*
+    Exact match, then prefix.
+
+    No fallback to "dash": /import and /stops match no tab, and defaulting
+    would light up Dashboard while you're plainly somewhere else.
+
+    The prefix pass exists for Analysis, whose real pages are one level down
+    at /analysis/performance and friends — on exact match alone the top tab
+    would go dark the moment you actually used it. Guarded with a trailing
+    slash so a future /analysis-something cannot light up Analysis by
+    accident.
+  */
+  const activeTab =
+    TABS.find((t) => t.href === pathname)?.id ??
+    TABS.find((t) => pathname?.startsWith(`${t.match ?? t.href}/`))?.id ??
+    null;
 
   // ---- auth + onboarding gate (moved from the old root page.jsx) --------
   const [session, setSession] = useState(null);

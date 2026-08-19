@@ -1,7 +1,7 @@
 "use client";
 
 import Edge from "@/components/journal/Edge";
-import { useJournal } from "../JournalContext";
+import { useJournal } from "../../JournalContext";
 
 export default function EdgePage() {
   // `closed` rather than `all`: expectancy is a statement about finished

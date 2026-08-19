@@ -1,7 +1,7 @@
 "use client";
 
 import Performance from "@/components/journal/Performance";
-import { useJournal } from "../JournalContext";
+import { useJournal } from "../../JournalContext";
 
 export default function PerformancePage() {
   // `all` rather than `closed`: the entry-basis view needs to know about

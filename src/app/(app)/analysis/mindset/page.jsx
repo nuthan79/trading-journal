@@ -1,7 +1,7 @@
 "use client";
 
 import Mindset from "@/components/journal/Mindset";
-import { useJournal } from "../JournalContext";
+import { useJournal } from "../../JournalContext";
 
 export default function MindsetPage() {
   // `closed` only: a feeling recorded on an open position has no outcome to be

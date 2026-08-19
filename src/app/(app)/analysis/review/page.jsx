@@ -1,7 +1,7 @@
 "use client";
 
 import Review from "@/components/journal/Review";
-import { useJournal } from "../JournalContext";
+import { useJournal } from "../../JournalContext";
 
 export default function ReviewPage() {
   const { closed, all, diary, S } = useJournal();
