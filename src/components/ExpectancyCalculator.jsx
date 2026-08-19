@@ -86,7 +86,17 @@ function Stat({ label, value, note, tone }) {
  * need 90KB of abstraction.
  */
 function Curve({ series, years }) {
-  const W = 720, H = 250, PAD = { l: 86, r: 14, t: 12, b: 26 };
+  /*
+    Room on the right for the lines to name themselves.
+
+    Three unlabelled lines and a legend somewhere below is how the chart came
+    to contradict its own headline: the tile said ₹4.97 Cr, the axis topped out
+    at ₹6.8 Cr because the optimistic line sets the scale, and nothing on the
+    chart said which line was which. Both numbers were right and the pair read
+    as broken. A label at the end of each line costs a bit of width and removes
+    the question entirely.
+  */
+  const W = 720, H = 250, PAD = { l: 86, r: 104, t: 12, b: 26 };
 
   /*
     THE AXIS FOLLOWS THE BASE CASE, NOT THE HIGHEST LINE.
@@ -107,6 +117,31 @@ function Curve({ series, years }) {
   const x = (yr) => PAD.l + (yr / years) * (W - PAD.l - PAD.r);
   const y = (v) => H - PAD.b - (Math.min(v, max) / max) * (H - PAD.t - PAD.b);
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => f * max);
+
+  /*
+    Two lines of text per label need vertical room the curves do not owe them.
+
+    Where two scenarios finish close together — a low win rate or few trades
+    makes all three converge — the labels would overlap into an unreadable
+    pile. Walking down the sorted list and pushing each one below the last
+    keeps them legible; the dot stays on the true value, so only the text
+    moves and nothing is misreported.
+  */
+  const GAP = 21;
+  const endLabels = [...series]
+    .sort((a, b) => y(a.final) - y(b.final))
+    .reduce((acc, s) => {
+      const want = y(s.final);
+      const prev = acc.length ? acc[acc.length - 1].labelY : -Infinity;
+      acc.push({ ...s, labelY: Math.max(want, prev + GAP) });
+      return acc;
+    }, [])
+    /* Anything pushed past the bottom axis comes back up, which can only
+       happen when all three land within a few pixels of each other. */
+    .map((s, i, all) => {
+      const overflow = all[all.length - 1].labelY - (H - PAD.b);
+      return overflow > 0 ? { ...s, labelY: s.labelY - overflow } : s;
+    });
 
   return (
     <div className="ec-chartwrap">
@@ -134,6 +169,20 @@ function Curve({ series, years }) {
             key={s.key} className={`ec-line ec-line-${s.key}`} fill="none"
             points={s.points.map((p) => `${x(p.year)},${y(p.value)}`).join(" ")}
           />
+        ))}
+
+        {/* Each line says its own name and where it ends, so the headline tile
+            and the chart can be read against each other without counting
+            colours against a legend three inches away. */}
+        {endLabels.map((s) => (
+          <g key={s.key}>
+            <circle cx={x(years)} cy={y(s.final)} r={s.key === "base" ? 3.4 : 2.6}
+                    className={`ec-end ec-end-${s.key}`} />
+            <text x={x(years) + 8} y={s.labelY - 3}
+                  className={`ec-endname ec-endname-${s.key}`}>{s.label}</text>
+            <text x={x(years) + 8} y={s.labelY + 8}
+                  className={`ec-endval ec-endval-${s.key}`}>{rupee(s.final)}</text>
+          </g>
         ))}
       </svg>
       {clipped ? (
@@ -636,6 +685,22 @@ export default function ExpectancyCalculator({ prefill = null, sampleSize = 0 })
         .ec-chart .ec-line-low { stroke: #C2695D; }
         .ec-chart .ec-line-base { stroke: #4A5B8C; stroke-width: 2.4; }
         .ec-chart .ec-line-high { stroke: #5E986E; }
+
+        /* The base case is the one the tiles above are describing, so it is
+           the one drawn and labelled loudest. */
+        .ec-chart .ec-end-low { fill: #C2695D; }
+        .ec-chart .ec-end-base { fill: #4A5B8C; }
+        .ec-chart .ec-end-high { fill: #5E986E; }
+        .ec-chart .ec-endname {
+          font-family: 'Archivo', sans-serif; font-size: 8px;
+          letter-spacing: 0.08em; text-transform: uppercase; fill: var(--ink3);
+        }
+        .ec-chart .ec-endval {
+          font-family: 'Archivo', sans-serif; font-size: 10.5px;
+          fill: var(--ink2); font-variant-numeric: tabular-nums;
+        }
+        .ec-chart .ec-endname-base { fill: var(--ink2); }
+        .ec-chart .ec-endval-base { fill: var(--ink); font-weight: 600; }
 
         .ec-scen { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
         @media (max-width: 620px) { .ec-scen { grid-template-columns: 1fr; } }
