@@ -127,6 +127,38 @@ export function logGrowthPerTrade({ winRate, avgWin, avgLoss, riskPct }) {
  * rounding each year to whole trades introduces a stair-step that looks like
  * a modelling decision when it is a rounding artefact.
  */
+/**
+ * The rate above which the projection stops being a number and becomes noise.
+ *
+ * SET HIGH ON PURPOSE. The first attempt used 100%, which is the right line for
+ * "has anyone actually done this" — Medallion, the best documented run in
+ * existence, is about 66% gross — but the wrong line for refusing to answer.
+ * It fired on 45% winners at 3R, which is an ambitious, arguable set of inputs
+ * a real person might genuinely believe about themselves, and telling them
+ * their system "does not describe reality" is both rude and wrong.
+ *
+ * 300% is where the OUTPUT becomes meaningless rather than merely optimistic:
+ * ₹5 lakh compounding to something north of ₹2,000 crore. Past here the figure
+ * carries no information, and at the top of the range it broke the formatter
+ * outright — an 80% win rate with a 9.5R average winner printed the literal
+ * string "₹2.1512646478529814e+28 Cr" on a public page. A tool that reports
+ * that with a straight face discredits every correct number beside it.
+ *
+ * Inputs that are optimistic but not absurd get `OPTIMISTIC_EXPECTANCY`
+ * instead, which cautions without hiding anything.
+ */
+export const IMPLAUSIBLE_CAGR = 300;
+
+/**
+ * Expectancy above which a note is warranted but nothing is withheld.
+ *
+ * Real systems that work well land between roughly 0.2R and 0.5R a trade.
+ * Above 0.6R is genuinely rare, and it is far more often a sign of a
+ * remembered win rate than of an exceptional edge — but it is not impossible,
+ * so the page says so and still shows every figure.
+ */
+export const OPTIMISTIC_EXPECTANCY = 0.6;
+
 export function projection(input, years = 10) {
   const n = normalise(input);
   const g = logGrowthPerTrade(n);
@@ -154,6 +186,9 @@ export function projection(input, years = 10) {
     /** True when a single loss would end the account — the UI says so plainly
      *  instead of drawing a flat line at zero and leaving it a mystery. */
     ruin: g == null,
+    /** True when the inputs compound past anything on record. See
+     *  IMPLAUSIBLE_CAGR — the UI replaces the figures with an explanation. */
+    implausible: g != null && cagr > IMPLAUSIBLE_CAGR,
   };
 }
 

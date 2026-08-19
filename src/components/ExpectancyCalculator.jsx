@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import {
   edge, projection, scenarios, arithmeticFinal, matrix, MATRIX_WIN_RATES,
+  OPTIMISTIC_EXPECTANCY,
 } from "@/lib/expectancy";
 import { rupee, rfmt, pct, signedPct } from "@/lib/format";
 
@@ -81,10 +82,26 @@ function Stat({ label, value, note, tone }) {
  * need 90KB of abstraction.
  */
 function Curve({ series, years }) {
-  const W = 720, H = 250, PAD = { l: 64, r: 14, t: 12, b: 26 };
-  const max = Math.max(...series.flatMap((s) => s.points.map((p) => p.value)), 1);
+  const W = 720, H = 250, PAD = { l: 86, r: 14, t: 12, b: 26 };
+
+  /*
+    THE AXIS FOLLOWS THE BASE CASE, NOT THE HIGHEST LINE.
+
+    Scaling to the tallest series is the obvious choice and it destroys the
+    chart: five points of win rate is a multiplicative difference over ten
+    years, so the optimistic line can finish thousands of times above the
+    others and flatten both of them onto the zero line — a chart showing one
+    vertical wall and nothing else. The base case is what the reader came for,
+    so it sets the scale and anything taller is clamped to the top edge and
+    called out underneath, rather than being allowed to squash the answer.
+  */
+  const baseFinal = (series.find((s) => s.key === "base") || series[0]).final;
+  const trueMax = Math.max(...series.flatMap((s) => s.points.map((p) => p.value)), 1);
+  const max = Math.min(trueMax, Math.max(baseFinal * 2.5, 1));
+  const clipped = trueMax > max * 1.001;
+
   const x = (yr) => PAD.l + (yr / years) * (W - PAD.l - PAD.r);
-  const y = (v) => H - PAD.b - (v / max) * (H - PAD.t - PAD.b);
+  const y = (v) => H - PAD.b - (Math.min(v, max) / max) * (H - PAD.t - PAD.b);
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => f * max);
 
   return (
@@ -115,6 +132,12 @@ function Curve({ series, years }) {
           />
         ))}
       </svg>
+      {clipped ? (
+        <p className="ec-clip">
+          The optimistic line runs off the top. Scaled to fit it, the other two
+          would sit flat on zero.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -283,11 +306,57 @@ export default function ExpectancyCalculator({ prefill = null, sampleSize = 0 })
         the edge above holds the entire time.
       </p>
 
+      {/* Cautions without withholding. An expectancy this high is rare rather
+          than impossible, so every figure still shows — but it is almost always
+          a remembered win rate rather than an exceptional edge, and saying so
+          here is more useful than letting the projection imply otherwise. */}
+      {!proj.ruin && !proj.implausible && e.expectancyR > OPTIMISTIC_EXPECTANCY ? (
+        <p className="ec-soft">
+          <b>{rfmt(e.expectancyR, 2)} a trade is exceptional.</b> Systems that work
+          well usually land between 0.2R and 0.5R, so treat everything below as the
+          best case rather than the expected one. If these numbers came from memory
+          instead of a trade log, the average loss is the one most likely to be
+          flattering — the trades where a stop got moved are exactly the ones that do
+          not come to mind.
+        </p>
+      ) : null}
+
       {proj.ruin ? (
         <p className="ec-ruin">
           At {n1(v.riskPct)}% risk, an average loss of {n1(v.avgLoss)}R takes the whole
           account in a single trade. There is nothing left to compound.
         </p>
+      ) : proj.implausible ? (
+        /*
+          Refusing to print the number is the honest answer, and the more
+          useful one. These inputs compound to figures with more digits than
+          there is money, and a tool that reports that with a straight face
+          looks broken — which discredits every correct number beside it.
+          Naming the specific input that is doing the damage turns a dead end
+          into the lesson the page exists to teach.
+        */
+        <div className="ec-ruin ec-impl">
+          <p>
+            <b>Past here the number stops meaning anything.</b> These inputs compound
+            at {Math.round(proj.cagr).toLocaleString("en-IN")}% a year, which turns{" "}
+            {rupee(v.capital)} into a figure no account has reached. It is
+            arithmetically correct and it would tell you nothing, so it is not shown.
+          </p>
+          <p>
+            The usual culprit is the average win. Yours is <b>{n1(v.avgWin)}R</b> —
+            every winner making {n1(v.avgWin)} times what the trade risked, held up
+            across {Math.round(proj.totalTrades)} trades. Systems that work well
+            average nearer 1.5R to 3R, because the outsized winners are rare and
+            everything else gets cut small.
+          </p>
+          <p>
+            A {n1(v.winRate, 0)}% win rate alongside it compounds the problem. Above
+            roughly 55%, the usual explanation is that losers are being held rather
+            than stopped — which surfaces later as an average loss well beyond 1R,
+            not as a better win rate. Put in what your last hundred trades actually
+            did and the projection starts being worth reading.
+          </p>
+        </div>
       ) : (
         <>
           <div className="ec-top">
@@ -578,6 +647,19 @@ export default function ExpectancyCalculator({ prefill = null, sampleSize = 0 })
         .ec-ruin {
           border-left: 2px solid #C2695D; padding: 11px 13px;
           background: #FBF1F0; border-radius: 3px;
+        }
+        .ec-soft {
+          font-size: 12.5px; line-height: 1.7; color: var(--ink2);
+          border-left: 2px solid #C9A227; background: #FBF7EA;
+          padding: 11px 13px; border-radius: 3px; margin: 0 0 16px; max-width: 70ch;
+        }
+        .ec-soft b { color: var(--ink); }
+        .ec-impl { margin-top: 0; }
+        .ec-impl p { margin: 0 0 10px; }
+        .ec-impl p:last-child { margin-bottom: 0; }
+        .ec-impl b { color: var(--ink); }
+        .ec-clip {
+          font-size: 11px; color: var(--ink3); margin: 6px 2px 2px; line-height: 1.5;
         }
 
         .ec-caveat { margin-top: 34px; border-top: 1px solid var(--rule); padding-top: 18px; }

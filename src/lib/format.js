@@ -16,8 +16,34 @@ export function inr(v, { compact = true, decimals = 2 } = {}) {
     out = `${(a / 1e3).toFixed(1)}k`;
   } else if (a < 1e7) {
     out = `${(a / 1e5).toFixed(decimals)} L`;
+  } else if (a < 1e12) {
+    const cr = a / 1e7;
+    /* Four-digit crore figures need grouping and lose their decimals: "₹1,093 Cr"
+       is how this is written and read, "₹1093.3 Cr" is neither. */
+    out = cr >= 1000
+      ? `${new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(cr)} Cr`
+      : `${cr.toFixed(decimals)} Cr`;
+  } else if (a < 1e19) {
+    /*
+      Past a lakh crore the Cr tier stops being readable: a real projection
+      printed "₹38822826.87 Cr", which is arithmetically fine and impossible to
+      parse at a glance. Indian usage for figures this size — budgets, GDP,
+      market cap — is lakh crore, so follow it.
+    */
+    out = `${(a / 1e12).toFixed(decimals)} Lakh Cr`;
   } else {
-    out = `${(a / 1e7).toFixed(decimals)} Cr`;
+    /*
+      THE GUARD THAT SHOULD NEVER FIRE.
+
+      `toFixed()` returns exponential notation once the value reaches 1e21 —
+      quietly, with no error — so a compounding projection put the literal
+      string "₹2.1512646478529814e+28 Cr" on a public page. Nothing a trading
+      journal legitimately measures lives up here, so this is a backstop rather
+      than a tier: callers producing numbers this size have a problem the
+      formatter cannot fix. But it must never emit raw JS again.
+    */
+    const [mant, exp] = a.toExponential(2).split("e+");
+    out = `${mant} × 10^${exp}`;
   }
   return (neg ? "−" : "") + out;
 }
