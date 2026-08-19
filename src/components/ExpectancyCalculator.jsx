@@ -270,12 +270,17 @@ export default function ExpectancyCalculator({ prefill = null, sampleSize = 0 })
       </div>
 
       {/* ---- the grid ------------------------------------------------- */}
-      <h2 className="ec-h2">Which systems make money</h2>
-      <p className="ec-sub">
-        Expectancy in R for every win rate and reward:risk pair, with losses held at
-        1R. Green makes money, red does not, and the boundary between them is the one
-        line in trading that cannot be argued with. Your combination is outlined.
-      </p>
+      {/* Heading and its intro on one row rather than stacked. A short intro
+          under a heading always strands the right of the page; beside it, the
+          row is full and the prose keeps a readable measure. */}
+      <div className="ec-sechead">
+        <h2 className="ec-h2">Which systems make money</h2>
+        <p className="ec-sub">
+          Expectancy in R for every win rate and reward:risk pair, with losses held at
+          1R. Green makes money, red does not, and the boundary between them is the one
+          line in trading that cannot be argued with. Your combination is outlined.
+        </p>
+      </div>
       <div className="ec-gridwrap">
         <table className="ec-matrix">
           <thead>
@@ -303,12 +308,14 @@ export default function ExpectancyCalculator({ prefill = null, sampleSize = 0 })
       </div>
 
       {/* ---- the projection ------------------------------------------- */}
-      <h2 className="ec-h2">What that compounds to</h2>
-      <p className="ec-sub">
-        {rupee(v.capital)} at {n1(v.riskPct)}% risk per trade,{" "}
-        {Math.round(proj.tradesPerYear)} trades a year, for {YEARS} years — assuming
-        the edge above holds the entire time.
-      </p>
+      <div className="ec-sechead">
+        <h2 className="ec-h2">What that compounds to</h2>
+        <p className="ec-sub">
+          {rupee(v.capital)} at {n1(v.riskPct)}% risk per trade,{" "}
+          {Math.round(proj.tradesPerYear)} trades a year, for {YEARS} years — assuming
+          the edge above holds the entire time.
+        </p>
+      </div>
 
       {/* Cautions without withholding. An expectancy this high is rare rather
           than impossible, so every figure still shows — but it is almost always
@@ -564,9 +571,24 @@ export default function ExpectancyCalculator({ prefill = null, sampleSize = 0 })
         .ec-stat > small { font-size: 10.5px; color: var(--ink3); line-height: 1.45; }
 
         .ec-h2 { font-size: 17px; margin: 40px 0 7px; font-weight: 600; }
-        /* A one- or two-line caption under a heading, so it takes the house
-           caption measure rather than a body-prose one — there is barely a
-           next line to lose your place returning to. See --note-w. */
+        /*
+          Heading beside its intro, not above it.
+
+          A two-line intro stacked under a heading leaves the right of a wide
+          page empty no matter what measure it takes — there simply is not
+          enough text. Set beside the heading, the row is full, the prose keeps
+          a readable measure, and nothing had to be padded out to achieve it.
+          The heading column is capped so a short title does not stretch.
+        */
+        .ec-sechead {
+          display: grid; grid-template-columns: minmax(180px, 250px) 1fr;
+          gap: 4px 36px; align-items: baseline; margin: 40px 0 16px;
+        }
+        .ec-sechead .ec-h2 { margin: 0; }
+        .ec-sechead .ec-sub { margin: 0; }
+        @media (max-width: 760px) {
+          .ec-sechead { grid-template-columns: 1fr; gap: 7px; }
+        }
         .ec-sub {
           font-size: 13px; line-height: 1.7; color: var(--ink2);
           margin: 0 0 16px; max-width: var(--note-w, 132ch);
@@ -664,21 +686,33 @@ export default function ExpectancyCalculator({ prefill = null, sampleSize = 0 })
           font-size: 12.5px; line-height: 1.72; color: var(--ink2);
           margin: 16px 0 0;
         }
-        .ec-drag {
-          columns: 30em; column-gap: 34px; max-width: none;
-        }
+        /* Same rule as .ec-soft — a continuous paragraph, so one flow. */
+        .ec-drag { max-width: var(--note-w, 132ch); }
         .ec-drag b { color: var(--ink); }
         .ec-ruin {
           border-left: 2px solid #C2695D; padding: 11px 13px;
           background: #FBF1F0; border-radius: 3px;
         }
+        /*
+          ONE FLOWING PARAGRAPH IS NEVER COLUMNS.
+
+          This had columns for a while and it was worse than the narrow version
+          it replaced. Columns work when they are DEEP — a newspaper column runs
+          forty lines, so reading down one and returning to the top of the next
+          is natural. Split a three-line paragraph across three columns and a
+          single sentence makes the eye cross the full page and come back, twice.
+          Columns are for long text and for sets of independent items, never for
+          a short continuous thought.
+
+          So this takes the house caption measure and a ragged right edge, which
+          is what correct typography looks like — not the half-empty page that
+          started this, but not a full bleed either.
+        */
         .ec-soft {
           font-size: 12.5px; line-height: 1.7; color: var(--ink2);
           border-left: 2px solid #C9A227; background: #FBF7EA;
           padding: 11px 15px; border-radius: 3px; margin: 0 0 16px;
-          /* Real prose, so the measure stays readable and the width is filled
-             with columns instead of being left empty. */
-          columns: 30em; column-gap: 34px;
+          max-width: var(--note-w, 132ch);
         }
         .ec-soft b { color: var(--ink); }
         /* Three paragraphs, so they sit as three columns rather than as one
