@@ -270,17 +270,12 @@ export default function ExpectancyCalculator({ prefill = null, sampleSize = 0 })
       </div>
 
       {/* ---- the grid ------------------------------------------------- */}
-      {/* Heading and its intro on one row rather than stacked. A short intro
-          under a heading always strands the right of the page; beside it, the
-          row is full and the prose keeps a readable measure. */}
-      <div className="ec-sechead">
-        <h2 className="ec-h2">Which systems make money</h2>
-        <p className="ec-sub">
-          Expectancy in R for every win rate and reward:risk pair, with losses held at
-          1R. Green makes money, red does not, and the boundary between them is the one
-          line in trading that cannot be argued with. Your combination is outlined.
-        </p>
-      </div>
+      <h2 className="ec-h2">Which systems make money</h2>
+      <p className="ec-sub">
+        Expectancy in R for every win rate and reward:risk pair, with losses held at
+        1R. Green makes money, red does not, and the boundary between them is the one
+        line in trading that cannot be argued with. Your combination is outlined.
+      </p>
       <div className="ec-gridwrap">
         <table className="ec-matrix">
           <thead>
@@ -308,28 +303,32 @@ export default function ExpectancyCalculator({ prefill = null, sampleSize = 0 })
       </div>
 
       {/* ---- the projection ------------------------------------------- */}
-      <div className="ec-sechead">
-        <h2 className="ec-h2">What that compounds to</h2>
-        <p className="ec-sub">
-          {rupee(v.capital)} at {n1(v.riskPct)}% risk per trade,{" "}
-          {Math.round(proj.tradesPerYear)} trades a year, for {YEARS} years — assuming
-          the edge above holds the entire time.
-        </p>
-      </div>
+      <h2 className="ec-h2">What that compounds to</h2>
+      <p className="ec-sub">
+        {rupee(v.capital)} at {n1(v.riskPct)}% risk per trade,{" "}
+        {Math.round(proj.tradesPerYear)} trades a year, for {YEARS} years — assuming
+        the edge above holds the entire time.
+      </p>
 
       {/* Cautions without withholding. An expectancy this high is rare rather
           than impossible, so every figure still shows — but it is almost always
           a remembered win rate rather than an exceptional edge, and saying so
           here is more useful than letting the projection imply otherwise. */}
       {!proj.ruin && !proj.implausible && e.expectancyR > OPTIMISTIC_EXPECTANCY ? (
-        <p className="ec-soft">
-          <b>{rfmt(e.expectancyR, 2)} a trade is exceptional.</b> Systems that work
-          well usually land between 0.2R and 0.5R, so treat everything below as the
-          best case rather than the expected one. If these numbers came from memory
-          instead of a trade log, the average loss is the one most likely to be
-          flattering — the trades where a stop got moved are exactly the ones that do
-          not come to mind.
-        </p>
+        /* The box runs the full width so it lines up with the tiles below it;
+           the text inside stops at a readable measure. The hole this replaces
+           was the panel ending early, not the sentence — widening the sentence
+           would have fixed the wrong half. */
+        <div className="ec-soft">
+          <p>
+            <b>{rfmt(e.expectancyR, 2)} a trade is exceptional.</b> Systems that work
+            well usually land between 0.2R and 0.5R, so treat everything below as the
+            best case rather than the expected one. If these numbers came from memory
+            instead of a trade log, the average loss is the one most likely to be
+            flattering — the trades where a stop got moved are exactly the ones that do
+            not come to mind.
+          </p>
+        </div>
       ) : null}
 
       {proj.ruin ? (
@@ -570,25 +569,18 @@ export default function ExpectancyCalculator({ prefill = null, sampleSize = 0 })
         .ec-stat > b.bad { color: #A33A30; }
         .ec-stat > small { font-size: 10.5px; color: var(--ink3); line-height: 1.45; }
 
-        .ec-h2 { font-size: 17px; margin: 40px 0 7px; font-weight: 600; }
         /*
-          Heading beside its intro, not above it.
+          Heading above its intro, left aligned with the table beneath it.
 
-          A two-line intro stacked under a heading leaves the right of a wide
-          page empty no matter what measure it takes — there simply is not
-          enough text. Set beside the heading, the row is full, the prose keeps
-          a readable measure, and nothing had to be padded out to achieve it.
-          The heading column is capped so a short title does not stretch.
+          Setting the heading beside the prose was tried and looked wrong: with
+          a short title and a wide gutter the heading reads as the opening of
+          the sentence rather than as a heading, and its left edge no longer
+          lines up with the grid below it. Stacked is conventional because
+          conventional works here. The intro ending short of the right margin
+          is a ragged edge, not a hole — the fix for real dead space is the
+          item grids further down, not stretching a two-line caption.
         */
-        .ec-sechead {
-          display: grid; grid-template-columns: minmax(180px, 250px) 1fr;
-          gap: 4px 36px; align-items: baseline; margin: 40px 0 16px;
-        }
-        .ec-sechead .ec-h2 { margin: 0; }
-        .ec-sechead .ec-sub { margin: 0; }
-        @media (max-width: 760px) {
-          .ec-sechead { grid-template-columns: 1fr; gap: 7px; }
-        }
+        .ec-h2 { font-size: 17px; margin: 40px 0 7px; font-weight: 600; }
         .ec-sub {
           font-size: 13px; line-height: 1.7; color: var(--ink2);
           margin: 0 0 16px; max-width: var(--note-w, 132ch);
@@ -604,8 +596,20 @@ export default function ExpectancyCalculator({ prefill = null, sampleSize = 0 })
           letter-spacing: 0.06em; color: var(--ink3); font-weight: 600;
           padding: 6px 4px; text-align: center;
         }
-        .ec-matrix tbody th { text-align: right; padding-right: 9px; white-space: nowrap; }
-        .ec-matrix .ec-corner { text-align: left; }
+        /*
+          The label column takes only what it needs.
+
+          With width:100% and automatic layout the browser hands surplus width
+          to every column including this one, which stretched "0.5:1" across
+          210px and left the R:R header stranded a long way from the grid it
+          labels. A minimal width makes the surplus go to the data cells, where
+          it belongs, and pulls the labels up against the table.
+        */
+        .ec-matrix tbody th, .ec-matrix .ec-corner {
+          width: 1px; white-space: nowrap;
+        }
+        .ec-matrix tbody th { text-align: right; padding-right: 11px; }
+        .ec-matrix .ec-corner { text-align: left; padding-left: 0; }
         .ec-matrix td {
           text-align: center; padding: 7px 4px; border: 1px solid var(--bg);
           color: var(--ink2);
@@ -709,10 +713,12 @@ export default function ExpectancyCalculator({ prefill = null, sampleSize = 0 })
           started this, but not a full bleed either.
         */
         .ec-soft {
-          font-size: 12.5px; line-height: 1.7; color: var(--ink2);
           border-left: 2px solid #C9A227; background: #FBF7EA;
           padding: 11px 15px; border-radius: 3px; margin: 0 0 16px;
-          max-width: var(--note-w, 132ch);
+        }
+        .ec-soft p {
+          font-size: 12.5px; line-height: 1.7; color: var(--ink2);
+          margin: 0; max-width: var(--note-w, 132ch);
         }
         .ec-soft b { color: var(--ink); }
         /* Three paragraphs, so they sit as three columns rather than as one
