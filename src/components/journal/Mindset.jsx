@@ -33,16 +33,59 @@ import { rfmt, pct } from "@/lib/format";
    have been perfectly good. */
 const stateColor = (e) => (isConstructiveEntry(e) ? "var(--long)" : "var(--brass)");
 
-function Axis({ a }) {
+/** Higher is better on all four, so the arc may be colour-coded — but muted,
+ *  because a habit score is a thing to work on rather than an alarm. */
+const scoreTone = (s) => (s >= 80 ? "var(--long)" : s >= 55 ? "var(--brass)" : "var(--short)");
+const TREND_MARK = { up: "▲", down: "▼", flat: "—" };
+
+/**
+ * One habit as a dial.
+ *
+ * The arc is drawn with stroke-dasharray on a circle rather than as an SVG
+ * path, which keeps it to two elements and makes the sweep exactly
+ * proportional with no trigonometry to get wrong. Rotated −90° so it starts at
+ * twelve o'clock, which is the only place a gauge can start without looking
+ * like a mistake.
+ */
+function Gauge({ a }) {
   const has = Number.isFinite(a.score);
+  const score = has ? a.score : 0;
+  const R = 34, C = 2 * Math.PI * R;
+  const tone = has ? scoreTone(score) : "var(--ink3)";
+
   return (
-    <div className="ms-axis">
-      <div className="ms-axis-top">
-        <b>{a.label}</b>
-        <span className="mono">{has ? Math.round(a.score) : "—"}</span>
-      </div>
-      <div className="ms-bar"><i style={{ width: `${has ? a.score : 0}%` }} /></div>
-      <small>{a.basis}</small>
+    <div className="ms-gauge">
+      <svg viewBox="0 0 84 84" className="ms-dial" role="img"
+           aria-label={`${a.label}: ${has ? Math.round(score) : "not measurable"} out of 100`}>
+        <circle cx="42" cy="42" r={R} className="ms-track" />
+        {has ? (
+          <circle cx="42" cy="42" r={R} className="ms-arc"
+                  stroke={tone}
+                  strokeDasharray={`${(score / 100) * C} ${C}`} />
+        ) : null}
+        <text x="42" y="44" textAnchor="middle" className="ms-dialnum"
+              style={{ fill: has ? "var(--ink)" : "var(--ink3)" }}>
+          {has ? Math.round(score) : "—"}
+        </text>
+        <text x="42" y="55" textAnchor="middle" className="ms-dialmax">/ 100</text>
+      </svg>
+
+      <b className="ms-gname">{a.label}</b>
+      <span className="ms-gband">{a.band || "Not measurable"}</span>
+      {/* Only shown once both halves of the record have enough trades to be
+          compared. No trend is a truthful answer; an arrow drawn from three
+          trades is not. */}
+      {a.trend ? (
+        <span className={`ms-gtrend ms-gtrend-${a.trend.direction}`}>
+          {TREND_MARK[a.trend.direction]} {a.trend.label}
+          {a.trend.direction !== "flat"
+            ? ` ${a.trend.delta > 0 ? "+" : "−"}${Math.abs(Math.round(a.trend.delta))}`
+            : ""}
+        </span>
+      ) : (
+        <span className="ms-gtrend ms-gtrend-none">not enough history to trend</span>
+      )}
+      <small className="ms-gbasis">{a.basis}</small>
     </div>
   );
 }
@@ -203,6 +246,35 @@ export default function Mindset({ closed = [] }) {
 
   return (
     <>
+      {/* ---- the habits, first ------------------------------------------
+          Moved above the finding: these four are the standing state of how
+          the trading is being conducted, and they are what somebody opening
+          this tab wants to see before reading an argument about one slice of
+          it. The finding below is the diagnosis; this is the vital signs. */}
+      {profile ? (
+        <div className="sec">
+          <div className="sechead">
+            <div className="eyebrow">Habits, counted</div>
+            <span className="ms-src">
+              {profile.overall != null
+                ? `${profile.overall} overall, across ${profile.measuredAxes} of 4 measures`
+                : "nothing measurable yet"}
+            </span>
+          </div>
+          <div className="ms-gauges">
+            {profile.axes.map((a) => <Gauge key={a.key} a={a} />)}
+          </div>
+          <p className="ms-note" style={{ marginTop: 14 }}>
+            Each is a percentage of trades meeting a stated test, not a weighting
+            chosen to make the shape look interesting. Trends compare the recent half
+            of your record against the earlier half, and stay silent until both halves
+            have enough trades to be worth comparing. There is no fifth measure for
+            pattern recognition because there is no honest way to compute one from a
+            trade log, and a made-up score would discredit the four beside it.
+          </p>
+        </div>
+      ) : null}
+
       {/* ---- the finding ------------------------------------------------ */}
       <div className="sec">
         <div className="sechead">
@@ -309,29 +381,6 @@ export default function Mindset({ closed = [] }) {
         </div>
       )}
 
-      {/* ---- the profile ------------------------------------------------ */}
-      {profile ? (
-        <div className="sec">
-          <div className="sechead">
-            <div className="eyebrow">Habits, counted</div>
-            <span className="ms-src">
-              {profile.overall != null
-                ? `${profile.overall} overall, across ${profile.measuredAxes} of 4 measures`
-                : "nothing measurable yet"}
-            </span>
-          </div>
-          <div className="ms-axes">
-            {profile.axes.map((a) => <Axis key={a.key} a={a} />)}
-          </div>
-          <p className="ms-note" style={{ marginTop: 12 }}>
-            Each is a percentage of trades meeting a stated test, not a weighting
-            chosen to make the shape look interesting. There is no fifth axis for
-            pattern recognition because there is no honest way to compute one from a
-            trade log, and a made-up score would discredit the four beside it.
-          </p>
-        </div>
-      ) : null}
-
       {cov.assumedStops > 0 ? (
         <p className="ms-note">
           {cov.assumedStops} closed {cov.assumedStops === 1 ? "trade is" : "trades are"} excluded
@@ -407,21 +456,42 @@ export default function Mindset({ closed = [] }) {
         .ms-rib-win { fill: var(--long); }
         .ms-rib-loss { fill: var(--short); }
 
-        .ms-axes {
-          display: grid; gap: 16px 30px;
-          grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        .ms-gauges {
+          display: grid; gap: 18px;
+          grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
         }
-        .ms-axis-top {
-          display: flex; justify-content: space-between; align-items: baseline;
-          font-size: 13px; margin-bottom: 6px;
+        .ms-gauge {
+          border: 1px solid var(--rule); border-radius: 3px; background: var(--card);
+          padding: 16px 14px 14px; text-align: center;
+          display: flex; flex-direction: column; align-items: center; gap: 2px;
         }
-        .ms-axis-top span { color: var(--ink); font-size: 15px; }
-        .ms-bar {
-          height: 5px; background: var(--rule); border-radius: 3px; overflow: hidden;
+        .ms-dial { width: 108px; height: 108px; display: block; margin-bottom: 8px; }
+        /* Rotated so the sweep starts at twelve o'clock. Applied to the circles
+           rather than the svg so the numbers inside stay upright. */
+        .ms-dial circle {
+          fill: none; transform: rotate(-90deg); transform-origin: 42px 42px;
         }
-        .ms-bar i { display: block; height: 100%; background: var(--ink); }
-        .ms-axis small {
-          display: block; font-size: 11px; color: var(--ink3); margin-top: 6px;
+        .ms-track { stroke: var(--rule); stroke-width: 7; }
+        .ms-arc { stroke-width: 7; stroke-linecap: round; }
+        .ms-dialnum {
+          font-family: 'Archivo', sans-serif; font-stretch: 125%; font-weight: 600;
+          font-size: 21px;
+        }
+        .ms-dialmax {
+          font-family: 'Archivo', sans-serif; font-size: 8px; fill: var(--ink3);
+        }
+        .ms-gname { font-size: 13px; color: var(--ink); }
+        .ms-gband {
+          font-family: 'Archivo', sans-serif; font-size: 9.5px;
+          letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink3);
+        }
+        .ms-gtrend { font-size: 11px; margin-top: 4px; }
+        .ms-gtrend-up { color: var(--long); }
+        .ms-gtrend-down { color: var(--short); }
+        .ms-gtrend-flat { color: var(--ink3); }
+        .ms-gtrend-none { color: var(--ink3); opacity: 0.75; font-style: italic; }
+        .ms-gbasis {
+          font-size: 10.5px; color: var(--ink3); line-height: 1.5; margin-top: 6px;
         }
       `}</style>
     </>

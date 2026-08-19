@@ -181,25 +181,26 @@ export function emotionFlow(closed = []) {
  * failing grade for somebody who simply has not recorded anything yet, which is
  * the same mistake as counting a young cohort's retention as 0%.
  */
-export function mindsetProfile(closed = []) {
-  const rows = measurable(closed);
-  const all = closed.filter((t) => t.status === "closed");
-  if (!rows.length) return null;
-
+/**
+ * The four scores over one set of trades, with the counts behind each.
+ *
+ * Split out from `mindsetProfile` so the same tests can be run over a subset —
+ * which is what the trend needs. Computing "is discipline improving" any other
+ * way would mean a second definition of discipline, and the two would drift.
+ */
+function computeAxes(rows, all) {
   /* DISCIPLINE — losses that stopped where they were meant to.
      A loss worse than −1.2R means the stop was not taken at the stop. The
      tolerance is there because slippage and gaps are real and are not
      indiscipline; past it, something was decided in the moment. */
   const losses = rows.filter((t) => t.r <= 0);
   const held = losses.filter((t) => t.r >= -1.2);
-  const discipline = losses.length ? pctOf(held.length, losses.length) : null;
 
   /* EMOTIONAL CONTROL — entered in a state worth committing money in.
      Counted only over trades where a state was recorded; the unrecorded ones
      are unknown, not bad. */
   const withEntry = rows.filter((t) => t.entry_emotion);
   const constructive = withEntry.filter((t) => isConstructiveEntry(t.entry_emotion));
-  const control = withEntry.length ? pctOf(constructive.length, withEntry.length) : null;
 
   /* REFLECTION — closed trades that were actually reviewed afterwards.
      Any of: a tag, a note, or a recorded exit feeling. Over ALL closed trades,
@@ -208,7 +209,6 @@ export function mindsetProfile(closed = []) {
   const reviewed = all.filter(
     (t) => (t.mistakes?.length > 0) || !!t.notes?.trim() || !!t.exit_emotion
   );
-  const reflection = all.length ? pctOf(reviewed.length, all.length) : null;
 
   /* PATIENCE — winners held longer than losers.
      The disposition effect, which is the most diagnostic behaviour in a
@@ -218,28 +218,117 @@ export function mindsetProfile(closed = []) {
      and past that it stops being more virtuous. */
   const winHold = mean(rows.filter((t) => t.r > 0).map((t) => t.heldDays).filter(Number.isFinite));
   const lossHold = mean(rows.filter((t) => t.r <= 0).map((t) => t.heldDays).filter(Number.isFinite));
-  const patience = Number.isFinite(winHold) && Number.isFinite(lossHold) && lossHold > 0
-    ? Math.max(0, Math.min(100, (winHold / lossHold) * 50))
-    : null;
+
+  return {
+    discipline: losses.length ? pctOf(held.length, losses.length) : null,
+    control: withEntry.length ? pctOf(constructive.length, withEntry.length) : null,
+    reflection: all.length ? pctOf(reviewed.length, all.length) : null,
+    patience: Number.isFinite(winHold) && Number.isFinite(lossHold) && lossHold > 0
+      ? Math.max(0, Math.min(100, (winHold / lossHold) * 50))
+      : null,
+    counts: { held, losses, constructive, withEntry, reviewed, all, winHold, lossHold },
+  };
+}
+
+/**
+ * A word for the score, judged against itself.
+ *
+ * NOT "above average", which the reference design used and which this app
+ * cannot honestly say. Average of whom? There are ten accounts here, so any
+ * comparison would be to a handful of the user's own friends — a number
+ * dressed as a population. These bands describe the figure on its own terms
+ * instead, which is a claim that can actually be defended.
+ */
+export function band(score) {
+  if (!Number.isFinite(score)) return null;
+  if (score >= 85) return "Strong";
+  if (score >= 70) return "Solid";
+  if (score >= 50) return "Patchy";
+  return "Needs work";
+}
+
+/** Below this a half is too small for its score to mean anything, so no trend
+ *  is offered rather than a direction invented from three trades. */
+const TREND_MIN_PER_HALF = 5;
+
+/**
+ * Whether each score is moving, by running the same tests over the recent half
+ * and the earlier half of the record.
+ *
+ * SPLIT BY DATE, NOT BY COUNT OF RECORDED VALUES. Ordering by exit date and
+ * cutting in the middle is the only split that means "lately versus before".
+ *
+ * A direction is only claimed past five points, because these are percentages
+ * over small samples and a two-point move is one trade landing differently.
+ * "Stable" is a real answer and by far the most common one.
+ */
+function computeTrends(all) {
+  const dated = [...all].sort(
+    (a, b) => new Date(a.exit_date || a.entry_date) - new Date(b.exit_date || b.entry_date)
+  );
+  if (dated.length < TREND_MIN_PER_HALF * 2) return {};
+
+  const cut = Math.floor(dated.length / 2);
+  const earlier = dated.slice(0, cut);
+  const recent = dated.slice(cut);
+
+  const a = computeAxes(measurable(earlier), earlier);
+  const b = computeAxes(measurable(recent), recent);
+
+  const out = {};
+  for (const key of ["discipline", "control", "reflection", "patience"]) {
+    const from = a[key], to = b[key];
+    if (!Number.isFinite(from) || !Number.isFinite(to)) continue;
+    const delta = to - from;
+    out[key] = {
+      delta,
+      direction: delta >= 5 ? "up" : delta <= -5 ? "down" : "flat",
+      label: delta >= 5 ? "Improving" : delta <= -5 ? "Slipping" : "Stable",
+    };
+  }
+  return out;
+}
+
+/**
+ * Four axes, each counting something that happened.
+ *
+ * Scores are 0–100 because a set of gauges needs a common scale, and every one
+ * of them is a percentage of trades meeting a stated test — not a weighting
+ * invented to make the shape look interesting. Each carries `basis` so the UI
+ * can show what it was computed from, since a score from six trades and a
+ * score from two hundred should not look alike.
+ *
+ * Returns null where there is nothing to measure. A zero would read as a
+ * failing grade for somebody who simply has not recorded anything yet, which is
+ * the same mistake as counting a young cohort's retention as 0%.
+ */
+export function mindsetProfile(closed = []) {
+  const rows = measurable(closed);
+  const all = closed.filter((t) => t.status === "closed");
+  if (!rows.length) return null;
+
+  const v = computeAxes(rows, all);
+  const c = v.counts;
+  const trends = computeTrends(all);
 
   const axes = [
-    { key: "discipline", label: "Discipline", score: discipline,
-      basis: `${held.length} of ${losses.length} losses stopped at plan`,
+    { key: "discipline", label: "Discipline", score: v.discipline,
+      basis: `${c.held.length} of ${c.losses.length} losses stopped at plan`,
       hint: "Losses that ended near where the stop said they would." },
-    { key: "control", label: "Emotional control", score: control,
-      basis: withEntry.length
-        ? `${constructive.length} of ${withEntry.length} entries in a settled state`
+    { key: "control", label: "Emotional control", score: v.control,
+      basis: c.withEntry.length
+        ? `${c.constructive.length} of ${c.withEntry.length} entries in a settled state`
         : "no entry states recorded yet",
       hint: "Calm, confident, patient or focused when the position was opened." },
-    { key: "reflection", label: "Reflection", score: reflection,
-      basis: `${reviewed.length} of ${all.length} closed trades reviewed`,
+    { key: "reflection", label: "Reflection", score: v.reflection,
+      basis: `${c.reviewed.length} of ${c.all.length} closed trades reviewed`,
       hint: "A tag, a note, or an exit feeling recorded after the trade." },
-    { key: "patience", label: "Patience", score: patience,
-      basis: Number.isFinite(winHold) && Number.isFinite(lossHold)
-        ? `winners ${Math.round(winHold)}d vs losers ${Math.round(lossHold)}d`
+    { key: "patience", label: "Patience", score: v.patience,
+      basis: Number.isFinite(c.winHold) && Number.isFinite(c.lossHold)
+        ? `winners ${Math.round(c.winHold)}d vs losers ${Math.round(c.lossHold)}d`
         : "not enough dated trades",
       hint: "Holding winners longer than losers, which is the whole game." },
-  ];
+  ].map((a) => ({ ...a, band: band(a.score), trend: trends[a.key] || null }));
 
   const scored = axes.filter((a) => Number.isFinite(a.score));
 
