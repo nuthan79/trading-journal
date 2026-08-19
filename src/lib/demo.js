@@ -263,11 +263,30 @@ export function buildDemo({ userId = "demo", accountSize = 1000000, riskPct = 0.
          "not always" is the true part and the whole sample is a mirror. */
       entry_emotion: (rMult > 0 ? r() < 0.7 : r() < 0.3)
         ? pick(r, SETTLED_IN) : pick(r, REACTIVE_IN),
-      /* The exit feeling tracks the result more tightly, because it mostly
-         does in life — with enough leak that "Relieved" turns up on a winner
-         that got away and "Content" on a loss that was cut properly. */
-      exit_emotion: (rMult > 0 ? r() < 0.82 : r() < 0.18)
-        ? pick(r, GOOD_OUT) : pick(r, BAD_OUT),
+      /*
+         The exit feeling mostly tracks the result, because it mostly does in
+         life. The interesting quarter is where it does not, and the sample
+         needs enough of those or the "where the feeling didn't match the
+         result" findings never fire and the tab looks broken on a fresh
+         account.
+
+         REGRET LANDS ON THE SMALLER WINNERS, deliberately. That finding claims
+         cut-short trades average less than the rest, and checks it — so the
+         sample has to be built such that the check actually passes. Correlating
+         it with rMult rather than sprinkling it at random is the difference
+         between the demo demonstrating the feature and the demo coincidentally
+         agreeing with it.
+      */
+      exit_emotion: rMult > 0
+        /* Under 2R rather than under 1.2R: this generator produces few small
+           winners, so the tighter band left the cut-short finding one trade
+           short of its threshold and the sample never demonstrated the most
+           valuable thing on the screen. Still the lower half of the winners,
+           so the finding's own evidence check continues to pass honestly. */
+        ? (rMult < 2 && r() < 0.45 ? pick(r, ["Regret", "Disappointed"])
+           : r() < 0.08 ? "Relieved"
+           : pick(r, ["Satisfied", "Content"]))
+        : (r() < 0.2 ? pick(r, ["Satisfied", "Content"]) : pick(r, BAD_OUT)),
       mistakes,
       exits: [{
         id: `demo-x-${i}`,

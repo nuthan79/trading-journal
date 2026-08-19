@@ -108,80 +108,6 @@ export function emotionSpread(closed = []) {
 }
 
 /**
- * Entry state → outcome → exit state, as ribbon counts.
- *
- * Only trades carrying BOTH ends flow all the way through; a trade with an
- * entry emotion and no exit emotion still counts on the left. Reporting them
- * as complete journeys would invent the half that was never recorded.
- */
-export function emotionFlow(closed = []) {
-  const rows = measurable(closed);
-  const entryLinks = new Map();   // "Calm|win" -> count
-  const exitLinks = new Map();    // "win|Satisfied" -> count
-  const entryTotals = new Map();
-  const exitTotals = new Map();
-  let wins = 0, losses = 0, winR = 0, lossR = 0;
-
-  for (const t of rows) {
-    const side = t.r > 0 ? "win" : "loss";
-    if (side === "win") { wins++; winR += t.r; } else { losses++; lossR += t.r; }
-
-    if (t.entry_emotion) {
-      const k = `${t.entry_emotion}|${side}`;
-      entryLinks.set(k, (entryLinks.get(k) || 0) + 1);
-      entryTotals.set(t.entry_emotion, (entryTotals.get(t.entry_emotion) || 0) + 1);
-    }
-    if (t.exit_emotion) {
-      const k = `${side}|${t.exit_emotion}`;
-      exitLinks.set(k, (exitLinks.get(k) || 0) + 1);
-      exitTotals.set(t.exit_emotion, (exitTotals.get(t.exit_emotion) || 0) + 1);
-    }
-  }
-
-  const asLinks = (m) => [...m.entries()].map(([k, count]) => {
-    const [from, to] = k.split("|");
-    return { from, to, count };
-  });
-
-  return {
-    /* Ordered by the vocabulary, not by volume, so the constructive states stay
-       at the top and the shape of the diagram means something between one
-       reading and the next. */
-    entryNodes: ENTRY_EMOTIONS
-      .filter((e) => entryTotals.has(e))
-      .map((e) => ({ key: e, count: entryTotals.get(e) })),
-    exitNodes: EXIT_EMOTIONS
-      .filter((e) => exitTotals.has(e))
-      .map((e) => ({ key: e, count: exitTotals.get(e) })),
-    entryLinks: asLinks(entryLinks),
-    exitLinks: asLinks(exitLinks),
-    outcome: {
-      wins, losses,
-      avgWinR: wins ? winR / wins : NaN,
-      avgLossR: losses ? lossR / losses : NaN,
-    },
-    /** So the UI can say what the picture is drawn from rather than implying
-     *  it covers everything. */
-    recordedEntry: entryTotals.size ? [...entryTotals.values()].reduce((a, b) => a + b, 0) : 0,
-    recordedExit: exitTotals.size ? [...exitTotals.values()].reduce((a, b) => a + b, 0) : 0,
-    total: rows.length,
-  };
-}
-
-/**
- * Four axes, each counting something that happened.
- *
- * Scores are 0–100 because a radar needs a common scale, and every one of them
- * is a percentage of trades meeting a stated test — not a weighting invented to
- * make the shape look interesting. Each carries `basis` so the UI can show what
- * it was computed from, since a score from six trades and a score from two
- * hundred should not look alike.
- *
- * Returns null where there is nothing to measure. A zero would read as a
- * failing grade for somebody who simply has not recorded anything yet, which is
- * the same mistake as counting a young cohort's retention as 0%.
- */
-/**
  * The four scores over one set of trades, with the counts behind each.
  *
  * Split out from `mindsetProfile` so the same tests can be run over a subset —
@@ -369,6 +295,135 @@ export function coverage(closed = []) {
      *  finding. */
     ready: both >= THIN_EMOTION,
   };
+}
+
+/** A mismatch needs at least this many trades before it is worth saying. Lower
+ *  than THIN_EMOTION because these are rare by construction — the whole point
+ *  is that the feeling did not match the result. */
+export const MIN_MISMATCH = 3;
+
+/**
+ * When the feeling did not match the result.
+ *
+ * THIS IS THE ONLY THING EXIT EMOTION CAN TELL YOU that the P&L cannot. Feeling
+ * bad after a loss is not information — it is the overwhelming majority of
+ * exits and it says nothing a negative number had not already said. A flow
+ * diagram of entry state → outcome → exit state was built to show this and
+ * showed nothing: the right-hand half was almost entirely determined by the
+ * outcome, so it occupied the largest area on the page while carrying close to
+ * zero information. Deleted.
+ *
+ * What survives is the disagreement. Relief on a winner, regret on a winner,
+ * calm on a loss, fury on a loss — each says something about the trade that
+ * the trade's own numbers do not.
+ *
+ * EACH FINDING CARRIES CORROBORATION, or it is only restating the tag back at
+ * the person who typed it. "You regret your winners" is a mood; "you regret
+ * your winners, and they averaged 1.1R against your usual 2.4R" is evidence
+ * that they were cut short. Where the evidence does not support the reading,
+ * `evidence` is null and the UI says less.
+ */
+export function exitMismatch(closed = []) {
+  const rows = measurable(closed).filter((t) => t.exit_emotion);
+  if (!rows.length) return [];
+
+  const wins = rows.filter((t) => t.r > 0);
+  const losses = rows.filter((t) => t.r <= 0);
+  const avgWinR = mean(wins.map((t) => t.r));
+  const medianRisk = (() => {
+    const xs = rows.map((t) => t.riskPct).filter((x) => Number.isFinite(x) && x > 0).sort((a, b) => a - b);
+    return xs.length ? xs[xs.length >> 1] : NaN;
+  })();
+
+  const pick = (pool, emotions) => pool.filter((t) => emotions.includes(t.exit_emotion));
+  const out = [];
+
+  /* SOLD EARLY. Regret or disappointment on a trade that made money is the
+     classic tell, and it is checkable: if those winners really were cut short
+     they will average less than the rest. */
+  const cutShort = pick(wins, ["Regret", "Disappointed"]);
+  if (cutShort.length >= MIN_MISMATCH) {
+    const theirs = mean(cutShort.map((t) => t.r));
+    const rest = mean(wins.filter((t) => !cutShort.includes(t)).map((t) => t.r));
+    out.push({
+      key: "cut-short", tone: "warn", n: cutShort.length,
+      title: "You regret your winners",
+      detail:
+        `${cutShort.length} profitable ${cutShort.length === 1 ? "trade" : "trades"} closed on regret or ` +
+        `disappointment. That is the usual signature of selling early.`,
+      evidence: Number.isFinite(theirs) && Number.isFinite(rest) && theirs < rest
+        ? `They averaged ${theirs.toFixed(2)}R against ${rest.toFixed(2)}R on your other winners — ` +
+          `so they were, in fact, the smaller ones.`
+        : null,
+      emotions: ["Regret", "Disappointed"], outcome: "win",
+    });
+  }
+
+  /* TOO BIG, OR RUN TOO FAR. Relief is not satisfaction. It is what closing an
+     uncomfortable position feels like, and the discomfort usually came from
+     size. Checkable against the risk actually carried. */
+  const relieved = pick(wins, ["Relieved"]);
+  if (relieved.length >= MIN_MISMATCH) {
+    const theirRisk = mean(relieved.map((t) => t.riskPct).filter(Number.isFinite));
+    out.push({
+      key: "relieved-win", tone: "warn", n: relieved.length,
+      title: "Relief, not satisfaction",
+      detail:
+        `${relieved.length} winning ${relieved.length === 1 ? "trade" : "trades"} closed on relief. ` +
+        `Relief on a profit usually means the position was bigger than intended, or it ran past ` +
+        `where you meant to be out.`,
+      evidence: Number.isFinite(theirRisk) && Number.isFinite(medianRisk) && theirRisk > medianRisk * 1.15
+        ? `They carried ${theirRisk.toFixed(2)}% risk against your usual ${medianRisk.toFixed(2)}% — ` +
+          `so size is the likelier half of that.`
+        : null,
+      emotions: ["Relieved"], outcome: "win",
+    });
+  }
+
+  /* THE DISCIPLINE WORKING. Worth saying out loud: a screen that only reports
+     faults teaches its reader to stop opening it. */
+  const cleanCuts = pick(losses, ["Satisfied", "Content"]);
+  if (cleanCuts.length >= MIN_MISMATCH) {
+    const theirs = mean(cleanCuts.map((t) => t.r));
+    out.push({
+      key: "clean-cut", tone: "good", n: cleanCuts.length,
+      title: "You are cutting losses cleanly",
+      detail:
+        `${cleanCuts.length} losing ${cleanCuts.length === 1 ? "trade" : "trades"} closed satisfied or ` +
+        `content. Being at peace with a loss is what a plan being followed feels like.`,
+      evidence: Number.isFinite(theirs)
+        ? `They averaged ${theirs.toFixed(2)}R — the stop doing its job.`
+        : null,
+      emotions: ["Satisfied", "Content"], outcome: "loss",
+    });
+  }
+
+  /* KNEW BETTER. Anger at a loss is rarely about the market. Checkable: do
+     these carry execution errors more often than losses generally? */
+  const angry = pick(losses, ["Angry"]);
+  if (angry.length >= MIN_MISMATCH) {
+    const errRate = pctOf(
+      angry.filter((t) => (t.mistakes || []).some(isExecutionError)).length, angry.length);
+    const baseRate = pctOf(
+      losses.filter((t) => (t.mistakes || []).some(isExecutionError)).length, losses.length);
+    const worseR = mean(angry.map((t) => t.r));
+    out.push({
+      key: "angry-loss", tone: "warn", n: angry.length,
+      title: "Anger is pointing at something",
+      detail:
+        `${angry.length} ${angry.length === 1 ? "loss" : "losses"} closed angry. Anger at a losing trade ` +
+        `is usually aimed at yourself rather than the market — the trades where you already knew.`,
+      evidence: Number.isFinite(errRate) && Number.isFinite(baseRate) && errRate > baseRate
+        ? `${Math.round(errRate)}% of them carry an execution error you tagged, against ` +
+          `${Math.round(baseRate)}% of your losses generally.`
+        : Number.isFinite(worseR) ? `They averaged ${worseR.toFixed(2)}R.` : null,
+      emotions: ["Angry"], outcome: "loss",
+    });
+  }
+
+  /* Faults first — the useful end is the one costing money — but a good
+     finding is never buried, so it sits directly after them rather than last. */
+  return out.sort((a, b) => (a.tone === "good" ? 1 : 0) - (b.tone === "good" ? 1 : 0));
 }
 
 /**
