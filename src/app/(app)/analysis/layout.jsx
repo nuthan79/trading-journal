@@ -4,27 +4,28 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 /**
- * The three screens that interpret the record, under one tab.
+ * The four screens that interpret the record, under one tab.
  *
  * WHAT IS IN HERE AND WHAT IS NOT. Performance sits outside, at the top level,
- * and that line is the useful one: Performance reports what happened — which
- * setups paid, month by month — and is consulted the way a statement is. Edge,
- * Mindset and Review all take that record and argue something about it, which
- * is a different act and a less frequent one.
+ * and that line is the useful one: Performance is totals and periods, consulted
+ * the way a statement is. Everything in here takes that record and argues
+ * something about it, which is a different act and a less frequent one.
  *
- * WHY SUB-TABS AND NOT ONE LONG PAGE. The obvious way to combine three screens
+ * WHY SUB-TABS AND NOT ONE LONG PAGE. The obvious way to combine four screens
  * is to stack them, and it produces thousands of pixels whose bottom third is
  * never seen. Sub-tabs keep the top nav short AND each screen whole, which is
  * the only version where combining is a gain rather than a filing decision.
  *
- * ORDER IS AN ARGUMENT. Edge is what a trade is worth and where it compounds
- * to; Mindset is the state it was taken in; Review is the verdict. Value, then
- * cause, then fault — the verdict reads last because it is the one that only
- * means something once the other two have been seen.
+ * ORDER IS AN ARGUMENT. Edge is where the edge actually was, in trades that
+ * were taken; What-if starts from those measured numbers and lets you move
+ * them; Mindset is the state they were taken in; Review is the verdict.
+ * Evidence, then hypothesis, then cause, then verdict — and the verdict reads
+ * last because it only means something once the other three have been seen.
  */
 
 const SUB = [
   { href: "/analysis/edge", label: "Edge" },
+  { href: "/analysis/what-if", label: "What-if" },
   { href: "/analysis/mindset", label: "Mindset" },
   { href: "/analysis/review", label: "Review" },
 ];

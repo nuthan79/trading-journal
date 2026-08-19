@@ -1,34 +1,31 @@
 "use client";
 
-import { useMemo, useState } from "react";
 import Link from "next/link";
-import { dimensionRows, DIMENSIONS, maxAbsTotalR, isThin, NOT_RECORDED } from "@/lib/edge";
-import { mistakeCost, outcomeTagCounts } from "@/lib/analysis";
-import { isExecutionError } from "@/lib/constants";
-import { rupee, rfmt, pct } from "@/lib/format";
+import { rfmt } from "@/lib/format";
 import Tile from "./Tile";
 import PeriodPerformance from "./PeriodPerformance";
 import CapitalDeployment from "./CapitalDeployment";
 
+/**
+ * The statement: how much, over what period, on what capital.
+ *
+ * The three breakdown tables that used to live below — where the edge is, what
+ * the mistakes cost, what didn't work — moved to Analysis → Edge. They are one
+ * idea (group the trades by something and see what each group earned) and this
+ * is another (totals and periods, consulted the way a statement is). Keeping
+ * both here made this the longest screen in the app and buried the argument
+ * inside the reference table.
+ */
 export default function Performance({ closed, S, accountSize, flows, all = [] }) {
-  const [dim, setDim] = useState("pattern");
-  const D = DIMENSIONS.find((d) => d.id === dim) || DIMENSIONS[0];
-
-  const groups = useMemo(
-    () => dimensionRows(closed, dim, { accountSize }),
-    [closed, dim, accountSize]
-  );
-  const maxAbs = useMemo(() => maxAbsTotalR(groups), [groups]);
-
-  const mistakeRows = useMemo(() => mistakeCost(closed, isExecutionError), [closed]);
-  const outcomeRows = useMemo(() => outcomeTagCounts(closed, isExecutionError), [closed]);
-
   if (!closed.length) {
     return (
       <div className="sec card empty">
         <div className="eyebrow">Performance sheet</div>
-        <p>This page reads your closed trades and tells you which setups actually pay.
-          It needs closed trades to read. Log a few and come back.</p>
+        {/* No longer promises to say which setups pay — that is Analysis → Edge
+            now, and an empty state advertising a table this screen no longer
+            has is how somebody ends up looking for it here forever. */}
+        <p>This page totals your closed trades by period and shows what capital was
+          working. It needs closed trades to read. Log a few and come back.</p>
       </div>
     );
   }
@@ -57,173 +54,30 @@ export default function Performance({ closed, S, accountSize, flows, all = [] })
         <CapitalDeployment all={all} accountSize={accountSize} flows={flows} />
       </div>
 
-      <div className="sec">
-        <div className="sechead">
-          <div>
-            <div className="eyebrow">Where the edge is</div>
-            <div style={{ fontSize: 12, color: "var(--ink2)", marginTop: 3 }}>
-              Same trades, cut a different way. Expectancy is the column that matters.
-            </div>
-          </div>
-        </div>
-        <div className="seg" style={{ marginBottom: 12 }}>
-          {DIMENSIONS.map((d) => (
-            <button key={d.id} data-on={dim === d.id ? 1 : 0} onClick={() => setDim(d.id)}>{d.label}</button>
-          ))}
-        </div>
-        <div className="card scroll">
-          <table className="t">
-            <thead><tr>
-              <th>{D.label}</th>
-              <th className="num">Trades</th><th className="num">Win rate</th>
-              <th className="num">Avg win</th><th className="num">Avg loss</th>
-              <th className="num">Expectancy</th><th className="num">Total R</th>
-              <th className="num">Net P&amp;L</th>
-              <th className="num">Avg value</th><th className="num">Avg risk</th>
-              <th className="num">Return on risk</th>
-              <th style={{ width: "16%" }}></th>
-            </tr></thead>
-            <tbody>
-              {groups.map((g) => {
-                const wpx = (Math.abs(g.totalR) / maxAbs) * 100;
-                return (
-                  <tr key={g.key} style={{ opacity: isThin(g) ? 0.55 : 1 }}>
-                    <td>
-                      {g.key === NOT_RECORDED ? (
-                        <span style={{ fontStyle: "italic", color: "var(--ink3)" }}>{g.key}</span>
-                      ) : (
-                        <b style={{ fontWeight: 500 }}>{g.key}</b>
-                      )}
-                    </td>
-                    <td className="num">{g.n}</td>
-                    <td className="num">{pct(g.winRate, 0)}</td>
-                    <td className="num pos">{rfmt(g.avgWin)}</td>
-                    <td className="num neg">{rfmt(-g.avgLoss)}</td>
-                    <td className={`num ${g.expectancy >= 0 ? "pos" : "neg"}`} style={{ fontWeight: 500 }}>
-                      {rfmt(g.expectancy)}</td>
-                    <td className={`num ${g.totalR >= 0 ? "pos" : "neg"}`}>{rfmt(g.totalR, 1)}</td>
-                    {/* Net of charges — grossRealised minus charges, the same
-                        figure returnOnRisk beside it is already built from. R
-                        answers whether the setup works; this answers what it
-                        paid, and they part company whenever risk per trade
-                        was not constant. */}
-                    <td className={`num ${g.netPnl >= 0 ? "pos" : "neg"}`} style={{ fontWeight: 500 }}>
-                      {rupee(g.netPnl)}
-                    </td>
-                    <td className="num">{rupee(g.avgValue)}</td>
-                    <td className="num" title={`${pct(g.avgRiskPct, 2)} of capital`}>{rupee(g.avgRisk)}</td>
-                    <td className="num">{isFinite(g.returnOnRisk) ? `${g.returnOnRisk.toFixed(2)}×` : "—"}</td>
-                    <td>
-                      <div style={{ display: "flex", justifyContent: g.totalR >= 0 ? "flex-start" : "flex-end" }}>
-                        <div style={{ width: `${wpx}%`, height: 7, borderRadius: 1,
-                                      background: g.totalR >= 0 ? "var(--long)" : "var(--short)", opacity: 0.75 }} />
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        {groups.some((g) => isThin(g)) && (
-          <div className="hint" style={{ marginTop: 8 }}>
-            Faded rows have fewer than 15 trades — noise, not signal. Read them as questions to watch, not conclusions.
-          </div>
-        )}
-        {/* Only on the rupee cut. Every other dimension here is either
-            categorical or already normalised; this is the one whose bands
-            drift as the account grows, and saying so is cheaper than letting
-            someone read a decade of compounding as a finding about sizing. */}
-        {dim === "riskamt" && (
-          <div className="hint" style={{ marginTop: 8 }}>
-            Rupee risk isn&rsquo;t comparable across a growing account — ₹15k against ₹20L
-            is a large bet, the same ₹15k against ₹1.2Cr is a small one. If your capital
-            has grown a lot, the low bands hold mostly early trades and the high bands
-            mostly recent ones, so some of what you see here is <b>when</b> rather than
-            how much. <b>Risk % of capital</b> is the same question with that removed.
-          </div>
-        )}
-      </div>
+      {/* The three breakdown tables that used to sit here — where the edge is,
+          what the mistakes cost, what didn't work — moved to Analysis → Edge.
+          They are one idea (group the trades and see what each group earned)
+          and this screen is another (how much, over what period, on what
+          capital). A pointer, because somebody arriving here for "which setups
+          pay" should not have to guess that it moved. */}
+      <p className="perf-more">
+        Which setups actually pay, what the mistakes cost, and what simply didn&rsquo;t
+        work now live in <Link href="/analysis/edge">Analysis → Edge</Link>.
+      </p>
 
-      {mistakeRows.length > 0 && (
-        <div className="sec">
-          <div className="sechead">
-            <div>
-              <div className="eyebrow">What the mistakes cost</div>
-              <div style={{ fontSize: 12, color: "var(--ink2)", marginTop: 3 }}>
-                Only counts trades where you tagged an execution error yourself.
-                Net P&amp;L is what those trades came to, not what the mistake cost you —
-                nobody can know what the same trade would have done without it.
-                <b> Click a mistake</b> to see the trades behind it.
-              </div>
-            </div>
-          </div>
-          <div className="card scroll">
-            <table className="t">
-              <thead><tr><th>Mistake</th><th className="num">Times</th>
-                <th className="num">Win rate</th><th className="num">Expectancy</th>
-                <th className="num">Total R</th><th className="num">Net P&amp;L</th></tr></thead>
-              <tbody>
-                {mistakeRows.map((m) => (
-                  <tr key={m.tag}>
-                    {/* The row is the way in. Costing a tag out and then
-                        offering no route to the trades behind it is where this
-                        table used to stop. */}
-                    <td>
-                      <Link className="mk-link"
-                            href={`/trades?mistake=${encodeURIComponent(m.tag)}`}
-                            title={`See the ${m.count} trade${m.count === 1 ? "" : "s"} tagged "${m.tag}"`}>
-                        {m.tag}
-                      </Link>
-                    </td>
-                    <td className="num">{m.count}</td>
-                    <td className="num">{pct(m.winRate, 0)}</td>
-                    <td className={`num ${m.avgR >= 0 ? "pos" : "neg"}`}>{rfmt(m.avgR)}</td>
-                    <td className={`num ${m.totalR >= 0 ? "pos" : "neg"}`}>{rfmt(m.totalR, 1)}</td>
-                    <td className={`num ${m.netPnl >= 0 ? "pos" : "neg"}`} style={{ fontWeight: 500 }}>
-                      {rupee(m.netPnl)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {outcomeRows.length > 0 && (
-        <div className="sec">
-          <div className="sechead">
-            <div>
-              <div className="eyebrow">What didn't work</div>
-              <div style={{ fontSize: 12, color: "var(--ink2)", marginTop: 3 }}>
-                Not mistakes — valid setups that simply didn't pay off, the cost of doing business
-                in a breakout system. Kept separate so they don't bury the execution errors above.
-              </div>
-            </div>
-          </div>
-          <div className="card" style={{ display: "flex", flexWrap: "wrap", gap: 22 }}>
-            {outcomeRows.map((o) => (
-              <div key={o.tag}>
-                <div className="mono" style={{ fontSize: 19, fontWeight: 500 }}>{o.count}</div>
-                <div style={{ fontSize: 11.5, color: "var(--ink3)", marginTop: 2 }}>
-                  {o.tag} · {pct(o.share, 0)} of trades
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* global: the anchor is rendered by next/link rather than by this
-          component's own JSX, so a scoped block would not reach it. Prefixed
-          to keep it from leaking onto other links. */}
+      {/* Global because the anchor is rendered by next/link, not by this
+          component — a scoped block styles the paragraph and leaves the link
+          inside it browser-blue. Prefixed so it cannot leak. */}
       <style jsx global>{`
-        .mk-link {
-          color: inherit; text-decoration: none;
+        .perf-more {
+          font-size: 12.5px; line-height: 1.7; color: var(--ink3);
+          margin: 26px 0 0; max-width: var(--note-w);
+        }
+        .perf-more a {
+          color: var(--ink2); text-decoration: none;
           border-bottom: 1px dotted var(--ink3);
         }
-        .mk-link:hover { color: var(--brass); border-bottom-color: var(--brass); }
+        .perf-more a:hover { color: var(--brass); border-bottom-color: var(--brass); }
       `}</style>
     </>
   );

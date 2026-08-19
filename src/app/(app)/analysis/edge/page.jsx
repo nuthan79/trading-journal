@@ -4,16 +4,9 @@ import Edge from "@/components/journal/Edge";
 import { useJournal } from "../../JournalContext";
 
 export default function EdgePage() {
-  // `closed` rather than `all`: expectancy is a statement about finished
-  // trades. An open position has an unrealised R that moves every time a quote
-  // refreshes, and averaging that into a win rate would make the whole screen
-  // change on a price tick.
-  const { closed, accountSize, profile } = useJournal();
-  return (
-    <Edge
-      closed={closed}
-      accountSize={accountSize}
-      defaultRiskPct={profile?.default_risk_pct}
-    />
-  );
+  // `closed` only. Every table here reports what a group of trades earned, and
+  // an open position has not earned anything yet — folding an unrealised R into
+  // "what this setup pays" would make the answer move on a quote refresh.
+  const { closed, accountSize } = useJournal();
+  return <Edge closed={closed} accountSize={accountSize} />;
 }

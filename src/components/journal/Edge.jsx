@@ -1,148 +1,232 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import ExpectancyCalculator from "@/components/ExpectancyCalculator";
-import { edgePrefill, MIN_SAMPLE, THIN_SAMPLE } from "@/lib/edgePrefill";
-import { pct } from "@/lib/format";
+import { dimensionRows, DIMENSIONS, maxAbsTotalR, isThin, NOT_RECORDED } from "@/lib/edge";
+import { mistakeCost, outcomeTagCounts } from "@/lib/analysis";
+import { isExecutionError } from "@/lib/constants";
+import { rupee, rfmt, pct } from "@/lib/format";
 
 /**
- * The expectancy calculator, filled in from trades that actually happened.
+ * Where the edge is — the same trades, cut ten ways.
  *
- * WHAT MAKES THIS DIFFERENT FROM THE PUBLIC PAGE. Nothing structural — it is
- * the same component with a `prefill` prop, deliberately, so the two cannot
- * drift apart on what "average win" means. What changes is the standing of the
- * numbers: on /expectancy-calculator every figure is remembered, and memory is
- * generous about win rates and worst of all about average loss, because the
- * trades where a stop got moved are exactly the ones that do not come to mind.
- * Here they are measured, and the whole value of the screen is that the
- * expectancy is not flattering.
+ * MOVED OUT OF PERFORMANCE, AND THE NAME IS THE REASON. `edge.js` computes this
+ * table and always has; meanwhile the tab called Edge was running
+ * `expectancy.js` and projecting a curve. The modules and the tabs were saying
+ * opposite things. This is the screen with the claim on the word: it reports
+ * where an edge actually was, in trades that were actually taken. The projection
+ * next door is a question, and it is now called What-if.
  *
- * SO THE HONESTY WORK IS ALL IN THE FRAMING. Three things can quietly make
- * these numbers a lie, and each gets said out loud rather than papered over:
- * a sample too small to mean anything, trades excluded for carrying an
- * importer's invented stop, and a journal that has not lost yet.
+ * WHAT PERFORMANCE KEEPS. Totals, period returns and capital deployment — the
+ * statement, consulted the way a statement is. This is the argument about it,
+ * which is a different act and a less frequent one.
+ *
+ * THE THREE TABLES BELONG TOGETHER because they are one idea: group the trades
+ * by something and see what each group earned. By setup, by execution error, by
+ * what the market did. Splitting them across two screens, which is how it was,
+ * meant the cost of a mistake sat a long way from the setups it happened in.
  */
-export default function Edge({ closed = [], accountSize, defaultRiskPct }) {
-  const p = useMemo(
-    () => edgePrefill(closed, { accountSize, defaultRiskPct }),
-    [closed, accountSize, defaultRiskPct]
-  );
+export default function Edge({ closed = [], accountSize }) {
+  const [dim, setDim] = useState("pattern");
+  const D = DIMENSIONS.find((d) => d.id === dim) || DIMENSIONS[0];
 
-  if (!p.ready) {
+  const groups = useMemo(
+    () => dimensionRows(closed, dim, { accountSize }),
+    [closed, dim, accountSize]
+  );
+  const maxAbs = useMemo(() => maxAbsTotalR(groups), [groups]);
+
+  const mistakeRows = useMemo(() => mistakeCost(closed, isExecutionError), [closed]);
+  const outcomeRows = useMemo(() => outcomeTagCounts(closed, isExecutionError), [closed]);
+
+  if (!closed.length) {
     return (
       <div className="sec card empty">
-        <div className="eyebrow">Your edge</div>
-        <p>
-          This screen measures your expectancy — what an average trade is worth in R —
-          and works out what it compounds to. It needs at least {MIN_SAMPLE} closed
-          trades with a stop you set yourself; you have {p.sampleSize}.
-        </p>
-        {p.assumedCount > 0 ? (
-          <p>
-            {p.assumedCount} closed {p.assumedCount === 1 ? "trade is" : "trades are"}{" "}
-            sitting out because the stop was assumed at import rather than recorded.
-            Correcting {p.assumedCount === 1 ? "it" : "them"} in the{" "}
-            <Link href="/stops">stops queue</Link> brings{" "}
-            {p.assumedCount === 1 ? "it" : "them"} in.
-          </p>
-        ) : null}
-        <p>
-          In the meantime the{" "}
-          <Link href="/expectancy-calculator">public calculator</Link> takes the same
-          numbers typed by hand.
-        </p>
+        <div className="eyebrow">Where the edge is</div>
+        <p>This reads your closed trades and tells you which setups actually pay.
+          It needs closed trades to read. Log a few and come back.</p>
       </div>
     );
   }
-
-  const { values, sampleSize, assumedCount, noRCount, months, thin, noLosses } = p;
 
   return (
     <>
       <div className="sec">
         <div className="sechead">
-          <div className="eyebrow">Your edge</div>
-          <span className="edge-src">
-            measured from {sampleSize} closed {sampleSize === 1 ? "trade" : "trades"} over{" "}
-            {months < 1.5 ? "under a month" : `${Math.round(months)} months`}
-          </span>
+          <div>
+            <div className="eyebrow">Where the edge is</div>
+            <div style={{ fontSize: 12, color: "var(--ink2)", marginTop: 3 }}>
+              Same trades, cut a different way. Expectancy is the column that matters.
+            </div>
+          </div>
         </div>
-
-        {/* Every reason these figures might mislead, before the figures. A
-            caveat printed underneath a confident number is read after the
-            number has already been believed.
-
-            Side by side in a grid rather than stacked: there can be four of
-            them, and four narrow bands down the left of a 1440px page pushes
-            the numbers below the fold to say things that are each one
-            sentence long. */}
-        <div className="edge-notes">
-        {thin ? (
-          <p className="edge-note">
-            <b>Small sample.</b> {sampleSize} trades is enough to compute an expectancy
-            and not enough to trust its precision — one outsized winner still moves it
-            noticeably. Somewhere past {THIN_SAMPLE} it starts settling down. Read the
-            sign and the rough size, not the second decimal.
-          </p>
-        ) : null}
-
-        {assumedCount > 0 ? (
-          <p className="edge-note">
-            <b>{assumedCount} {assumedCount === 1 ? "trade is" : "trades are"} excluded.</b>{" "}
-            The stop was assumed at import rather than recorded, so the R would be
-            arithmetic against a number nobody chose. Correct{" "}
-            {assumedCount === 1 ? "it" : "them"} in the{" "}
-            <Link href="/stops">stops queue</Link> and{" "}
-            {assumedCount === 1 ? "it joins" : "they join"} everything below.
-          </p>
-        ) : null}
-
-        {noRCount > 0 ? (
-          <p className="edge-note">
-            <b>{noRCount} more {noRCount === 1 ? "trade has" : "trades have"} no
-            computable R</b> — usually a missing stop or exit price. {noRCount === 1
-              ? "It is" : "They are"} counted in your P&amp;L but cannot be part of an
-            R measurement.
-          </p>
-        ) : null}
-
-        {noLosses ? (
-          <p className="edge-note">
-            <b>No losing trades yet.</b> Average loss is set to 1R below as a
-            placeholder, because the real figure does not exist — with no losses the
-            break-even win rate would compute as zero and the profit factor as
-            infinite. Every number that depends on it is provisional until you take
-            one.
-          </p>
-        ) : null}
+        <div className="seg" style={{ marginBottom: 12 }}>
+          {DIMENSIONS.map((d) => (
+            <button key={d.id} data-on={dim === d.id ? 1 : 0} onClick={() => setDim(d.id)}>{d.label}</button>
+          ))}
         </div>
+        <div className="card scroll">
+          <table className="t">
+            <thead><tr>
+              <th>{D.label}</th>
+              <th className="num">Trades</th><th className="num">Win rate</th>
+              <th className="num">Avg win</th><th className="num">Avg loss</th>
+              <th className="num">Expectancy</th><th className="num">Total R</th>
+              <th className="num">Net P&amp;L</th>
+              <th className="num">Avg value</th><th className="num">Avg risk</th>
+              <th className="num">Return on risk</th>
+              <th style={{ width: "16%" }}></th>
+            </tr></thead>
+            <tbody>
+              {groups.map((g) => {
+                const wpx = (Math.abs(g.totalR) / maxAbs) * 100;
+                return (
+                  <tr key={g.key} style={{ opacity: isThin(g) ? 0.55 : 1 }}>
+                    <td>
+                      {g.key === NOT_RECORDED ? (
+                        <span style={{ fontStyle: "italic", color: "var(--ink3)" }}>{g.key}</span>
+                      ) : (
+                        <b style={{ fontWeight: 500 }}>{g.key}</b>
+                      )}
+                    </td>
+                    <td className="num">{g.n}</td>
+                    <td className="num">{pct(g.winRate, 0)}</td>
+                    <td className="num pos">{rfmt(g.avgWin)}</td>
+                    <td className="num neg">{rfmt(-g.avgLoss)}</td>
+                    <td className={`num ${g.expectancy >= 0 ? "pos" : "neg"}`} style={{ fontWeight: 500 }}>
+                      {rfmt(g.expectancy)}</td>
+                    <td className={`num ${g.totalR >= 0 ? "pos" : "neg"}`}>{rfmt(g.totalR, 1)}</td>
+                    {/* Net of charges — grossRealised minus charges, the same
+                        figure returnOnRisk beside it is already built from. R
+                        answers whether the setup works; this answers what it
+                        paid, and they part company whenever risk per trade
+                        was not constant. */}
+                    <td className={`num ${g.netPnl >= 0 ? "pos" : "neg"}`} style={{ fontWeight: 500 }}>
+                      {rupee(g.netPnl)}
+                    </td>
+                    <td className="num">{rupee(g.avgValue)}</td>
+                    <td className="num" title={`${pct(g.avgRiskPct, 2)} of capital`}>{rupee(g.avgRisk)}</td>
+                    <td className="num">{isFinite(g.returnOnRisk) ? `${g.returnOnRisk.toFixed(2)}×` : "—"}</td>
+                    <td>
+                      <div style={{ display: "flex", justifyContent: g.totalR >= 0 ? "flex-start" : "flex-end" }}>
+                        <div style={{ width: `${wpx}%`, height: 7, borderRadius: 1,
+                                      background: g.totalR >= 0 ? "var(--long)" : "var(--short)", opacity: 0.75 }} />
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {groups.some((g) => isThin(g)) && (
+          <div className="hint" style={{ marginTop: 8 }}>
+            Faded rows have fewer than 15 trades — noise, not signal. Read them as questions to watch, not conclusions.
+          </div>
+        )}
+        {/* Only on the rupee cut. Every other dimension here is either
+            categorical or already normalised; this is the one whose bands
+            drift as the account grows, and saying so is cheaper than letting
+            someone read a decade of compounding as a finding about sizing. */}
+        {dim === "riskamt" && (
+          <div className="hint" style={{ marginTop: 8 }}>
+            Rupee risk isn&rsquo;t comparable across a growing account — ₹15k against ₹20L
+            is a large bet, the same ₹15k against ₹1.2Cr is a small one. If your capital
+            has grown a lot, the low bands hold mostly early trades and the high bands
+            mostly recent ones, so some of what you see here is <b>when</b> rather than
+            how much. <b>Risk % of capital</b> is the same question with that removed.
+          </div>
+        )}
       </div>
 
-      {/*
-        Remounted when the measured inputs change.
+      {mistakeRows.length > 0 && (
+        <div className="sec">
+          <div className="sechead">
+            <div>
+              <div className="eyebrow">What the mistakes cost</div>
+              <div style={{ fontSize: 12, color: "var(--ink2)", marginTop: 3 }}>
+                Only counts trades where you tagged an execution error yourself.
+                Net P&amp;L is what those trades came to, not what the mistake cost you —
+                nobody can know what the same trade would have done without it.
+                <b> Click a mistake</b> to see the trades behind it.
+              </div>
+            </div>
+          </div>
+          <div className="card scroll">
+            <table className="t">
+              <thead><tr><th>Mistake</th><th className="num">Times</th>
+                <th className="num">Win rate</th><th className="num">Expectancy</th>
+                <th className="num">Total R</th><th className="num">Net P&amp;L</th></tr></thead>
+              <tbody>
+                {mistakeRows.map((m) => (
+                  <tr key={m.tag}>
+                    {/* The row is the way in. Costing a tag out and then
+                        offering no route to the trades behind it is where this
+                        table used to stop. */}
+                    <td>
+                      <Link className="mk-link"
+                            href={`/trades?mistake=${encodeURIComponent(m.tag)}`}
+                            title={`See the ${m.count} trade${m.count === 1 ? "" : "s"} tagged "${m.tag}"`}>
+                        {m.tag}
+                      </Link>
+                    </td>
+                    <td className="num">{m.count}</td>
+                    <td className="num">{pct(m.winRate, 0)}</td>
+                    <td className={`num ${m.avgR >= 0 ? "pos" : "neg"}`}>{rfmt(m.avgR)}</td>
+                    <td className={`num ${m.totalR >= 0 ? "pos" : "neg"}`}>{rfmt(m.totalR, 1)}</td>
+                    <td className={`num ${m.netPnl >= 0 ? "pos" : "neg"}`} style={{ fontWeight: 500 }}>
+                      {rupee(m.netPnl)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {/* Same tags, different question. Mindset asks WHEN these happen —
+              which state they cluster in — and this asks what they cost. Worth
+              pointing at, and worth keeping to two screens: a third table of
+              the same tags would mean the split had stopped meaning anything. */}
+          <div className="hint" style={{ marginTop: 8 }}>
+            <Link href="/analysis/mindset">Mindset</Link> groups the same tags by the
+            state you were in when the trade was taken.
+          </div>
+        </div>
+      )}
 
-        The calculator seeds its own editable state from `prefill` once, which
-        is correct — it must not yank a slider out from under someone
-        mid-thought. But it also means that if the underlying trades change
-        (a stop corrected, a position closed) a mounted instance would keep
-        showing the old numbers forever. Keying on the values themselves makes
-        it start again from the new measurement.
-      */}
-      <div className="sec">
-        <ExpectancyCalculator
-          key={JSON.stringify(values)}
-          prefill={values}
-          sampleSize={sampleSize}
-        />
-      </div>
+      {outcomeRows.length > 0 && (
+        <div className="sec">
+          <div className="sechead">
+            <div>
+              <div className="eyebrow">What didn&rsquo;t work</div>
+              <div style={{ fontSize: 12, color: "var(--ink2)", marginTop: 3 }}>
+                Not mistakes — valid setups that simply didn&rsquo;t pay off, the cost of doing business
+                in a breakout system. Kept separate so they don&rsquo;t bury the execution errors above.
+              </div>
+            </div>
+          </div>
+          <div className="card" style={{ display: "flex", flexWrap: "wrap", gap: 22 }}>
+            {outcomeRows.map((o) => (
+              <div key={o.tag}>
+                <div className="mono" style={{ fontSize: 19, fontWeight: 500 }}>{o.count}</div>
+                <div style={{ fontSize: 11.5, color: "var(--ink3)", marginTop: 2 }}>
+                  {o.tag} · {pct(o.share, 0)} of trades
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
-      <p className="edge-foot">
-        Win rate, average win and average loss come from the same calculation as the
-        Performance sheet. Risk per trade is the median of what your positions
-        actually carried — {pct(values.riskPct, 1)} — rather than the default in your
-        settings, because the projection is about what you did, not what you meant to.
-      </p>
+      {/* global: the anchor is rendered by next/link rather than by this
+          component's own JSX, so a scoped block would not reach it. Prefixed
+          to keep it from leaking onto other links. */}
+      <style jsx global>{`
+        .mk-link {
+          color: inherit; text-decoration: none;
+          border-bottom: 1px dotted var(--ink3);
+        }
+        .mk-link:hover { color: var(--brass); border-bottom-color: var(--brass); }
+      `}</style>
     </>
   );
 }
