@@ -267,40 +267,11 @@ export function matrix(current) {
   }));
 }
 
-/**
- * The five inputs, derived from trades already journalled.
- *
- * Not called by the public page — it exists so the in-app version is a prop
- * away rather than a rewrite, and so the definitions of "average win" used in
- * both places cannot drift apart.
- *
- * ASSUMED STOPS ARE EXCLUDED. A trade whose stop the importer invented has no
- * real R, and averaging invented risk into an expectancy figure produces a
- * number that looks measured and is not — the same rule `analysis.js` follows.
- */
-export function fromTrades(trades = [], { capital } = {}) {
-  const usable = trades.filter(
-    (t) => t && t.stop_source !== "assumed" && Number.isFinite(t.r) && t.status === "closed"
-  );
-  if (usable.length < 5) return null;
-
-  const wins = usable.filter((t) => t.r > 0);
-  const losses = usable.filter((t) => t.r <= 0);
-  const mean = (xs, f) => (xs.length ? xs.reduce((s, x) => s + f(x), 0) / xs.length : 0);
-
-  /** Months spanned, so "trades per month" reflects real pace rather than
-   *  dividing by however many months the calendar happens to contain. */
-  const dates = usable.map((t) => new Date(t.exit_date || t.entry_date)).filter((d) => !isNaN(d));
-  const span = dates.length > 1
-    ? Math.max(1, (Math.max(...dates) - Math.min(...dates)) / (1000 * 60 * 60 * 24 * 30.44))
-    : 1;
-
-  return {
-    winRate: (wins.length / usable.length) * 100,
-    avgWin: wins.length ? mean(wins, (t) => t.r) : 0,
-    avgLoss: losses.length ? Math.abs(mean(losses, (t) => t.r)) : 1,
-    tradesPerMonth: usable.length / span,
-    capital,
-    sampleSize: usable.length,
-  };
-}
+/*
+  Deriving these six inputs from a real journal lives in `edgePrefill.js`, not
+  here. It needs `calc.js`'s `stats()` — reusing the one definition of "average
+  win" rather than writing a second that could disagree with the Performance
+  sheet — and pulling the journal's aggregate maths in here would ship all of it
+  to the logged-out visitor on the public calculator. This file stays
+  dependency-free so that page stays cheap.
+*/

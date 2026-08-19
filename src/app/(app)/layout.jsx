@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Plus, LayoutGrid, Layers, Table2, LineChart, BookOpen, ClipboardList } from "lucide-react";
+import { Plus, LayoutGrid, Layers, Table2, LineChart, BookOpen, ClipboardList, Target } from "lucide-react";
 import {
   supabase, getProfile, saveProfile as dbSaveProfile,
   listTrades, listExitsByTrade, saveExits, saveTrade as dbSaveTrade, deleteTrade as dbDeleteTrade,
@@ -52,6 +52,10 @@ const TABS = [
   { id: "holdings", href: "/holdings", label: "Holdings", icon: Layers },
   { id: "trades", href: "/trades", label: "Trades", icon: Table2 },
   { id: "perf", href: "/performance", label: "Performance", icon: LineChart },
+  /* Next to Performance deliberately. Performance answers what happened;
+     this answers what it is worth per trade and where it goes if it holds —
+     the same question one step on, so they read in that order. */
+  { id: "edge", href: "/edge", label: "Edge", icon: Target },
   { id: "diary", href: "/diary", label: "Diary", icon: BookOpen },
   { id: "review", href: "/review", label: "Review", icon: ClipboardList },
 ];

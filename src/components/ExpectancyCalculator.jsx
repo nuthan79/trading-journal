@@ -52,7 +52,11 @@ function Slide({ label, hint, value, onChange, min, max, step, fmt, from }) {
         {/* The badge that makes the in-app version obviously different from
             this one — same component, real numbers. */}
         {from ? <i className="ec-from">{from}</i> : null}
-        <b>{fmt ? fmt(value) : value}</b>
+        {/* Never render the raw value. Typed defaults are round numbers and
+            looked fine; a measured win rate is 18/42, and "42.857142857142854%"
+            went straight into the readout. A slider's number is always a
+            display, so it is always formatted. */}
+        <b>{fmt ? fmt(value) : Number.isInteger(value) ? value : n1(value, 1)}</b>
       </span>
       <input
         type="range" min={min} max={max} step={step} value={value}
@@ -487,6 +491,9 @@ export default function ExpectancyCalculator({ prefill = null, sampleSize = 0 })
           font-style: normal; font-size: 8.5px; letter-spacing: 0.08em;
           text-transform: uppercase; color: var(--ink3);
           border: 1px solid var(--rule); border-radius: 2px; padding: 1px 4px;
+          /* Two words in a 300px column wrapped the badge onto two lines and
+             dragged its own label with it. */
+          white-space: nowrap;
         }
         .ec-f small {
           display: block; font-size: 10.5px; line-height: 1.5;
