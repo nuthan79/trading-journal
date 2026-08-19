@@ -4,32 +4,29 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 /**
- * The four screens that answer "what does my history tell me", under one tab.
+ * The three screens that interpret the record, under one tab.
  *
- * WHY THEY WERE MERGED. Performance, Edge, Review and Mindset were four
- * top-level tabs out of eight, and every one of them is the same kind of
- * question asked at a different angle: what happened, what it is worth, what I
- * did wrong, how I felt doing it. Meanwhile Dashboard, Holdings, Trades and
- * Diary are four different kinds of thing entirely. A nav where half the items
- * are facets of one idea reads as a long list rather than as a structure, and
- * the list was about to grow again.
+ * WHAT IS IN HERE AND WHAT IS NOT. Performance sits outside, at the top level,
+ * and that line is the useful one: Performance reports what happened — which
+ * setups paid, month by month — and is consulted the way a statement is. Edge,
+ * Mindset and Review all take that record and argue something about it, which
+ * is a different act and a less frequent one.
  *
- * WHY SUB-TABS AND NOT ONE LONG PAGE. The obvious way to combine four screens
- * is to stack them, and it produces six thousand pixels whose bottom third is
+ * WHY SUB-TABS AND NOT ONE LONG PAGE. The obvious way to combine three screens
+ * is to stack them, and it produces thousands of pixels whose bottom third is
  * never seen. Sub-tabs keep the top nav short AND each screen whole, which is
  * the only version where combining is a gain rather than a filing decision.
  *
- * ORDER IS AN ARGUMENT. Performance is what happened; Edge is what that is
- * worth per trade and where it compounds to; Review is what went wrong;
- * Mindset is the state it went wrong in. Facts, then value, then fault, then
- * cause — each one only makes sense once the one before it has been read.
+ * ORDER IS AN ARGUMENT. Edge is what a trade is worth and where it compounds
+ * to; Mindset is the state it was taken in; Review is the verdict. Value, then
+ * cause, then fault — the verdict reads last because it is the one that only
+ * means something once the other two have been seen.
  */
 
 const SUB = [
-  { href: "/analysis/performance", label: "Performance" },
   { href: "/analysis/edge", label: "Edge" },
-  { href: "/analysis/review", label: "Review" },
   { href: "/analysis/mindset", label: "Mindset" },
+  { href: "/analysis/review", label: "Review" },
 ];
 
 export default function AnalysisLayout({ children }) {

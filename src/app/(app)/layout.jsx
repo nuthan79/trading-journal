@@ -48,32 +48,33 @@ function withExits(t, exitsByTrade) {
 }
 
 /**
- * Five tabs, because there are five kinds of thing here.
+ * Six tabs.
  *
- * Performance, Edge, Review and Mindset used to be four of eight, and all four
- * are the same question at different angles — what happened, what it is worth,
- * what went wrong, the state it went wrong in. They now live under Analysis
- * with their own sub-tabs. What remains at the top are genuinely different
- * things: what is true now, what is open, the ledger itself, what it all
- * means, and words.
+ * Performance stays at the top level because it is consulted like a statement
+ * — which setups paid, month by month — and that is a different act from the
+ * three screens under Analysis, which all take that record and argue something
+ * about it. Edge, Mindset and Review used to be three separate tabs saying
+ * three versions of "here is what your history means", which is what made the
+ * nav read as a list rather than a structure.
  */
 const TABS = [
   { id: "dash", href: "/dashboard", label: "Dashboard", icon: LayoutGrid },
   { id: "holdings", href: "/holdings", label: "Holdings", icon: Layers },
   { id: "trades", href: "/trades", label: "Trades", icon: Table2 },
+  { id: "perf", href: "/performance", label: "Performance", icon: LineChart },
   /*
-    Points at the sub-page, not at /analysis.
+    Points at the first sub-page, not at /analysis.
 
-    A bare /analysis with a server-side redirect() to the first sub-tab was the
-    tidier idea and it does not work here: this layout is a client component
-    that renders a sign-in card instead of `children` until a session resolves,
-    so the redirect never runs and the tab landed on an empty frame. `match`
-    is what the active-state test uses instead, so the tab still lights up on
-    all four sub-pages. A config redirect covers anyone arriving at /analysis
-    from a bookmark.
+    A bare /analysis with a server-side redirect() to it was the tidier idea
+    and does not work here: this layout is a client component that renders a
+    sign-in card instead of `children` until a session resolves, so the
+    redirect never runs and the tab landed on an empty frame. `match` is what
+    the active-state test uses instead, so the tab still lights up on all three
+    sub-pages. A config redirect covers anyone arriving at /analysis from a
+    bookmark.
   */
-  { id: "analysis", href: "/analysis/performance", match: "/analysis",
-    label: "Analysis", icon: LineChart },
+  { id: "analysis", href: "/analysis/edge", match: "/analysis",
+    label: "Analysis", icon: Target },
   { id: "diary", href: "/diary", label: "Diary", icon: BookOpen },
 ];
 
