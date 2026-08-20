@@ -36,6 +36,28 @@ export default function PeriodPerformance({ closed, openingCapital, flows = [], 
     [closed, grain, openingCapital, flows, basis, all]
   );
 
+  /**
+   * Newest period first — for DISPLAY only.
+   *
+   * The table had been running oldest-first, so the month you actually care
+   * about was at the bottom of nineteen rows and the screen opened on
+   * February of last year. Reversed, it opens on the most recent month at
+   * every grain.
+   *
+   * `rows` itself stays chronological and is what every calculation reads.
+   * That matters more than it looks: `byPeriod` compounds the capital base
+   * forward through the periods, so each row's return percentage depends on
+   * where the account stood when that period began. Reversing the array it
+   * computes from would silently rewrite the denominators. Sorting a copy at
+   * the point of rendering keeps the arithmetic and the presentation
+   * independent, which is the only version of this that cannot go wrong.
+   *
+   * Safe because nothing in the row markup looks at its neighbours or its
+   * index — each row is self-contained — and the totals below are all
+   * reduces and maxima, which do not care about order.
+   */
+  const shown = useMemo(() => [...rows].reverse(), [rows]);
+
   // Entries made in the period but not yet closed. They carry no R, so an
   // entry-basis row is only ever a partial verdict until they finish.
   const pending = useMemo(
@@ -146,7 +168,7 @@ export default function PeriodPerformance({ closed, openingCapital, flows = [], 
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
+            {shown.map((r) => (
               <tr key={r.key}>
                 <td><b style={{ fontWeight: 600 }}>{r.key}</b></td>
                 <td className="num"
