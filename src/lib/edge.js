@@ -123,6 +123,18 @@ export function adaptiveBander(values, { k, unit = "", dp = 1 } = {}) {
     const sep = lo < 0 || top < 0 ? " to " : "–";
     bands.push({
       i, lo: edges[i], hi,
+      /*
+        The bounds a filter must use — CLOSED, and in display space.
+
+        `lo`/`hi` above are the raw cut points and are half-open: a value equal
+        to `hi` belongs to the NEXT band. Filtering on those would put a trade
+        sitting exactly on a boundary into two buckets at once. `fLo`/`fHi` are
+        the pair the label actually claims — the same numbers a reader sees —
+        so a filter built from them selects precisely the trades the row
+        counted. fixedBander exposes the same two names with the same meaning,
+        which is what lets one comparison serve both kinds of band.
+      */
+      fLo: lo, fHi: top,
       label: point
         ? `${fmtNum(lo, dp)}${unit}`
         : `${fmtNum(lo, dp)}${sep}${fmtNum(top, dp)}${unit}`,
@@ -242,12 +254,26 @@ export function moneyBands(values, { target = 7 } = {}) {
  * a 15-day trade is in "6-15 d" and a 16-day one is not.
  */
 export function fixedBander(spec) {
-  const bands = spec.map((b, i) => ({
-    i,
-    lo: i === 0 ? -Infinity : spec[i - 1].max + 1,
-    hi: b.max,
-    label: b.label,
-  }));
+  const bands = spec.map((b, i) => {
+    const lo = i === 0 ? -Infinity : spec[i - 1].max + 1;
+    return {
+      i, lo, hi: b.max,
+      /*
+        EXCLUSIVE lower bound, matching what `label()` below actually does:
+        it takes the first band whose `max` the value does not exceed, so a
+        band owns everything above the previous band's max.
+
+        `lo` beside it is `prev.max + 1`, which reads correctly in a label
+        ("6–15 d") and is wrong as a filter the moment values are not whole
+        numbers — a ₹7,500.50 risk is labelled into the band above ₹7,500 and
+        would fail a `>= 7501` test, leaving one trade out of a list its own
+        row had counted. Days are integers and rupees are not, and the same
+        bander serves both.
+      */
+      fLo: i === 0 ? -Infinity : spec[i - 1].max, fHi: b.max,
+      label: b.label,
+    };
+  });
   const orderOf = new Map(bands.map((b) => [b.label, b.i]));
 
   return {
@@ -347,8 +373,13 @@ export function dimensionRows(closed, dimensionId, { accountSize = 0, bands } = 
     groups.get(k).push(t);
   }
 
+  /* Band edges by label, so a row can carry the numbers behind its own name.
+     See `edgeFilterFor` below for why the numbers and not the name travel. */
+  const edges = new Map(bandInfo.map((b) => [b.label, b]));
+
   const rows = [...groups.entries()].map(([key, trades]) => {
     const s = stats(trades);
+    const band = edges.get(key) || null;
     const values = trades.map((t) => t.exposure).filter(isFinite);
     const risks = trades.map((t) => t.riskAmt).filter(isFinite);
     const pnls = trades.map((t) => t.pnl).filter(isFinite);
@@ -358,6 +389,11 @@ export function dimensionRows(closed, dimensionId, { accountSize = 0, bands } = 
     return {
       ...s,
       key,
+      /* The numeric edges of this row's band, for continuous dimensions only.
+         Null on categorical rows and on NOT_RECORDED, both of which are
+         matched by name rather than by range. */
+      lo: band ? band.fLo : null,
+      hi: band ? band.fHi : null,
       trades: trades.length,
       netPnl,
       avgValue: mean(values),
@@ -391,3 +427,102 @@ export const maxAbsTotalR = (rows) =>
  */
 export const THIN_SLICE = 15;
 export const isThin = (row) => row.trades < THIN_SLICE;
+
+/* ==================================================================== */
+/*  Reaching the trades behind a row                                    */
+/* ==================================================================== */
+
+/**
+ * The query that takes a row on the edge table to the trades inside it.
+ *
+ * WHY THE NUMBERS TRAVEL AND NOT THE LABEL. Six of the ten dimensions are cut
+ * into ADAPTIVE quantile bands — "0.01–0.11%" is not a threshold anybody
+ * chose, it is wherever the quintile happened to fall for this particular set
+ * of trades. Sending that label to the trades screen and asking it to work out
+ * what it meant would require recomputing the same quantiles over the same
+ * set, and the trades screen holds a different set: it lists open positions
+ * too. The bands would shift, and the row would send you to trades it never
+ * counted. Silently, and only for some buckets.
+ *
+ * So the band is resolved to real numbers HERE, where it was cut, and the URL
+ * carries `lo` and `hi`. The trades screen then does arithmetic a child could
+ * check, with no notion of a quantile at all.
+ *
+ * `NOT_RECORDED` is matched by name in both kinds, because "this field is
+ * blank" is not a range.
+ */
+export function edgeFilterFor(dimensionId, row) {
+  const q = { dim: dimensionId };
+  if (row.key === NOT_RECORDED || row.lo == null || row.hi == null) {
+    q.key = row.key;
+  } else {
+    q.lo = String(row.lo);
+    q.hi = String(row.hi);
+    /* The row's own label, carried for the banner and nothing else — never
+       parsed back. Rebuilding "₹5k – ₹7.5k" or "0–5 d" from lo/hi meant a
+       second formatter that had to know about money, units and open-ended
+       bands, and it already disagreed with the table ("up to 5" for "0–5 d").
+       Sending the string the row printed makes the two impossible to
+       diverge. */
+    q.band = row.key;
+  }
+  return q;
+}
+
+/** The same query as a `/trades` href. One place builds these. */
+export function edgeHref(dimensionId, row) {
+  const q = edgeFilterFor(dimensionId, row);
+  return `/trades?${new URLSearchParams(q).toString()}`;
+}
+
+/**
+ * Does this trade belong to that filter?
+ *
+ * Deliberately reuses each dimension's own `value()` / `get()`, so the
+ * membership test on the trades screen is the identical function that put the
+ * trade in the bucket in the first place. Two implementations of "what counts
+ * as a 2.5% stop" would eventually disagree, and the disagreement would show
+ * as a row claiming 26 trades and a list showing 24.
+ */
+export function matchesEdgeFilter(t, { dim, key, lo, hi } = {}) {
+  const d = DIMENSIONS.find((x) => x.id === dim);
+  if (!d) return true;
+
+  if (d.continuous) {
+    const v = d.value(t);
+    if (key === NOT_RECORDED) return !isFinite(v);
+    if (!isFinite(v)) return false;
+    /*
+      Round exactly as this dimension's bander did, and not otherwise.
+
+      adaptiveBander cuts its bands on DISPLAY values — a stop stored as
+      17.9758 reads as 18.0, and the row that counted it is labelled "18%", so
+      the filter has to round before comparing or it drops trades the row
+      promised. fixedBander does the opposite: its edges are round numbers and
+      it tests the raw value, so ₹7,500.40 belongs above ₹7,500 and rounding
+      would pull it down a band.
+
+      `d.fixed` is precisely the flag for which bander ran, so it is also the
+      right flag for which comparison to use. Getting this wrong is not a
+      crash — it is a row saying 22 trades and the list showing 23.
+    */
+    // -Infinity and Infinity survive String() and Number() intact, so the
+    // open-ended first and last bands need no special case.
+    const a = Number(lo), b = Number(hi);
+    // Fixed bands are (lo, hi] — exclusive below, per `label()`. Adaptive
+    // bands are [lo, hi] on the rounded value, per the label they print.
+    if (d.fixed) return v > a && v <= b;
+    const scale = Math.pow(10, d.dp ?? 0);
+    const r = Math.round(v * scale) / scale;
+    return r >= a && r <= b;
+  }
+  return d.get(t) === key;
+}
+
+/** What the trades screen says it is showing. Built from the same pieces, so
+ *  the banner cannot describe one filter while another is applied. */
+export function describeEdgeFilter({ dim, key, band } = {}) {
+  const d = DIMENSIONS.find((x) => x.id === dim);
+  if (!d) return null;
+  return { label: d.label, value: key != null ? key : band };
+}

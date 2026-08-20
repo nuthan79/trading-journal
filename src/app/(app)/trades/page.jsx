@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Trades from "@/components/journal/Trades";
 import { useJournal } from "../JournalContext";
@@ -21,6 +21,31 @@ function TradesInner() {
   const mistake = params.get("mistake") || "";
   const missing = params.get("missing") || "";
 
+  /*
+    A bucket from "Where the edge is". `dim` names the dimension; a categorical
+    row sends `key`, a banded row sends the numeric `lo`/`hi` it was cut at
+    plus the `band` label purely so this screen can name what it is showing.
+
+    The numbers travel rather than the band label because six of the ten
+    dimensions are cut into ADAPTIVE quantile bands — reproducing them here
+    would mean recomputing quantiles over a different set of trades, since this
+    screen lists open positions too, and the row would send you to trades it
+    never counted.
+  */
+  /* Memoised on the query string itself: rebuilding this object every render
+     would give Trades' row filter a new dependency each time and make it
+     recompute over the whole journal for nothing. */
+  const edgeKey = params.toString();
+  const edge = useMemo(() => (params.get("dim")
+    ? {
+        dim: params.get("dim"),
+        key: params.get("key") ?? undefined,
+        lo: params.get("lo") ?? undefined,
+        hi: params.get("hi") ?? undefined,
+        band: params.get("band") ?? undefined,
+      }
+    : null), [edgeKey]);   // eslint-disable-line react-hooks/exhaustive-deps
+
   const { all, diary, saveDiaryEntry, removeChartFromEntry,
           openEditTrade, openExitTrade, removeTrade, openNewTrade } = useJournal();
 
@@ -30,6 +55,7 @@ function TradesInner() {
       diary={diary}
       mistake={mistake}
       missing={missing}
+      edge={edge}
       onClearFilter={() => router.push("/trades")}
       onAttachChart={saveDiaryEntry}
       onRemoveChart={removeChartFromEntry}

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { dimensionRows, DIMENSIONS, maxAbsTotalR, isThin, NOT_RECORDED } from "@/lib/edge";
+import { dimensionRows, DIMENSIONS, maxAbsTotalR, isThin, NOT_RECORDED, edgeHref } from "@/lib/edge";
 import { mistakeCost, outcomeTagCounts } from "@/lib/analysis";
 import { isExecutionError } from "@/lib/constants";
 import { rupee, rfmt, pct } from "@/lib/format";
@@ -57,6 +57,7 @@ export default function Edge({ closed = [], accountSize }) {
             <div className="eyebrow">Where the edge is</div>
             <div style={{ fontSize: 12, color: "var(--ink2)", marginTop: 3 }}>
               Same trades, cut a different way. Expectancy is the column that matters.
+              <b> Click any row</b> to see the trades in it.
             </div>
           </div>
         </div>
@@ -82,12 +83,18 @@ export default function Edge({ closed = [], accountSize }) {
                 const wpx = (Math.abs(g.totalR) / maxAbs) * 100;
                 return (
                   <tr key={g.key} style={{ opacity: isThin(g) ? 0.55 : 1 }}>
+                    {/* The row is the way in, exactly as it is in the mistakes
+                        table below. A table that costs a slice out and then
+                        offers no route to the trades inside it is where the
+                        reader has to go and find them by hand. */}
                     <td>
-                      {g.key === NOT_RECORDED ? (
-                        <span style={{ fontStyle: "italic", color: "var(--ink3)" }}>{g.key}</span>
-                      ) : (
-                        <b style={{ fontWeight: 500 }}>{g.key}</b>
-                      )}
+                      <Link className="mk-link" href={edgeHref(dim, g)}
+                            title={`See the ${g.trades} trade${g.trades === 1 ? "" : "s"} in ${g.key}`}
+                            style={g.key === NOT_RECORDED
+                              ? { fontStyle: "italic", color: "var(--ink3)" }
+                              : { fontWeight: 500 }}>
+                        {g.key}
+                      </Link>
                     </td>
                     <td className="num">{g.n}</td>
                     <td className="num">{pct(g.winRate, 0)}</td>

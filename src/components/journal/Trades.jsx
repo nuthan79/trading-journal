@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { matchesEdgeFilter, describeEdgeFilter } from "@/lib/edge";
 import { Plus, Pencil, Trash2, Download, Image as ImageIcon, X } from "lucide-react";
 import { rupee, rfmt, pct, signedPct } from "@/lib/format";
 import PositionDetail from "./PositionDetail";
@@ -26,7 +27,7 @@ function exportCsv(all) {
 }
 
 export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNew,
-                                 onAttachChart, onRemoveChart, mistake = "", missing = "", onClearFilter }) {
+                                 onAttachChart, onRemoveChart, mistake = "", missing = "", edge = null, onClearFilter }) {
   const [filter, setFilter] = useState("all");
   const [q, setQ] = useState("");
   const [sort, setSort] = useState({ k: "entry_date", dir: -1 });
@@ -51,6 +52,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
   }, [diary]);
 
   const missingField = SETUP_FIELDS.find((f) => f.key === missing) || null;
+  const edgeDesc = useMemo(() => (edge ? describeEdgeFilter(edge) : null), [edge]);
 
   const rows = useMemo(() => {
     let r = all;
@@ -64,6 +66,21 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
     // and forty is how a prompt stops being trusted.
     if (missingField) {
       r = r.filter((t) => t.status === "closed" && !missingField.has(t));
+    }
+
+    /*
+      Arrives from a row on "Where the edge is". CLOSED ONLY, because that
+      table is built from closed trades — an open position has no R and was
+      never in the bucket, so including it here would show more trades than
+      the row said and make the count look wrong.
+
+      The membership test is edge.js's own, the same function that put the
+      trade in the bucket. Writing a second one here would eventually disagree
+      with the first, and the disagreement would surface as a row claiming 26
+      trades and this list showing 24.
+    */
+    if (edge) {
+      r = r.filter((t) => t.status === "closed" && matchesEdgeFilter(t, edge));
     }
     if (filter === "open") r = r.filter((t) => t.status === "open");
     if (filter === "closed") r = r.filter((t) => t.status === "closed");
@@ -80,7 +97,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
         return ((isFinite(av) ? av : -1e12) - (isFinite(bv) ? bv : -1e12)) * sort.dir;
       return String(av || "").localeCompare(String(bv || "")) * sort.dir;
     });
-  }, [all, mistake, missingField, filter, q, sort]);
+  }, [all, mistake, missingField, edge, filter, q, sort]);
 
   // Resolved by id against the filtered list, not held as an object: change
   // the filter or the sort while it's open and the panel follows the row,
@@ -122,12 +139,17 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
 
   return (
     <div className="sec">
-      {(mistake || missingField) && (
+      {(mistake || missingField || edgeDesc) && (
         <div className="tr-chip">
           <span>
             {mistake
               ? <>Showing trades tagged <b>{mistake}</b></>
-              : <>Closed trades with no <b>{missingField.label}</b> recorded — open each and add it</>}
+              : missingField
+              ? <>Closed trades with no <b>{missingField.label}</b> recorded — open each and add it</>
+              /* The band label is the row's own string, carried in the URL and
+                 printed verbatim — so this can never describe a slightly
+                 different slice than the row that sent you here. */
+              : <>Closed trades where <b>{edgeDesc.label}</b> is <b>{edgeDesc.value}</b></>}
           </span>
           <span className="tr-chip-n">{rows.length} of {all.length}</span>
           <button className="btn ghost sm" onClick={onClearFilter}>
