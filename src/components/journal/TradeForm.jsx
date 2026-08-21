@@ -579,9 +579,30 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
     }
   };
 
+  /*
+    NO CLICK-OUTSIDE TO DISMISS, and this is the one modal in the app where
+    that is right.
+
+    Logging a trade is not a form you fill in one sitting. You go back to the
+    chart for the pivot, again for the volume, again to check where the stop
+    actually sits — and every trip out and back is a chance to land a click on
+    the backdrop. Doing so used to close the sheet AND call clearDraft(), which
+    deletes the autosaved copy: the one mechanism that would otherwise have got
+    the work back. Twenty fields gone to a stray click, with no undo and nothing
+    to say it happened.
+
+    So this sheet closes on Log trade, Cancel, or the X in its header — all
+    three deliberate, and the X is sticky so it is always reachable. There is no
+    Escape handler here either, which means those three are the complete list of
+    ways out.
+
+    The other three sheets keep click-outside on purpose: Position detail is a
+    viewer, and Profile and Settings hold a handful of fields rather than a form
+    built over several visits to a chart.
+  */
   return (
-    <div className="modal" onMouseDown={(e) => e.target === e.currentTarget && closeAndClear()}>
-      <div className="sheet" onMouseDown={(e) => e.stopPropagation()}>
+    <div className="modal">
+      <div className="sheet">
         <div className="sheethead">
           <div>
             <div className="eyebrow">{editing ? "Edit trade" : "New trade"}</div>
