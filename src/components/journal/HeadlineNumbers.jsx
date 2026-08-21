@@ -81,21 +81,6 @@ export default function HeadlineNumbers({ closed, openingCapital, flows = [] }) 
           hint: `${rupee(h.maxDDAmt)} at the worst point — what you actually had to sit through` },
         { label: "Avg hold", value: days(h.avgHold) },
       ],
-      /*
-        The sentence that joins the two bands above and below it.
-
-        Everything above is money; everything below is R. This is the exchange
-        rate between them, and without it the second band is unreadable to
-        anyone who has not internalised the unit — "+123.57R" means nothing
-        until you know what one R was worth.
-
-        A line rather than a tile because it is the only figure here that
-        exists to explain other figures, and because the R band was already
-        the most crowded row on the screen.
-      */
-      bridge: isFinite(h.avgRisk)
-        ? { avgRisk: h.avgRisk, avgRiskPct: h.avgRiskPct, n: h.nWithRisk }
-        : null,
     },
     {
       label: assumed > 0 ? "In R — against an assumed stop" : "In R",
@@ -113,6 +98,27 @@ export default function HeadlineNumbers({ closed, openingCapital, flows = [] }) 
           tone: sign(h.expectancy),
           hint: "Average R per trade — the number that travels between traders",
         }),
+        /*
+          Sits beside Expectancy on purpose, and it is what makes the rest of
+          this band legible: "+1.03R a trade" says nothing until you know what
+          an R is worth. Everything above it is money, everything around it is
+          R, and this is the rate between them.
+
+          It also completes the row. Nine tiles in a five-column grid left one
+          empty box; ten fills both lines exactly, which is the difference
+          between a grid and a grid with a hole in it.
+
+          MEASURED, NOT INFERRED — see `avgRisk` in calc.js. netPnl ÷ totalR
+          lands nearby and is a different figure: R-weighted, and after charges.
+        */
+        rCell("Risk per trade", (
+          <>
+            {rupee(h.avgRisk)}
+            {isFinite(h.avgRiskPct) && (
+              <span className="hn-sub"> · {pct(h.avgRiskPct, 2)}</span>
+            )}
+          </>
+        ), { hint: "The average money at risk on a trade — what one R is worth" }),
         rCell("Profit factor", isFinite(h.profitFactor) ? h.profitFactor.toFixed(2) : "∞"),
         rCell("Payoff ratio", isFinite(h.payoff) ? h.payoff.toFixed(2) : "∞", {
           hint: "Average win divided by average loss",
@@ -163,19 +169,6 @@ export default function HeadlineNumbers({ closed, openingCapital, flows = [] }) 
             {band.cells.map((c, i) => <Cell key={i} {...c} />)}
           </div>
 
-          {band.bridge && (
-            <div className="hn-bridge">
-              <span className="hn-bridge-rule" />
-              <p>
-                An average trade risked{" "}
-                <b>{rupee(band.bridge.avgRisk)}</b>
-                {isFinite(band.bridge.avgRiskPct) && (
-                  <> — <b>{pct(band.bridge.avgRiskPct, 2)}</b> of capital</>
-                )}
-                . That is what one <b>R</b> below is worth.
-              </p>
-            </div>
-          )}
         </div>
       ))}
 
@@ -222,27 +215,10 @@ export default function HeadlineNumbers({ closed, openingCapital, flows = [] }) 
            reflow to any column count without nth-child arithmetic. */
         .hn-band { margin-bottom: 12px; }
         .hn-band:last-of-type { margin-bottom: 0; }
-        /*
-          The exchange rate between the two bands it sits between.
-
-          Deliberately not a tile: every figure on this screen is an outcome,
-          and this one is a unit — it exists to make the R band readable rather
-          than to be compared with anything. A rule down its left marks it as
-          an aside rather than another number in the run.
-        */
-        .hn-bridge {
-          display: flex; gap: 11px; align-items: stretch;
-          margin: 11px 0 0;
-        }
-        .hn-bridge-rule {
-          width: 2px; background: var(--brass); border-radius: 2px; flex: none;
-        }
-        .hn-bridge p {
-          margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--ink2);
-          align-self: center;
-        }
-        .hn-bridge b { color: var(--ink); font-weight: 600;
-                       font-variant-numeric: tabular-nums; }
+        /* A second figure in the same tile, subordinate to the first. The
+           rupee number is the answer; the percentage is the same answer in the
+           unit the rest of the board uses, and should not compete with it. */
+        .hn-sub { font-size: 0.68em; color: var(--ink3); }
         .hn-band-l {
           font-family: 'Archivo', sans-serif; font-size: 9px; font-weight: 600;
           letter-spacing: 0.11em; text-transform: uppercase; color: var(--ink3);
