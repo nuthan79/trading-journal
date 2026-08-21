@@ -81,9 +81,32 @@ export default function HeadlineNumbers({ closed, openingCapital, flows = [] }) 
           hint: `${rupee(h.maxDDAmt)} at the worst point — what you actually had to sit through` },
         { label: "Avg hold", value: days(h.avgHold) },
       ],
+      /*
+        The sentence that joins the two bands above and below it.
+
+        Everything above is money; everything below is R. This is the exchange
+        rate between them, and without it the second band is unreadable to
+        anyone who has not internalised the unit — "+123.57R" means nothing
+        until you know what one R was worth.
+
+        A line rather than a tile because it is the only figure here that
+        exists to explain other figures, and because the R band was already
+        the most crowded row on the screen.
+      */
+      bridge: isFinite(h.avgRisk)
+        ? { avgRisk: h.avgRisk, avgRiskPct: h.avgRiskPct, n: h.nWithRisk }
+        : null,
     },
     {
       label: assumed > 0 ? "In R — against an assumed stop" : "In R",
+      /* Nine across on a wide page is a 160px tile — much narrower than
+         either neighbour, and the reason this row read as crowded. Five puts
+         it on two lines at 279px, exactly matching the band below it.
+
+         The money band stays on one row of seven: breaking it to five would
+         leave an orphan pair on a second line, which is worse than a tile
+         eighty pixels narrower. Nine wanted splitting, seven does not. */
+      cols: 5,
       cells: [
         rCell("Total R", rfmt(h.totalR), { tone: sign(h.totalR) }),
         rCell("Expectancy", rfmt(h.expectancy), {
@@ -136,9 +159,23 @@ export default function HeadlineNumbers({ closed, openingCapital, flows = [] }) 
           <div className="hn-band-l">{band.label}</div>
           {/* Its own column count, so each band is one clean row on a wide
               screen instead of wrapping around whatever the widest needs. */}
-          <div className="hn-grid" style={{ "--n": band.cells.length }}>
+          <div className="hn-grid" style={{ "--n": band.cols || band.cells.length }}>
             {band.cells.map((c, i) => <Cell key={i} {...c} />)}
           </div>
+
+          {band.bridge && (
+            <div className="hn-bridge">
+              <span className="hn-bridge-rule" />
+              <p>
+                An average trade risked{" "}
+                <b>{rupee(band.bridge.avgRisk)}</b>
+                {isFinite(band.bridge.avgRiskPct) && (
+                  <> — <b>{pct(band.bridge.avgRiskPct, 2)}</b> of capital</>
+                )}
+                . That is what one <b>R</b> below is worth.
+              </p>
+            </div>
+          )}
         </div>
       ))}
 
@@ -185,6 +222,27 @@ export default function HeadlineNumbers({ closed, openingCapital, flows = [] }) 
            reflow to any column count without nth-child arithmetic. */
         .hn-band { margin-bottom: 12px; }
         .hn-band:last-of-type { margin-bottom: 0; }
+        /*
+          The exchange rate between the two bands it sits between.
+
+          Deliberately not a tile: every figure on this screen is an outcome,
+          and this one is a unit — it exists to make the R band readable rather
+          than to be compared with anything. A rule down its left marks it as
+          an aside rather than another number in the run.
+        */
+        .hn-bridge {
+          display: flex; gap: 11px; align-items: stretch;
+          margin: 11px 0 0;
+        }
+        .hn-bridge-rule {
+          width: 2px; background: var(--brass); border-radius: 2px; flex: none;
+        }
+        .hn-bridge p {
+          margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--ink2);
+          align-self: center;
+        }
+        .hn-bridge b { color: var(--ink); font-weight: 600;
+                       font-variant-numeric: tabular-nums; }
         .hn-band-l {
           font-family: 'Archivo', sans-serif; font-size: 9px; font-weight: 600;
           letter-spacing: 0.11em; text-transform: uppercase; color: var(--ink3);

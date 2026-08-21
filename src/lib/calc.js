@@ -476,6 +476,26 @@ export function headline(closed, { openingCapital = 0, flows = [] } = {}) {
   const decided = rows.filter((t) => isFinite(t.pnl));
   const wonByCount = decided.filter((t) => t.pnl > 0).length;
 
+  /**
+   * What a trade actually put at risk, in money — the bridge between the
+   * rupee figures and the R ones.
+   *
+   * MEASURED, NOT INFERRED. The tempting shortcut is netPnl ÷ totalR, which
+   * also lands on "rupees per R" and needs no new arithmetic. It is a
+   * different number: it weights each trade by how far it ran, so one 17R
+   * winner taken on an oversized position drags it well away from what a
+   * typical trade risked. Worse, netPnl is after charges while R is not, so
+   * the quotient quietly folds brokerage into a figure labelled "risk". The
+   * mean of what was actually staked answers the question that was asked.
+   *
+   * Only over trades carrying a real risk figure. Free shares have no stop to
+   * divide by and never will, and averaging a zero in for them would report a
+   * smaller typical bet than was ever placed.
+   */
+  const riskAmts = rows.map((t) => t.riskAmt).filter((v) => isFinite(v) && v > 0);
+  const avgRisk = riskAmts.length
+    ? riskAmts.reduce((a, b) => a + b, 0) / riskAmts.length : NaN;
+
   return {
     ...s,
     // Overrides the count stats() reports, which only counts what had a stop.
@@ -494,6 +514,13 @@ export function headline(closed, { openingCapital = 0, flows = [] } = {}) {
       (t) => !isFinite(t.r) && t.acquisition !== "bonus"
     ).length,
     nFree: rows.filter((t) => t.acquisition === "bonus").length,
+
+    avgRisk,
+    /* Against the capital that was committed, the same base the return
+       percentage uses — so "0.20% a trade" and "19.5% overall" are quoted
+       against the same denominator and can be read together. */
+    avgRiskPct: isFinite(avgRisk) && capitalBase > 0 ? (avgRisk / capitalBase) * 100 : NaN,
+    nWithRisk: riskAmts.length,
 
     winRateByCount: decided.length ? (wonByCount / decided.length) * 100 : NaN,
     avgGainPct: gains.length ? gains.reduce((a, b) => a + b, 0) / gains.length : NaN,
