@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { X } from "lucide-react";
 
 /**
  * Type three characters, pick a stock.
@@ -76,6 +77,7 @@ export default function SymbolSearch({ value, exchange, onPick, autoFocus }) {
   const [open, setOpen] = useState(false);
   const [hi, setHi] = useState(0);
   const boxRef = useRef(null);
+  const inputRef = useRef(null);
 
   useEffect(() => { loadSymbols().then(setList); }, []);
   useEffect(() => { setQ(value || ""); }, [value]);
@@ -127,7 +129,8 @@ export default function SymbolSearch({ value, exchange, onPick, autoFocus }) {
   return (
     <div ref={boxRef} className="ss">
       <input
-        className="in"
+        ref={inputRef}
+        className="in ss-in"
         autoFocus={autoFocus}
         value={q}
         placeholder="Type 3 letters — TATA, RELI, HDFC"
@@ -139,6 +142,23 @@ export default function SymbolSearch({ value, exchange, onPick, autoFocus }) {
         aria-autocomplete="list"
         aria-expanded={open}
       />
+
+      {/*
+        Clearing goes through `type("")` rather than setting state directly,
+        so the parent form is told the symbol is gone. Setting only the local
+        value would empty the box while the trade being edited quietly kept
+        the old ticker — visible nowhere until it was saved.
+
+        The dropdown needs no handling: it renders only past two characters,
+        so it closes itself. Focus returns to the field because clearing a
+        search is almost always the start of typing a different one.
+      */}
+      {q && (
+        <button type="button" className="ss-clear" aria-label="Clear symbol"
+                onClick={() => { type(""); inputRef.current?.focus(); }}>
+          <X size={13} />
+        </button>
+      )}
 
       {open && q.trim().length >= 2 && (
         <div className="ss-pop" role="listbox">
@@ -170,6 +190,24 @@ export default function SymbolSearch({ value, exchange, onPick, autoFocus }) {
 
       <style jsx>{`
         .ss { position: relative; }
+        /* Room for the button, so a long ticker never runs under it. */
+        .ss-in { padding-right: 30px; }
+        /*
+          Matches the clear on the trades search: centred on the field, sized
+          to the tap target rather than to the glyph, so it stays easy to hit
+          while reading as punctuation inside the box rather than as a control
+          beside it.
+        */
+        .ss-clear {
+          position: absolute; top: 50%; right: 5px; transform: translateY(-50%);
+          display: flex; align-items: center; justify-content: center;
+          width: 20px; height: 20px; padding: 0;
+          background: none; border: 0; border-radius: 50%;
+          color: var(--ink3); cursor: pointer;
+          transition: color 120ms ease, background 120ms ease;
+        }
+        .ss-clear:hover { color: var(--ink); background: var(--rule); }
+        .ss-clear:active { transform: translateY(-50%) scale(0.92); }
         .ss-pop {
           position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 40;
           background: #fff; border: 1px solid var(--rule); border-radius: 3px;
