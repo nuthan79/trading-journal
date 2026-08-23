@@ -164,8 +164,25 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
           ))}
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <input className="in" style={{ width: 180, padding: "6px 10px", fontSize: 13 }}
-                 placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} />
+          {/*
+            The clear button lives INSIDE the field, which is why the wrapper
+            exists. Extra right padding on the input keeps a long symbol from
+            running underneath it.
+
+            It renders only when there is something to clear — a permanent X
+            beside an empty box is a control that does nothing most of the time,
+            and it would sit there competing with the placeholder.
+          */}
+          <div className="tr-search">
+            <input className="in" placeholder="Search" value={q}
+                   onChange={(e) => setQ(e.target.value)} />
+            {q && (
+              <button type="button" className="tr-clear" aria-label="Clear search"
+                      onClick={() => setQ("")}>
+                <X size={13} />
+              </button>
+            )}
+          </div>
           <button className="btn ghost sm" onClick={() => exportCsv(all)}><Download size={13} />CSV</button>
         </div>
       </div>
@@ -346,6 +363,26 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
       )}
 
       <style jsx>{`
+        .tr-search { position: relative; width: 180px; }
+        .tr-search .in {
+          padding: 6px 28px 6px 10px; font-size: 13px;
+        }
+        /*
+          Centred on the field rather than the text, and sized to the tap
+          target rather than to the glyph — so it stays comfortable to hit
+          while the mark itself stays small enough to read as punctuation
+          instead of as a second control competing with CSV beside it.
+        */
+        .tr-clear {
+          position: absolute; top: 50%; right: 4px; transform: translateY(-50%);
+          display: flex; align-items: center; justify-content: center;
+          width: 20px; height: 20px; padding: 0;
+          background: none; border: 0; border-radius: 50%;
+          color: var(--ink3); cursor: pointer;
+          transition: color 120ms ease, background 120ms ease;
+        }
+        .tr-clear:hover { color: var(--ink); background: var(--rule); }
+        .tr-clear:active { transform: translateY(-50%) scale(0.92); }
         .tr-chip {
           display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
           border-left: 2px solid var(--brass); padding: 7px 0 7px 10px;
