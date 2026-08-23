@@ -118,7 +118,29 @@ export default function HeadlineNumbers({ closed, openingCapital, flows = [] }) 
               <span className="hn-sub"> · {pct(h.avgRiskPct, 2)}</span>
             )}
           </>
-        ), { hint: "The average money at risk on a trade — what one R is worth" }),
+        ), {
+          /*
+            WHAT THIS IS NOT: what one R is worth. The old hint said that, and
+            it invited exactly the arithmetic it fails — average risk × total R
+            does not come back to net P&L, and cannot, unless every trade
+            risked the same. The two differ by n × covariance(R, risk), which
+            on a compounding account is large and negative: risk grows with the
+            balance while the early, richest R was earned on the smallest
+            positions.
+
+            So the hint now carries the spread instead, which is the thing
+            actually worth knowing — and it says the opposite when sizing has
+            been consistent, because a trader doing it right should be told so
+            rather than warned about a problem they do not have.
+          */
+          hint: h.riskVaries
+            ? `Most trades risked between ${rupee(h.riskLo)} and ${rupee(h.riskHi)}. ` +
+              `1R has grown with the account, so a +2R early on and a +2R lately ` +
+              `are different amounts of money — total R adds them as though they ` +
+              `were the same.`
+            : "The average money put at risk on a trade. Your sizing is consistent, " +
+              "so 1R means much the same throughout your record.",
+        }),
         rCell("Profit factor", isFinite(h.profitFactor) ? h.profitFactor.toFixed(2) : "∞"),
         rCell("Payoff ratio", isFinite(h.payoff) ? h.payoff.toFixed(2) : "∞", {
           hint: "Average win divided by average loss",

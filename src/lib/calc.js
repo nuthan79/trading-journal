@@ -484,9 +484,16 @@ export function headline(closed, { openingCapital = 0, flows = [] } = {}) {
    * also lands on "rupees per R" and needs no new arithmetic. It is a
    * different number: it weights each trade by how far it ran, so one 17R
    * winner taken on an oversized position drags it well away from what a
-   * typical trade risked. Worse, netPnl is after charges while R is not, so
-   * the quotient quietly folds brokerage into a figure labelled "risk". The
-   * mean of what was actually staked answers the question that was asked.
+   * typical trade risked.
+   *
+   * (An earlier note here claimed the quotient also folded charges in, on the
+   * grounds that netPnl is after them and R is not. That was simply wrong — r
+   * is pnl / riskAmt and pnl is already net, so R is after charges too. The
+   * conclusion stands on the weighting alone.)
+   *
+   * The two differ by exactly n × covariance(R, risk): multiplying this
+   * average by total R returns net P&L only when every trade risked the same.
+   * The mean of what was actually staked answers the question that was asked.
    *
    * Only over trades carrying a real risk figure. Free shares have no stop to
    * divide by and never will, and averaging a zero in for them would report a
@@ -495,6 +502,27 @@ export function headline(closed, { openingCapital = 0, flows = [] } = {}) {
   const riskAmts = rows.map((t) => t.riskAmt).filter((v) => isFinite(v) && v > 0);
   const avgRisk = riskAmts.length
     ? riskAmts.reduce((a, b) => a + b, 0) / riskAmts.length : NaN;
+
+  /**
+   * How much 1R itself has varied — the caveat under every R figure here.
+   *
+   * R is only a unit while it means the same thing each time. On an account
+   * that has compounded it does not: risk grows with the balance, so a +2R
+   * from two years ago and a +2R from last month are different amounts of
+   * money, and total R adds them as though they were the same. That is not a
+   * fault — sizing up as the account grows is correct — but it is the most
+   * important thing left unsaid about the R band.
+   *
+   * TENTH AND NINETIETH PERCENTILE, not min and max. One unusually small
+   * position would otherwise report a four-fold spread on an otherwise
+   * disciplined record, and the figure is there to describe the habit rather
+   * than to find its extremes.
+   */
+  const sortedRisk = [...riskAmts].sort((a, b) => a - b);
+  const at = (q) => sortedRisk.length
+    ? sortedRisk[Math.min(sortedRisk.length - 1, Math.floor(sortedRisk.length * q))]
+    : NaN;
+  const riskLo = at(0.1), riskHi = at(0.9);
 
   return {
     ...s,
@@ -516,6 +544,13 @@ export function headline(closed, { openingCapital = 0, flows = [] } = {}) {
     nFree: rows.filter((t) => t.acquisition === "bonus").length,
 
     avgRisk,
+    riskLo, riskHi,
+    /* Below this the spread is not worth mentioning, and saying it anyway
+       would nag a trader whose sizing is consistent — which is the behaviour
+       being asked for. 1.5x is about where "1R means the same thing" stops
+       being true enough to leave unqualified. */
+    riskVaries: isFinite(riskLo) && isFinite(riskHi) && riskLo > 0
+      && riskHi / riskLo >= 1.5,
     /* Against the capital that was committed, the same base the return
        percentage uses — so "0.20% a trade" and "19.5% overall" are quoted
        against the same denominator and can be read together. */
