@@ -44,26 +44,9 @@ export default function Summary({ closed, openingCapital, flows = [] }) {
     <section className="sum-card">
       <div className="sum-head">
         <span className="eyebrow">Summary</span>
+        <span className="sum-range mono">{s.from} → {s.to}</span>
       </div>
 
-      {/*
-        Two columns, and the second one exists to occupy the right edge.
-
-        The narrative is capped at 92 characters because past that a line is
-        genuinely hard to track, and the card spans the full 1440px — so a
-        single paragraph left roughly six hundred pixels of nothing against
-        the right border. That read as a fault rather than as a margin, and
-        was flagged as one more than once.
-
-        Widening the measure was the obvious answer and the wrong one: it
-        trades a layout complaint for a reading one. What actually fixes it is
-        putting something at the far edge, because whitespace between two
-        blocks is a gutter while the same whitespace after the last block is a
-        hole. The column holds what was already here and did not belong in the
-        sentence — when the record starts and ends, and how much of it is
-        measurable — so nothing was invented to fill it.
-      */}
-      <div className="sum-cols">
       {s.hasR ? (
         <p className="sum-body">
           {s.trades} closed trades over {s.monthsSpan} months. Expectancy{" "}
@@ -75,6 +58,10 @@ export default function Summary({ closed, openingCapital, flows = [] }) {
           losing run <Fig tone="risk">{s.worstStreak}</Fig> trading day{s.worstStreak === 1 ? "" : "s"}.
           {" "}{s.greenMonths} of {s.totalMonths} months and {s.greenQuarters} of{" "}
           {s.totalQuarters} quarters finished green.
+          {s.needStop > 0 && (
+            <> Measured across the {s.withR} with a stop recorded;{" "}
+            <Fig tone="risk">{s.needStop}</Fig> more are waiting on one.</>
+          )}
         </p>
       ) : (
         // Nothing here has a stop yet, so there is no risk to divide by and no
@@ -91,27 +78,6 @@ export default function Summary({ closed, openingCapital, flows = [] }) {
         </p>
       )}
 
-        <aside className="sum-meta">
-          <div className="sum-meta-row">
-            <span>Covering</span>
-            <b className="mono">{s.from} → {s.to}</b>
-          </div>
-          {s.hasR && (
-            <div className="sum-meta-row">
-              <span>Measured on</span>
-              <b className="mono">{s.withR} of {s.trades}</b>
-              {s.needStop > 0 && (
-                <small>
-                  {s.needStop} more {s.needStop === 1 ? "is" : "are"} waiting on a
-                  stop — until then {s.needStop === 1 ? "it sits" : "they sit"} out
-                  of every R figure here.
-                </small>
-              )}
-            </div>
-          )}
-        </aside>
-      </div>
-
       <style jsx>{`
         .sum-card {
           border: 1px solid var(--rule);
@@ -124,51 +90,7 @@ export default function Summary({ closed, openingCapital, flows = [] }) {
           gap: 14px; border-bottom: 1px solid var(--rule);
           padding-bottom: 9px; margin-bottom: 13px;
         }
-        /*
-          Prose left at its readable measure, meta pinned to the right edge.
-
-          The second column is sized to its content rather than given a
-          fraction of the row: the slack then lands between the two blocks,
-          which is a gutter. Give that column a fraction and the slack
-          reappears inside it against the border, which is the thing being
-          fixed.
-        */
-        .sum-cols {
-          display: grid;
-          grid-template-columns: minmax(0, 1fr) auto;
-          gap: 14px 46px;
-          align-items: start;
-        }
-        .sum-meta {
-          border-left: 1px solid var(--rule); padding-left: 20px;
-          display: flex; flex-direction: column; gap: 12px;
-          max-width: 260px;
-        }
-        .sum-meta-row span {
-          display: block; font-family: 'Archivo', sans-serif; font-size: 9.5px;
-          letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink3);
-          margin-bottom: 3px;
-        }
-        .sum-meta-row b { font-size: 13px; font-weight: 600; color: var(--ink2); }
-        .sum-meta-row small {
-          display: block; font-size: 11px; line-height: 1.55;
-          color: var(--ink3); margin-top: 5px;
-        }
-        /*
-          AFTER the .sum-meta rules, not before them.
-
-          Written above, this had identical specificity to the base rule and
-          simply lost to it: the column stacked correctly while keeping the
-          left border and indent it only has as a divider between two columns.
-          Broken on every phone, fine on every desktop, and no error anywhere.
-        */
-        @media (max-width: 900px) {
-          .sum-cols { grid-template-columns: 1fr; }
-          .sum-meta {
-            border-left: 0; padding-left: 0; max-width: none;
-            border-top: 1px solid var(--rule); padding-top: 12px;
-          }
-        }
+        .sum-range { font-size: 11px; color: var(--ink3); letter-spacing: 0.02em; }
         .sum-body {
           margin: 0;
           font-size: 17px;
