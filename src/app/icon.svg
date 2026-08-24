@@ -12,9 +12,14 @@
   because a flush joint has no lip. The overshoot is not a detail of the
   drawing, it IS the drawing.
 
-  Riser first, both shelves over it, so each shelf shows its end face against
-  the brass behind. Same construction as the lockup mark in Wordmark.jsx, which
-  builds it from strokes with butt caps and gets these notches for free.
+  ORDER: bottom shelf, riser, top shelf. So the brass passes IN FRONT of the
+  lower shelf and BEHIND the upper one — the step reads as going away from you
+  as it rises, which is one reading rather than two. Drawn riser-first, both
+  shelves covered it and the bottom joint disagreed with the lockup, which has
+  always had this order (M6 29 H21, then the riser, then M21 16 H36).
+
+  Same construction as that lockup mark in Wordmark.jsx, which builds it from
+  strokes with butt caps and gets these notches for free.
 
   EVERY NUMBER HERE IS A MULTIPLE OF 32, WHICH IS 1px AT FAVICON SIZE. A tab
   icon is 512/32 = 16, so an edge at 150 lands on pixel 4.69 and the shelf
@@ -33,7 +38,7 @@
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <rect width="512" height="512" fill="#28403C"/>
-  <rect x="224" y="160" width="64"  height="192" fill="#B8862F"/>
   <rect x="32"  y="320" width="224" height="64"  fill="#EDF0EE"/>
+  <rect x="224" y="160" width="64"  height="192" fill="#B8862F"/>
   <rect x="256" y="128" width="224" height="64"  fill="#EDF0EE"/>
 </svg>
