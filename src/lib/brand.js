@@ -13,8 +13,25 @@
 export const BRAND = {
   name: "LedgeRR",
 
-  /** One line, used under the logo and as the meta description's opening. */
-  tagline: "A swing trading journal that measures everything in R",
+  /**
+   * The half-line after the name in every title: the browser tab, the search
+   * result, and the caption on a shared link's preview card. NOT the hero —
+   * the landing page writes its own H1 ("Know which of your setups actually
+   * pay"), which is the promise; this is the shelf label that has to be
+   * findable.
+   *
+   * Which is why it still opens with the commodity words. "Swing trading
+   * journal" is what somebody types into a search box, and the landing page is
+   * client-rendered, so this string is close to the only thing a crawler can
+   * read — spending it on a bolder line nobody searches for would trade the
+   * one channel that works for a channel that already does.
+   *
+   * The payoff clause is what stops it being a category label. It was "that
+   * measures everything in R", which described the mechanism; R means nothing
+   * to a reader who has not met it yet, and the mechanism is not the reason to
+   * click.
+   */
+  tagline: "The swing trading journal that finds your edge",
 
   /**
    * The long description — for <meta>, for link previews, and for the hero.

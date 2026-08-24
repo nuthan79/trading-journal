@@ -71,6 +71,23 @@ export const metadata = {
     type: "website",
     ...(url ? { url } : {}),
   },
+  /*
+   * X reads twitter:* in preference to og:*, and this page set only the og
+   * half — so the card on the one platform this was launched on fell back to
+   * the root layout's generic title while every other reader of the same link
+   * got the line above. One URL, two different claims about what it is,
+   * decided by which app you happened to open it in.
+   *
+   * Same words as openGraph deliberately. The reasoning on `title` above is
+   * about which search this page is trying to win, and a link shared into a
+   * trading group is the same audience arriving by a different door.
+   */
+  twitter: {
+    title: `${BRAND.name} — VCP & breakout trade journal for NSE, in R`,
+    description:
+      "Log the base pattern, stage and RS rank. See expectancy in R by setup, with " +
+      "charges to the paisa and your broker's tax P&L imported in one file.",
+  },
 };
 
 /**
