@@ -1,6 +1,32 @@
+<!--
+  The ledge, drawn as three strokes of one thickness.
+
+  THE JOINT IS THE WHOLE MARK. The riser is centred on the corner and runs
+  centreline to centreline, so it juts half a thickness past the end of each
+  shelf and stops half-way into it. That leaves a 32x32 notch of ground at both
+  joints, and the notch is the edge — the lip the eye catches, the thing that
+  makes this a ledge rather than a zigzag.
+
+  This was drawn once with the three bars butted flush, corner to corner. Same
+  colours, same proportions, and it read as a flat Z: nothing to catch on,
+  because a flush joint has no lip. The overshoot is not a detail of the
+  drawing, it IS the drawing.
+
+  Riser first, both shelves over it, so each shelf shows its end face against
+  the brass behind. Same construction as the lockup mark in Wordmark.jsx, which
+  builds it from strokes with butt caps and gets these notches for free.
+
+  WHY THE SHELVES ARE WHITE AND NOT INK. Ink shelves on this ground measure
+  1.58:1 and dissolve by the time the tile is 16px. White is 9.69:1. The
+  reference this came from was ink on paper; moving the ground to slate flips
+  which end of the scale the shelves have to sit at.
+
+  Thickness is 64 of 512 = 2px at favicon size, which is the floor for a shape
+  that has to survive as a shape.
+-->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <rect width="512" height="512" fill="#28403C"/>
-  <rect x="64"  y="294" width="218" height="64" fill="#EDF0EE"/>
-  <rect x="218" y="153" width="64"  height="205" fill="#B8862F"/>
-  <rect x="218" y="153" width="230" height="64" fill="#EDF0EE"/>
+  <rect x="224" y="150" width="64"  height="212" fill="#B8862F"/>
+  <rect x="48"  y="330" width="208" height="64"  fill="#EDF0EE"/>
+  <rect x="256" y="118" width="208" height="64"  fill="#EDF0EE"/>
 </svg>
