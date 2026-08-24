@@ -656,18 +656,23 @@ select.in { font-family: 'Archivo', sans-serif; }
   component, and the proportion holds from a 13px back-link to a 19px header
   without anyone choosing a pixel value twice.
 
-  HEIGHT IS SET TO CAP HEIGHT, and the width follows from the mark's own 2.02:1
+  HEIGHT IS SET TO CAP HEIGHT, and the width follows from the mark's own 1.81:1
   ink ratio. Matching the capitals rather than the em box is what makes the
   pair look like one object: at 0.72em the mark's bars also land within a
   fraction of the stem weight of Archivo 600, so neither half looks heavier
-  than the other.
+  than the other. Measured since: the stem is 20.8% of cap height and the
+  stroke is 21.7% of the mark's.
+
+  The width was 1.46em, from a 2.02 ratio that counted 1.8 of empty box on each
+  side of the ink. The strokes have butt caps and stop at their endpoints, so
+  that space held nothing and simply pushed the mark away from the name.
 
   The nudge up is for the descender. "Ledge" has a g, so the line box extends
   below the baseline and centring on it would sit the mark low against the
   caps it is meant to align with.
 */
 .wm-mark {
-  height: 0.72em; width: 1.46em; flex: none; overflow: visible;
+  height: 0.72em; width: 1.3em; flex: none; overflow: visible;
   transform: translateY(-0.045em);
 }
 .wm-rr { color: var(--brass); }
