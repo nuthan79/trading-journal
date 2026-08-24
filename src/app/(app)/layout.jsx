@@ -24,6 +24,7 @@ import { isPreset, presetIndex, presetDataUri } from "@/lib/avatars";
 import { buildDemo } from "@/lib/demo";
 import DemoBanner from "@/components/journal/DemoBanner";
 import Landing from "@/components/Landing";
+import Wordmark from "@/components/Wordmark";
 import SignInCard from "@/components/SignInCard";
 import { loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
 import { JournalContext } from "./JournalContext";
@@ -807,7 +808,14 @@ export default function AppLayout({ children }) {
           <div className="topin">
             <div style={{ flex: "1 1 240px" }}>
               <div className="brand">
-                <h1 className="disp">{profile?.journal_name || "Breakout Ledger"}</h1>
+                {/* The product mark beside the journal's own name. The heading
+                    here is the USER's title for their journal, not the brand,
+                    so the mark is what says whose software they are in. */}
+                <h1 className="disp" style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                  <Wordmark size={17} showMark className="tb-lock" />
+                  <span className="tb-sep" aria-hidden="true" />
+                  {profile?.journal_name || "Breakout Ledger"}
+                </h1>
                 {/* Counted off the raw rows, not `closed` — that list filters on
                     isFinite(r), so a trade with no stop yet belongs to neither
                     side and a freshly imported journal read "1 closed · 0 open"

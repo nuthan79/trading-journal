@@ -1,6 +1,7 @@
 "use client";
 
 import { BRAND } from "@/lib/brand";
+import Wordmark from "@/components/Wordmark";
 
 /**
  * The page a stranger sees.
@@ -44,8 +45,7 @@ export default function Landing({ signIn, view = "signin", switchAuthView }) {
     <div className="lp">
       <header className="lp-top">
         <div className="lp-brand">
-          <span className="disp lp-word">{BRAND.name}</span>
-          <span className="lp-mark" aria-hidden="true" />
+          <Wordmark size={19} />
         </div>
         <a className="lp-navlink" href="#start">Sign in</a>
       </header>
@@ -244,7 +244,7 @@ export default function Landing({ signIn, view = "signin", switchAuthView }) {
 
       <footer className="lp-foot">
         <div className="lp-foot-in">
-          <span className="disp lp-word lp-foot-word">{BRAND.name}</span>
+          <Wordmark size={15} />
           <nav className="lp-foot-nav">
             <a href="/privacy">Privacy</a>
             <a href="/terms">Terms</a>

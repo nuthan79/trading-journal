@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BRAND } from "@/lib/brand";
 import SignedInLink from "@/components/SignedInLink";
+import Wordmark from "@/components/Wordmark";
 
 /**
  * The marketing page, and the only page on this domain a search engine can
@@ -160,7 +161,7 @@ export default function HomePage() {
       }) }} />
 
       <header className="mk-top">
-        <span className="mk-brand">{BRAND.name}</span>
+        <Wordmark size={19} />
         <SignedInLink className="mk-signin" />
       </header>
 
@@ -296,7 +297,9 @@ export default function HomePage() {
             already are. It existed and was linked from nowhere. */}
         <Link href="/support">Help</Link>
         <Link href="/contact">Contact</Link>
-        <span>© {new Date().getFullYear()} {BRAND.name}</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          © {new Date().getFullYear()} <Wordmark size={13} showMark={false} />
+        </span>
       </footer>
     </main>
   );

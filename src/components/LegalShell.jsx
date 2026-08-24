@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BRAND } from "@/lib/brand";
+import Wordmark from "@/components/Wordmark";
 
 /**
  * The frame around the privacy policy and the terms.
@@ -14,7 +15,7 @@ export default function LegalShell({ title, updated, lede, children }) {
   return (
     <div className="legal">
       <div className="legal-top">
-        <span className="disp" style={{ fontSize: 16 }}>{BRAND.name}</span>
+        <Wordmark size={16} />
         <Link className="legal-back" href="/">← Back</Link>
       </div>
 

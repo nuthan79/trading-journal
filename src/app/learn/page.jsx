@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BRAND } from "@/lib/brand";
 import { articlesNewestFirst } from "@/lib/articles";
+import Wordmark from "@/components/Wordmark";
 
 /**
  * The index for /learn.
@@ -58,7 +59,7 @@ export default function LearnIndex() {
       }) }} />
 
       <div className="legal-top">
-        <span className="disp" style={{ fontSize: 16 }}>{BRAND.name}</span>
+        <Wordmark size={16} />
         <Link className="legal-back" href="/">← Back</Link>
       </div>
 

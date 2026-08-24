@@ -1,6 +1,7 @@
 import Link from "next/link";
 import ExpectancyCalculator from "@/components/ExpectancyCalculator";
 import { BRAND } from "@/lib/brand";
+import Wordmark from "@/components/Wordmark";
 
 /**
  * The one calculator worth publishing.
@@ -134,7 +135,9 @@ export default function ExpectancyPage() {
       }) }} />
 
       <div className="legal-top">
-        <Link className="legal-back" href="/">← {BRAND.name}</Link>
+        <Link className="legal-back" href="/" style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+          ← <Wordmark size={15} />
+        </Link>
       </div>
 
       <h1 className="sp-h1">Is your trading system actually profitable?</h1>

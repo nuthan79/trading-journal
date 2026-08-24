@@ -635,3 +635,36 @@ select.in { font-family: 'Archivo', sans-serif; }
   font-size: 12px; line-height: 1.7; color: var(--ink3);
   margin: 22px 0 0; max-width: var(--note-w);
 }
+
+/* ------------------------------------------------------------------ */
+/*  The lockup                                                         */
+/*                                                                     */
+/*  Plain CSS rather than styled-jsx: the component is rendered by      */
+/*  server components (the legal shell, both /learn pages, the          */
+/*  calculator) as well as client ones, and it has to look identical    */
+/*  in both.                                                            */
+/* ------------------------------------------------------------------ */
+
+.wm-lock {
+  display: inline-flex; align-items: center; gap: 0.42em;
+  font-family: 'Archivo', sans-serif; font-stretch: 125%; font-weight: 600;
+  letter-spacing: 0.01em; line-height: 1; white-space: nowrap;
+  color: var(--ink);
+}
+/* Sized in em so the mark tracks the type wherever the lockup is used —
+   one component, and the proportion holds from a 13px back-link to a
+   28px header without anyone choosing a pixel value twice. */
+.wm-mark { width: 1.15em; height: 1.15em; flex: none; overflow: visible; }
+.wm-rr { color: var(--brass); }
+
+/* On the marketing pages the lockup is a link; it should not look like body
+   copy that happens to be underlined. */
+a .wm-lock, .wm-lock a { text-decoration: none; }
+
+/* The lockup in the app topbar, sitting before the user's own journal name.
+   Its own font-size, so it does not inherit the h1's. */
+.brand .tb-lock { font-size: 17px; }
+.tb-sep {
+  width: 1px; align-self: stretch; background: var(--rule);
+  margin: 2px 2px; flex: none;
+}

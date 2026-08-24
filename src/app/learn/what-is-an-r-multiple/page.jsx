@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BRAND } from "@/lib/brand";
+import Wordmark from "@/components/Wordmark";
 
 /**
  * The first article, and the one the whole product rests on.
@@ -52,7 +53,7 @@ export default function RMultiplePage() {
       }) }} />
 
       <div className="legal-top">
-        <span className="disp" style={{ fontSize: 16 }}>{BRAND.name}</span>
+        <Wordmark size={16} />
         <Link className="legal-back" href="/">← Back</Link>
       </div>
 
