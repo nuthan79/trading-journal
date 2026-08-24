@@ -4,7 +4,7 @@ import { BRAND } from "@/lib/brand";
  * The install manifest, for a home-screen icon on Android and a standalone
  * window on desktop Chrome.
  *
- * `theme_color` is the slate the icon sits on, so the phone's status bar carries
+ * `theme_color` is the ink the icon sits on, so the phone's status bar carries
  * the same ground rather than flashing white behind the mark. `background` is
  * paper, because that is what the app opens onto — matching them to what the
  * user actually sees rather than to a spec sheet is what stops the splash
@@ -21,7 +21,7 @@ export default function manifest() {
     /* The icon's own ground, so the status bar and the home-screen tile read
        as one object on launch instead of the tile appearing to sit on a
        different surface. Follows the icon whenever the icon changes. */
-    theme_color: "#28403C",
+    theme_color: "#131C1A",
     icons: [
       { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
       { src: "/icon-512.png", sizes: "512x512", type: "image/png" },
