@@ -67,14 +67,37 @@ export default function AnalysisLayout({ children }) {
           margin: 0 0 4px; padding-bottom: 14px;
           border-bottom: 1px solid var(--rule);
         }
+        /*
+          Up from 12.5px and given weight, because at grey 12.5 regular this
+          row read as a caption under the nav rather than as the nav it is.
+
+          NOT ITALIC. This app already spends italic on a specific meaning —
+          "Not recorded" in the edge table, the placeholder rows in Mindset —
+          so it says a value is absent. Italic navigation would collide with
+          that, and italic in a tab strip reads as emphasis rather than as a
+          control anyway.
+
+          Sentence case while the row above is uppercase and tracked out, and
+          that treatment is now the ONLY thing carrying the hierarchy — this row
+          renders a 17px line box against the main nav's 14px, so it is the
+          larger of the two. Uppercase and letter-spacing still read as
+          top-level, and the brass underline above marks the active tab, so the
+          order survives; but the size no longer helps it. Worth knowing before
+          anything else on either row changes.
+
+          Inactive lifts from --ink3 to --ink2 for the same reason the section
+          headings did: --ink3 on paper is about 3:1, and a control nobody can
+          read is not a quieter control.
+        */
         .an-subtab {
-          font-size: 12.5px; color: var(--ink3); text-decoration: none;
-          padding: 6px 12px; border-radius: 3px; white-space: nowrap;
+          font-size: 14px; font-weight: 600; color: var(--ink2);
+          text-decoration: none; padding: 6px 13px; border-radius: 3px;
+          white-space: nowrap;
         }
-        .an-subtab:hover { color: var(--ink2); background: var(--card); }
+        .an-subtab:hover { color: var(--ink); background: var(--card); }
         .an-subtab[data-on="1"] {
           color: var(--ink); background: var(--card);
-          border: 1px solid var(--rule); padding: 5px 11px;
+          border: 1px solid var(--rule); padding: 5px 12px;
         }
       `}</style>
     </>
