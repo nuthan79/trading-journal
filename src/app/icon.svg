@@ -3,7 +3,7 @@
 
   THE JOINT IS THE WHOLE MARK. The riser is centred on the corner and runs
   centreline to centreline, so it juts half a thickness past the end of each
-  shelf and stops half-way into it. That leaves a 32x32 notch of ground at both
+  shelf and stops half-way into it. That leaves a notch of ground at both
   joints, and the notch is the edge — the lip the eye catches, the thing that
   makes this a ledge rather than a zigzag.
 
@@ -16,17 +16,24 @@
   the brass behind. Same construction as the lockup mark in Wordmark.jsx, which
   builds it from strokes with butt caps and gets these notches for free.
 
+  EVERY NUMBER HERE IS A MULTIPLE OF 32, WHICH IS 1px AT FAVICON SIZE. A tab
+  icon is 512/32 = 16, so an edge at 150 lands on pixel 4.69 and the shelf
+  smears across three rows at part opacity instead of filling two. The first
+  version of this drawing did exactly that and looked soft in the tab for no
+  reason a viewer could name. Thickness 64 = 2px, notch 32 = 1px, and nothing
+  sits on a half.
+
+  Ink is 448 x 256, a ratio of 1.75 against the reference's 1.78 — a square
+  tile cannot go much wider than that and keep a margin.
+
   WHY THE SHELVES ARE WHITE AND NOT INK. Ink shelves on this ground measure
   1.58:1 and dissolve by the time the tile is 16px. White is 9.69:1. The
   reference this came from was ink on paper; moving the ground to slate flips
   which end of the scale the shelves have to sit at.
-
-  Thickness is 64 of 512 = 2px at favicon size, which is the floor for a shape
-  that has to survive as a shape.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <rect width="512" height="512" fill="#28403C"/>
-  <rect x="224" y="150" width="64"  height="212" fill="#B8862F"/>
-  <rect x="48"  y="330" width="208" height="64"  fill="#EDF0EE"/>
-  <rect x="256" y="118" width="208" height="64"  fill="#EDF0EE"/>
+  <rect x="224" y="160" width="64"  height="192" fill="#B8862F"/>
+  <rect x="32"  y="320" width="224" height="64"  fill="#EDF0EE"/>
+  <rect x="256" y="128" width="224" height="64"  fill="#EDF0EE"/>
 </svg>
