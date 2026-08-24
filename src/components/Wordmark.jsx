@@ -50,10 +50,11 @@ export default function Wordmark({
           aria-hidden="true"
           focusable="false"
         >
-          {/* M1, stroked. Its weight sits close to the letterforms beside it,
-              so neither the mark nor the name dominates the pair. The favicon
-              uses a heavier three-shelf drawing instead — at 16px this one
-              loses its riser to anti-aliasing. */}
+          {/* Stroked, because at this size its weight sits close to the
+              letterforms beside it and neither half dominates. The icon draws
+              the SAME two-shelf step with solid bars — a 3.6 stroke thins to
+              under a pixel at 16px and the riser vanishes into anti-aliasing.
+              One mark, weighted for where it is used. */}
           <path d="M5 29 H21" stroke="currentColor" strokeWidth="3.6" fill="none" />
           <path d="M21 29 V16" stroke="var(--brass)" strokeWidth="3.6" fill="none" />
           <path d="M21 16 H35" stroke="currentColor" strokeWidth="3.6" fill="none" />
