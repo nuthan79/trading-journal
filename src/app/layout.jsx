@@ -26,6 +26,9 @@ export const metadata = {
     card: "summary_large_image",
     title: `${BRAND.name} — ${BRAND.tagline}`,
     description: BRAND.blurb,
+    // Without these the preview card carries no byline, so a shared link looks
+    // like it came from nowhere and gives nobody an account to follow.
+    ...(BRAND.xHandle ? { site: BRAND.xHandle, creator: BRAND.xHandle } : {}),
   },
 };
 

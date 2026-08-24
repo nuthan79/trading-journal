@@ -30,6 +30,16 @@ export const BRAND = {
   domain: "ledgerr.app",
 
   /**
+   * The X account, with the @. Fed to twitter:site and twitter:creator, which
+   * is what puts a byline on the link preview card instead of leaving it
+   * anonymous — worth having the moment anybody shares a link.
+   *
+   * Blank hides both tags rather than emitting an empty one, the same way
+   * contactEmail below hides its references.
+   */
+  xHandle: "@ledgerrapp7",
+
+  /**
    * The public address. Blank hides every reference rather than mailing
    * nowhere — and makes the legal pages say plainly that they are unfinished.
    *
