@@ -37,7 +37,7 @@ export const BRAND = {
    * Blank hides both tags rather than emitting an empty one, the same way
    * contactEmail below hides its references.
    */
-  xHandle: "@ledgerrapp7",
+  xHandle: "@LedgeRRapp7",
 
   /**
    * The public address. Blank hides every reference rather than mailing
