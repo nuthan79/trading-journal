@@ -1,5 +1,6 @@
 import Link from "next/link";
 import ContactForm from "@/components/ContactForm";
+import Wordmark from "@/components/Wordmark";
 import { BRAND } from "@/lib/brand";
 
 /**
@@ -146,7 +147,12 @@ export default function SupportPage() {
       }) }} />
 
       <div className="legal-top">
-        <span className="disp" style={{ fontSize: 16 }}>{BRAND.name}</span>
+        {/* The component, not the string. This strip was copied from
+            LegalShell, which renders <Wordmark>, but the name arrived here as
+            bare text in a .disp span — so support was the one public page
+            showing no mark and no brass on the RR, which is most of what the
+            lockup is for. */}
+        <Wordmark size={16} />
         <Link className="legal-back" href="/">← Back</Link>
       </div>
 
