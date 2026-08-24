@@ -68,29 +68,29 @@ export default function AnalysisLayout({ children }) {
           border-bottom: 1px solid var(--rule);
         }
         /*
-          Up from 12.5px and given weight, because at grey 12.5 regular this
-          row read as a caption under the nav rather than as the nav it is.
+          14px, regular weight.
 
-          NOT ITALIC. This app already spends italic on a specific meaning —
-          "Not recorded" in the edge table, the placeholder rows in Mindset —
-          so it says a value is absent. Italic navigation would collide with
-          that, and italic in a tab strip reads as emphasis rather than as a
-          control anyway.
+          It was 12.5px in --ink3, which read as a caption sitting under the nav
+          rather than as the nav it is. Size fixed that. Weight was tried at 600
+          and taken back off: at 14px bold this row rendered a 17px line box
+          against the main tabs' 14px and started competing with them, which is
+          the wrong way round.
 
-          Sentence case while the row above is uppercase and tracked out, and
-          that treatment is now the ONLY thing carrying the hierarchy — this row
-          renders a 17px line box against the main nav's 14px, so it is the
-          larger of the two. Uppercase and letter-spacing still read as
-          top-level, and the brass underline above marks the active tab, so the
-          order survives; but the size no longer helps it. Worth knowing before
-          anything else on either row changes.
+          So the size does the work and the colour finishes it — inactive at
+          --ink2 rather than --ink3, the same 3:1 contrast problem the section
+          headings had. Legible is not the same as loud.
 
-          Inactive lifts from --ink3 to --ink2 for the same reason the section
-          headings did: --ink3 on paper is about 3:1, and a control nobody can
-          read is not a quieter control.
+          NOT ITALIC either, though it was offered. This app already spends
+          italic on a specific meaning — "Not recorded" in the edge table, the
+          placeholder rows in Mindset — where it says a value is absent. Italic
+          navigation would collide with that, and in a tab strip it reads as
+          emphasis rather than as something clickable.
+
+          The active tab carries its state with the filled pill and full-ink
+          text, which is enough on its own and leaves the rest of the row quiet.
         */
         .an-subtab {
-          font-size: 14px; font-weight: 600; color: var(--ink2);
+          font-size: 14px; color: var(--ink2);
           text-decoration: none; padding: 6px 13px; border-radius: 3px;
           white-space: nowrap;
         }
