@@ -651,10 +651,25 @@ select.in { font-family: 'Archivo', sans-serif; }
   letter-spacing: 0.01em; line-height: 1; white-space: nowrap;
   color: var(--ink);
 }
-/* Sized in em so the mark tracks the type wherever the lockup is used —
-   one component, and the proportion holds from a 13px back-link to a
-   28px header without anyone choosing a pixel value twice. */
-.wm-mark { width: 1.15em; height: 1.15em; flex: none; overflow: visible; }
+/*
+  Sized in em so the mark tracks the type wherever the lockup is used — one
+  component, and the proportion holds from a 13px back-link to a 19px header
+  without anyone choosing a pixel value twice.
+
+  HEIGHT IS SET TO CAP HEIGHT, and the width follows from the mark's own 2.02:1
+  ink ratio. Matching the capitals rather than the em box is what makes the
+  pair look like one object: at 0.72em the mark's bars also land within a
+  fraction of the stem weight of Archivo 600, so neither half looks heavier
+  than the other.
+
+  The nudge up is for the descender. "Ledge" has a g, so the line box extends
+  below the baseline and centring on it would sit the mark low against the
+  caps it is meant to align with.
+*/
+.wm-mark {
+  height: 0.72em; width: 1.46em; flex: none; overflow: visible;
+  transform: translateY(-0.045em);
+}
 .wm-rr { color: var(--brass); }
 
 /* On the marketing pages the lockup is a link; it should not look like body

@@ -36,7 +36,17 @@ export default function Wordmark({
       {showMark && (
         <svg
           className={`wm-mark ${markClassName}`}
-          viewBox="0 0 40 40"
+          /*
+            Cropped to the ink, not to a comparison grid.
+
+            This was 0 0 40 40 — the shared box the options sheet used so four
+            marks could be compared fairly. Carried over here it left the mark
+            occupying a third of its own height, so it rendered at about half
+            the cap height of the name beside it and read as undersized. The
+            box below is the drawn bounds plus half a stroke on each side:
+            x 5..35 and y 16..29 with a 3.6 stroke.
+          */
+          viewBox="3.2 14.2 33.6 16.6"
           aria-hidden="true"
           focusable="false"
         >
