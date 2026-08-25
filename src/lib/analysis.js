@@ -1058,14 +1058,14 @@ function marketAlignment(closed, regimes) {
         `The textbook reading is that this costs money, and on your record so far it has not: the three ` +
         `regimes return ${up.expectancy}R, ${press.expectancy}R and ${corr.expectancy}R a trade, which at ` +
         `these sample sizes is one number. So this is worth knowing rather than fixing — the exposure is ` +
-        `real, the cost is not yet visible.` + ddNote("correction") + shapeNote
+        `real, the cost is not yet visible.` +
         (conc && conc.restNegative
           ? ` And thinner than it looks: the best three trades in that regime made more than it kept, ` +
             `so the other ${conc.n - 3} lost ${Math.abs(conc.rest)}R between them.`
           : conc && conc.pct >= 50
           ? ` One caution: ${conc.pct}% of everything that regime returned came from its best three ` +
             `trades, so that figure is thinner than it looks.`
-          : ""),
+          : "") + ddNote("correction") + shapeNote,
         ev,
         { lede: LEDE_REGIME, figures: rateFigs, chart: regimeChart,
           verdict: "Nothing to change on this evidence. If the gap opens up as more trades " +
