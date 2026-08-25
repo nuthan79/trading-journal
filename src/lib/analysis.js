@@ -91,6 +91,26 @@ const LEDE_EXITS =
 const LEDE_RISK =
   "How much of the account you put at risk on each trade, in the order you " +
   "took them. Every trade drawn as one point, oldest on the left.";
+const LEDE_AFTER_LOSS =
+  "What you bet on the very next trade after a loss, against what you bet " +
+  "after a win. The market has no memory of your last trade; this asks whether " +
+  "you do.";
+const LEDE_REGIME =
+  "Your trades sorted by what the index was doing when you took them, and what " +
+  "each group returned.";
+const LEDE_CADENCE =
+  "How long you waited before the next trade — after a loss, and after a win.";
+const LEDE_CONC =
+  "How much of the total came from how few trades.";
+const LEDE_GAPS =
+  "How often each field is actually filled in. A blank does not count against " +
+  "a setup; it makes that setup invisible to every cut on the performance sheet.";
+const LEDE_FEELING =
+  "Your trades grouped by how the day felt when you took them, and what each " +
+  "group returned.";
+const LEDE_EXTENSION =
+  "Trades taken close to the pivot against trades taken well past it, and what " +
+  "each group returned.";
 const LEDE_SIZE =
   "Whether the trades you bet more on actually turned out better. Measured as " +
   "the relationship between how much you risked and what came back.";
@@ -417,10 +437,18 @@ function sizingReflexes(closed) {
   if (bump > 20) {
     out.push(F("critical", "revenge-sizing",
       "You size up after losing",
-      `Trades taken straight after a loss risk ${ev.avgRiskAfterLoss}% on average, against ${ev.avgRiskAfterWin}% ` +
-      `after a win — ${ev.differencePct}% larger. The market has no memory of your last trade, so there's no ` +
-      `edge reason for this. It's the mechanism that turns an ordinary losing streak into a serious drawdown.`,
-      ev));
+      `The market has no memory of your last trade, so there is no edge reason for this. It is the ` +
+      `mechanism that turns an ordinary losing streak into a serious drawdown — the bets get bigger ` +
+      `exactly as the run gets worse.`,
+      ev,
+      { lede: LEDE_AFTER_LOSS,
+        figures: [{ value: `+${ev.differencePct}%`, label: "bigger after a loss" }],
+        chart: { type: "bars", unit: "%", rows: [
+          { label: "After a loss", value: ev.avgRiskAfterLoss, n: ev.sampleAfterLoss, worst: true },
+          { label: "After a win", value: ev.avgRiskAfterWin },
+        ], axisNote: "average risk per trade" },
+        verdict: "Decide the size before the trade before it, not after. The gap here is " +
+                 "not a strategy, it is a reaction." }));
   }
 
   /**
@@ -536,13 +564,21 @@ function entryQuality(closed) {
         gap: +(eNear - eFar).toFixed(2),
       };
       if (eFar < eNear - 0.25) {
+        const extChart = { type: "bars", unit: "R", rows: [
+          { label: "Near the pivot", value: ev.nearPivotExpectancy, n: ev.nearPivotTrades },
+          { label: "Well extended", value: ev.extendedExpectancy, n: ev.extendedTrades, worst: true },
+        ], axisNote: "average return per trade" };
         out.push(F(eFar < 0 ? "critical" : "warning", "chasing",
           "Extended entries are costing you",
-          `Entries within 3% of the pivot return ${ev.nearPivotExpectancy}R on average. Entries more than 5% ` +
-          `above it return ${ev.extendedExpectancy}R — a gap of ${ev.gap}R per trade across ${far.length} extended trades. ` +
-          `Buying extended also forces a wider stop, so the same rupee risk buys you fewer shares and a lower ` +
-          `probability of surviving normal noise. This is the most fixable item on the list: it's a rule, not a skill.`,
-          ev));
+          `Buying extended also forces a wider stop, so the same rupee risk buys fewer shares and a lower ` +
+          `chance of surviving normal noise. This is the most fixable item on the list — it is a rule, ` +
+          `not a skill.`,
+          ev,
+          { lede: LEDE_EXTENSION,
+            figures: [{ value: `${ev.gap}R`, label: "given up per extended trade" }],
+            chart: extChart,
+            verdict: `Waiting for price within 3% of the pivot is worth about ${ev.gap}R a trade, ` +
+                     `and costs nothing but patience.` }));
       }
     }
   }
@@ -559,12 +595,20 @@ function entryQuality(closed) {
         heavyTrades: heavy.length, heavyExpectancy: +eHeavy.toFixed(2),
       };
       if (eThin < eHeavy - 0.25) {
+        const volChart = { type: "bars", unit: "R", rows: [
+          { label: "Heavy volume", value: ev.heavyExpectancy, n: ev.heavyTrades },
+          { label: "Thin volume", value: ev.thinExpectancy, n: ev.thinTrades, worst: true },
+        ], axisNote: "average return per trade" };
         out.push(F("warning", "thin-volume",
           "Low-volume breakouts are underperforming",
-          `Breakouts on under 120% of average volume return ${ev.thinExpectancy}R across ${thin.length} trades, ` +
-          `against ${ev.heavyExpectancy}R on 150%+ volume. Volume is the confirmation that institutions are ` +
-          `behind the move — without it you're buying a price level, not a signal.`,
-          ev));
+          `Volume is the confirmation that institutions are behind the move. Without it you are buying a ` +
+          `price level rather than a signal, and the record here says so.`,
+          ev,
+          { lede: "Breakouts on thin volume against breakouts on heavy volume, and what each returned.",
+            figures: [{ value: `${(ev.heavyExpectancy - ev.thinExpectancy).toFixed(2)}R`, label: "gap per trade" }],
+            chart: volChart,
+            verdict: "Volume is a filter you can apply before entering, which makes it one of the " +
+                     "cheaper rules to add." }));
       }
     }
   }
@@ -666,6 +710,28 @@ function marketAlignment(closed, regimes) {
 
   const up = byReg.uptrend, corr = byReg.correction, press = byReg.pressure;
   const ev = { byRegime: byReg, indexDays: dayCounts };
+
+  /**
+   * A bar per regime, on expectancy — because the claim is that the market's
+   * state changes what a trade is worth, and three bars of different lengths
+   * say that where "0.96R against −0.24R" asks the reader to hold two numbers
+   * and subtract.
+   */
+  const REGIME_WORDS = { uptrend: "Confirmed uptrend", pressure: "Under pressure", correction: "Correction" };
+  const regimeChart = {
+    type: "bars",
+    unit: "R",
+    rows: ["uptrend", "pressure", "correction"]
+      .filter((k) => byReg[k] && byReg[k].trades > 0 && byReg[k].expectancy != null)
+      /* No `worst` flag: which regime is worst is a fact about this record,
+         not a rule. Marking corrections by assumption drew the solid bar on
+         the BEST one wherever somebody happened to trade corrections well.
+         Left undefined, the chart marks whichever bar is actually lowest. */
+      .map((k) => ({
+        label: REGIME_WORDS[k], value: byReg[k].expectancy, n: byReg[k].trades,
+      })),
+    axisNote: "average return per trade, by what the index was doing",
+  };
   const out = [];
 
   // The core question: is activity following the market's lead?
@@ -676,26 +742,45 @@ function marketAlignment(closed, regimes) {
     if (corrRate > upRate) {
       out.push(F("critical", "market-misaligned",
         "You trade more when the market is against you",
-        `In corrections you took ${corrRate} trades per 100 trading days. In confirmed uptrends, only ${upRate}. ` +
-        `That's backwards for a long-only breakout system — breakouts fail at a much higher rate when the index is ` +
-        `below its 50-day and the 50 is below the 200, because there's no institutional bid to carry them. ` +
-        `Your own numbers show it: ${up.expectancy}R expectancy in uptrends against ${corr.expectancy}R in corrections. ` +
-        `The fix isn't better stock selection, it's fewer trades in the wrong regime.`,
-        ev));
+        `That is backwards for a long-only breakout system. Breakouts fail at a much higher rate when the ` +
+        `index is below its 50-day and the 50 is below the 200, because there is no institutional bid to ` +
+        `carry them — and your own record shows it.`,
+        ev,
+        { lede: LEDE_REGIME,
+          figures: [
+            { value: `${corrRate}`, label: "trades per 100 days in corrections" },
+            { value: `${upRate}`, label: "per 100 days in uptrends" },
+          ],
+          chart: regimeChart,
+          verdict: "The fix is not better stock selection. It is fewer trades in the wrong " +
+                   "regime — the same setups, taken less often when the index is against them." }));
     } else if (upRate < corrRate * 1.5 && corr.trades >= 8) {
       out.push(F("warning", "market-underweight",
         "Activity barely responds to market direction",
-        `${upRate} trades per 100 days in uptrends versus ${corrRate} in corrections — you're trading at roughly ` +
-        `the same pace regardless of conditions. Your expectancy differs sharply by regime ` +
-        `(${up.expectancy}R vs ${corr.expectancy}R), so the conditions clearly matter even if your activity doesn't reflect it. ` +
-        `Pressing harder in uptrends and easing off in corrections is the single highest-leverage change available to you.`,
-        ev));
+        `You trade at roughly the same pace whatever the index is doing, while what those trades return ` +
+        `differs sharply by regime. The conditions clearly matter; the activity does not reflect it.`,
+        ev,
+        { lede: LEDE_REGIME,
+          figures: [
+            { value: `${upRate}`, label: "per 100 days in uptrends" },
+            { value: `${corrRate}`, label: "per 100 days in corrections" },
+          ],
+          chart: regimeChart,
+          verdict: "Pressing harder in uptrends and easing off in corrections is the single " +
+                   "highest-leverage change available here — it changes nothing about the setups." }));
     } else {
       out.push(F("good", "market-aligned",
         "Your activity follows the market",
-        `${upRate} trades per 100 days in uptrends against ${corrRate} in corrections — you press when conditions ` +
-        `support it and step back when they don't. That discipline is worth more than any individual setup refinement.`,
-        ev));
+        `You press when conditions support it and step back when they do not. That discipline is worth ` +
+        `more than any individual setup refinement.`,
+        ev,
+        { lede: LEDE_REGIME,
+          figures: [
+            { value: `${upRate}`, label: "per 100 days in uptrends" },
+            { value: `${corrRate}`, label: "per 100 days in corrections" },
+          ],
+          chart: regimeChart,
+          verdict: "Nothing to change. This is the habit most traders never build." }));
     }
   }
 
@@ -742,10 +827,17 @@ function tradingCadence(closed) {
   if (gl < gw * 0.6 && gl < 3) {
     return F("warning", "revenge-cadence",
       "You re-enter faster after a loss",
-      `Median gap to the next entry is ${ev.medianDaysAfterLoss} days after a loss, against ` +
-      `${ev.medianDaysAfterWin} days after a win. Quick re-entry after a loss is rarely a setup arriving — ` +
-      `it's usually the urge to get it back. Worth pairing with your diary entries to see what you were feeling.`,
-      ev);
+      `Quick re-entry after a loss is rarely a setup arriving on its own schedule — it is usually the urge ` +
+      `to get it back. Worth reading beside your diary entries for what you were feeling those days.`,
+      ev,
+      { lede: LEDE_CADENCE,
+        figures: [{ value: `${(ev.medianDaysAfterWin - ev.medianDaysAfterLoss).toFixed(1)}d`, label: "sooner after a loss" }],
+        chart: { type: "bars", unit: "d", rows: [
+          { label: "After a loss", value: ev.medianDaysAfterLoss, n: ev.sampleAfterLoss, worst: true },
+          { label: "After a win", value: ev.medianDaysAfterWin },
+        ], axisNote: "days to the next entry, typical" },
+        verdict: "The next setup does not arrive faster because the last one failed. " +
+                 "If anything is different about these trades, it is you, not the market." });
   }
   return null;
 }
@@ -846,10 +938,22 @@ function dataQuality(closed) {
 
   return F("watch", "data-gaps",
     "Some fields are mostly empty",
-    `${gaps.map(([k, v]) => `${names[k]} on ${v}% of trades`).join(", ")}. ` +
-    `The setup breakdowns can only compare what's recorded — a blank field doesn't count against a pattern, ` +
-    `it just makes that pattern invisible. Charges missing means your net P&L and XIRR read better than reality.`,
-    ev);
+    `The setup breakdowns can only compare what is recorded. A blank does not count against a pattern — ` +
+    `it makes that pattern invisible, so the cut goes on working and quietly stops meaning anything. ` +
+    `Charges missing is the one that flatters: net P&L and XIRR both read better than reality.`,
+    ev,
+    { lede: LEDE_GAPS,
+      figures: [{ value: `${gaps.length}`, label: gaps.length === 1 ? "field mostly blank" : "fields mostly blank" }],
+      chart: {
+        type: "bars",
+        unit: "%",
+        rows: Object.entries(ev)
+          .filter(([k]) => k !== "trades")
+          .map(([k, v]) => ({ label: names[k] || k, value: v, worst: v < 60 })),
+        axisNote: "share of closed trades where the field is filled in",
+      },
+      verdict: "These are read off the chart, so they can be filled in any time — " +
+               "and they are what the whole Edge screen has to work with." });
 }
 
 /* ==================================================================== */
@@ -961,6 +1065,18 @@ function emotionOutcomes(closed, diary) {
   const gap = best.expectancy - worst.expectancy;
 
   if (gap < 0.4) {
+  /** A bar per feeling, ordered worst to best as `rows` already is. The claim
+   *  is a gap between two moods, which is two bar lengths. */
+  const feelingChart = {
+    type: "bars",
+    unit: "R",
+    rows: solid.map((r) => ({
+      label: feelingWord(r.emotion), value: r.expectancy, n: r.trades,
+      worst: r.emotion === worst.emotion,
+    })),
+    axisNote: "average return per trade, by how the day felt",
+  };
+
     return F("good", "emotion-outcome",
       "Your mood doesn't seem to move your results",
       `Across ${solid.length} feelings with at least ${MIN_PER_EMOTION} trades each, expectancy ` +
@@ -968,7 +1084,11 @@ function emotionOutcomes(closed, diary) {
       `when ${feelingWord(best.emotion)} — a spread of ${gap.toFixed(2)}R, which is small enough ` +
       `to be noise. Worth knowing: it means the process is holding up whatever kind of day you are ` +
       `having, which is harder than it sounds.`,
-      ev);
+      ev,
+      { lede: LEDE_FEELING,
+        figures: [{ value: `${gap.toFixed(2)}R`, label: "between best and worst mood" }],
+        chart: feelingChart,
+        verdict: "Nothing to act on — and that is the finding. Most records show a gap here." });
   }
 
   return F(worst.expectancy < 0 ? "warning" : "watch", "emotion-outcome",
@@ -981,7 +1101,13 @@ function emotionOutcomes(closed, diary) {
     `It is still your own tagging and a small sample, so read it as a question worth watching ` +
     `rather than a law — but ${feelingWord(worst.emotion)} is a cheap thing to notice before you ` +
     `press the button.`,
-    ev);
+    ev,
+    { lede: LEDE_FEELING,
+      figures: [{ value: `${gap.toFixed(2)}R`, label: "gap between moods" }],
+      chart: feelingChart,
+      verdict: `Matched on the day you OPENED the position, so this is the state you decided in — ` +
+               `not how the result felt afterwards. ${feelingWord(worst.emotion)} is a cheap thing ` +
+               `to notice before pressing the button.` });
 }
 
 /* ==================================================================== */
@@ -1091,6 +1217,16 @@ function returnConcentration(closed) {
       `${ev.everythingElseMedianHeldDays} for the rest, which points at holding rather than picking.`
     : "";
 
+  const concChart = {
+    type: "bars",
+    unit: "R",
+    rows: [
+      { label: `Best ${decileCount}`, value: +(gross * (ev.topDecileSharePct / 100)).toFixed(1), n: decileCount },
+      { label: `The other ${rows.length - decileCount}`, value: ev.everythingElseR, n: rows.length - decileCount },
+    ],
+    axisNote: "total R, split between the best tenth and everything else",
+  };
+
   return F(heavy ? "watch" : "good", "return-concentration",
     heavy
       ? "A few trades carry the whole record"
@@ -1108,7 +1244,18 @@ function returnConcentration(closed) {
         `like it does.`
       : `No single stretch of luck is holding this up, which means the expectancy above is doing ` +
         `what a sample that size should — describing the method rather than a handful of trades.`) + held,
-    ev);
+    ev,
+    { lede: LEDE_CONC,
+      figures: [
+        { value: `${ev.topDecileSharePct}%`, label: `from your best ${decileCount}` },
+        { value: `${ev.shareOfAllTradesPct}%`, label: "of trades made half of it" },
+      ],
+      chart: concChart,
+      verdict: heavy
+        ? `Your real sample is closer to ${decileCount} than to ${rows.length}. A quiet few months ` +
+          `says much less about whether the edge has gone than it will feel like it does.`
+        : "The expectancy above is describing the method rather than a handful of trades — " +
+          "which is what makes it worth acting on." });
 }
 
 /* ==================================================================== */
