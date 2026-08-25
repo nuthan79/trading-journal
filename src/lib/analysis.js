@@ -525,6 +525,7 @@ function sizingReflexes(closed) {
     sampleAfterLoss: afterLoss.length,
   };
 
+
   const out = [];
 
   if (bump > 20) {
@@ -804,6 +805,56 @@ function marketAlignment(closed, regimes) {
   const up = byReg.uptrend, corr = byReg.correction, press = byReg.pressure;
 
   /**
+   * WHICH REGIME BUILT THE WORST DRAWDOWN.
+   *
+   * A regime comparison on averages can be true and still miss the thing that
+   * hurt: an expectancy is a long-run figure, and a drawdown is a specific
+   * stretch of dates that actually cost real money. If the over-traded regime
+   * is also where the deep losses landed, that is a cost you can point at
+   * rather than one inferred from a mean.
+   *
+   * Attribution is by trades whose EXIT falls inside the peak-to-trough
+   * window, since that is when the R was booked and therefore when the equity
+   * curve moved. A trade opened before the peak and closed inside the slide
+   * belongs to the slide.
+   */
+  const worstDrawdown = (() => {
+    const seq = chron(rows);
+    if (seq.length < 20) return null;
+    let cum = 0, peak = 0, peakAt = 0;
+    let best = null;
+    seq.forEach((t, i) => {
+      cum += t.r;
+      if (cum > peak) { peak = cum; peakAt = i; return; }
+      const depth = peak - cum;
+      if (!best || depth > best.depth) best = { depth, from: peakAt, to: i };
+    });
+    if (!best || best.depth < 3) return null;
+
+    const inside = seq.slice(best.from + 1, best.to + 1);
+    if (!inside.length) return null;
+    const byRegLoss = {};
+    for (const k of ["uptrend", "pressure", "correction"]) {
+      const g = inside.filter((t) => t.reg === k);
+      byRegLoss[k] = { trades: g.length, netR: +g.reduce((a, t) => a + t.r, 0).toFixed(1) };
+    }
+    /* The regime that gave back the most across the slide. */
+    const blame = Object.entries(byRegLoss)
+      .filter(([, v]) => v.trades > 0)
+      .sort((a, b) => a[1].netR - b[1].netR)[0];
+    return {
+      depthR: +best.depth.toFixed(1),
+      from: inside[0].exit_date || inside[0].entry_date,
+      to: inside[inside.length - 1].exit_date || inside[inside.length - 1].entry_date,
+      trades: inside.length,
+      byRegime: byRegLoss,
+      worstRegime: blame ? blame[0] : null,
+      worstRegimeR: blame ? blame[1].netR : null,
+      worstRegimeTrades: blame ? blame[1].trades : null,
+    };
+  })();
+
+  /**
    * DOES THIS TRADER'S RECORD ACTUALLY PENALISE THE WRONG REGIME?
    *
    * It is textbook that breakouts fail more with the index below its averages,
@@ -855,9 +906,65 @@ function marketAlignment(closed, regimes) {
   const winSpread = up.winRate != null && press.winRate != null
     ? up.winRate - press.winRate : null;
 
+  /**
+   * The drawdown sentence, said only when it points at the regime under
+   * discussion. Naming a different regime as the one that hurt would be a
+   * fact, but not this finding's fact — and a paragraph that wanders is how a
+   * card stops being read.
+   */
+  const REGIME_WORD = { uptrend: "confirmed uptrends", pressure: "pressure", correction: "corrections" };
+  const ddNote = (regimeKey) => {
+    const d = worstDrawdown;
+    if (!d || d.worstRegimeR == null || d.worstRegimeR >= 0) return "";
+    if (d.worstRegime === regimeKey) {
+      return ` It also shows up where it costs most: your deepest drawdown ran ${d.depthR}R from ` +
+        `${d.from} to ${d.to}, and ${REGIME_WORD[regimeKey]} gave back ${Math.abs(d.worstRegimeR)}R of it ` +
+        `across ${d.worstRegimeTrades} trades — more than any other regime over the same stretch.`;
+    }
+    /* The culprit being a DIFFERENT regime is not silence, it is the other
+       half of the same check: the stretch that actually cost money was built
+       somewhere else, which is evidence about where the damage really comes
+       from and belongs on the card either way. */
+    return ` And the damage did not come from there: your deepest drawdown ran ${d.depthR}R from ` +
+      `${d.from} to ${d.to}, and the largest share of it — ${Math.abs(d.worstRegimeR)}R across ` +
+      `${d.worstRegimeTrades} trades — was given back in ${REGIME_WORD[d.worstRegime]}.`;
+  };
+
+  /**
+   * THE SHAPE READING, FOLDED INTO THE REGIME CARD RATHER THAN GIVEN ITS OWN.
+   *
+   * It had one for a while: same three regimes, same trades, a second chart
+   * of win rate under a second headline. Two cards saying "your trades, by
+   * market regime" is one card and a repetition, and the reader pays for the
+   * repetition by having to hold the first chart in mind while reading the
+   * second. The win rate is on the bars now, and the sentence that matters —
+   * that it falls while the return does not — belongs to the finding it
+   * qualifies.
+   */
+  const shapeNote = (winSpread != null && winSpread >= 15 && press.trades >= 12 &&
+      up.expectancy != null && press.expectancy != null &&
+      Math.abs(up.expectancy - press.expectancy) < 0.3)
+    ? ` One thing the bars show that the averages hide: your win rate falls from ${up.winRate}% in ` +
+      `uptrends to ${press.winRate}% under pressure while the return per trade barely moves. The same ` +
+      `money is arriving from fewer, bigger winners — a change in the shape of the edge, not a loss of ` +
+      `it, and the two want opposite responses. An edge that has gone wants fewer trades; an edge that ` +
+      `has changed shape wants its winners left alone.`
+    : "";
+
   const ev = {
     byRegime: byReg, indexDays: dayCounts,
     expectancyGapUptrendVsCorrection: gap,
+    /* Flattened for the evidence table, which renders an object of objects as
+       raw JSON — the developer output this screen was supposed to stop
+       showing. The nested version stays out of `ev` entirely. */
+    ...(worstDrawdown ? {
+      worstDrawdownDepthR: worstDrawdown.depthR,
+      worstDrawdownFrom: worstDrawdown.from,
+      worstDrawdownTo: worstDrawdown.to,
+      worstDrawdownTrades: worstDrawdown.trades,
+      mostGivenBackIn: worstDrawdown.worstRegime,
+      mostGivenBackR: worstDrawdown.worstRegimeR,
+    } : {}),
     topThreeShareOfPressurePct: topShare("pressure")?.pct ?? null,
     topThreeShareOfUptrendPct: topShare("uptrend")?.pct ?? null,
     topThreeShareOfCorrectionPct: topShare("correction")?.pct ?? null,
@@ -879,10 +986,18 @@ function marketAlignment(closed, regimes) {
          not a rule. Marking corrections by assumption drew the solid bar on
          the BEST one wherever somebody happened to trade corrections well.
          Left undefined, the chart marks whichever bar is actually lowest. */
+      /**
+       * Win rate rides along on each row rather than getting a second card.
+       * The bar is expectancy — one measure, one length — and the win rate is
+       * printed beside it, because the interesting thing about these two is
+       * where they DISAGREE, and that is only visible when they are on the
+       * same line.
+       */
       .map((k) => ({
         label: REGIME_WORDS[k], value: byReg[k].expectancy, n: byReg[k].trades,
+        sub: byReg[k].winRate != null ? `${byReg[k].winRate}% won` : null,
       })),
-    axisNote: "average return per trade, by what the index was doing",
+    axisNote: "average return per trade, with the share that won, by market regime",
   };
   const out = [];
 
@@ -907,7 +1022,7 @@ function marketAlignment(closed, regimes) {
         `Breakouts fail at a higher rate when the index is below its 50-day and the 50 is below the 200, ` +
         `because there is no institutional bid to carry them — and here your own record agrees: ` +
         `${up.expectancy}R a trade in uptrends against ${corr.expectancy}R in corrections, while you take ` +
-        `more of them in corrections.`,
+        `more of them in corrections.` + ddNote("correction") + shapeNote,
         ev,
         { lede: LEDE_REGIME, figures: rateFigs, chart: regimeChart,
           verdict: "The fix is not better stock selection. It is fewer trades in the wrong " +
@@ -928,7 +1043,7 @@ function marketAlignment(closed, regimes) {
             `regime kept, so the other ${conc.n - 3} lost ${Math.abs(conc.rest)}R between them.`
           : conc && conc.pct >= 50
           ? ` Especially since ${conc.pct}% of what corrections returned came from their best three trades.`
-          : ""),
+          : "") + ddNote("correction") + shapeNote,
         ev,
         { lede: LEDE_REGIME, figures: rateFigs, chart: regimeChart,
           verdict: `On ${corr.trades} correction trades this is a lead, not a law. Worth checking ` +
@@ -943,7 +1058,7 @@ function marketAlignment(closed, regimes) {
         `The textbook reading is that this costs money, and on your record so far it has not: the three ` +
         `regimes return ${up.expectancy}R, ${press.expectancy}R and ${corr.expectancy}R a trade, which at ` +
         `these sample sizes is one number. So this is worth knowing rather than fixing — the exposure is ` +
-        `real, the cost is not yet visible.` +
+        `real, the cost is not yet visible.` + ddNote("correction") + shapeNote
         (conc && conc.restNegative
           ? ` And thinner than it looks: the best three trades in that regime made more than it kept, ` +
             `so the other ${conc.n - 3} lost ${Math.abs(conc.rest)}R between them.`
@@ -961,7 +1076,7 @@ function marketAlignment(closed, regimes) {
         "Activity barely responds to market direction",
         `You trade at roughly the same pace whatever the index is doing, while what those trades return ` +
         `differs by ${Math.abs(gap)}R between the best regime and the worst. The conditions matter to ` +
-        `your results; the activity does not reflect it.`,
+        `your results; the activity does not reflect it.` + ddNote("correction") + ddNote("pressure") + shapeNote,
         ev,
         { lede: LEDE_REGIME, figures: rateFigs, chart: regimeChart,
           verdict: "Pressing harder in uptrends and easing off in corrections is the single " +
@@ -970,7 +1085,7 @@ function marketAlignment(closed, regimes) {
       out.push(F("good", "market-aligned",
         "Your activity follows the market",
         `You press when conditions support it and step back when they do not. That discipline is worth ` +
-        `more than any individual setup refinement.`,
+        `more than any individual setup refinement.` + ddNote("correction") + shapeNote,
         ev,
         { lede: LEDE_REGIME,
           figures: [
@@ -981,47 +1096,7 @@ function marketAlignment(closed, regimes) {
           verdict: "Nothing to change. This is the habit most traders never build." }));
     }
 
-    /**
-     * THE EDGE CHANGED SHAPE, WHICH IS NOT THE EDGE GOING AWAY.
-     *
-     * A win rate falling twenty points while expectancy holds means the same
-     * return is arriving from fewer, larger winners. That is a real and
-     * actionable fact and it was sitting unread in this evidence table while
-     * the card above it argued about trade counts — 69% to 49% with
-     * expectancy flat at 0.98R and 1.04R.
-     *
-     * It matters because the prescriptions differ. An edge that has gone wants
-     * fewer trades. An edge that has changed shape wants the winners left
-     * alone: cut them short in this regime and the arithmetic that was holding
-     * it up stops holding.
-     */
-    if (winSpread != null && winSpread >= 15 && press.trades >= 12 &&
-        up.expectancy != null && press.expectancy != null &&
-        Math.abs(up.expectancy - press.expectancy) < 0.3) {
-      out.push(F("watch", "regime-shape",
-        "Under pressure you win less often, for the same return",
-        `Your win rate falls from ${up.winRate}% in confirmed uptrends to ${press.winRate}% when the index ` +
-        `is under pressure, while what a trade returns barely moves — ${up.expectancy}R against ` +
-        `${press.expectancy}R. The same result is arriving from fewer, bigger winners, which is a change ` +
-        `in the shape of the edge rather than a loss of it.`,
-        ev,
-        { lede: "Win rate against average return, in each market regime. The two can move " +
-                "apart, and when they do it is the interesting case.",
-          figures: [
-            { value: `${up.winRate}% → ${press.winRate}%`, label: "win rate, uptrend to pressure" },
-            { value: `${up.expectancy}R → ${press.expectancy}R`, label: "return per trade" },
-          ],
-          chart: {
-            type: "bars", unit: "%",
-            rows: ["uptrend", "pressure", "correction"]
-              .filter((k) => byReg[k]?.winRate != null && byReg[k].trades > 0)
-              .map((k) => ({ label: REGIME_WORDS[k], value: byReg[k].winRate, n: byReg[k].trades })),
-            axisNote: "share of trades that won, by what the index was doing",
-          },
-          verdict: "Do not read this as a reason to trade less. It is a reason to leave the " +
-                   "winners alone in this regime — cutting them short is what would turn a " +
-                   "change of shape into a loss of edge." }));
-    }
+
   }
 
   // Is trading in corrections worth it at all?

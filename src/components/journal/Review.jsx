@@ -24,7 +24,13 @@ import { setupGaps } from "@/lib/gaps";
 const SEVERITY = {
   critical: { label: "Critical", color: "var(--short)" },
   warning: { label: "Warning", color: "var(--brass)" },
-  watch: { label: "Watch", color: "var(--ink3)" },
+  /* Violet, not the body grey it used to be. Watch is a severity like the
+     others and was the only one drawn in the same colour as ordinary text, so
+     a card with nothing critical on it came out monochrome — the page reading
+     as switched off rather than as calm. Violet sits apart from the red, brass
+     and green already spoken for and carries no good/bad charge of its own,
+     which is the whole meaning of Watch. */
+  watch: { label: "Watch", color: "var(--violet)" },
   good: { label: "Good", color: "var(--long)" },
 };
 
@@ -367,7 +373,7 @@ function BarsChart({ data, color }) {
   const signed = data.unit === "R";
   const valueText = (r) =>
     `${signed && r.value > 0 ? "+" : ""}${r.value.toFixed(dp)}${data.unit}` +
-    `${r.n != null ? ` · ${r.n}` : ""}`;
+    `${r.sub ? ` · ${r.sub}` : ""}${r.n != null ? ` · ${r.n}` : ""}`;
   const PAD_R = Math.max(60, Math.ceil(Math.max(...rows.map((r) => valueText(r).length)) * 6.4) + 14);
   const PAD_L = Math.max(90, Math.ceil(Math.max(...rows.map((r) => String(r.label).length)) * 5.9) + 14);
   const H = rows.length * ROW + 22;
@@ -399,6 +405,7 @@ function BarsChart({ data, color }) {
                   fill={color} opacity={strong ? 0.9 : 0.42} rx="1" />
             <text x={Math.max(zero, x(r.value)) + 8} y={y + h - 2} className="rv-chart-val">
               {signed && r.value > 0 ? "+" : ""}{r.value.toFixed(dp).replace("-", "−")}{data.unit}
+              {r.sub && <tspan className="rv-chart-lbl"> · {r.sub}</tspan>}
               {r.n != null && <tspan className="rv-chart-lbl"> · {r.n}</tspan>}
             </text>
           </g>
