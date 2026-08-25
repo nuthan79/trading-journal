@@ -7,6 +7,7 @@ import { classifyRegime, regimeIndex, REGIME_LABEL } from "@/lib/market";
 import { signedPct, rupee } from "@/lib/format";
 import Link from "next/link";
 import { setupGaps } from "@/lib/gaps";
+import { processStages, recentCompliance } from "@/lib/bottleneck";
 
 /**
  * Behavioural review — arithmetic findings from the trader's own closed
@@ -698,6 +699,214 @@ function FindingCard({ f, n }) {
   );
 }
 
+const STATE_WORD = {
+  weak: "Leaking", watch: "Worth watching", solid: "Solid",
+  measured: "Holding", quiet: "Nothing to flag", unmeasured: "Not recorded",
+};
+const STATE_COLOUR = {
+  weak: "var(--short)", watch: "var(--violet)", solid: "var(--long)",
+  measured: "var(--ink2)", quiet: "var(--ink3)", unmeasured: "var(--ink3)",
+};
+
+/** "a, b and c" — the plain English version. Joining with " and " throughout
+ *  produced "Selection and Timing and Cadence" on the first render. */
+const listWords = (xs) =>
+  xs.length <= 1 ? (xs[0] || "")
+  : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`;
+
+/**
+ * The process as stages, ranked by what each one is costing.
+ *
+ * WHY A TABLE AND NOT SIX CARDS. Six cards is what the findings below already
+ * are, and the entire point of this block is the comparison between stages —
+ * which is a thing you read across rows, not by scrolling. The bar in the cost
+ * cell carries the ranking at a glance; the numbers beside it are for the one
+ * row you stop on.
+ *
+ * THE COST COLUMN IS BLANK ON PURPOSE for three of the six stages. Only three
+ * have a baseline the trader themselves set, and filling the gap with a
+ * plausible estimate would make the two kinds of number indistinguishable —
+ * see the note at the top of bottleneck.js. An empty cell says "not costed"
+ * more honestly than any figure could.
+ */
+function ProcessMap({ data, week }) {
+  if (!data) return null;
+  const { stages, bottleneck, strong, unmeasured } = data;
+
+  /* One scale across every bar so the lengths mean something relative to each
+     other. Gains and leaks share it — a partial that protected the account is
+     drawn at the same scale as a stop that did not hold. */
+  const span = Math.max(...stages.map((s) => Math.abs(s.costR || 0)), 1);
+
+  return (
+    <section className="rv-proc">
+      <div className="eyebrow">Your process, stage by stage</div>
+
+      <h3 className="rv-proc-h">
+        {bottleneck ? (
+          <>
+            The bottleneck is <em>{bottleneck.name.toLowerCase()}</em>. It has cost you{" "}
+            {Math.abs(bottleneck.costR)}R
+            {/* rupee() emits "₹8.26 L" — one value, one space, and on a narrow
+                screen the headline broke the line between the number and its
+                tier. */}
+            {bottleneck.costRupees
+              ? <> — <span style={{ whiteSpace: "nowrap" }}>{rupee(Math.abs(bottleneck.costRupees))}</span></>
+              : null}
+            {" "}against your own plan.
+          </>
+        ) : (
+          <>No stage is measurably leaking. What is left is what you cannot see yet.</>
+        )}
+      </h3>
+
+      <p className="rv-proc-lead">
+        Every stage below is a decision you make on every trade, in the order you make it.
+        Three of them can be costed against a baseline you set yourself — your stop, your
+        typical position size, your own final exit price. The rest are ranked but not
+        costed, because the only baseline available would be a better trader, and that is
+        not a number worth printing.
+      </p>
+
+      <div className="rv-proc-week" data-quiet={week.trades === 0 ? "1" : undefined}>
+        <div className="rv-proc-week-h">
+          Last {week.days} days
+          <span className="rv-dim"> · {week.from} to {week.to}</span>
+        </div>
+        {week.trades === 0 ? (
+          <p className="rv-proc-week-p">
+            Nothing closed. The ranking above needs dozens of trades to move, so a quiet
+            week changes none of it — that is the point of looking at this weekly rather
+            than recomputing it.
+          </p>
+        ) : (
+          <ul className="rv-proc-week-l">
+            <li>
+              <b>{week.trades}</b> closed
+              {week.netR != null && (
+                <span className="rv-dim">
+                  {" "}· {week.won} won, {week.lost} lost ·{" "}
+                  <b style={{ color: week.netR >= 0 ? "var(--long)" : "var(--short)" }}>
+                    {week.netR > 0 ? "+" : ""}{week.netR}R
+                  </b>
+                </span>
+              )}
+            </li>
+            <li>
+              {week.losses === 0 ? (
+                <>No losses to test the stop against.</>
+              ) : week.overruns === 0 ? (
+                <><b style={{ color: "var(--long)" }}>Every stop held</b> — {week.losses}{" "}
+                  {week.losses === 1 ? "loss" : "losses"}, none past 1R.</>
+              ) : (
+                <>
+                  <b style={{ color: "var(--short)" }}>
+                    {week.overruns} of {week.losses}
+                  </b>{" "}
+                  {week.losses === 1 ? "loss" : "losses"} ran past the stop
+                  {week.overrunSymbols.length > 0 && (
+                    <span className="rv-dim"> · {week.overrunSymbols.join(", ")}</span>
+                  )}
+                </>
+              )}
+            </li>
+            {week.riskMin != null && (
+              <li>
+                Risk {week.riskMin}%
+                {week.riskMax !== week.riskMin && <> to {week.riskMax}%</>}
+                <span className="rv-dim"> per trade</span>
+              </li>
+            )}
+            {week.assumedStops > 0 && (
+              <li className="rv-dim">
+                {week.assumedStops} carried an assumed stop, so {week.assumedStops === 1
+                  ? "it is" : "they are"} not counted above.
+              </li>
+            )}
+          </ul>
+        )}
+      </div>
+
+      <div className="rv-proc-scroll">
+        <table className="rv-proc-t">
+          <thead>
+            <tr>
+              <th>Stage</th>
+              <th>State</th>
+              <th className="num">Against your own plan</th>
+              <th>What it rests on</th>
+            </tr>
+          </thead>
+          <tbody>
+            {stages.map((s) => {
+              const w = s.costR != null ? (Math.abs(s.costR) / span) * 100 : 0;
+              const good = (s.costR || 0) > 0;
+              return (
+                <tr key={s.key} data-state={s.state}>
+                  <th scope="row">
+                    <span className="rv-proc-step">{s.step}</span>
+                    <span className="rv-proc-name">{s.name}</span>
+                    <span className="rv-proc-blurb">{s.blurb}</span>
+                  </th>
+                  <td>
+                    <span className="rv-proc-chip" style={{ color: STATE_COLOUR[s.state] }}>
+                      {STATE_WORD[s.state]}
+                    </span>
+                  </td>
+                  <td className="num">
+                    {s.costR == null ? (
+                      <span className="rv-proc-none">not costed</span>
+                    ) : (
+                      <span className="rv-proc-cost">
+                        <span className="rv-proc-bar">
+                          <i style={{
+                            width: `${w}%`,
+                            background: good ? "var(--long)" : "var(--short)",
+                          }} />
+                        </span>
+                        <b style={{ color: good ? "var(--long)" : "var(--short)" }}>
+                          {good ? "+" : "−"}{Math.abs(s.costR)}R
+                        </b>
+                        {s.costRupees ? (
+                          <span className="rv-dim">{rupee(Math.abs(s.costRupees))}</span>
+                        ) : null}
+                      </span>
+                    )}
+                  </td>
+                  <td className="rv-proc-note">
+                    {s.findingTitle
+                      || (s.reason === "no-data"
+                        ? "Nothing recorded that would show this"
+                        : s.reason === "no-finding"
+                        ? "Every check on this stage ran and found nothing"
+                        : "Measured, nothing to flag")}
+                    {s.thin && s.state !== "unmeasured" && (
+                      <span className="rv-proc-thin"> · only {s.sample} trades, provisional</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="rv-proc-foot">
+        {strong.length > 0 && (
+          <>Holding up: {listWords(strong).toLowerCase()}. </>
+        )}
+        {unmeasured.length > 0 && (
+          <>
+            {listWords(unmeasured)} {unmeasured.length === 1 ? "is" : "are"} dark — not
+            passing, just unrecorded. Whatever is happening there is not in any number on
+            this page.
+          </>
+        )}
+      </p>
+    </section>
+  );
+}
+
 export default function Review({ closed, stats, all, diary }) {
   /**
    * Setup fields the form no longer asks for by default.
@@ -757,6 +966,23 @@ export default function Review({ closed, stats, all, diary }) {
   const thesis = useMemo(
     () => reviewThesis(closed, result.findings, stats),
     [closed, result, stats]
+  );
+
+  /**
+   * The process view, and the week measured against it.
+   *
+   * Both take the findings that already exist rather than recomputing
+   * anything, so a stage can never disagree with the card underneath it.
+   * `asOf` is a fresh Date here and only here — the module takes it as an
+   * argument so it stays testable.
+   */
+  const process = useMemo(
+    () => processStages(closed, result.findings),
+    [closed, result]
+  );
+  const week = useMemo(
+    () => recentCompliance(closed, { days: 7, asOf: new Date() }),
+    [closed]
   );
 
   const last = market.classified[market.classified.length - 1];
@@ -827,6 +1053,8 @@ export default function Review({ closed, stats, all, diary }) {
         )}
       </div>
 
+      <ProcessMap data={process} week={week} />
+
       {gaps.length > 0 && (
         <div className="rv-gaps">
           <div className="eyebrow" style={{ marginBottom: 6 }}>Worth filling in</div>
@@ -876,6 +1104,122 @@ export default function Review({ closed, stats, all, diary }) {
       )}
 
       <style jsx global>{`
+        /* ---- the process map ---------------------------------------- */
+        .rv-proc { margin-bottom: 20px; }
+        .rv-proc-h {
+          font-family: var(--display, inherit);
+          font-size: 21px; line-height: 1.32; font-weight: 700;
+          margin: 2px 0 8px; color: var(--ink);
+          max-width: var(--note-w); text-wrap: balance;
+        }
+        .rv-proc-h em { font-style: normal; color: var(--brass); }
+        .rv-proc-lead {
+          font-size: 12px; line-height: 1.65; color: var(--ink3);
+          margin: 0 0 14px; max-width: var(--note-w);
+        }
+
+        /* The week sits above the table because it is the part somebody
+           opens this screen on a Sunday to read. */
+        .rv-proc-week {
+          border: 1px solid var(--rule); border-left: 3px solid var(--brass);
+          background: var(--card); border-radius: 3px;
+          padding: 11px 14px; margin-bottom: 14px;
+        }
+        .rv-proc-week[data-quiet] { border-left-color: var(--ink3); }
+        .rv-proc-week-h {
+          font-size: 10.5px; font-weight: 700; letter-spacing: .07em;
+          text-transform: uppercase; color: var(--ink2); margin-bottom: 6px;
+        }
+        .rv-proc-week-p {
+          font-size: 12.5px; line-height: 1.6; color: var(--ink2);
+          margin: 0; max-width: var(--note-w);
+        }
+        /* Wraps into columns on a wide screen rather than running one short
+           list down the left — see the house rule on filling the width. */
+        .rv-proc-week-l {
+          list-style: none; margin: 0; padding: 0;
+          display: grid; gap: 4px 26px;
+          grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+          font-size: 12.5px; line-height: 1.55; color: var(--ink);
+        }
+
+        .rv-proc-scroll { overflow-x: auto; }
+        .rv-proc-t {
+          width: 100%; border-collapse: collapse;
+          font-size: 12.5px; font-variant-numeric: tabular-nums;
+        }
+        .rv-proc-t th, .rv-proc-t td {
+          text-align: left; padding: 9px 12px 9px 0;
+          border-bottom: 1px solid var(--rule); vertical-align: baseline;
+        }
+        .rv-proc-t thead th {
+          font-size: 10px; font-weight: 700; letter-spacing: .07em;
+          text-transform: uppercase; color: var(--ink3);
+          border-bottom: 1px solid var(--ink3); padding-bottom: 6px;
+        }
+        /* The label column takes only what it needs, or automatic layout
+           hands it the surplus and strands the bars far from their names. */
+        /* Both label columns take only what they need. Left to automatic
+           layout the state column claimed 198px for a one-word chip and the
+           surplus never reached the notes, which are the part that wants it. */
+        .rv-proc-t tbody th { width: 1px; white-space: nowrap; font-weight: 400; }
+        .rv-proc-t th:nth-child(2), .rv-proc-t td:nth-child(2) {
+          width: 1px; white-space: nowrap;
+        }
+        .rv-proc-t tbody tr[data-state="unmeasured"] th,
+        .rv-proc-t tbody tr[data-state="unmeasured"] td { opacity: .62; }
+        .rv-proc-step {
+          display: inline-block; width: 17px; color: var(--ink3);
+          font-size: 11px;
+        }
+        .rv-proc-name { font-weight: 700; color: var(--ink); }
+        .rv-proc-blurb {
+          display: block; margin-left: 17px;
+          font-size: 11px; color: var(--ink3);
+        }
+        .rv-proc-chip {
+          font-size: 10.5px; font-weight: 700; letter-spacing: .05em;
+          text-transform: uppercase; white-space: nowrap;
+        }
+        .rv-proc-cost {
+          display: flex; align-items: center; gap: 9px; justify-content: flex-end;
+        }
+        /* The bar grows leftward from the numbers so every row's figures line
+           up on one edge and only the bar length varies. */
+        .rv-proc-bar {
+          flex: 1 1 auto; min-width: 60px; max-width: 300px;
+          height: 8px; background: var(--rule); border-radius: 2px;
+          display: flex; justify-content: flex-end; overflow: hidden;
+        }
+        /* A floor of 3px, because one stage can be an order of magnitude worse
+           than the next and a sub-pixel sliver reads as zero rather than as
+           small. The number beside it carries the real value. */
+        .rv-proc-bar i {
+          display: block; height: 100%; border-radius: 2px; min-width: 3px;
+        }
+        .rv-proc-cost b { min-width: 62px; text-align: right; }
+        .rv-proc-cost .rv-dim { min-width: 62px; text-align: right; }
+        .rv-proc-none { color: var(--ink3); font-size: 11.5px; }
+        .rv-proc-note { color: var(--ink2); line-height: 1.5; }
+        .rv-proc-thin { color: var(--ink3); font-size: 11px; }
+        .rv-proc-foot {
+          font-size: 11.5px; line-height: 1.65; color: var(--ink3);
+          margin: 10px 0 0; max-width: var(--note-w);
+        }
+        @media (max-width: 720px) {
+          .rv-proc-t thead { display: none; }
+          .rv-proc-t tbody th, .rv-proc-t tbody td {
+            display: block; width: auto; white-space: normal; border-bottom: 0;
+            padding: 2px 0;
+          }
+          .rv-proc-t tbody tr {
+            display: block; padding: 10px 0;
+            border-bottom: 1px solid var(--rule);
+          }
+          .rv-proc-cost { justify-content: flex-start; }
+          .rv-proc-t td.num { text-align: left; }
+        }
+
         .rv-gaps {
           border: 1px solid var(--rule); background: var(--card);
           border-radius: 3px; padding: 13px 15px; margin-bottom: 18px;
