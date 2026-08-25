@@ -238,9 +238,29 @@ function riskConsistency(closed) {
   const sl = slope(risks);
   const drift = (sl * rows.length) / m * 100;   // % change implied across the sample
 
-  const firstQ = risks.slice(0, Math.max(4, Math.floor(rows.length / 4)));
-  const lastQ = risks.slice(-Math.max(4, Math.floor(rows.length / 4)));
+  const cut = Math.max(4, Math.floor(rows.length / 4));
+  const firstQ = risks.slice(0, cut);
+  const lastQ = risks.slice(-cut);
   const change = ((mean(lastQ) - mean(firstQ)) / mean(firstQ)) * 100;
+
+  /**
+   * RISING RISK IS NOT A VERDICT ON ITS OWN.
+   *
+   * "Risk per trade is climbing" is a fact with two opposite meanings, and the
+   * check used to report it as though it had one. Betting more while the
+   * trades improve is scaling into something that works — the thing every
+   * position-sizing rule is FOR. Betting more while they get worse is the
+   * mechanism that empties accounts.
+   *
+   * The same two quarters, read for outcome instead of size, separate them.
+   * Both figures already exist per trade; nothing here needs a model to
+   * interpret it.
+   */
+  const rFirst = mean(rows.slice(0, cut).map((t) => t.r).filter(isFinite));
+  const rLast = mean(rows.slice(-cut).map((t) => t.r).filter(isFinite));
+  const edgeKnown = isFinite(rFirst) && isFinite(rLast);
+  const edgeUp = edgeKnown && rLast > rFirst + 0.1;
+  const edgeDown = edgeKnown && rLast < rFirst - 0.1;
 
   const ev = {
     trades: rows.length,
@@ -253,6 +273,8 @@ function riskConsistency(closed) {
     lastQuarterAvg: +mean(lastQ).toFixed(2),
     changePct: +change.toFixed(0),
     over2pct: risks.filter((r) => r > 2).length,
+    firstQuarterR: edgeKnown ? +rFirst.toFixed(2) : null,
+    lastQuarterR: edgeKnown ? +rLast.toFixed(2) : null,
   };
 
   /**
@@ -275,26 +297,57 @@ function riskConsistency(closed) {
   const lede = LEDE_RISK;
 
   if (change > 40 && ev.lastQuarterAvg > ev.firstQuarterAvg) {
-    return F("critical", "risk-escalation",
-      "Risk per trade is climbing",
-      `Position size scales your return and your drawdown by exactly the same factor. So this has changed ` +
-      `what a bad run costs you without changing anything about the edge that produces it — ` +
+    const figs = [
+      { value: `+${ev.changePct}%`, label: "bigger bets" },
+      /* Only when the edge actually moved. Inside the deadband this printed
+         "−0.00R worse trades", which is a direction invented out of rounding
+         and the opposite of what the figure is there to settle. */
+      ...(edgeUp || edgeDown ? [{
+        value: `${edgeUp ? "+" : "\u2212"}${Math.abs(rLast - rFirst).toFixed(2)}R`,
+        label: edgeUp ? "better trades" : "worse trades",
+      }] : edgeKnown ? [{ value: `${ev.lastQuarterR}R`, label: "trades unchanged" }] : []),
+      { value: `${ev.lastQuarterAvg}%`, label: "risked per trade now" },
+    ];
+    const chart = {
+      ...riskChart,
+      bands: [
+        { value: ev.firstQuarterAvg, label: "first quarter" },
+        { value: ev.lastQuarterAvg, label: "most recent", strong: true },
+      ],
+    };
+    const cost = `Position size scales your return and your drawdown by exactly the same factor, so ` +
       `if your worst historical run is ${"{maxDD}"}R, at ${ev.lastQuarterAvg}% that same run now takes a ` +
-      `different amount out of the account.`,
-      ev,
-      { lede,
-        figures: [
-          { value: `${ev.firstQuarterAvg}%`, label: "where you started" },
-          { value: `${ev.lastQuarterAvg}%`, label: "where you are now" },
-          { value: `+${ev.changePct}%`, label: "bigger bets" },
-        ],
-        chart: {
-          ...riskChart,
-          bands: [
-            { value: ev.firstQuarterAvg, label: "first quarter" },
-            { value: ev.lastQuarterAvg, label: "most recent", strong: true },
-          ],
-        },
+      `different amount out of the account.`;
+
+    /* Betting more into trades that are getting worse. */
+    if (edgeDown) {
+      return F("critical", "risk-escalation",
+        "You are betting more as the trades get worse",
+        `Risk per trade is up ${ev.changePct}%, while what those trades return has fallen from ` +
+        `${ev.firstQuarterR}R to ${ev.lastQuarterR}R. Those two moving in opposite directions is the ` +
+        `combination that empties accounts — not either one alone. ${cost}`,
+        ev, { lede, figures: figs, chart,
+          verdict: "Size up when the trades improve, not while they deteriorate. On these " +
+                   "numbers the sizing should be coming down, not going up." });
+    }
+    /* Betting more into trades that are improving — which is what sizing is for. */
+    if (edgeUp) {
+      return F("watch", "risk-escalation",
+        "You are betting more, and the trades are getting better",
+        `Risk per trade is up ${ev.changePct}%, and what those trades return has risen from ` +
+        `${ev.firstQuarterR}R to ${ev.lastQuarterR}R. That is the right direction — scaling into a ` +
+        `method that is working is what position sizing is for. It is here as a Watch rather than a ` +
+        `problem because it appears to have happened by drift rather than by decision. ${cost}`,
+        ev, { lede, figures: figs, chart,
+          verdict: "Nothing to undo — but make it deliberate. Risk that grows on its own " +
+                   "keeps growing through the quarter when the edge stops working." });
+    }
+    /* Bigger bets, same trades. */
+    return F("warning", "risk-escalation",
+      "Risk per trade is climbing",
+      `Risk per trade is up ${ev.changePct}% while what the trades return has held roughly flat. ` +
+      `So the account is exposed to more without getting more back for it. ${cost}`,
+      ev, { lede, figures: figs, chart,
         verdict: `You are trading a ${ev.changePct}% larger account risk than when you started, ` +
                  `without having decided to. Pick the number you mean and size to it.` });
   }
@@ -1169,6 +1222,78 @@ function duplicatePositions(all) {
 /* ==================================================================== */
 /*  Assemble                                                            */
 /* ==================================================================== */
+
+/**
+ * The one thing to say about the whole record, before any finding.
+ *
+ * DERIVED, NOT WRITTEN. A model was asked to do this once and the route was
+ * removed — it cost an API call per view, had no authentication, and gave a
+ * different answer to the same book twice. Every part of the sentence below is
+ * arithmetic on the trades, so it is free, identical on every load, and can be
+ * checked against the findings underneath it.
+ *
+ * TWO CLAUSES, BECAUSE THERE ARE TWO QUESTIONS. Does the method make money,
+ * and what is most in the way of it making more. They are independent — a book
+ * can have a real edge and a sizing problem at once, which is exactly the case
+ * worth naming, and one sentence about "performance" would blur them into a
+ * grade.
+ *
+ * SAYS SO WHEN IT DOES NOT KNOW. Under thirty closed trades nothing here
+ * separates skill from sequence, and a confident sentence over a thin sample is
+ * worse than no sentence: it is the one part of the screen somebody will quote
+ * back to themselves.
+ */
+export function reviewThesis(closed, findings, stats) {
+  const withR = closed.filter((t) => isFinite(t.r));
+  if (withR.length < 12) return null;
+
+  const exp = mean(withR.map((t) => t.r));
+  const wins = withR.filter((t) => t.r > 0);
+  const thin = withR.length < 30;
+
+  /* The edge, in the only terms this app measures anything: R per trade. */
+  const edge = !isFinite(exp) ? null
+    : exp >= 0.3 ? { verb: "The edge is real", tone: "good" }
+    : exp > 0.05 ? { verb: "The edge is thin but positive", tone: "ok" }
+    : exp >= -0.05 ? { verb: "The edge is a coin flip", tone: "flat" }
+    : { verb: "There is no edge here yet", tone: "bad" };
+
+  /**
+   * What is most in the way — the worst finding, named as a subject rather
+   * than repeated as a headline. "Losses are running past the stop" is the
+   * finding's own title; the thesis wants the noun, so the two do not read as
+   * the same sentence twice.
+   */
+  const SUBJECTS = {
+    "risk-escalation": "how much you are betting",
+    "risk-inconsistent": "how much you are betting",
+    "risk-outliers": "the occasional oversized bet",
+    "stop-discipline": "where your losses actually end",
+    "revenge-sizing": "what you do straight after a loss",
+    "conviction-inverted": "which trades you back hardest",
+    "exit-method": "the way you get out",
+    "market-misaligned": "when you choose to trade",
+    "thin-volume": "the entries you are taking",
+    "return-concentration": "how few trades carry it",
+    "revenge-cadence": "how soon you re-enter",
+  };
+  const worst = findings.find((f) => f.severity === "critical")
+             || findings.find((f) => f.severity === "warning");
+  const subject = worst ? SUBJECTS[worst.id] : null;
+
+  return {
+    thin,
+    trades: withR.length,
+    expectancy: +exp.toFixed(2),
+    winRate: +((wins.length / withR.length) * 100).toFixed(0),
+    edge: edge.verb,
+    tone: edge.tone,
+    /* Null when nothing is wrong, so the sentence stops rather than reaching
+       for a problem it does not have. */
+    subject: subject || null,
+    subjectSeverity: worst?.severity || null,
+  };
+}
 
 export function reviewFindings(
   closed,

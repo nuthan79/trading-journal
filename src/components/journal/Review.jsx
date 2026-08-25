@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch, track } from "@/lib/db";
-import { reviewFindings } from "@/lib/analysis";
+import { reviewFindings, reviewThesis } from "@/lib/analysis";
 import { classifyRegime, regimeIndex, REGIME_LABEL } from "@/lib/market";
 import { signedPct } from "@/lib/format";
 import Link from "next/link";
@@ -525,6 +525,19 @@ export default function Review({ closed, stats, all, diary }) {
     return by;
   }, [result]);
 
+  /**
+   * One sentence about the whole record, above everything.
+   *
+   * The screen used to open on a market-regime strip and a list of empty
+   * fields — housekeeping — and left the reader to assemble a verdict from
+   * eleven cards sorted by severity. Every finding said something true and
+   * nothing said what the record amounted to.
+   */
+  const thesis = useMemo(
+    () => reviewThesis(closed, result.findings, stats),
+    [closed, result, stats]
+  );
+
   const last = market.classified[market.classified.length - 1];
   const pos50 = last?.ma50 ? ((last.close - last.ma50) / last.ma50) * 100 : null;
   const pos200 = last?.ma200 ? ((last.close - last.ma200) / last.ma200) * 100 : null;
@@ -542,6 +555,26 @@ export default function Review({ closed, stats, all, diary }) {
 
   return (
     <div className="sec">
+      {thesis && (
+        <header className="rv-thesis">
+          <p className="rv-thesis-eyebrow">
+            {thesis.trades} closed trades · {thesis.expectancy > 0 ? "+" : ""}
+            {thesis.expectancy}R average · {thesis.winRate}% of them won
+          </p>
+          <h2 className="rv-thesis-h" data-tone={thesis.tone}>
+            {thesis.edge}.{" "}
+            {thesis.subject
+              ? <>The thing in the way is <em>{thesis.subject}</em>.</>
+              : <>Nothing here is working against you.</>}
+          </h2>
+          {thesis.thin && (
+            <p className="rv-thesis-note">
+              Read this lightly — under thirty closed trades, none of it separates
+              a method from a run of luck.
+            </p>
+          )}
+        </header>
+      )}
       <div className="rv-strip">
         {market.loading ? (
           <span className="rv-dim">Loading market regime…</span>
@@ -666,6 +699,33 @@ export default function Review({ closed, stats, all, diary }) {
 
         /* Full width of the card, height from its own viewBox — these are
            drawn to be read at a glance, so they get the room. */
+        /*
+          The thesis, set as a page opens rather than as another card. It sits
+          outside the severity groups on purpose — it is about the record, not
+          about one check, and putting it in a bordered box would file it as
+          the twelfth finding.
+        */
+        .rv-thesis { margin: 0 0 18px; }
+        .rv-thesis-eyebrow {
+          font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase;
+          color: var(--ink3); margin: 0 0 10px;
+          font-variant-numeric: tabular-nums;
+        }
+        .rv-thesis-h {
+          font-family: 'Archivo', sans-serif; font-stretch: 125%; font-weight: 600;
+          font-size: clamp(21px, 3.1vw, 31px); line-height: 1.15;
+          letter-spacing: -0.02em; margin: 0; max-width: 22ch;
+          text-wrap: balance; color: var(--ink);
+        }
+        /* Only the SUBJECT is coloured — the clause naming what is wrong. The
+           edge verdict stays in ink so the sentence does not read as two
+           competing alarms. */
+        .rv-thesis-h em { font-style: normal; color: var(--brass); }
+        .rv-thesis-h[data-tone="bad"] em { color: var(--short); }
+        .rv-thesis-note {
+          font-size: 12.5px; color: var(--ink3); margin: 10px 0 0; max-width: 60ch;
+        }
+
         .rv-chart { display: block; width: 100%; height: auto; margin: 14px 0 0; }
         .rv-chart-lbl {
           font-size: 10.5px; fill: var(--ink3);
