@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch, track } from "@/lib/db";
-import { reviewFindings, reviewThesis } from "@/lib/analysis";
+import { reviewFindings, reviewThesis, recentBook } from "@/lib/analysis";
 import { classifyRegime, regimeIndex, REGIME_LABEL } from "@/lib/market";
 import { signedPct, rupee } from "@/lib/format";
 import Link from "next/link";
@@ -939,7 +939,7 @@ export default function Review({ closed, stats, all, diary }) {
    * row with the real patterns as slivers beside it, and nobody ever decides
    * to lose it. This is the asking.
    */
-  const gaps = useMemo(() => setupGaps(closed), [closed]);
+  const gaps = useMemo(() => setupGaps(closed, recentBook(closed)), [closed]);
   const [market, setMarket] = useState({ loading: true, error: null, classified: [] });
 
   // Opening the review is the habit this journal is actually for — recording
@@ -1085,11 +1085,27 @@ export default function Review({ closed, stats, all, diary }) {
             These are read off the chart, so they can be added any time — but until they
             are, the cut on the performance sheet that uses them is mostly one
             &ldquo;Not recorded&rdquo; row.
+            {gaps.some((g) => g.backlogOnly) && (
+              <> Anything marked <b>backlog</b> you are already recording; what is left
+                of it is history, and it shrinks as you fill it in.</>
+            )}
           </p>
           {gaps.map((g) => (
             <div key={g.key} className="rv-gap">
               <span>
                 <b>{g.missing}</b> of {g.total} closed trades have no {g.label} recorded
+                {/* The recent count is what tells a routine apart from a
+                    backlog. Without it "290 of 290" and "200 of 290, none of
+                    them recent" read as the same sentence. */}
+                {g.backlogOnly ? (
+                  <span className="rv-gap-ok">
+                    {" "}· backlog — all of your last {g.recentTotal} have it
+                  </span>
+                ) : g.recentMissing != null && !g.habit ? (
+                  <span className="rv-dim">
+                    {" "}· {g.recentMissing} of your last {g.recentTotal}
+                  </span>
+                ) : null}
                 <span className="rv-dim"> · weakens {g.cut}</span>
               </span>
               <Link className="rv-gap-go" href={`/trades?missing=${g.key}`}>
@@ -1255,6 +1271,7 @@ export default function Review({ closed, stats, all, diary }) {
           border: 1px solid var(--rule); background: var(--card);
           border-radius: 3px; padding: 13px 15px; margin-bottom: 18px;
         }
+        .rv-gap-ok { color: var(--long); }
         .rv-gaps-lead {
           font-size: 11.5px; color: var(--ink3); line-height: 1.6;
           margin: 0 0 9px; max-width: 620px; text-wrap: pretty;
@@ -1264,6 +1281,17 @@ export default function Review({ closed, stats, all, diary }) {
           gap: 14px; flex-wrap: wrap; font-size: 12.5px; color: var(--ink2);
           padding: 5px 0; border-top: 1px solid var(--rule);
         }
+        /* The sentence takes the slack and wraps within itself. Without this
+           the longest row pushed "Show them" onto its own line, where it
+           left-aligned under the text and stopped reading as that row's
+           control — the backlog clause was enough to trip it. */
+        /* Basis 240px, not auto. With an auto basis the base size is the
+           sentence's max-content width, and flex-wrap breaks the line from
+           that hypothetical size BEFORE any shrinking happens — so the link
+           wrapped while the span still had slack. A small basis lets both sit
+           on one line and the sentence wrap inside itself; it only breaks
+           below roughly 330px, where wrapping is right. */
+        .rv-gap > span:first-child { flex: 1 1 240px; min-width: 0; }
         .rv-gap:first-of-type { border-top: 0; }
         .rv-gap b { font-weight: 500; color: var(--ink); }
         .rv-gap-go {

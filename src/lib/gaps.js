@@ -45,16 +45,44 @@ export const SETUP_FIELDS = [
  * Returns only fields with a real gap, worst first, and each row carries the
  * share so the UI can say something proportionate — "12 of 407" is a footnote,
  * "380 of 407" is the analysis being gone.
+ *
+ * THE LIFETIME COUNT STAYS, AND A SECOND COUNT SITS BESIDE IT.
+ *
+ * Unlike every rate on the Review screen, the lifetime figure here is not
+ * stale — it is the backlog, all of it fillable, because nothing about a base
+ * pattern decays and a chart from 2022 still shows one. What the single number
+ * could not do is tell two completely different situations apart:
+ *
+ *   · never recorded — a routine that does not include this field, and the
+ *     backlog grows with every trade
+ *   · recorded now, with history behind it — a finite job that shrinks
+ *
+ * They want opposite responses, and "290 of 290" reads identically to "200 of
+ * 290, none of them recent". So the recent window is counted too, and a field
+ * still being skipped sorts above one that is only a backlog: changing what
+ * you do tomorrow matters more than filling in what you did last year.
  */
-export function setupGaps(closed) {
+export function setupGaps(closed, recent = null) {
   const n = (closed || []).length;
   if (!n) return [];
+  /* Only when the window is a real subset — on a short book it is the same
+     rows twice, and "12 of 12, and 12 of your last 12" is noise. */
+  const win = recent && recent.length >= 20 && recent.length < n ? recent : null;
 
   return SETUP_FIELDS
     .map((f) => {
       const missing = closed.filter((t) => !f.has(t)).length;
-      return { ...f, missing, total: n, share: (missing / n) * 100 };
+      const recentMissing = win ? win.filter((t) => !f.has(t)).length : null;
+      return {
+        ...f, missing, total: n, share: (missing / n) * 100,
+        recentMissing, recentTotal: win ? win.length : null,
+        /* Still skipping it: over half the recent window is blank. */
+        habit: recentMissing == null ? null : recentMissing / win.length >= 0.5,
+        /* Nothing recent is missing, so what is left is only history. */
+        backlogOnly: recentMissing === 0,
+      };
     })
     .filter((f) => f.missing > 0)
-    .sort((a, b) => b.missing - a.missing);
+    .sort((a, b) =>
+      Number(a.backlogOnly) - Number(b.backlogOnly) || b.missing - a.missing);
 }
