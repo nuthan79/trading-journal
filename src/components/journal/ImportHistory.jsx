@@ -366,6 +366,11 @@ function label(b) {
     zerodha: "Zerodha tax P&L",
     groww: "Groww capital gains",
     dhan: "Dhan tax P&L",
+    // Named for what ICICI calls it — the report's own title cell is "Equity
+    // PL", and it is reached from Portfolio rather than from anything labelled
+    // tax. Added late, having shipped one import as the raw `icicidirect-
+    // taxpnl`, which is the Groww mistake the note above already describes.
+    icicidirect: "ICICI Direct equity P&L",
     angelone: "Angel One tax P&L",
     iifl: "IIFL tax P&L",
     // The kind is part of the id here, not only the suffix, because there are
