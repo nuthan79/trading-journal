@@ -1357,7 +1357,10 @@ function dataQuality(closed) {
     `The setup breakdowns can only compare what is recorded. A blank does not count against a pattern — ` +
     `it makes that pattern invisible, so the cut goes on working and quietly stops meaning anything.`,
     ev,
-    { lede: LEDE_GAPS,
+    { /* How many fields are blank, so recency can see four become one — this
+         check never changes severity and would otherwise be frozen. */
+      magnitude: gaps.length,
+      lede: LEDE_GAPS,
       figures: [{ value: `${gaps.length}`, label: gaps.length === 1 ? "field mostly blank" : "fields mostly blank" }],
       chart: {
         type: "bars",
@@ -1452,7 +1455,10 @@ function chargesRecorded(closed) {
     `rather than blurs: net P&L, return on capital and XIRR all read better than reality, and by more ` +
     `the longer the book gets.`,
     ev,
-    { lede: LEDE_CHARGES,
+    { /* The share still missing, so a book that has been importing properly
+         for a year stops being judged on the years before it. */
+      magnitude: 100 - pct,
+      lede: LEDE_CHARGES,
       figures: [
         { value: `${missing.length}`, label: "trades with no charges" },
         { value: `${pct}%`, label: "of trades have them recorded" },
@@ -1927,6 +1933,132 @@ function duplicatePositions(all) {
 }
 
 /* ==================================================================== */
+/*  Recency                                                             */
+/* ==================================================================== */
+
+/**
+ * EVERY RATE ON THIS SCREEN WAS A LIFETIME RATE, AND A LIFETIME RATE BARELY
+ * MOVES.
+ *
+ * The stop-discipline card proved the general case: a figure computed over
+ * the whole book describes a trader's history, and a severity badge is a
+ * claim about their present. On a long record the two come apart completely —
+ * a habit dropped two years ago still reads as a current failing, and forty
+ * consecutive clean trades will not shift the number enough to notice.
+ *
+ * WHY A WRAPPER AND NOT THIRTEEN REWRITES. Every check already takes a list
+ * of trades and returns findings. Handing it a shorter list asks the same
+ * question of a shorter period, exactly, with no new arithmetic and no chance
+ * of the two windows disagreeing about what a rate means — which is what
+ * rewriting each one by hand would have risked. It also means a check added
+ * later gets recency by being listed here, rather than by remembering to
+ * implement it again.
+ *
+ * THE LONGER WINDOW WINS TIES, DELIBERATELY. When both windows reach the same
+ * severity, the lifetime card is shown, because nothing has changed and the
+ * bigger sample is the better evidence. The recent card is only substituted
+ * when the two DISAGREE — which is the whole and only signal being looked
+ * for here.
+ */
+
+/** Below this the recent window cannot support a rate and the record stands. */
+const MIN_RECENT = 25;
+const SEV_RANK = { critical: 0, warning: 1, watch: 2, good: 3 };
+const asArr = (x) => (!x ? [] : Array.isArray(x) ? x : [x]);
+
+/**
+ * The recent window: the last twelve months, or the last sixty closed trades,
+ * whichever holds MORE.
+ *
+ * Calendar alone breaks on a quiet year — three trades is not a window. A
+ * fixed count alone breaks on a busy one, where sixty trades is six weeks and
+ * every seasonal habit reads as a trend. Taking the larger keeps an active
+ * trader on a meaningful "this year" and still gives a slow one enough rows
+ * to compute anything at all.
+ */
+export function recentBook(closed, { months = 12, min = 60 } = {}) {
+  const seq = chron(closed);
+  const cut = new Date();
+  cut.setMonth(cut.getMonth() - months);
+  const iso = cut.toISOString().slice(0, 10);
+  const byDate = seq.filter((t) => String(t.exit_date || t.entry_date || "").slice(0, 10) >= iso);
+  const byCount = seq.slice(-min);
+  return byDate.length >= byCount.length ? byDate : byCount;
+}
+
+/**
+ * Run one check over both windows and decide which card to show.
+ *
+ * Four outcomes, and the two that do nothing matter as much as the two that
+ * act:
+ *
+ *   · Same severity — show the record. Nothing changed; use the bigger sample.
+ *   · Different severity — show the recent card, with a line naming the
+ *     record. It is one card from one window, so its headline, figures and
+ *     chart cannot contradict each other.
+ *   · The recent window found nothing — SHOW THE RECORD. A check returning
+ *     null usually means it had too little to work with inside the window,
+ *     which is not evidence that the problem went away, and treating it as
+ *     such would quietly clear real findings on any trader who slowed down.
+ *   · Only the recent window found something — show it, said as new.
+ */
+function overWindows(run, closed, recent) {
+  const life = asArr(run(closed));
+  if (recent.length < MIN_RECENT || recent.length >= closed.length) return life;
+
+  const now = asArr(run(recent));
+  /* Reconciling two SETS means guessing which finding replaced which, and the
+     ids legitimately change between windows — `risk-inconsistent` becoming
+     `risk-consistent` is the improvement, not a mismatch. So this only speaks
+     when each window returned exactly one thing; anything richer keeps the
+     record, unreconciled, rather than being paired up by inference. */
+  if (life.length > 1 || now.length > 1) return life;
+
+  const a = life[0], b = now[0];
+  if (!b) return life;
+  if (!a) {
+    return [{ ...b, detail: `${b.detail} This shows up only in your recent trading — ` +
+      `across all ${closed.length} closed trades there was nothing here to flag, so it is new.`,
+      window: recent.length }];
+  }
+  /**
+   * SOME CHECKS ONLY EVER EMIT ONE SEVERITY, AND SEVERITY ALONE WOULD SILENCE
+   * THEM FOREVER.
+   *
+   * `data-gaps` is always a watch — it can go from four empty fields to one
+   * and never change tier, so a trader who started recording their setups six
+   * months ago would keep reading "120 of 120 have no RS rank" for years.
+   * That is the exact staleness this whole mechanism exists to remove, hiding
+   * behind a comparison too coarse to see it.
+   *
+   * So a check may expose a `magnitude` — how much of the thing there is —
+   * and a third of it moving counts as a change even when the tier does not.
+   * Checks that expose nothing behave exactly as before.
+   */
+  const ma = a.magnitude, mb = b.magnitude;
+  const sameSeverity = SEV_RANK[a.severity] === SEV_RANK[b.severity];
+  const magnitudeMoved = ma != null && mb != null && Math.abs(ma) > 0 &&
+    Math.abs(mb - ma) / Math.abs(ma) >= 0.34;
+  if (sameSeverity && !magnitudeMoved) return life;
+
+  const better = sameSeverity
+    ? mb < ma
+    : SEV_RANK[b.severity] > SEV_RANK[a.severity];
+  const note = better
+    ? ` This is measured on your last ${recent.length} trades. Across all ${closed.length} it reads ` +
+      `worse — that is the record and it still counts, it is just not what you are doing now.`
+    : ` This is measured on your last ${recent.length} trades. Across all ${closed.length} it reads ` +
+      `milder, so this is a recent change rather than a long-standing habit.`;
+
+  return [{
+    ...b,
+    detail: b.detail + note,
+    window: recent.length,
+    evidence: { ...b.evidence, measuredOnLastNTrades: recent.length, ofClosedTrades: closed.length },
+  }];
+}
+
+/* ==================================================================== */
 /*  Assemble                                                            */
 /* ==================================================================== */
 
@@ -2010,15 +2142,32 @@ export function reviewFindings(
   const flat = [];
   const push = (x) => { if (!x) return; Array.isArray(x) ? flat.push(...x) : flat.push(x); };
 
+  const recent = recentBook(closed);
+  /* Each check asked the same question of the whole record and of the recent
+     window — see overWindows. `stopDiscipline` is absent because it does its
+     own, on the last twenty LOSSES rather than trades: stops are only tested
+     by losing, and a quiet spell of winners would otherwise clear the card
+     without a single stop having been honoured. */
+  const both = (run) => push(overWindows(run, closed, recent));
+
   push(stopDiscipline(closed));
-  push(riskConsistency(closed));
-  push(sizingReflexes(closed));
-  push(entryQuality(closed));
-  push(exitBehaviour(closed));
-  push(marketAlignment(closed, regimes));
-  push(tradingCadence(closed));
-  push(dataQuality(closed));
-  push(chargesRecorded(closed));
+  both((c) => riskConsistency(c));
+  both((c) => sizingReflexes(c));
+  both((c) => entryQuality(c));
+  both((c) => exitBehaviour(c));
+  both((c) => marketAlignment(c, regimes));
+  both((c) => tradingCadence(c));
+  both((c) => dataQuality(c));
+  both((c) => chargesRecorded(c));
+  /**
+   * NOT WINDOWED, AND THAT IS THE POINT OF IT.
+   *
+   * Concentration asks how much of a total came from how few trades. Ask it
+   * of a shorter window and it does not report a trend — it reports a
+   * different, smaller sample, where a handful of trades is a larger share of
+   * everything by arithmetic rather than by behaviour. It would find
+   * "worsening concentration" in every book on earth.
+   */
   push(returnConcentration(closed));
   /**
    * Written months ago in positions.js and never called by anything.
@@ -2029,9 +2178,12 @@ export function reviewFindings(
    * because it compares each scaled trade against the same position held
    * whole rather than against other trades that were never comparable.
    */
-  push(scaleOutFinding(closed));
-  push(emotionOutcomes(closed, diary));
-  // Every trade, not just the closed ones — see the note on the check.
+  both((c) => scaleOutFinding(c));
+  both((c) => emotionOutcomes(c, diary));
+  /* Also not windowed: a duplicate is a standing state, not a rate. Two rows
+     for one position stay two rows until somebody merges them, and they go on
+     blocking every future import in the meantime — "you have not done this
+     lately" would be no comfort at all. */
   push(duplicatePositions(all || closed));
 
   // Substitute the real max drawdown into any template placeholder

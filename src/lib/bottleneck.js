@@ -313,15 +313,20 @@ export function processStages(closed = [], findings = []) {
      * misleading thing this screen could do. Selection is the usual one: no
      * pattern, no RS rank, nothing to say.
      */
+    /* Read on the recent window for the same reason the costs are: somebody
+       who started recording their setups six months ago is not blind to
+       selection any more, and a lifetime coverage figure would tell them they
+       were for years. */
+    const covRows = recent.length >= 20 ? recent : closed;
     const coverage = st.fields.length
       ? Math.round(
           (sum(st.fields.map((f) =>
-            closed.filter((t) => {
+            covRows.filter((t) => {
               const v = t[f];
               return v !== null && v !== undefined && v !== "" &&
                      !(typeof v === "number" && !Number.isFinite(v));
             }).length
-          )) / (st.fields.length * closed.length)) * 100
+          )) / (st.fields.length * covRows.length)) * 100
         )
       : null;
 
