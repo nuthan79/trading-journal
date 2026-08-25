@@ -162,6 +162,16 @@ export default function Holdings({
   const [acked, setAcked] = useState([]);
   const [busyId, setBusyId] = useState(null);
 
+  /**
+   * Newest first, which is what this table has always opened on.
+   *
+   * Kept as the default rather than "no sort" because a holdings page has a
+   * natural reading order — the thing you bought most recently is the thing
+   * you are still deciding about — and a refresh landing on an arbitrary order
+   * would lose it. Same key and direction the hardcoded sort used.
+   */
+  const [sort, setSort] = useState({ k: "entry_date", dir: -1 });
+
   const rows = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
     return open
@@ -300,8 +310,22 @@ export default function Holdings({
           days: isFinite(t.heldDays) ? t.heldDays : NaN,
         };
       })
-      .sort((a, b) => new Date(b.entry_date) - new Date(a.entry_date));
-  }, [open]);
+      /**
+       * The same comparator as the trade sheet, deliberately.
+       *
+       * Two tables side by side in one app that sorted differently would be a
+       * worse answer than either. Non-finite numbers go to one end rather than
+       * scattering: a position with no stop has no risk figure, and those rows
+       * should gather where they can be seen rather than interleave with real
+       * ones.
+       */
+      .sort((a, b) => {
+        const av = a[sort.k], bv = b[sort.k];
+        if (typeof av === "number" || typeof bv === "number")
+          return ((isFinite(av) ? av : -1e12) - (isFinite(bv) ? bv : -1e12)) * sort.dir;
+        return String(av || "").localeCompare(String(bv || "")) * sort.dir;
+      });
+  }, [open, sort]);
 
   const totals = useMemo(() => {
     const sum = (f) => rows.reduce((a, r) => a + (isFinite(f(r)) ? f(r) : 0), 0);
@@ -457,6 +481,24 @@ export default function Holdings({
     );
   }
 
+  /**
+   * A sortable header, matching the trade sheet's.
+   *
+   * First click on a column sorts it descending, because on every column here
+   * the interesting end is the big one — the largest risk, the deepest
+   * drawdown, the position closest to its stop. Clicking again flips it.
+   */
+  const th = (k, label, cls) => {
+    const active = sort.k === k;
+    return (
+      <th className={cls} data-sortable
+          onClick={() => setSort((s) => ({ k, dir: s.k === k ? -s.dir : -1 }))}>
+        {label}
+        <span className="arrow">{active ? (sort.dir === 1 ? "\u2191" : "\u2193") : ""}</span>
+      </th>
+    );
+  };
+
   return (
     <div className="sec">
       <div className="ps-head">
@@ -596,23 +638,23 @@ export default function Holdings({
               {/* The index is pinned with the symbol rather than left behind
                   it — on its own it would slide under and disappear. */}
               <th className="num fz">#</th>
-              <th className="fz2 fz-last">Symbol</th>
-              <th>Entered</th>
-              <th className="num">Days</th>
-              <th className="num">Open qty</th>
-              <th className="num">Open %</th>
-              <th className="num">Entry</th>
-              <th className="num">Stop</th>
-              <th className="num">SL %</th>
-              <th className="num">To stop</th>
-              <th className="num">Buy value</th>
-              <th className="num">Open risk</th>
-              <th className="num">Open risk R</th>
-              <th className="num">CMP</th>
-              <th className="num">Change %</th>
-              <th className="num">Banked</th>
-              <th className="num">Unrealised</th>
-              <th className="num">Now at</th>
+              {th("symbol", "Symbol", "fz2 fz-last")}
+              {th("entry_date", "Entered")}
+              {th("days", "Days", "num")}
+              {th("qtyOpen", "Open qty", "num")}
+              {th("openPct", "Open %", "num")}
+              {th("entry_price", "Entry", "num")}
+              {th("stop", "Stop", "num")}
+              {th("slPct", "SL %", "num")}
+              {th("toStop", "To stop", "num")}
+              {th("buyValue", "Buy value", "num")}
+              {th("openRiskAmt", "Open risk", "num")}
+              {th("netRiskR", "Open risk R", "num")}
+              {th("mark", "CMP", "num")}
+              {th("changePct", "Change %", "num")}
+              {th("realisedPnl", "Banked", "num")}
+              {th("unrealisedPnl", "Unrealised", "num")}
+              {th("atR", "Now at", "num")}
             </tr>
           </thead>
           <tbody>
