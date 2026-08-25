@@ -895,7 +895,7 @@ export default function Review({ closed, stats, all, diary }) {
            the same measure as the other two. */
         .rv-detail {
           font-size: 13px; line-height: 1.65; color: var(--ink2);
-          margin: 9px 0 0; text-wrap: pretty;
+          margin: 9px 0 0; max-width: var(--note-w); text-wrap: pretty;
         }
 
         /*
@@ -905,18 +905,20 @@ export default function Review({ closed, stats, all, diary }) {
           because it opened with "−1.15R".
         */
         /*
-          THE CARD IS THE MEASURE. No prose cap inside it.
+          --note-w, the house measure, on all three blocks.
           At 68ch the lede stopped half way across while the detail paragraph
-          below — never capped — ran to the edge, so two paragraphs of the same
-          prose ended in different places. --note-w was tried next and still
-          left a fifth of the card blank, and ch differs per font size so the
-          three did not even agree with each other.
-          The card already bounds the line; a second bound inside it only
-          produces the gap. Anything narrower belongs to a narrower card.
+          below it — never capped — ran to the edge; two paragraphs of the same
+          prose ending in different places is what read as broken.
+          Removing the cap altogether was tried next and is worse: on a 1400px
+          card that is a 197-character line, which is the readability problem
+          the cap exists for. 132ch is long, ragged and correct.
+          The three still differ by a few dozen pixels because ch is relative
+          to font size — they agree on the measure that matters, which is
+          characters, not pixels.
         */
         .rv-lede {
           font-size: 13.5px; line-height: 1.6; color: var(--ink2);
-          margin: 9px 0 0; text-wrap: pretty;
+          margin: 9px 0 0; max-width: var(--note-w); text-wrap: pretty;
         }
 
         /* Full width of the card, height from its own viewBox — these are
@@ -1034,7 +1036,7 @@ export default function Review({ closed, stats, all, diary }) {
           margin: 14px 0 0; padding: 11px 13px;
           background: var(--paper); border-left: 3px solid var(--rule);
           font-size: 13.5px; line-height: 1.6; color: var(--ink);
-          text-wrap: pretty;
+          max-width: var(--note-w); text-wrap: pretty;
         }
         .rv-verdict-cap {
           display: block; font-size: 10px; letter-spacing: 0.09em;
