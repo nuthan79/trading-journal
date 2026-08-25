@@ -891,7 +891,12 @@ export default function Review({ closed, stats, all, diary }) {
           flex: none;
         }
         .rv-title { font-size: 14.5px; font-weight: 600; }
-        .rv-detail { font-size: 13px; line-height: 1.65; color: var(--ink2); margin: 9px 0 0; }
+        /* The one that was already unbounded, now saying so on purpose and at
+           the same measure as the other two. */
+        .rv-detail {
+          font-size: 13px; line-height: 1.65; color: var(--ink2);
+          margin: 9px 0 0; text-wrap: pretty;
+        }
 
         /*
           The lede sits above the numbers and explains what is about to be
@@ -899,9 +904,19 @@ export default function Review({ closed, stats, all, diary }) {
           the difference between a screen you read and a screen you skim past
           because it opened with "−1.15R".
         */
+        /*
+          THE CARD IS THE MEASURE. No prose cap inside it.
+          At 68ch the lede stopped half way across while the detail paragraph
+          below — never capped — ran to the edge, so two paragraphs of the same
+          prose ended in different places. --note-w was tried next and still
+          left a fifth of the card blank, and ch differs per font size so the
+          three did not even agree with each other.
+          The card already bounds the line; a second bound inside it only
+          produces the gap. Anything narrower belongs to a narrower card.
+        */
         .rv-lede {
           font-size: 13.5px; line-height: 1.6; color: var(--ink2);
-          margin: 9px 0 0; max-width: 68ch;
+          margin: 9px 0 0; text-wrap: pretty;
         }
 
         /* Full width of the card, height from its own viewBox — these are
@@ -1019,7 +1034,7 @@ export default function Review({ closed, stats, all, diary }) {
           margin: 14px 0 0; padding: 11px 13px;
           background: var(--paper); border-left: 3px solid var(--rule);
           font-size: 13.5px; line-height: 1.6; color: var(--ink);
-          max-width: 72ch;
+          text-wrap: pretty;
         }
         .rv-verdict-cap {
           display: block; font-size: 10px; letter-spacing: 0.09em;
