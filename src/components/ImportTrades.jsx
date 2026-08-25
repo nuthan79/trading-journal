@@ -148,6 +148,33 @@ function HeldBack({ rows, children }) {
   );
 }
 
+/**
+ * One line per security, not one per lot.
+ *
+ * `unresolved` is a lot list, so a security held across several lots reported
+ * itself once for each of them: a real ICICI import printed
+ * "Could not identify ISEC (INE763G01038)" five times and then "…and 1 more",
+ * for what is one delisted company and one decision. Six lines say six things
+ * are wrong, which buries the count that matters — how many SECURITIES the
+ * journal could not name.
+ */
+function unresolvedLines(unresolved) {
+  const seen = new Map();
+  for (const u of unresolved || []) {
+    const k = u.isin || u.name;
+    if (!seen.has(k)) seen.set(k, u);
+  }
+  const uniq = [...seen.values()];
+  return [
+    ...uniq.slice(0, 5).map(
+      (u) => `Could not identify ${u.name || u.isin} (${u.isin}) — imported under the name in the file.`
+    ),
+    ...(uniq.length > 5
+      ? [`…and ${uniq.length - 5} more that could not be identified.`]
+      : []),
+  ];
+}
+
 export default function ImportTrades({
   targets = [], chargeConfig = null, onImport, onSetDates, onDone,
 }) {
@@ -364,12 +391,7 @@ export default function ImportTrades({
           holdings: resolved,
           warnings: [
             ...(raw.warnings || []),
-            ...unresolved.slice(0, 5).map(
-              (u) => `Could not identify ${u.name || u.isin} (${u.isin}) — imported under the name in the file.`
-            ),
-            ...(unresolved.length > 5
-              ? [`…and ${unresolved.length - 5} more that could not be identified.`]
-              : []),
+            ...unresolvedLines(unresolved),
           ],
         };
 
@@ -391,12 +413,7 @@ export default function ImportTrades({
           // is not noticed until a position refuses to price weeks later.
           warnings: [
             ...(raw.warnings || []),
-            ...unresolved.slice(0, 5).map(
-              (u) => `Could not identify ${u.name || u.isin} (${u.isin}) — imported under the name in the file.`
-            ),
-            ...(unresolved.length > 5
-              ? [`…and ${unresolved.length - 5} more that could not be identified.`]
-              : []),
+            ...unresolvedLines(unresolved),
           ],
       };
       const out = assembleImport(resolved,
