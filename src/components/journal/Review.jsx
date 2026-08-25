@@ -358,7 +358,7 @@ function BarsChart({ data, color }) {
 function SeriesChart({ data, color }) {
   /* PAD_R carries the band label, which is a value AND a phrase — "0.39% your
      average" lost its last word at 96. */
-  const W = 640, H = data.pointLegend ? 166 : 150;
+  const W = 640, H = 150;
   const PAD_L = 40, PAD_R = 138, TOP = 14, BASE = 112;
   /* Points may be plain numbers or {v, win}. */
   const pts = data.points.map((p) => (typeof p === "number" ? { v: p, win: null } : p));
@@ -400,19 +400,24 @@ function SeriesChart({ data, color }) {
           </text>
         </g>
       ))}
+      {/* Note and legend share one baseline — stacked, they sat on top of the
+          figure caption below and the two lines overlapped. The legend starts
+          after the note, measured off its own length rather than a guessed
+          offset, since the note differs per finding. */}
       {data.axisNote && (
-        <text x={PAD_L} y={data.pointLegend ? H - 20 : H - 4} className="rv-chart-lbl">
-          {data.axisNote}
-        </text>
+        <text x={PAD_L} y={H - 6} className="rv-chart-lbl">{data.axisNote}</text>
       )}
-      {data.pointLegend && (won > 0 || lost > 0) && (
-        <g>
-          <circle cx={PAD_L + 4} cy={H - 8} r="3.4" fill="var(--long)" opacity="0.65" />
-          <text x={PAD_L + 13} y={H - 4} className="rv-chart-lbl">{won} won</text>
-          <circle cx={PAD_L + 74} cy={H - 8} r="3.4" fill="var(--short)" opacity="0.65" />
-          <text x={PAD_L + 83} y={H - 4} className="rv-chart-lbl">{lost} lost</text>
-        </g>
-      )}
+      {data.pointLegend && (won > 0 || lost > 0) && (() => {
+        const after = PAD_L + (data.axisNote ? data.axisNote.length * 5.35 + 26 : 0);
+        return (
+          <g>
+            <circle cx={after + 4} cy={H - 10} r="3.4" fill="var(--long)" opacity="0.65" />
+            <text x={after + 13} y={H - 6} className="rv-chart-lbl">{won} won</text>
+            <circle cx={after + 74} cy={H - 10} r="3.4" fill="var(--short)" opacity="0.65" />
+            <text x={after + 83} y={H - 6} className="rv-chart-lbl">{lost} lost</text>
+          </g>
+        );
+      })()}
     </svg>
   );
 }
@@ -760,9 +765,13 @@ export default function Review({ closed, stats, all, diary }) {
         /* The chart's caption. One line, wrapping, rather than a row of tiles:
            these numbers now label something visible instead of standing in
            for it. */
+        /* Centred: it is the chart's caption, and left-aligned under a
+           full-width drawing it read as the start of the paragraph below
+           rather than as a label for the picture above. */
         .rv-cap {
-          display: flex; flex-wrap: wrap; gap: 4px 18px;
-          margin: 8px 0 0; font-size: 11px; color: var(--ink3);
+          display: flex; flex-wrap: wrap; justify-content: center;
+          gap: 4px 18px;
+          margin: 10px 0 0; font-size: 11px; color: var(--ink3);
           letter-spacing: 0.03em;
         }
         .rv-cap b {
