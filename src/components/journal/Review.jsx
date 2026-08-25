@@ -202,6 +202,133 @@ function Evidence({ data }) {
 }
 
 /**
+ * Two shapes, three findings, no chart library.
+ *
+ * WHY NOT ONE PER FINDING. Fourteen bespoke SVGs is what the page that
+ * inspired this did, and it could — it was drawn once, by hand, for one
+ * export. This has to render whatever a live account contains, so every chart
+ * is a shape with a contract rather than a drawing: give `strip` a list of
+ * values and a line, give `bars` a list of labelled values.
+ *
+ * COLOURS COME FROM THE FINDING'S SEVERITY, not from a palette of their own.
+ * The card already carries that colour on its left edge; a chart that
+ * introduced a second one would make the reader work out whether the two mean
+ * the same thing.
+ */
+
+/** Values on one axis with a line drawn through it. The whole point is how
+ *  many sit past the line, so the region beyond it is tinted and those points
+ *  take the finding's colour. */
+function StripChart({ data, color }) {
+  const W = 640, H = 132, PAD = 34, BASE = 84;
+  const vs = data.points.map((p) => p.v);
+  const lo = Math.min(...vs, data.threshold) - 0.25;
+  const hi = Math.max(...vs, 0) + 0.15;
+  const x = (v) => PAD + ((v - lo) / (hi - lo)) * (W - PAD * 2);
+  const tx = x(data.threshold);
+  const past = data.points.filter((p) => p.past).length;
+
+  /* Points can land on the same value, so they stack upward instead of
+     overprinting — an overlap would hide exactly the count being claimed. */
+  const seen = new Map();
+  const placed = data.points.map((p) => {
+    const key = Math.round(x(p.v));
+    const tier = seen.get(key) || 0;
+    seen.set(key, tier + 1);
+    return { ...p, cx: x(p.v), cy: BASE - tier * 11 };
+  });
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="rv-chart" role="img"
+         aria-label={`${past} of ${data.points.length} past ${data.thresholdLabel}`}>
+      {/* Everything worse than the line, shaded — the area the finding is about. */}
+      {/* The area past the line, named inside itself — a tint with no label
+          is decoration, and the count in it is the entire finding. */}
+      <rect x={PAD} y={14} width={Math.max(0, tx - PAD)} height={BASE + 6 - 14}
+            fill={color} opacity="0.08" />
+      {past > 0 && (
+        <text x={PAD + 6} y={28} className="rv-chart-val" fill={color}>
+          {past} past your stop
+        </text>
+      )}
+      <line x1={PAD} x2={W - PAD} y1={BASE + 6} y2={BASE + 6}
+            stroke="var(--rule)" strokeWidth="1" />
+      <line x1={tx} x2={tx} y1={12} y2={BASE + 14} stroke={color}
+            strokeWidth="1.5" strokeDasharray="4 3" />
+      <text x={tx} y={H - 22} textAnchor="middle" className="rv-chart-lbl" fill={color}>
+        {data.thresholdLabel} · {String(data.threshold).replace("-", "\u2212")}{data.unit}
+      </text>
+      {placed.map((p, i) => (
+        <circle key={i} cx={p.cx} cy={p.cy} r="5"
+                fill={p.past ? color : "var(--card)"}
+                stroke={p.past ? color : "var(--ink3)"} strokeWidth="1.6">
+          <title>{`${p.label}: ${String(p.v).replace("-", "\u2212")}${data.unit}`}</title>
+        </circle>
+      ))}
+      <text x={PAD} y={H - 22} className="rv-chart-lbl">bigger losses</text>
+      <text x={W - PAD} y={H - 22} textAnchor="end" className="rv-chart-lbl">
+        {`break even · 0${data.unit}`}
+      </text>
+    </svg>
+  );
+}
+
+/** Labelled horizontal bars. Reads left to right like the sentence it
+ *  replaces, and holds long labels — an exit reason is words, not a number. */
+function BarsChart({ data, color }) {
+  const rows = data.rows;
+  /* PAD_R holds the value label, which is the widest thing on the row —
+     "+3.12R · 10" ran past the viewBox at 58 and lost its count. */
+  const W = 640, ROW = 30, PAD_L = 132, PAD_R = 84;
+  const H = rows.length * ROW + 22;
+  const vals = rows.map((r) => r.value);
+  const lo = Math.min(0, ...vals), hi = Math.max(0, ...vals);
+  const span = hi - lo || 1;
+  const x = (v) => PAD_L + ((v - lo) / span) * (W - PAD_L - PAD_R);
+  const zero = x(0);
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="rv-chart" role="img"
+         aria-label={rows.map((r) => `${r.label} ${r.value}${data.unit}`).join(", ")}>
+      <line x1={zero} x2={zero} y1={4} y2={rows.length * ROW + 2}
+            stroke="var(--rule)" strokeWidth="1" />
+      {rows.map((r, i) => {
+        const y = i * ROW + 6, h = ROW - 14;
+        const x0 = Math.min(zero, x(r.value)), w = Math.abs(x(r.value) - zero);
+        /* The weakest row is the finding on the exit-method card, so it is the
+           one drawn solid; everything else recedes. Where no row is flagged
+           (the size buckets) they share one weight and the shape does the
+           talking. */
+        const strong = r.worst || (r.worst === undefined && r.value === Math.min(...vals));
+        return (
+          <g key={i}>
+            <text x={PAD_L - 10} y={y + h - 2} textAnchor="end" className="rv-chart-lbl">
+              {r.label}
+            </text>
+            <rect x={x0} y={y} width={Math.max(2, w)} height={h}
+                  fill={color} opacity={strong ? 0.9 : 0.42} rx="1" />
+            <text x={Math.max(zero, x(r.value)) + 8} y={y + h - 2} className="rv-chart-val">
+              {r.value > 0 ? "+" : ""}{r.value.toFixed(2).replace("-", "−")}{data.unit}
+              {r.n != null && <tspan className="rv-chart-lbl"> · {r.n}</tspan>}
+            </text>
+          </g>
+        );
+      })}
+      {data.axisNote && (
+        <text x={PAD_L} y={H - 3} className="rv-chart-lbl">{data.axisNote}</text>
+      )}
+    </svg>
+  );
+}
+
+function FindingChart({ chart, color }) {
+  if (!chart) return null;
+  if (chart.type === "strip") return <StripChart data={chart} color={color} />;
+  if (chart.type === "bars") return <BarsChart data={chart} color={color} />;
+  return null;
+}
+
+/**
  * A finding, read as a page rather than a paragraph.
  *
  * ORDER IS THE POINT. What was measured, then the numbers, then the reasoning,
@@ -236,14 +363,20 @@ function FindingCard({ f, n }) {
       {rich ? (
         <>
           {f.lede && <p className="rv-lede">{f.lede}</p>}
-          <div className="rv-figs">
-            {f.figures.map((g, i) => (
-              <div className="rv-fig" key={i}>
-                <b style={{ color: sev.color }}>{g.value}</b>
-                <span>{g.label}</span>
-              </div>
-            ))}
-          </div>
+          {/* The chart is the centre of the card, not an illustration under
+              it. The figures that used to sit here in boxes now read as its
+              caption — the same numbers, but a legend for something you can
+              already see rather than three tiles to be taken on trust. */}
+          {f.chart && <FindingChart chart={f.chart} color={sev.color} />}
+          {f.figures.length > 0 && (
+            <p className="rv-cap">
+              {f.figures.map((g, i) => (
+                <span key={i}>
+                  <b style={{ color: sev.color }}>{g.value}</b> {g.label}
+                </span>
+              ))}
+            </p>
+          )}
           {f.detail && <p className="rv-detail">{f.detail}</p>}
           {f.verdict && (
             <p className="rv-verdict" style={{ borderLeftColor: sev.color }}>
@@ -455,26 +588,29 @@ export default function Review({ closed, stats, all, diary }) {
           margin: 9px 0 0; max-width: 68ch;
         }
 
-        /*
-          Hairline gaps rather than borders: the 1px background showing through
-          a grid gap draws the dividers for free and keeps them from
-          accumulating at the edges, where two adjacent borders would double.
-        */
-        .rv-figs {
-          display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
-          gap: 1px; background: var(--rule);
-          border: 1px solid var(--rule); border-radius: 3px;
-          margin: 14px 0 0; overflow: hidden;
+        /* Full width of the card, height from its own viewBox — these are
+           drawn to be read at a glance, so they get the room. */
+        .rv-chart { display: block; width: 100%; height: auto; margin: 14px 0 0; }
+        .rv-chart-lbl {
+          font-size: 10.5px; fill: var(--ink3);
+          letter-spacing: 0.02em;
         }
-        .rv-fig { background: var(--card); padding: 11px 12px 10px; }
-        .rv-fig b {
-          display: block; font-size: 21px; line-height: 1;
-          letter-spacing: -0.02em; margin-bottom: 5px;
+        .rv-chart-val {
+          font-size: 11.5px; fill: var(--ink); font-weight: 600;
           font-variant-numeric: tabular-nums;
         }
-        .rv-fig span {
-          font-size: 10px; letter-spacing: 0.07em; text-transform: uppercase;
-          color: var(--ink3); line-height: 1.35; display: block;
+
+        /* The chart's caption. One line, wrapping, rather than a row of tiles:
+           these numbers now label something visible instead of standing in
+           for it. */
+        .rv-cap {
+          display: flex; flex-wrap: wrap; gap: 4px 18px;
+          margin: 8px 0 0; font-size: 11px; color: var(--ink3);
+          letter-spacing: 0.03em;
+        }
+        .rv-cap b {
+          font-size: 13px; font-variant-numeric: tabular-nums;
+          letter-spacing: -0.01em;
         }
 
         /*

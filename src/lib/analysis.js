@@ -149,6 +149,25 @@ function stopDiscipline(closed) {
     { value: `${minus(ev.medianLossR)}R`, label: "typical loss" },
   ];
 
+  /**
+   * Every loss placed on one axis, with the stop drawn as a line.
+   *
+   * The whole claim is "some of these fell past the line", and that is a
+   * picture — a count in a sentence makes you take it on trust, where a strip
+   * of dots with a line through it lets you see how many and by how much. The
+   * ones beyond it are the finding.
+   */
+  const chart = {
+    type: "strip",
+    unit: "R",
+    threshold: -1,
+    thresholdLabel: "your stop",
+    worseIsLower: true,
+    points: losers
+      .map((t) => ({ v: +t.r.toFixed(2), label: t.symbol, past: t.r < -1.15 }))
+      .sort((a, b) => a.v - b.v),
+  };
+
   if (overrunRate >= 30 || bad.length >= 3) {
     return F("critical", "stop-discipline",
       "Losses are running past the stop",
@@ -163,6 +182,7 @@ function stopDiscipline(closed) {
       ev,
       { lede,
         figures: figs,
+        chart,
         verdict: "Your 1R is not the number you think it is. Expectancy and position " +
                  "size are both worked out from it, so both are currently overstating " +
                  "how well this is going." });
@@ -175,6 +195,7 @@ function stopDiscipline(closed) {
       ev,
       { lede,
         figures: figs,
+        chart,
         verdict: "Worth watching rather than fixing. If this share climbs past a third, " +
                  "every R figure in the journal starts to drift." });
   }
@@ -184,6 +205,7 @@ function stopDiscipline(closed) {
     ev,
     { lede,
       figures: figs,
+      chart,
       verdict: "Your 1R is real — which is what lets every other number on this screen " +
                "be taken at face value." });
 }
@@ -313,6 +335,57 @@ function sizingReflexes(closed) {
     { value: `${rows.length}`, label: "trades measured" },
   ];
 
+  /**
+   * The correlation, drawn as the thing the correlation is about.
+   *
+   * A coefficient is the least readable way to say this. Sorting the trades by
+   * how much was risked, cutting them into five equal groups and showing what
+   * each group returned says the same thing in a shape anybody can read: the
+   * bars step down, or they do not.
+   *
+   * Quintiles rather than a scatter because a scatter of 46 points with a
+   * fitted line asks the reader to trust a line; five bars just show it. Fewer
+   * than ten trades a bucket and the buckets are noise, so it falls back to
+   * three.
+   */
+  const bySize = [...rows].sort((a, b) => a.riskPct - b.riskPct);
+  const k = bySize.length >= 50 ? 5 : 3;
+  const per = Math.floor(bySize.length / k);
+  const buckets = Array.from({ length: k }, (_, i) => {
+    const slice = i === k - 1 ? bySize.slice(i * per) : bySize.slice(i * per, (i + 1) * per);
+    const lo = slice[0].riskPct, hi = slice[slice.length - 1].riskPct;
+    return {
+      lo, hi,
+      range: lo.toFixed(2) === hi.toFixed(2) ? `${lo.toFixed(2)}%` : `${lo.toFixed(2)}–${hi.toFixed(2)}%`,
+      value: +mean(slice.map((t) => t.r)).toFixed(2),
+      n: slice.length,
+    };
+  });
+  /**
+   * Rank labels when the ranges collide.
+   *
+   * Somebody who sizes consistently puts most trades at the same risk, so the
+   * buckets come back as "0.50%", "0.50%", "0.50%" — three rows that look
+   * identical and make the chart read as broken. The rank is what actually
+   * separates them, and the range only helps when the ranges differ.
+   */
+  const RANKS = k === 5
+    ? ["Smallest", "2nd", "Middle", "4th", "Largest"]
+    : ["Smallest", "Middle", "Largest"];
+  const distinct = new Set(buckets.map((b) => b.range)).size === k;
+  const sizeChart = {
+    type: "bars",
+    unit: "R",
+    rows: buckets.map((b, i) => ({
+      label: distinct ? b.range : RANKS[i],
+      value: b.value,
+      n: b.n,
+    })),
+    axisNote: distinct
+      ? "risk per trade, smallest to largest"
+      : `by size, smallest to largest · ${buckets[0].lo.toFixed(2)}–${buckets[k - 1].hi.toFixed(2)}% risk`,
+  };
+
   if (isFinite(corr) && corr < -0.2) {
     out.push(F("warning", "conviction-inverted",
       "Your biggest positions are your worst trades",
@@ -322,6 +395,7 @@ function sizingReflexes(closed) {
       ev,
       { lede: LEDE_SIZE,
         figures: sizeFigs(),
+        chart: sizeChart,
         verdict: "Betting the same amount on every trade would have made you more money " +
                  "than your own judgement about which ones deserved more." }));
   } else if (isFinite(corr) && corr > 0.25) {
@@ -332,6 +406,7 @@ function sizingReflexes(closed) {
       ev,
       { lede: LEDE_SIZE,
         figures: sizeFigs(),
+        chart: sizeChart,
         verdict: "Worth protecting rather than pushing. Keep the upper bound where it is — " +
                  "the edge is in picking which trades get more, not in how much more." }));
   }
@@ -423,10 +498,19 @@ function exitBehaviour(closed) {
 
   const minus = (v) => String(v).replace("-", "\u2212");
   const figs = [
-    { value: `${minus(best.avgR)}R`, label: `${best.reason.toLowerCase()} · ${best.n} trades` },
-    { value: `${minus(worst.avgR)}R`, label: `${worst.reason.toLowerCase()} · ${worst.n} trades` },
-    { value: `${minus(ev.spread)}R`, label: "difference per trade" },
+    { value: `${minus(ev.spread)}R`, label: "between best and worst" },
   ];
+
+  /** One bar per way out. The gap between the longest and the shortest IS the
+   *  finding, and a bar chart states it without anybody doing subtraction. */
+  const chart = {
+    type: "bars",
+    unit: "R",
+    rows: rows.map((d) => ({
+      label: d.reason, value: d.avgR, n: d.n,
+      best: d.reason === best.reason, worst: d.reason === worst.reason,
+    })),
+  };
 
   if (best.avgR - worst.avgR >= 1) {
     return F("warning", "exit-method",
@@ -437,6 +521,7 @@ function exitBehaviour(closed) {
       ev,
       { lede: LEDE_EXITS,
         figures: figs,
+        chart,
         verdict: `Every winner you close on "${worst.reason}" instead gives up about ` +
                  `${ev.spread}R. That is the single cheapest thing on this page to change: ` +
                  `it asks nothing of your entries.` });
@@ -447,6 +532,7 @@ function exitBehaviour(closed) {
     ev,
     { lede: LEDE_EXITS,
       figures: figs,
+      chart,
       verdict: "Nothing to fix here. Worth re-reading once you have more exits on the " +
                "board, since this is the kind of gap that opens slowly." });
 }
