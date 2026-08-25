@@ -802,7 +802,66 @@ function marketAlignment(closed, regimes) {
   }
 
   const up = byReg.uptrend, corr = byReg.correction, press = byReg.pressure;
-  const ev = { byRegime: byReg, indexDays: dayCounts };
+
+  /**
+   * DOES THIS TRADER'S RECORD ACTUALLY PENALISE THE WRONG REGIME?
+   *
+   * It is textbook that breakouts fail more with the index below its averages,
+   * and this check used to escalate on that prior alone: activity skewed
+   * toward corrections was enough for a CRITICAL, and the text then asserted
+   * "your own record shows it" whether or not it did. On a real account it did
+   * not — 0.98R in uptrends against 1.05R in corrections, three bars the same
+   * length, under a headline calling it critical. The card argued against its
+   * own chart.
+   *
+   * So the gap is measured and the severity follows it. Under 0.30R apart the
+   * regimes are not distinguishable at these sample sizes and no claim about
+   * cost is available, whatever the textbook says.
+   */
+  const gap = up.expectancy != null && corr.expectancy != null
+    ? +(up.expectancy - corr.expectancy).toFixed(2) : null;
+  const regimeMatters = gap != null && Math.abs(gap) >= 0.3;
+
+  /**
+   * How much of a regime's return came from its biggest few trades.
+   *
+   * An expectancy carried by three outliers is not an expectancy you can plan
+   * the next trade around, and it is the first thing to check before calling
+   * any regime comparison a finding.
+   */
+  const topShare = (key) => {
+    const g = rows.filter((t) => t.reg === key).map((t) => t.r).sort((a, b) => b - a);
+    const total = g.reduce((a, b) => a + b, 0);
+    if (g.length < 6 || total <= 0) return null;
+    const top3 = g.slice(0, 3).reduce((a, b) => a + b, 0);
+    return {
+      pct: +((top3 / total) * 100).toFixed(0),
+      /* Over 100% is not a rounding artefact, it is the sharper fact: the best
+         three made more than the regime kept, so everything else lost money
+         between them. Printed as "117% of the return" that reads as a bug. */
+      restNegative: top3 > total,
+      rest: +(total - top3).toFixed(1),
+      n: g.length,
+    };
+  };
+
+  /**
+   * Win rate and expectancy can move apart, and when they do that is the
+   * finding rather than a footnote: a book whose win rate falls twenty points
+   * while expectancy holds has not lost its edge, it has changed shape —
+   * fewer winners, each bigger. "Trade less" is the wrong prescription for
+   * that; it is what you would say to an edge that had gone.
+   */
+  const winSpread = up.winRate != null && press.winRate != null
+    ? up.winRate - press.winRate : null;
+
+  const ev = {
+    byRegime: byReg, indexDays: dayCounts,
+    expectancyGapUptrendVsCorrection: gap,
+    topThreeShareOfPressurePct: topShare("pressure")?.pct ?? null,
+    topThreeShareOfUptrendPct: topShare("uptrend")?.pct ?? null,
+    topThreeShareOfCorrectionPct: topShare("correction")?.pct ?? null,
+  };
 
   /**
    * A bar per regime, on expectancy — because the claim is that the market's
@@ -832,33 +891,79 @@ function marketAlignment(closed, regimes) {
   if (upRate != null && corrRate != null && corr.trades >= 5) {
     ev.activityRatio = +(upRate / corrRate).toFixed(2);
 
-    if (corrRate > upRate) {
+    const rateFigs = [
+      { value: `${corrRate}`, label: "trades per 100 days in corrections" },
+      { value: `${upRate}`, label: "per 100 days in uptrends" },
+      ...(gap != null
+        ? [{ value: `${gap > 0 ? "+" : "\u2212"}${Math.abs(gap)}R`, label: "uptrend minus correction" }]
+        : []),
+    ];
+
+    /* Skewed toward corrections AND corrections demonstrably worse: the only
+       branch where the textbook claim is also this trader's result. */
+    if (corrRate > upRate && regimeMatters && gap > 0) {
       out.push(F("critical", "market-misaligned",
-        "You trade more when the market is against you",
-        `That is backwards for a long-only breakout system. Breakouts fail at a much higher rate when the ` +
-        `index is below its 50-day and the 50 is below the 200, because there is no institutional bid to ` +
-        `carry them — and your own record shows it.`,
+        "You trade most where your record is worst",
+        `Breakouts fail at a higher rate when the index is below its 50-day and the 50 is below the 200, ` +
+        `because there is no institutional bid to carry them — and here your own record agrees: ` +
+        `${up.expectancy}R a trade in uptrends against ${corr.expectancy}R in corrections, while you take ` +
+        `more of them in corrections.`,
         ev,
-        { lede: LEDE_REGIME,
-          figures: [
-            { value: `${corrRate}`, label: "trades per 100 days in corrections" },
-            { value: `${upRate}`, label: "per 100 days in uptrends" },
-          ],
-          chart: regimeChart,
+        { lede: LEDE_REGIME, figures: rateFigs, chart: regimeChart,
           verdict: "The fix is not better stock selection. It is fewer trades in the wrong " +
                    "regime — the same setups, taken less often when the index is against them." }));
-    } else if (upRate < corrRate * 1.5 && corr.trades >= 8) {
+    /* Skewed toward corrections, and corrections are this trader's BEST
+       regime. The textbook says one thing and the record says another; the
+       record wins, and saying so is the whole value of measuring it. */
+    } else if (corrRate > upRate && regimeMatters && gap < 0) {
+      const conc = topShare("correction");
+      out.push(F("watch", "market-contrarian",
+        "You trade most in corrections, and that is where you do best",
+        `The usual reading is that breakouts fail with the index below its averages, so trading more of ` +
+        `them there costs money. Your record says the opposite: ${corr.expectancy}R a trade in corrections ` +
+        `against ${up.expectancy}R in confirmed uptrends. That is your evidence and it beats the general ` +
+        `rule — but it is worth knowing WHY before leaning on it.` +
+        (conc && conc.restNegative
+          ? ` And it rests on very little: the best three correction trades made more than the whole ` +
+            `regime kept, so the other ${conc.n - 3} lost ${Math.abs(conc.rest)}R between them.`
+          : conc && conc.pct >= 50
+          ? ` Especially since ${conc.pct}% of what corrections returned came from their best three trades.`
+          : ""),
+        ev,
+        { lede: LEDE_REGIME, figures: rateFigs, chart: regimeChart,
+          verdict: `On ${corr.trades} correction trades this is a lead, not a law. Worth checking ` +
+                   `whether those were genuinely bought into weakness or entered before the index ` +
+                   `rolled over and simply exited well.` }));
+    /* Skewed, but the regimes are indistinguishable. Worth noticing, not
+       worth alarming about, and the difference has to be said out loud. */
+    } else if (corrRate > upRate) {
+      const conc = topShare("pressure");
+      out.push(F("watch", "market-misaligned",
+        "You trade more when the market is against you",
+        `The textbook reading is that this costs money, and on your record so far it has not: the three ` +
+        `regimes return ${up.expectancy}R, ${press.expectancy}R and ${corr.expectancy}R a trade, which at ` +
+        `these sample sizes is one number. So this is worth knowing rather than fixing — the exposure is ` +
+        `real, the cost is not yet visible.` +
+        (conc && conc.restNegative
+          ? ` And thinner than it looks: the best three trades in that regime made more than it kept, ` +
+            `so the other ${conc.n - 3} lost ${Math.abs(conc.rest)}R between them.`
+          : conc && conc.pct >= 50
+          ? ` One caution: ${conc.pct}% of everything that regime returned came from its best three ` +
+            `trades, so that figure is thinner than it looks.`
+          : ""),
+        ev,
+        { lede: LEDE_REGIME, figures: rateFigs, chart: regimeChart,
+          verdict: "Nothing to change on this evidence. If the gap opens up as more trades " +
+                   "land, this becomes the most expensive habit on the page — which is why it " +
+                   "is here rather than silent." }));
+    } else if (upRate < corrRate * 1.5 && corr.trades >= 8 && regimeMatters) {
       out.push(F("warning", "market-underweight",
         "Activity barely responds to market direction",
         `You trade at roughly the same pace whatever the index is doing, while what those trades return ` +
-        `differs sharply by regime. The conditions clearly matter; the activity does not reflect it.`,
+        `differs by ${Math.abs(gap)}R between the best regime and the worst. The conditions matter to ` +
+        `your results; the activity does not reflect it.`,
         ev,
-        { lede: LEDE_REGIME,
-          figures: [
-            { value: `${upRate}`, label: "per 100 days in uptrends" },
-            { value: `${corrRate}`, label: "per 100 days in corrections" },
-          ],
-          chart: regimeChart,
+        { lede: LEDE_REGIME, figures: rateFigs, chart: regimeChart,
           verdict: "Pressing harder in uptrends and easing off in corrections is the single " +
                    "highest-leverage change available here — it changes nothing about the setups." }));
     } else {
@@ -874,6 +979,48 @@ function marketAlignment(closed, regimes) {
           ],
           chart: regimeChart,
           verdict: "Nothing to change. This is the habit most traders never build." }));
+    }
+
+    /**
+     * THE EDGE CHANGED SHAPE, WHICH IS NOT THE EDGE GOING AWAY.
+     *
+     * A win rate falling twenty points while expectancy holds means the same
+     * return is arriving from fewer, larger winners. That is a real and
+     * actionable fact and it was sitting unread in this evidence table while
+     * the card above it argued about trade counts — 69% to 49% with
+     * expectancy flat at 0.98R and 1.04R.
+     *
+     * It matters because the prescriptions differ. An edge that has gone wants
+     * fewer trades. An edge that has changed shape wants the winners left
+     * alone: cut them short in this regime and the arithmetic that was holding
+     * it up stops holding.
+     */
+    if (winSpread != null && winSpread >= 15 && press.trades >= 12 &&
+        up.expectancy != null && press.expectancy != null &&
+        Math.abs(up.expectancy - press.expectancy) < 0.3) {
+      out.push(F("watch", "regime-shape",
+        "Under pressure you win less often, for the same return",
+        `Your win rate falls from ${up.winRate}% in confirmed uptrends to ${press.winRate}% when the index ` +
+        `is under pressure, while what a trade returns barely moves — ${up.expectancy}R against ` +
+        `${press.expectancy}R. The same result is arriving from fewer, bigger winners, which is a change ` +
+        `in the shape of the edge rather than a loss of it.`,
+        ev,
+        { lede: "Win rate against average return, in each market regime. The two can move " +
+                "apart, and when they do it is the interesting case.",
+          figures: [
+            { value: `${up.winRate}% → ${press.winRate}%`, label: "win rate, uptrend to pressure" },
+            { value: `${up.expectancy}R → ${press.expectancy}R`, label: "return per trade" },
+          ],
+          chart: {
+            type: "bars", unit: "%",
+            rows: ["uptrend", "pressure", "correction"]
+              .filter((k) => byReg[k]?.winRate != null && byReg[k].trades > 0)
+              .map((k) => ({ label: REGIME_WORDS[k], value: byReg[k].winRate, n: byReg[k].trades })),
+            axisNote: "share of trades that won, by what the index was doing",
+          },
+          verdict: "Do not read this as a reason to trade less. It is a reason to leave the " +
+                   "winners alone in this regime — cutting them short is what would turn a " +
+                   "change of shape into a loss of edge." }));
     }
   }
 
