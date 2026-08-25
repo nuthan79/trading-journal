@@ -251,7 +251,7 @@ function Evidence({ data }) {
  *  many sit past the line, so the region beyond it is tinted and those points
  *  take the finding's colour. */
 function StripChart({ data, color }) {
-  const W = 640, H = 132, PAD = 34, BASE = 84;
+  const W = 640, PAD = 34;
   const vs = data.points.map((p) => p.v);
   const lo = Math.min(...vs, data.threshold) - 0.25;
   const hi = Math.max(...vs, 0) + 0.15;
@@ -259,15 +259,46 @@ function StripChart({ data, color }) {
   const tx = x(data.threshold);
   const past = data.points.filter((p) => p.past).length;
 
-  /* Points can land on the same value, so they stack upward instead of
-     overprinting — an overlap would hide exactly the count being claimed. */
+  /**
+   * Points can land on the same value, so they stack upward instead of
+   * overprinting — an overlap would hide exactly the count being claimed.
+   *
+   * THE STACK IS SCALED TO FIT, not spaced at a fixed step. At a fixed 11px a
+   * book with fifty losses clustered on a few values grew columns straight out
+   * of the chart and through the label above it; spacing that looked right on
+   * eight points was never going to hold on fifty. The tallest column decides
+   * the step now, and the dots shrink with it so a dense column reads as a
+   * column rather than a smear.
+   */
   const seen = new Map();
-  const placed = data.points.map((p) => {
+  const tiers = data.points.map((p) => {
     const key = Math.round(x(p.v));
     const tier = seen.get(key) || 0;
     seen.set(key, tier + 1);
-    return { ...p, cx: x(p.v), cy: BASE - tier * 11 };
+    return tier;
   });
+  /**
+   * THE BOX IS SIZED TO THE DATA, not the data fitted into a box.
+   *
+   * Height was fixed. A book whose losses spread thinly across many values
+   * stacks nothing, so the tint became a large empty rectangle with a row of
+   * dots along its floor — the chart claiming a lot of room to say very
+   * little. It grows with the tallest column instead, and only compresses the
+   * step when that column would otherwise run off the top.
+   */
+  const maxTier = Math.max(0, ...tiers);
+  const LBL_Y = 28;                       // the "N past your stop" line
+  /* 92, not 150. A book with many losses on a few values builds columns tall
+     enough to make this the biggest thing on the card, and it is one finding
+     among several — the stacks are there to be counted, not to dominate. */
+  const MAX_STACK = 92;
+  const step = maxTier * 11 > MAX_STACK ? MAX_STACK / maxTier : 11;
+  const dotR = Math.max(2.2, Math.min(5, step * 0.46));
+  const BASE = Math.max(58, LBL_Y + 16 + maxTier * step);
+  const H = BASE + 46;
+  const placed = data.points.map((p, i) => ({
+    ...p, cx: x(p.v), cy: BASE - tiers[i] * step,
+  }));
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="rv-chart" role="img"
@@ -290,9 +321,10 @@ function StripChart({ data, color }) {
         {data.thresholdLabel} · {String(data.threshold).replace("-", "\u2212")}{data.unit}
       </text>
       {placed.map((p, i) => (
-        <circle key={i} cx={p.cx} cy={p.cy} r="5"
+        <circle key={i} cx={p.cx} cy={p.cy} r={dotR}
                 fill={p.past ? color : "var(--card)"}
-                stroke={p.past ? color : "var(--ink3)"} strokeWidth="1.6">
+                stroke={p.past ? color : "var(--ink3)"}
+                strokeWidth={dotR > 3.4 ? 1.6 : 1}>
           <title>{`${p.label}: ${String(p.v).replace("-", "\u2212")}${data.unit}`}</title>
         </circle>
       ))}
@@ -308,9 +340,36 @@ function StripChart({ data, color }) {
  *  replaces, and holds long labels — an exit reason is words, not a number. */
 function BarsChart({ data, color }) {
   const rows = data.rows;
-  /* PAD_R holds the value label, which is the widest thing on the row —
-     "+3.12R · 10" ran past the viewBox at 58 and lost its count. */
-  const W = 640, ROW = 30, PAD_L = 132, PAD_R = 84;
+  /**
+   * Both gutters are measured, not chosen.
+   *
+   * They were fixed at 132 and 84, which held until a chart arrived with
+   * bigger numbers in it: "+128.30R · 135" ran past the viewBox and lost its
+   * count, and a row named "The other 135" would have done the same on the
+   * left. A gutter picked for the charts that existed when it was written is a
+   * gutter that breaks on the next one — so each is taken from the longest
+   * string it actually has to hold.
+   *
+   * 6.4 and 5.9 px per character are measured off this stylesheet's own
+   * figures at 11.5px and 10.5px. Over-wide by a few pixels is invisible;
+   * under-wide loses text.
+   */
+  const W = 640, ROW = 30;
+  /**
+   * Formatting follows the unit, because one rule does not fit them.
+   *
+   * R is signed and to two places — the sign is the point, and 0.93 against
+   * 0.9 matters. A percentage is neither: a fill rate of "+100.00%" claims a
+   * direction it does not have and pads two decimals onto a whole number, and
+   * it was wide enough to clip on its own. Days take one place.
+   */
+  const dp = data.unit === "R" ? 2 : data.unit === "d" ? 1 : 0;
+  const signed = data.unit === "R";
+  const valueText = (r) =>
+    `${signed && r.value > 0 ? "+" : ""}${r.value.toFixed(dp)}${data.unit}` +
+    `${r.n != null ? ` · ${r.n}` : ""}`;
+  const PAD_R = Math.max(60, Math.ceil(Math.max(...rows.map((r) => valueText(r).length)) * 6.4) + 14);
+  const PAD_L = Math.max(90, Math.ceil(Math.max(...rows.map((r) => String(r.label).length)) * 5.9) + 14);
   const H = rows.length * ROW + 22;
   const vals = rows.map((r) => r.value);
   const lo = Math.min(0, ...vals), hi = Math.max(0, ...vals);
@@ -339,7 +398,7 @@ function BarsChart({ data, color }) {
             <rect x={x0} y={y} width={Math.max(2, w)} height={h}
                   fill={color} opacity={strong ? 0.9 : 0.42} rx="1" />
             <text x={Math.max(zero, x(r.value)) + 8} y={y + h - 2} className="rv-chart-val">
-              {r.value > 0 ? "+" : ""}{r.value.toFixed(2).replace("-", "−")}{data.unit}
+              {signed && r.value > 0 ? "+" : ""}{r.value.toFixed(dp).replace("-", "−")}{data.unit}
               {r.n != null && <tspan className="rv-chart-lbl"> · {r.n}</tspan>}
             </text>
           </g>
@@ -593,6 +652,19 @@ export default function Review({ closed, stats, all, diary }) {
               ? <>The thing in the way is <em>{thesis.subject}</em>.</>
               : <>Nothing here is working against you.</>}
           </h2>
+          <div className="rv-thesis-figs">
+            <div className="rv-thesis-fig">
+              <b>{thesis.trades}</b><span>Closed trades</span>
+            </div>
+            <div className="rv-thesis-fig">
+              <b style={{ color: thesis.expectancy > 0 ? "var(--long)" : "var(--short)" }}>
+                {thesis.expectancy > 0 ? "+" : ""}{thesis.expectancy}R
+              </b><span>Average trade</span>
+            </div>
+            <div className="rv-thesis-fig">
+              <b>{thesis.winRate}%</b><span>Won</span>
+            </div>
+          </div>
           {thesis.thin && (
             <p className="rv-thesis-note">
               Read this lightly — under thirty closed trades, none of it separates
@@ -731,7 +803,28 @@ export default function Review({ closed, stats, all, diary }) {
           about one check, and putting it in a bordered box would file it as
           the twelfth finding.
         */
-        .rv-thesis { margin: 0 0 18px; }
+        /*
+          TWO COLUMNS ON A WIDE SCREEN, because one was leaving the right half
+          of the page blank. The headline is capped by its own line length —
+          left to run the full width of a large monitor it would read as a
+          banner rather than a sentence — so the space beside it holds the
+          numbers the eyebrow was carrying in 10px grey above it. Same facts,
+          filling the room they are in.
+        */
+        .rv-thesis {
+          margin: 0 0 18px;
+          display: grid; gap: 10px 40px; align-items: end;
+        }
+        @media (min-width: 900px) {
+          .rv-thesis {
+            grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+            align-items: center;
+          }
+          .rv-thesis-eyebrow { display: none; }
+          .rv-thesis-h { grid-row: 1; }
+          .rv-thesis-figs { grid-row: 1; grid-column: 2; }
+          .rv-thesis-note { grid-column: 1 / -1; }
+        }
         .rv-thesis-eyebrow {
           font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase;
           color: var(--ink3); margin: 0 0 10px;
@@ -749,7 +842,24 @@ export default function Review({ closed, stats, all, diary }) {
         .rv-thesis-h em { font-style: normal; color: var(--brass); }
         .rv-thesis-h[data-tone="bad"] em { color: var(--short); }
         .rv-thesis-note {
-          font-size: 12.5px; color: var(--ink3); margin: 10px 0 0; max-width: 60ch;
+          font-size: 12.5px; color: var(--ink3); margin: 0; max-width: 60ch;
+        }
+        /* Hairline dividers from the gap, as the evidence tables do. */
+        .rv-thesis-figs {
+          display: none;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 1px; background: var(--rule);
+          border: 1px solid var(--rule); border-radius: 3px; overflow: hidden;
+        }
+        @media (min-width: 900px) { .rv-thesis-figs { display: grid; } }
+        .rv-thesis-fig { background: var(--card); padding: 12px 14px 11px; }
+        .rv-thesis-fig b {
+          display: block; font-size: 19px; line-height: 1; margin-bottom: 5px;
+          letter-spacing: -0.02em; font-variant-numeric: tabular-nums;
+        }
+        .rv-thesis-fig span {
+          font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase;
+          color: var(--ink3);
         }
 
         .rv-chart { display: block; width: 100%; height: auto; margin: 14px 0 0; }
