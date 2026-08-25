@@ -53,8 +53,44 @@ const chron = (rows) =>
   [...rows].sort((a, b) =>
     new Date(a.exit_date || a.entry_date) - new Date(b.exit_date || b.entry_date));
 
-const F = (severity, id, title, detail, evidence) =>
-  ({ id, severity, title, detail, evidence });
+/**
+ * A finding.
+ *
+ * `title` is the claim, `detail` the reasoning, `evidence` the numbers behind
+ * it. The optional sixth argument carries what the screen needs to read as a
+ * page rather than a paragraph:
+ *
+ *   lede     one plain line saying what was measured, in words that do not
+ *            assume the reader already knows what −1.15R means
+ *   figures  the two or three numbers the claim rests on, lifted OUT of the
+ *            prose so they can be seen without reading it. Every one of these
+ *            was already in `detail`; a finding that says "18 of 54 losing
+ *            trades (33%), averaging −1.42R" makes somebody parse a sentence
+ *            to learn something a number could have told them.
+ *   verdict  the one sentence that says what it means. The old detail
+ *            paragraph did the measuring, the explaining and the "so what" at
+ *            once, and the "so what" is the part people came for.
+ *
+ * All three are optional and older findings pass none — the card falls back to
+ * the plain layout, so this can be adopted a finding at a time rather than in
+ * one rewrite of eleven.
+ */
+const F = (severity, id, title, detail, evidence, extra = {}) =>
+  ({ id, severity, title, detail, evidence, ...extra });
+
+/** Ledes, kept beside each other so they can be read as a set and stay in one
+ *  voice — plain sentences, no R-notation, no term the screen has not already
+ *  explained by the time you reach it. */
+const LEDE_STOPS =
+  "Of every trade you closed at a loss, how many lost more than the stop you " +
+  "set said they should. A stop at 1R means a loss should cost roughly what " +
+  "you put at risk; this counts the ones that cost meaningfully more.";
+const LEDE_EXITS =
+  "Your winning trades, grouped by how you got out of them. Same trader, same " +
+  "setups — the only thing that differs is the way the position was closed.";
+const LEDE_SIZE =
+  "Whether the trades you bet more on actually turned out better. Measured as " +
+  "the relationship between how much you risked and what came back.";
 
 /* ==================================================================== */
 /*  1. Stop-loss discipline                                             */
@@ -103,28 +139,53 @@ function stopDiscipline(closed) {
     taggedIgnoredStop: losers.filter((t) => (t.mistakes || []).includes("Ignored the stop")).length,
   };
 
+  const lede = LEDE_STOPS;
+  /** U+2212, as `rfmt` and every other figure in the app uses — a hyphen next
+   *  to a 21px numeral reads as a dash, not a sign. */
+  const minus = (v) => String(v).replace("-", "\u2212");
+  const figs = [
+    { value: `${ev.beyondStopPct}%`, label: "of losses ran past it" },
+    { value: `${overruns.length} of ${losers.length}`, label: "losing trades" },
+    { value: `${minus(ev.medianLossR)}R`, label: "typical loss" },
+  ];
+
   if (overrunRate >= 30 || bad.length >= 3) {
     return F("critical", "stop-discipline",
       "Losses are running past the stop",
-      `${overruns.length} of ${losers.length} losing trades (${ev.beyondStopPct}%) closed worse than −1.15R, ` +
-      `averaging ${ev.avgOverrunR}R. Median loss is ${ev.medianLossR}R against a −1.00R design. ` +
-      `Every metric in this journal assumes 1R is your real maximum loss — when it isn't, ` +
-      `expectancy and position sizing are both built on a number that doesn't hold. ` +
-      `Some of this may be gap-downs rather than hesitation; the trades tagged "Ignored the stop" (${ev.taggedIgnoredStop}) are the ones that were.`,
-      ev);
+      `Those ${overruns.length} averaged ${ev.avgOverrunR}R, against a design that says a loss should cost 1R. ` +
+      // Only when there are any. "the 0 you tagged ... are the ones that were"
+      // is not a sentence, and it appeared on the first real account this ran on.
+      (ev.taggedIgnoredStop > 0
+        ? `Some of this will be gap-downs rather than hesitation — the ${ev.taggedIgnoredStop} you tagged ` +
+          `"Ignored the stop" are the ones that were.`
+        : `Some of this will be gap-downs rather than hesitation. Tagging the ones that were ` +
+          `"Ignored the stop" is what tells the two apart.`),
+      ev,
+      { lede,
+        figures: figs,
+        verdict: "Your 1R is not the number you think it is. Expectancy and position " +
+                 "size are both worked out from it, so both are currently overstating " +
+                 "how well this is going." });
   }
   if (overrunRate >= 15) {
     return F("warning", "stop-discipline",
       "Some losses drifting past the stop",
-      `${overruns.length} of ${losers.length} losses closed beyond −1.15R (median ${ev.medianLossR}R). ` +
-      `Not yet structural, but worth watching — this is the failure mode that quietly widens your average loss.`,
-      ev);
+      `Not yet structural — but this is the failure mode that widens the average loss without ` +
+      `ever announcing itself, because no single trade looks bad enough to notice.`,
+      ev,
+      { lede,
+        figures: figs,
+        verdict: "Worth watching rather than fixing. If this share climbs past a third, " +
+                 "every R figure in the journal starts to drift." });
   }
   return F("good", "stop-discipline",
     "Stops are being honoured",
-    `Median loss is ${ev.medianLossR}R across ${losers.length} losing trades, with ${overruns.length} beyond −1.15R. ` +
-    `Your 1R is real, which means everything else measured here can be trusted.`,
-    ev);
+    `A typical loss costs about what it was meant to, and only ${overruns.length} went beyond it.`,
+    ev,
+    { lede,
+      figures: figs,
+      verdict: "Your 1R is real — which is what lets every other number on this screen " +
+               "be taken at face value." });
 }
 
 /* ==================================================================== */
@@ -241,19 +302,38 @@ function sizingReflexes(closed) {
       ev));
   }
 
+  /**
+   * A correlation is a hard number to feel, which is why the title says it in
+   * words — "Your biggest positions are your worst trades". A third figure
+   * repeating that as "worse / BIGGER BETS DID" was tried and cut: it read as
+   * neither a number nor a sentence, and said what the headline already had.
+   */
+  const sizeFigs = () => [
+    { value: String(ev.sizeOutcomeCorrelation).replace("-", "\u2212"), label: "size vs outcome" },
+    { value: `${rows.length}`, label: "trades measured" },
+  ];
+
   if (isFinite(corr) && corr < -0.2) {
     out.push(F("warning", "conviction-inverted",
       "Your biggest positions are your worst trades",
-      `Correlation between position size and outcome is ${ev.sizeOutcomeCorrelation} — negative, meaning the ` +
-      `trades you sized up on have performed worse than the ones you sized down on. ` +
-      `Whatever is driving your conviction is not predicting outcomes. Flat sizing would have produced a better result than your judgement did.`,
-      ev));
+      `The trades you sized up on have come back worse than the ones you sized down on. Whatever is ` +
+      `driving the conviction is not predicting the outcome — which means the sizing decision is ` +
+      `currently subtracting from the result rather than adding to it.`,
+      ev,
+      { lede: LEDE_SIZE,
+        figures: sizeFigs(),
+        verdict: "Betting the same amount on every trade would have made you more money " +
+                 "than your own judgement about which ones deserved more." }));
   } else if (isFinite(corr) && corr > 0.25) {
     out.push(F("good", "conviction-works",
       "Your conviction is informative",
-      `Size and outcome correlate at ${ev.sizeOutcomeCorrelation}. The trades you back harder do perform better — ` +
-      `rare, and worth preserving. Just keep the upper bound fixed.`,
-      ev));
+      `The trades you back harder do come back better. This is rarer than it sounds — for most ` +
+      `traders the relationship is flat or backwards.`,
+      ev,
+      { lede: LEDE_SIZE,
+        figures: sizeFigs(),
+        verdict: "Worth protecting rather than pushing. Keep the upper bound where it is — " +
+                 "the edge is in picking which trades get more, not in how much more." }));
   }
 
   return out.length ? out : null;
@@ -341,18 +421,34 @@ function exitBehaviour(closed) {
   const best = rows[0], worst = rows[rows.length - 1];
   const ev = { byReason: rows, spread: +(best.avgR - worst.avgR).toFixed(2) };
 
+  const minus = (v) => String(v).replace("-", "\u2212");
+  const figs = [
+    { value: `${minus(best.avgR)}R`, label: `${best.reason.toLowerCase()} · ${best.n} trades` },
+    { value: `${minus(worst.avgR)}R`, label: `${worst.reason.toLowerCase()} · ${worst.n} trades` },
+    { value: `${minus(ev.spread)}R`, label: "difference per trade" },
+  ];
+
   if (best.avgR - worst.avgR >= 1) {
     return F("warning", "exit-method",
       `Exiting on "${worst.reason}" leaves money behind`,
-      `Winners closed via "${best.reason}" average ${best.avgR}R over ${best.n} trades. Winners closed via ` +
-      `"${worst.reason}" average ${worst.avgR}R over ${worst.n}. That's ${ev.spread}R per trade of difference ` +
-      `attributable to the exit method alone, not to trade selection. ` +
-      `In a breakout system the large winners pay for everything else — capping them changes the arithmetic of the whole approach.`,
-      ev);
+      `The gap is the exit method alone — it is not that one group held better trades, since both ` +
+      `are drawn from the same winners. In a breakout system the big winners pay for every loser, ` +
+      `so anything that caps them changes the arithmetic of the whole approach rather than trimming it.`,
+      ev,
+      { lede: LEDE_EXITS,
+        figures: figs,
+        verdict: `Every winner you close on "${worst.reason}" instead gives up about ` +
+                 `${ev.spread}R. That is the single cheapest thing on this page to change: ` +
+                 `it asks nothing of your entries.` });
   }
   return F("good", "exit-method", "Exit methods are broadly consistent",
-    `Average winner ranges from ${worst.avgR}R to ${best.avgR}R across your exit reasons — no single method is bleeding returns.`,
-    ev);
+    `No single way of getting out is quietly costing you — the spread across your exit reasons is ` +
+    `small enough to be noise rather than a habit.`,
+    ev,
+    { lede: LEDE_EXITS,
+      figures: figs,
+      verdict: "Nothing to fix here. Worth re-reading once you have more exits on the " +
+               "board, since this is the kind of gap that opens slowly." });
 }
 
 /* ==================================================================== */

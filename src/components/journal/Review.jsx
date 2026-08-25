@@ -201,18 +201,66 @@ function Evidence({ data }) {
   );
 }
 
-function FindingCard({ f }) {
+/**
+ * A finding, read as a page rather than a paragraph.
+ *
+ * ORDER IS THE POINT. What was measured, then the numbers, then the reasoning,
+ * then what it means. The old card put all four in one dense paragraph and led
+ * with the arithmetic — "18 of 54 losing trades (33%) closed worse than −1.15R,
+ * averaging −1.42R" — which asks somebody to parse a sentence to learn
+ * something a number could have shown them, and buries the conclusion at the
+ * end where it reads as an afterthought.
+ *
+ * THE FIGURES ARE LIFTED OUT OF THE PROSE, NOT ADDED TO IT. Every one already
+ * appeared in the detail text; they are the same facts, given a size that
+ * matches how much they matter.
+ *
+ * THE VERDICT IS THE PART PEOPLE CAME FOR, so it is last and it is marked. A
+ * finding that measures something and never says what to do about it is a
+ * statistic, not a review.
+ *
+ * FALLS BACK CLEANLY. A finding with no `figures` renders the way it always
+ * did, so the eight not yet rewritten are unaffected.
+ */
+function FindingCard({ f, n }) {
   const sev = SEVERITY[f.severity] || SEVERITY.watch;
+  const rich = Array.isArray(f.figures) && f.figures.length > 0;
+
   return (
     <div className="rv-card" style={{ borderLeftColor: sev.color }}>
       <div className="rv-card-head">
         <span className="rv-tag" style={{ color: sev.color, borderColor: sev.color }}>{sev.label}</span>
         <div className="rv-title">{f.title}</div>
       </div>
-      <p className="rv-detail">{f.detail}</p>
+
+      {rich ? (
+        <>
+          {f.lede && <p className="rv-lede">{f.lede}</p>}
+          <div className="rv-figs">
+            {f.figures.map((g, i) => (
+              <div className="rv-fig" key={i}>
+                <b style={{ color: sev.color }}>{g.value}</b>
+                <span>{g.label}</span>
+              </div>
+            ))}
+          </div>
+          {f.detail && <p className="rv-detail">{f.detail}</p>}
+          {f.verdict && (
+            <p className="rv-verdict" style={{ borderLeftColor: sev.color }}>
+              {/* Named, because an unlabelled box of bold text reads as an
+                  alert. This one is the answer, not the alarm. */}
+              <b className="rv-verdict-cap">What it means</b>
+              {f.verdict}
+            </p>
+          )}
+        </>
+      ) : (
+        <p className="rv-detail">{f.detail}</p>
+      )}
+
       {f.evidence && (
         <details className="rv-evidence">
-          <summary>Evidence</summary>
+          <summary>{rich ? "Check the numbers" : "Evidence"}</summary>
           <Evidence data={f.evidence} />
         </details>
       )}
@@ -395,6 +443,56 @@ export default function Review({ closed, stats, all, diary }) {
         }
         .rv-title { font-size: 14.5px; font-weight: 600; }
         .rv-detail { font-size: 13px; line-height: 1.65; color: var(--ink2); margin: 9px 0 0; }
+
+        /*
+          The lede sits above the numbers and explains what is about to be
+          counted, in words that assume nothing. It is the sentence that makes
+          the difference between a screen you read and a screen you skim past
+          because it opened with "−1.15R".
+        */
+        .rv-lede {
+          font-size: 13.5px; line-height: 1.6; color: var(--ink2);
+          margin: 9px 0 0; max-width: 68ch;
+        }
+
+        /*
+          Hairline gaps rather than borders: the 1px background showing through
+          a grid gap draws the dividers for free and keeps them from
+          accumulating at the edges, where two adjacent borders would double.
+        */
+        .rv-figs {
+          display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+          gap: 1px; background: var(--rule);
+          border: 1px solid var(--rule); border-radius: 3px;
+          margin: 14px 0 0; overflow: hidden;
+        }
+        .rv-fig { background: var(--card); padding: 11px 12px 10px; }
+        .rv-fig b {
+          display: block; font-size: 21px; line-height: 1;
+          letter-spacing: -0.02em; margin-bottom: 5px;
+          font-variant-numeric: tabular-nums;
+        }
+        .rv-fig span {
+          font-size: 10px; letter-spacing: 0.07em; text-transform: uppercase;
+          color: var(--ink3); line-height: 1.35; display: block;
+        }
+
+        /*
+          Tinted, not just ruled. The severity colour is already on the card's
+          left edge; repeating it here is what ties the conclusion to the
+          judgement rather than leaving it as one more paragraph.
+        */
+        .rv-verdict {
+          margin: 14px 0 0; padding: 11px 13px;
+          background: var(--paper); border-left: 3px solid var(--rule);
+          font-size: 13.5px; line-height: 1.6; color: var(--ink);
+          max-width: 72ch;
+        }
+        .rv-verdict-cap {
+          display: block; font-size: 10px; letter-spacing: 0.09em;
+          text-transform: uppercase; color: var(--ink3);
+          margin-bottom: 4px; font-weight: 600;
+        }
 
         .rv-evidence { margin-top: 10px; }
         .rv-evidence summary {
