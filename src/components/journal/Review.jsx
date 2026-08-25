@@ -78,6 +78,12 @@ const KEY_NAMES = {
   avgRiskAfterWin: "Risk after a win",
   differencePct: "Difference",
   sampleAfterLoss: "Trades after a loss",
+  chargesRecordedPct: "Trades with charges",
+  tradesWithNoCharges: "Trades with none",
+  /* The unit lives in the label because value() will not invent one — the key
+     carries a rate, not a percentage of anything the table knows about. */
+  measuredChargeRatePctOfTurnover: "Charges as % of turnover",
+  estimatedMissingCharges: "Estimated cost missing (₹)",
 };
 
 function label(key) {

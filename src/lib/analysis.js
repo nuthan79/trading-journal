@@ -1,4 +1,8 @@
 import { scaleOutFinding } from "./positions";
+/* The one finding that has to say a rupee figure mid-sentence. Everything
+   else here returns numbers and lets the component format them, which is not
+   available inside a prose string — see the house rule in CLAUDE.md. */
+import { rupee } from "./format";
 
 /**
  * Behavioural review.
@@ -107,6 +111,10 @@ const LEDE_CONC =
 const LEDE_GAPS =
   "How often each field is actually filled in. A blank does not count against " +
   "a setup; it makes that setup invisible to every cut on the performance sheet.";
+const LEDE_CHARGES =
+  "What it actually cost you to place these trades, and how many of them have " +
+  "no cost recorded at all. Every net figure on the app is measured after " +
+  "charges, so a trade with none looks more profitable than it was.";
 const LEDE_FEELING =
   "Your trades grouped by how the day felt when you took them, and what each " +
   "group returned.";
@@ -1234,6 +1242,15 @@ export function outcomeTagCounts(closed, isExecutionError) {
   }));
 }
 
+/**
+ * The setup fields — and ONLY the setup fields.
+ *
+ * Charges used to be a sixth bar here and it was the wrong card for it. Every
+ * other field on this chart is read off a chart and typed in, which is exactly
+ * what the verdict below promises; charges are computed by the app, so the
+ * fix is a broker preset or a re-save and the instruction underneath was
+ * false for one bar in five. It has its own check now — see chargesRecorded.
+ */
 function dataQuality(closed) {
   if (closed.length < 10) return null;
   const pc = (f) => +((closed.filter(f).length / closed.length) * 100).toFixed(0);
@@ -1243,19 +1260,17 @@ function dataQuality(closed) {
     volumePct: pc((t) => isFinite(n(t.vol_pct_avg))),
     patternPct: pc((t) => !!t.pattern),
     exitReasonPct: pc((t) => !!t.exit_reason),
-    chargesPct: pc((t) => n(t.charges) > 0),
   };
   const gaps = Object.entries(ev).filter(([k, v]) => k !== "trades" && v < 60);
   if (!gaps.length) return null;
 
   const names = { pivotPct: "pivot price", volumePct: "breakout volume",
-                  patternPct: "base pattern", exitReasonPct: "exit reason", chargesPct: "charges" };
+                  patternPct: "base pattern", exitReasonPct: "exit reason" };
 
   return F("watch", "data-gaps",
     "Some fields are mostly empty",
     `The setup breakdowns can only compare what is recorded. A blank does not count against a pattern — ` +
-    `it makes that pattern invisible, so the cut goes on working and quietly stops meaning anything. ` +
-    `Charges missing is the one that flatters: net P&L and XIRR both read better than reality.`,
+    `it makes that pattern invisible, so the cut goes on working and quietly stops meaning anything.`,
     ev,
     { lede: LEDE_GAPS,
       figures: [{ value: `${gaps.length}`, label: gaps.length === 1 ? "field mostly blank" : "fields mostly blank" }],
@@ -1269,6 +1284,103 @@ function dataQuality(closed) {
       },
       verdict: "These are read off the chart, so they can be filled in any time — " +
                "and they are what the whole Edge screen has to work with." });
+}
+
+/* ==================================================================== */
+/*  Charges that were never recorded                                    */
+/* ==================================================================== */
+
+/**
+ * MISSING CHARGES ARE NOT A MISSING FIELD, THEY ARE OVERSTATED RETURNS.
+ *
+ * This was a sixth bar on the data-gaps chart, which put it beside four
+ * fields you read off a chart and type in, under a verdict telling you to
+ * fill them in. Charges are computed — the fix is a broker preset or a
+ * re-save, and the consequence is not a thinner Edge screen, it is that net
+ * P&L, return on capital and XIRR are all reading better than reality.
+ *
+ * AN IMPORTED ZERO IS DATA, NOT A GAP, and the old bar got this wrong. It
+ * counted any trade at zero as unrecorded; ChargesField's own rule is
+ * `!(charges > 0) && !imported`, because shares from a demerger carry an
+ * apportioned cost and no brokerage — LTI, NLSL, TRANSINDIA and
+ * ALLCARGOTERMINALS all sit at zero legitimately. That zero came from the
+ * broker and is the truth, so counting it as missing understates the figure.
+ *
+ * THE COST IS ESTIMATED FROM THIS BOOK, NOT FROM A RATE TABLE. What the
+ * missing charges are worth is guessable two ways: run charges.js over them,
+ * which needs the profile this function is not given and would silently apply
+ * today's broker preset to trades taken under another; or measure what
+ * charges actually cost on the trades that DO record them, as a share of
+ * turnover, and apply that. The second is this trader's own measured rate,
+ * needs nothing passed in, and is honest about being an estimate.
+ */
+function chargesRecorded(closed) {
+  if (closed.length < 10) return null;
+
+  const turnover = (t) => {
+    const q = n(t.quantity), inP = n(t.entry_price), outP = n(t.exit_price);
+    if (!isFinite(q) || !isFinite(inP)) return null;
+    return q * inP + (isFinite(outP) ? q * outP : 0);
+  };
+
+  /* ChargesField's rule, verbatim: a zero is "never set" only if nobody
+     imported the trade. */
+  const missing = closed.filter((t) => !(n(t.charges) > 0) && !t.imported);
+  const recorded = closed.filter((t) => n(t.charges) > 0);
+  const pct = +(((closed.length - missing.length) / closed.length) * 100).toFixed(0);
+
+  /* Above this it is a handful of rows, not a distortion worth a card. */
+  if (pct >= 90) return null;
+
+  /* The trader's own cost of doing business, as a share of what they turned
+     over. Needs enough priced trades to be a rate rather than an anecdote. */
+  const priced = recorded.map((t) => ({ c: n(t.charges), v: turnover(t) }))
+    .filter((x) => isFinite(x.c) && isFinite(x.v) && x.v > 0);
+  const rate = priced.length >= 10
+    ? priced.reduce((a, x) => a + x.c, 0) / priced.reduce((a, x) => a + x.v, 0)
+    : null;
+
+  const missingTurnover = missing.map(turnover).filter(isFinite).reduce((a, b) => a + b, 0);
+  const estimate = rate != null && missingTurnover > 0
+    ? Math.round(rate * missingTurnover) : null;
+
+  const ev = {
+    trades: closed.length,
+    chargesRecordedPct: pct,
+    tradesWithNoCharges: missing.length,
+    /* Named so the evidence table cannot imply this was measured. */
+    measuredChargeRatePctOfTurnover: rate != null ? +(rate * 100).toFixed(3) : null,
+    estimatedMissingCharges: estimate,
+  };
+
+  const costs = estimate != null
+    ? ` On the trades that do record them, charges come to ${(rate * 100).toFixed(2)}% of turnover. ` +
+      `At your own rate the missing ones are worth roughly ${rupee(estimate)} — currently counted as ` +
+      `profit, in every net figure on the app.`
+    : ` What they came to cannot be estimated here, because too few trades record charges to measure ` +
+      `a rate from.`;
+
+  return F(pct < 60 ? "warning" : "watch", "charges-missing",
+    "Some trades have no charges recorded",
+    `${missing.length} of your ${closed.length} closed trades carry no charges — brokerage, STT, ` +
+    `exchange fees, stamp duty and GST all counted as zero.${costs} This is the one gap that flatters ` +
+    `rather than blurs: net P&L, return on capital and XIRR all read better than reality, and by more ` +
+    `the longer the book gets.`,
+    ev,
+    { lede: LEDE_CHARGES,
+      figures: [
+        { value: `${missing.length}`, label: "trades with no charges" },
+        { value: `${pct}%`, label: "of trades have them recorded" },
+        ...(estimate != null
+          ? [{ value: rupee(estimate), label: "counted as profit, roughly" }]
+          : []),
+      ],
+      /* No chart. One share and one estimate are two numbers, and the figures
+         above already are the chart — a two-bar graphic of recorded against
+         missing would add a picture without adding a fact. */
+      verdict: "Nothing to fill in by hand. Set your broker and rates in Settings, then " +
+               "re-save the affected trades — the app computes the rest, and every net " +
+               "figure on the app moves to match." });
 }
 
 /* ==================================================================== */
@@ -1785,6 +1897,7 @@ export function reviewThesis(closed, findings, stats) {
     "market-misaligned": "when you choose to trade",
     "thin-volume": "the entries you are taking",
     "return-concentration": "how few trades carry it",
+    "charges-missing": "what these trades actually cost you",
     "revenge-cadence": "how soon you re-enter",
   };
   const worst = findings.find((f) => f.severity === "critical")
@@ -1820,6 +1933,7 @@ export function reviewFindings(
   push(marketAlignment(closed, regimes));
   push(tradingCadence(closed));
   push(dataQuality(closed));
+  push(chargesRecorded(closed));
   push(returnConcentration(closed));
   /**
    * Written months ago in positions.js and never called by anything.
