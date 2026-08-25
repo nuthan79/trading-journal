@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback, useRef } from "react";
-import { Check, ChevronRight, Undo2 } from "lucide-react";
+import { Check, ChevronRight } from "lucide-react";
 import { rupee, rfmt, pct } from "@/lib/format";
 
 /**
@@ -39,19 +39,6 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
    */
   const [dates, setDates] = useState({});        // id -> YYYY-MM-DD
   const [saved, setSaved] = useState({});        // id -> true once written
-  const [rowBusy, setRowBusy] = useState({});    // id -> true while in flight
-  /**
-   * Written by its own tick, and still on screen.
-   *
-   * Deliberately NOT `saved`, which is what `pending` filters on: a row that
-   * left the list the instant it was written would re-flow every row beneath
-   * it while somebody is working straight down the page, and on a screen where
-   * the rows are near-identical that is how the wrong one ends up edited. So a
-   * row saved on its own goes quiet and stays put. `pending` never shrinks
-   * underneath the cursor; these are gone the next time the parent reloads,
-   * by which point they no longer carry an assumed stop and do not qualify.
-   */
-  const [justSaved, setJustSaved] = useState({});
   const [page, setPage] = useState(0);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -124,13 +111,12 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
   );
   /** Typed, different from the guess, and not in the future. */
   const dateReady = useCallback((t) => {
-    if (justSaved[t.id]) return false;   // already written by its own tick
     if (!dateTouched(t)) return false;
     const v = dates[t.id];
     if (!/^\d{4}-\d{2}-\d{2}$/.test(v || "")) return false;
     if (v > new Date().toISOString().slice(0, 10)) return false;
     return true;
-  }, [dates, dateTouched, justSaved]);
+  }, [dates, dateTouched]);
 
   const missingCount = pending.filter((t) => t.stop_loss == null).length;
   const assumedCount = pending.filter(
@@ -200,10 +186,9 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
   // here would promise to save rows that are deliberately left alone.
   /** A stop typed and valid — the row's other half is judged separately. */
   const stopReady = useCallback((t) => {
-    if (justSaved[t.id]) return false;   // already written by its own tick
     const p = preview(t);
     return touched(t) && p && !p.invalid;
-  }, [preview, touched, justSaved]);
+  }, [preview, touched]);
 
   // Either answer counts. A row where somebody knew the purchase date but not
   // the stop is still progress, and a button that ignored it would look broken.
@@ -306,52 +291,14 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
    * back is what returns the row to genuinely untouched, not to a typed value
    * that happens to match.
    */
-  const revert = useCallback((t) => {
-    setValues((v) => { const n = { ...v }; delete n[t.id]; return n; });
-    inputs.current[t.id]?.focus();
-  }, []);
-
-  /**
-   * Write this one row, now.
-   *
-   * The reason it exists is that Save lives at the bottom of the page and
-   * commits `slice` — the visible 25 — and "Skip these" only advances the
-   * page. So a page of careful corrections was one wrong button away from
-   * being dropped on the floor, with no way back to the page that held them.
-   * A control beside the number you just changed is both the shorter trip and
-   * the one that cannot be walked past.
-   *
-   * The row does NOT disappear when it saves. Rows leaving the list the
-   * instant they are written would re-flow everything below them mid-edit,
-   * which on a screen you work straight down is how the wrong row ends up
-   * being the one you typed into. It goes quiet, stays put, and is gone next
-   * time the page turns.
-   */
-  const saveRow = useCallback(async (t) => {
-    if (!stopReady(t) && !dateReady(t)) return;
-    setRowBusy((b) => ({ ...b, [t.id]: true }));
-    setErr("");
-    try {
-      await onSave([{
-        id: t.id,
-        ...(stopReady(t) ? { stop_loss: Number(shown(t)), stop_source: "recorded" } : {}),
-        ...(dateReady(t) ? { entry_date: dates[t.id], entry_date_source: "recorded" } : {}),
-      }]);
-      setJustSaved((s) => ({ ...s, [t.id]: true }));
-    } catch (e) {
-      setErr(e.message || "Could not save that row. Nothing was changed.");
-    }
-    setRowBusy((b) => { const n = { ...b }; delete n[t.id]; return n; });
-  }, [stopReady, dateReady, shown, dates, onSave]);
-
   /* Enter moves to the next row rather than submitting — this is a data
      entry screen and you want to keep your hands where they are.
 
-     It deliberately does NOT save the row it leaves. A key that wrote a
-     record on the way past would make travelling down the list and answering
-     it the same gesture, and they are not: you scroll through these reading R
-     against what you remember, and most rows you pass are ones you have
-     nothing to say about yet. */
+     It deliberately does not record anything on the way past. Travelling down
+     this list and answering it are different acts — you scroll through reading
+     R against what you remember, and most rows you pass are ones you have
+     nothing to say about yet. A key that turned a guess into a fact in passing
+     was tried here and taken out. */
   const onKey = (e, i) => {
     if (e.key === "Enter" || e.key === "ArrowDown") {
       e.preventDefault();
@@ -420,14 +367,7 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
             )}
             {(missingCount > 0 || assumedCount > 0) &&
               "R appears as you type — check it against what you remember."}
-            {/* Says the per-row save exists. A control that only appears on
-                a row you have already edited is one nobody meets until they
-                edit — and by then they may have walked past it to the button
-                at the bottom, which is the trip it exists to save. */}
-            {(assumedCount > 0 || missingCount > 0) && (
-              <>{" "}Each one you change can be saved on its own, beside the
-                number.</>
-            )}
+
             {/* Third sentence, and only when there is something to say. A
                 holdings file states what you own and never when you bought it,
                 so these rows arrive missing both answers — and the date is the
@@ -551,65 +491,18 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
                   <td className="num">{Number(t.exit_price).toFixed(2)}</td>
                   <td className={`num ${pnl >= 0 ? "pos" : "neg"}`}>{rupee(pnl)}</td>
                   <td className="num">
-                    <div className="sf-stopcell">
-                      <input
-                        ref={(el) => (inputs.current[t.id] = el)}
-                        className="in sf-in"
-                        inputMode="decimal"
-                        placeholder="—"
-                        value={shown(t)}
-                        onChange={(e) =>
-                          setValues((v) => ({ ...v, [t.id]: e.target.value.replace(/[^0-9.]/g, "") }))
-                        }
-                        onKeyDown={(e) => onKey(e, i)}
-                        disabled={justSaved[t.id] || rowBusy[t.id]}
-                        data-bad={p?.invalid ? 1 : 0}
-                      />
-                      {/*
-                        NOTHING UNTIL SOMETHING IS TYPED. A control offering to
-                        accept the row as it stands was built here and removed:
-                        it made agreeing with a guess cheaper than reading it,
-                        which is the one trade this screen must not make.
-
-                        Both marks are about an edit that now exists. Save
-                        writes this row on its own, because the batch button is
-                        at the bottom of the page and "Skip these" walks past
-                        it. Undo puts the guess back, which is otherwise
-                        unrecoverable once typed over — and is an undo rather
-                        than a cross because a cross beside a price reads as
-                        delete, or as "this stop is wrong".
-                      */}
-                      {justSaved[t.id] ? (
-                        <span className="sf-mark sf-done-mark" title="Saved">
-                          <Check size={13} />
-                        </span>
-                      ) : touched(t) ? (
-                        <>
-                          <button
-                            type="button"
-                            className="sf-mark sf-save"
-                            onClick={() => saveRow(t)}
-                            disabled={rowBusy[t.id] || !!p?.invalid}
-                            title={p?.invalid ? p.invalid : "Save this stop"}
-                            aria-label="Save this stop"
-                          >
-                            <Check size={13} />
-                          </button>
-                          <button
-                            type="button"
-                            className="sf-mark sf-undo"
-                            onClick={() => revert(t)}
-                            disabled={rowBusy[t.id]}
-                            title="Put the assumed stop back"
-                            aria-label="Undo this edit"
-                          >
-                            <Undo2 size={13} />
-                          </button>
-                        </>
-                      ) : (
-                        <span className="sf-mark sf-mark-gap" aria-hidden="true" />
-                      )}
-                    </div>
+                    <input
+                      ref={(el) => (inputs.current[t.id] = el)}
+                      className="in sf-in"
+                      inputMode="decimal"
+                      placeholder="—"
+                      value={shown(t)}
+                      onChange={(e) =>
+                        setValues((v) => ({ ...v, [t.id]: e.target.value.replace(/[^0-9.]/g, "") }))
+                      }
+                      onKeyDown={(e) => onKey(e, i)}
+                      data-bad={p?.invalid ? 1 : 0}
+                    />
                   </td>
                   <td className="num sf-dim" title={p?.invalid || ""}>
                     {p?.invalid ? "—" : p ? (
@@ -676,9 +569,27 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
         .sf-dim { color: var(--ink3); font-size: 11.5px; }
         .sf-stopcol { min-width: 86px; }
         .sf-err { margin-top: 11px; }
+        /*
+          PINNED TO THE BOTTOM OF THE VIEWPORT, because this list is a thousand
+          rows long and the button that commits them was at the end of it.
+          Twenty-five careful corrections then sat below the fold behind a
+          scroll, and "Skip these" — which only advances the page — was the
+          easier thing to reach. Work got dropped by people doing everything
+          right.
+
+          It also carries the count, so "2 ready to save" is in view the whole
+          time you are typing rather than being something you go and look for.
+
+          A per-row tick and undo were built to solve the same problem and
+          removed: two controls on every edited row, reserving width beside the
+          number, to save a trip that the bar simply removes.
+        */
         .sf-foot {
           display: flex; align-items: center; justify-content: space-between;
-          gap: 14px; margin-top: 12px; flex-wrap: wrap;
+          gap: 14px; flex-wrap: wrap;
+          position: sticky; bottom: 0; z-index: 3;
+          margin-top: 0; padding: 12px 2px;
+          background: var(--paper); border-top: 1px solid var(--rule);
         }
         .sf-actions { display: flex; gap: 9px; }
       `}</style>
@@ -700,46 +611,6 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
           letter-spacing: 0.06em; text-transform: uppercase; color: var(--brass);
         }
 
-        /*
-          The mark sits INSIDE the stop cell rather than in a column of its
-          own. A column between Stop and SL% would push two live figures
-          rightwards on every row to serve a control that is blank on most of
-          them, and the mark belongs beside the number it is answering for.
-        */
-        .sf-stopcell {
-          display: flex; align-items: center; justify-content: flex-end; gap: 6px;
-        }
-        /*
-          The empty span holds the slot open. Without it the input jumps
-          sideways the moment a row gains or loses its mark, and a table where
-          the column edge moves as you type down it is unreadable.
-        */
-        .sf-mark {
-          flex: none; width: 22px; height: 22px; border-radius: 3px;
-          display: inline-flex; align-items: center; justify-content: center;
-          border: 1px solid transparent; background: none; padding: 0;
-          color: var(--ink3); cursor: pointer;
-        }
-        .sf-mark-gap, .sf-done-mark { cursor: default; }
-        /* Two marks wide, always. The gap and the saved tick each stand in for
-           the pair so the input edge never moves between rows. */
-        .sf-mark-gap, .sf-done-mark { width: 50px; }
-        .sf-done-mark { color: var(--long); }
-        .sf-mark:disabled { opacity: 0.35; cursor: not-allowed; }
-        .sf-save:hover:not(:disabled) { color: var(--long); border-color: var(--long); }
-        .sf-mark:hover { color: var(--ink); background: var(--card); border-color: var(--rule); }
-        /* Brass, not green. Green is the gain colour two columns away in R,
-           and a tick that borrowed it would read as a good result rather than
-           as a recorded fact. Brass is what this screen already uses for
-           "assumed", which is the state being resolved. */
-        .sf-mark[data-on="1"] {
-          color: var(--brass); border-color: var(--brass); background: none;
-        }
-        .sf-mark[data-on="1"]:hover { background: var(--card); }
-        .sf-undo:hover { color: var(--short); }
-        .sf-mark:focus-visible {
-          outline: 2px solid var(--brass); outline-offset: 1px;
-        }
       `}</style>
     </section>
   );
