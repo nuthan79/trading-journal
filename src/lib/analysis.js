@@ -129,6 +129,13 @@ const LEDE_SIZE =
 /*  1. Stop-loss discipline                                             */
 /* ==================================================================== */
 
+/**
+ * How many recent losses decide whether a stop problem is a present-tense
+ * one. Twenty is the smallest number that supports a rate you would act on —
+ * one overrun in twenty is 5%, which is noise, and three is 15%, which is not.
+ */
+const RECENT_LOSSES = 20;
+
 function stopDiscipline(closed) {
   /**
    * Only trades whose stop was actually set.
@@ -161,6 +168,41 @@ function stopDiscipline(closed) {
   const overruns = losers.filter((t) => t.r < -1.15);
   const bad = losers.filter((t) => t.r < -1.5);
   const overrunRate = (overruns.length / losers.length) * 100;
+  const badRate = (bad.length / losers.length) * 100;
+
+  /**
+   * SEVERITY IS ABOUT NOW. THE TOTAL IS ABOUT THE RECORD.
+   *
+   * This card could not clear. It escalated on `bad.length >= 3` — an absolute
+   * count of losses worse than −1.5R across the whole history, which only ever
+   * goes up — so three bad trades in one bad month held a permanent CRITICAL.
+   * Measured: three such losses followed by nine hundred flawless trades still
+   * read critical, at a lifetime overrun rate of one percent.
+   *
+   * Two things were wrong with it. A bare count has no denominator: three bad
+   * losses is 5.5% of a fifty-loss book and 0.6% of a five-hundred one, and it
+   * meant something completely different in each. And even the rate is a
+   * lifetime figure that a trader cannot move — forty consecutive clean losses
+   * to shift 26% to 15%, by which time the behaviour being described is years
+   * old.
+   *
+   * So severity now reads the last {RECENT_LOSSES} losses and the lifetime
+   * figures stay in the prose, where they belong: a CRITICAL badge is a call
+   * to act, and there is no action available for a trade closed in 2019. The
+   * history is not deleted — it is demoted from a verdict to a fact.
+   */
+  const recent = chron(losers).slice(-RECENT_LOSSES);
+  const recentOverruns = recent.filter((t) => t.r < -1.15);
+  const recentBad = recent.filter((t) => t.r < -1.5);
+  /* Under ten there is no rate to read and the lifetime figure governs, which
+     is the honest fallback: not enough recent evidence to overrule the book. */
+  const enoughRecent = recent.length >= 10;
+  const recentRate = enoughRecent ? (recentOverruns.length / recent.length) * 100 : null;
+  const recentBadRate = enoughRecent ? (recentBad.length / recent.length) * 100 : null;
+
+  const judgedRate = recentRate ?? overrunRate;
+  const judgedBadRate = recentBadRate ?? badRate;
+  const judgedBadCount = enoughRecent ? recentBad.length : bad.length;
 
   const ev = {
     losers: losers.length,
@@ -170,7 +212,28 @@ function stopDiscipline(closed) {
     worstLossR: +Math.min(...rs).toFixed(2),
     avgOverrunR: overruns.length ? +mean(overruns.map((t) => t.r)).toFixed(2) : null,
     taggedIgnoredStop: losers.filter((t) => (t.mistakes || []).includes("Ignored the stop")).length,
+    recentLosses: recent.length,
+    recentBeyondStopCount: recentOverruns.length,
+    recentBeyondStopPct: recentRate != null ? +recentRate.toFixed(0) : null,
   };
+
+  /**
+   * The sentence that makes the card able to say "you fixed this".
+   *
+   * A journal that only ever reports the lifetime figure cannot tell a trader
+   * they have stopped doing something, which is the single most useful thing
+   * it could say to somebody who has. Ten points either way is the threshold —
+   * below that, on twenty losses, the two rates are the same number.
+   */
+  const drift = recentRate != null ? +(overrunRate - recentRate).toFixed(0) : null;
+  const trendNote =
+    drift == null || Math.abs(drift) < 10 ? ""
+    : drift > 0
+    ? ` It is also getting better, and that is worth saying plainly: across all ${losers.length} ` +
+      `losses ${ev.beyondStopPct}% ran past the stop, but over your last ${recent.length} it is ` +
+      `${ev.recentBeyondStopPct}%. This is something you used to do more than you do now.`
+    : ` And it is getting worse, not better: ${ev.beyondStopPct}% across all ${losers.length} ` +
+      `losses, but ${ev.recentBeyondStopPct}% over your last ${recent.length}.`;
 
   const lede = LEDE_STOPS;
   /** U+2212, as `rfmt` and every other figure in the app uses — a hyphen next
@@ -201,7 +264,10 @@ function stopDiscipline(closed) {
       .sort((a, b) => a.v - b.v),
   };
 
-  if (overrunRate >= 30 || bad.length >= 3) {
+  /* A count AND a rate. Either alone misleads: the rate lets a handful of
+     catastrophic losses hide inside a large book, and the bare count made
+     three of them permanent. */
+  if (judgedRate >= 30 || (judgedBadCount >= 3 && judgedBadRate >= 10)) {
     return F("critical", "stop-discipline",
       "Losses are running past the stop",
       `Those ${overruns.length} averaged ${ev.avgOverrunR}R, against a design that says a loss should cost 1R. ` +
@@ -211,7 +277,7 @@ function stopDiscipline(closed) {
         ? `Some of this will be gap-downs rather than hesitation — the ${ev.taggedIgnoredStop} you tagged ` +
           `"Ignored the stop" are the ones that were.`
         : `Some of this will be gap-downs rather than hesitation. Tagging the ones that were ` +
-          `"Ignored the stop" is what tells the two apart.`),
+          `"Ignored the stop" is what tells the two apart.`) + trendNote,
       ev,
       { lede,
         figures: figs,
@@ -220,11 +286,11 @@ function stopDiscipline(closed) {
                  "size are both worked out from it, so both are currently overstating " +
                  "how well this is going." });
   }
-  if (overrunRate >= 15) {
+  if (judgedRate >= 15) {
     return F("warning", "stop-discipline",
       "Some losses drifting past the stop",
       `Not yet structural — but this is the failure mode that widens the average loss without ` +
-      `ever announcing itself, because no single trade looks bad enough to notice.`,
+      `ever announcing itself, because no single trade looks bad enough to notice.` + trendNote,
       ev,
       { lede,
         figures: figs,
@@ -232,15 +298,34 @@ function stopDiscipline(closed) {
         verdict: "Worth watching rather than fixing. If this share climbs past a third, " +
                  "every R figure in the journal starts to drift." });
   }
+  /**
+   * "NOW" IS LOAD-BEARING IN THIS TITLE.
+   *
+   * A trader whose lifetime rate is a quarter and whose last twenty losses
+   * were clean has earned this card — but "Stops are being honoured" flat,
+   * over a chart where a third of the dots sit past the line, reads as the
+   * screen not having looked. The word that reconciles the headline with the
+   * picture underneath it is the whole point of measuring recency.
+   */
+  const cleanedUp = drift != null && drift >= 10;
   return F("good", "stop-discipline",
-    "Stops are being honoured",
-    `A typical loss costs about what it was meant to, and only ${overruns.length} went beyond it.`,
+    cleanedUp ? "Stops are being honoured now" : "Stops are being honoured",
+    (cleanedUp
+      ? `Over your last ${recent.length} losses, ${recentOverruns.length} went past the stop. The chart ` +
+        `below is your whole record and it still carries the ones that did — ${overruns.length} of ` +
+        `${losers.length}, at ${ev.beyondStopPct}%. Those are real and they are already paid for; what ` +
+        `they are not is a description of how you trade now.`
+      : `A typical loss costs about what it was meant to, and only ${overruns.length} went beyond it.`),
     ev,
     { lede,
       figures: figs,
       chart,
-      verdict: "Your 1R is real — which is what lets every other number on this screen " +
-               "be taken at face value." });
+      verdict: cleanedUp
+        ? "Nothing to fix. Worth knowing that the lifetime figures on this screen — " +
+          "expectancy, average loss — still carry the old trades, and will read worse " +
+          "than your current method for a while yet."
+        : "Your 1R is real — which is what lets every other number on this screen " +
+          "be taken at face value." });
 }
 
 /* ==================================================================== */

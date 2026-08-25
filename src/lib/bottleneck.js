@@ -215,6 +215,72 @@ const COSTERS = {
   exit: exitCost,
 };
 
+/**
+ * How many recent trades decide whether a stage is leaking NOW.
+ *
+ * Every cost above is a sum over the book, and a sum only grows. Left that
+ * way the ranking drifts toward whichever stage has the longest history
+ * rather than the one currently hurting: a trader who fixed their sizing two
+ * years ago carries the full historical leak forever, and the bar can never
+ * shorten. The same defect that kept the stop-discipline card permanently
+ * critical, in a different place — see the note in stopDiscipline.
+ *
+ * Sixty is chosen to clear the minimum samples the three costers need (eight
+ * losses, twelve sized trades, six scaled ones) on a book that trades at any
+ * reasonable pace. Below that the window returns nothing and the lifetime
+ * figure governs, which is stated rather than hidden.
+ */
+const RECENT_TRADES = 60;
+
+const chron = (rows) =>
+  [...rows].sort((a, b) =>
+    new Date(a.exit_date || a.entry_date) - new Date(b.exit_date || b.entry_date));
+
+/**
+ * Lifetime and recent side by side, with the recent one governing.
+ *
+ * Both are kept because they answer different questions and the difference
+ * between them is the most useful thing on the row. "−48R, of −137R all time"
+ * says the leak is real and shrinking; one number alone says neither.
+ */
+function costFor(key, closed, recent) {
+  const coster = COSTERS[key];
+  if (!coster) return { costR: null, costRupees: null, sample: null, basis: null };
+
+  const life = coster(closed);
+  const now = recent.length >= 20 ? coster(recent) : null;
+  const useRecent = now && now.costR != null;
+
+  /* Per trade, because the two windows hold different numbers of trades and
+     comparing two sums would call every shortened window an improvement. */
+  const rate = (c) => (c && c.costR != null && c.sample ? c.costR / c.sample : null);
+  const rNow = rate(now), rLife = rate(life);
+  const trend =
+    rNow == null || rLife == null || Math.abs(rLife) < 0.005 ? null
+    : rNow > rLife * 0.75 ? "improving"
+    : rNow < rLife * 1.25 ? "worsening"
+    : null;
+
+  /* toFixed can hand back −0, which renders as "−0R" — a minus sign on a
+     stage that is not leaking at all. */
+  const z = (v) => (v == null ? null : Object.is(v, -0) || v === 0 ? 0 : v);
+
+  return {
+    costR: z(useRecent ? now.costR : life.costR),
+    costRupees: z(useRecent ? now.costRupees : life.costRupees),
+    sample: useRecent ? now.sample : life.sample,
+    detail: useRecent ? now.detail : life.detail,
+    basis: useRecent ? "recent" : "lifetime",
+    window: useRecent ? recent.length : null,
+    lifetimeCostR: z(life.costR),
+    lifetimeCostRupees: z(life.costRupees),
+    /* Only worth printing when the two actually differ — on a book shorter
+       than the window they are the same number twice. */
+    trend: useRecent && life.costR != null && Math.abs(life.costR - now.costR) > 0.5
+      ? trend : null,
+  };
+}
+
 /* ==================================================================== */
 /*  The ranking                                                         */
 /* ==================================================================== */
@@ -229,13 +295,15 @@ export function processStages(closed = [], findings = []) {
   const byId = new Map();
   for (const f of findings) if (f?.id) byId.set(f.id, f);
 
+  const recent = chron(closed).slice(-RECENT_TRADES);
+
   const rows = STAGES.map((st) => {
     const found = st.findings.map((id) => byId.get(id)).filter(Boolean);
     const worst = found.slice().sort(
       (a, b) => (RANK[a.severity] ?? 9) - (RANK[b.severity] ?? 9)
     )[0] || null;
 
-    const cost = COSTERS[st.key] ? COSTERS[st.key](closed) : { sample: null, costR: null, costRupees: null };
+    const cost = costFor(st.key, closed, recent);
 
     /**
      * How much of the stage is visible at all.
@@ -278,7 +346,25 @@ export function processStages(closed = [], findings = []) {
     return {
       key: st.key, step: st.step, name: st.name, blurb: st.blurb,
       reason: dark ? "no-data" : quiet ? "no-finding" : null,
+      /**
+       * A CHIP SAYING "LEAKING" BESIDE A COST OF ZERO IS THE SCREEN ARGUING
+       * WITH ITSELF.
+       *
+       * The chip comes from the finding, which reads the whole book; the cost
+       * comes from the recent window. When the two disagree that is not noise
+       * — it is the trader having fixed something, and it is the single most
+       * useful thing this row can report. So it gets its own state rather than
+       * either number being suppressed: the finding below still stands on the
+       * record, and the row says the record is no longer current.
+       *
+       * Only claimed where the recent window actually ran. A lifetime cost of
+       * zero says nothing about lately.
+       */
       state: dark ? "unmeasured"
+        : (cost.basis === "recent" && cost.costR != null && cost.costR >= 0 &&
+           worst && (worst.severity === "critical" || worst.severity === "warning" ||
+                     worst.severity === "watch"))
+          ? "improving"
         : worst ? (worst.severity === "good" ? "solid"
                  : worst.severity === "watch" ? "watch" : "weak")
         : cost.costR != null ? "measured" : "quiet",
@@ -286,12 +372,21 @@ export function processStages(closed = [], findings = []) {
       costR: cost.costR,
       costRupees: cost.costRupees,
       costDetail: cost.detail || null,
+      /* Which window the headline figure came from, so the UI never labels a
+         lifetime sum as recent behaviour. */
+      basis: cost.basis,
+      window: cost.window,
+      lifetimeCostR: cost.lifetimeCostR,
+      lifetimeCostRupees: cost.lifetimeCostRupees,
+      trend: cost.trend,
       /* A cost is only a cost when it is against you. A stage that made money
          against its own baseline — partials that protected the account — is
          reported, but it is not competing to be the bottleneck. */
       leak: cost.costR != null && cost.costR < 0 ? cost.costR : null,
       sample,
-      thin: sample != null && sample < THIN_STAGE,
+      /* A stage with no sample at all is not thin, it is absent — "only 0
+         trades, provisional" was the first render of that mistake. */
+      thin: sample != null && sample > 0 && sample < THIN_STAGE,
       coverage,
       findingIds: found.map((f) => f.id),
       findingTitle: worst?.title || null,
@@ -308,6 +403,9 @@ export function processStages(closed = [], findings = []) {
     r.leak != null ? [0, r.leak]
     : r.state === "weak" ? [1, RANK[r.severity] ?? 9]
     : r.state === "watch" ? [2, 0]
+    /* Above solid, because it still carries a finding worth reading — and
+       below anything currently leaking, because it is not. */
+    : r.state === "improving" ? [2, 1]
     : r.state === "solid" ? [3, 0]
     : r.state === "measured" ? [3, 1]
     : r.state === "quiet" ? [3, 2]

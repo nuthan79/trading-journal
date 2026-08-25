@@ -700,12 +700,14 @@ function FindingCard({ f, n }) {
 }
 
 const STATE_WORD = {
-  weak: "Leaking", watch: "Worth watching", solid: "Solid",
-  measured: "Holding", quiet: "Nothing to flag", unmeasured: "Not recorded",
+  weak: "Leaking", watch: "Worth watching", improving: "Improving",
+  solid: "Solid", measured: "Holding", quiet: "Nothing to flag",
+  unmeasured: "Not recorded",
 };
 const STATE_COLOUR = {
-  weak: "var(--short)", watch: "var(--violet)", solid: "var(--long)",
-  measured: "var(--ink2)", quiet: "var(--ink3)", unmeasured: "var(--ink3)",
+  weak: "var(--short)", watch: "var(--violet)", improving: "var(--brass)",
+  solid: "var(--long)", measured: "var(--ink2)", quiet: "var(--ink3)",
+  unmeasured: "var(--ink3)",
 };
 
 /** "a, b and c" — the plain English version. Joining with " and " throughout
@@ -833,7 +835,10 @@ function ProcessMap({ data, week }) {
             <tr>
               <th>Stage</th>
               <th>State</th>
-              <th className="num">Against your own plan</th>
+              <th className="num">
+                Against your own plan
+                <span className="rv-proc-th-sub">recent trades, where measurable</span>
+              </th>
               <th>What it rests on</th>
             </tr>
           </thead>
@@ -857,6 +862,7 @@ function ProcessMap({ data, week }) {
                     {s.costR == null ? (
                       <span className="rv-proc-none">not costed</span>
                     ) : (
+                      <>
                       <span className="rv-proc-cost">
                         <span className="rv-proc-bar">
                           <i style={{
@@ -864,13 +870,30 @@ function ProcessMap({ data, week }) {
                             background: good ? "var(--long)" : "var(--short)",
                           }} />
                         </span>
-                        <b style={{ color: good ? "var(--long)" : "var(--short)" }}>
-                          {good ? "+" : "−"}{Math.abs(s.costR)}R
+                        <b style={{
+                          color: s.costR === 0 ? "var(--ink3)"
+                            : good ? "var(--long)" : "var(--short)",
+                        }}>
+                          {s.costR === 0 ? "" : good ? "+" : "−"}{Math.abs(s.costR)}R
                         </b>
                         {s.costRupees ? (
                           <span className="rv-dim">{rupee(Math.abs(s.costRupees))}</span>
                         ) : null}
                       </span>
+                      {/* The lifetime figure sits under the recent one rather
+                          than replacing it. The gap between the two is the
+                          part worth reading: a leak that is shrinking and one
+                          that is not look identical with a single number. */}
+                      {s.basis === "recent" && s.lifetimeCostR != null &&
+                       Math.abs(s.lifetimeCostR - s.costR) > 0.5 && (
+                        <span className="rv-proc-life">
+                          of {s.lifetimeCostR > 0 ? "+" : "−"}
+                          {Math.abs(s.lifetimeCostR)}R all time
+                          {/* Not when the chip beside it already says so. */}
+                          {s.trend && s.trend !== s.state && <> · {s.trend}</>}
+                        </span>
+                      )}
+                      </>
                     )}
                   </td>
                   <td className="rv-proc-note">
@@ -1200,6 +1223,14 @@ export default function Review({ closed, stats, all, diary }) {
         .rv-proc-cost b { min-width: 62px; text-align: right; }
         .rv-proc-cost .rv-dim { min-width: 62px; text-align: right; }
         .rv-proc-none { color: var(--ink3); font-size: 11.5px; }
+        .rv-proc-life {
+          display: block; text-align: right; margin-top: 2px;
+          font-size: 10.5px; color: var(--ink3);
+        }
+        .rv-proc-th-sub {
+          display: block; margin-top: 2px; font-weight: 400;
+          letter-spacing: 0; text-transform: none; font-size: 10px;
+        }
         .rv-proc-note { color: var(--ink2); line-height: 1.5; }
         .rv-proc-thin { color: var(--ink3); font-size: 11px; }
         .rv-proc-foot {
