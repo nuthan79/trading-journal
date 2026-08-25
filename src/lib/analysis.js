@@ -88,6 +88,9 @@ const LEDE_STOPS =
 const LEDE_EXITS =
   "Your winning trades, grouped by how you got out of them. Same trader, same " +
   "setups — the only thing that differs is the way the position was closed.";
+const LEDE_RISK =
+  "How much of the account you put at risk on each trade, in the order you " +
+  "took them. Every trade drawn as one point, oldest on the left.";
 const LEDE_SIZE =
   "Whether the trades you bet more on actually turned out better. Measured as " +
   "the relationship between how much you risked and what came back.";
@@ -252,24 +255,67 @@ function riskConsistency(closed) {
     over2pct: risks.filter((r) => r > 2).length,
   };
 
+  /**
+   * Risk per trade, in the order it was taken.
+   *
+   * "Climbing" and "erratic" are both shapes, and neither survives being
+   * written down as a coefficient — 0.46 tells nobody whether the line
+   * wanders or trends. Drawn, the two findings are visibly different things:
+   * one has a slope, the other has spread.
+   *
+   * The two quarter averages are the claim itself, so they are drawn as lines
+   * rather than left in the sentence for the reader to imagine.
+   */
+  const riskChart = {
+    type: "series",
+    unit: "%",
+    points: risks.map((v) => +v.toFixed(3)),
+    axisNote: `${rows.length} trades, oldest first`,
+  };
+  const lede = LEDE_RISK;
+
   if (change > 40 && ev.lastQuarterAvg > ev.firstQuarterAvg) {
     return F("critical", "risk-escalation",
       "Risk per trade is climbing",
-      `Your average risk went from ${ev.firstQuarterAvg}% in the first quarter of these trades to ` +
-      `${ev.lastQuarterAvg}% in the most recent — up ${ev.changePct}%. ` +
-      `Position size scales both your return and your drawdown by exactly the same factor, so this has ` +
-      `silently changed the drawdown you're exposed to without changing anything about the edge. ` +
-      `If your worst historical run is ${"{maxDD}"}R, at ${ev.lastQuarterAvg}% that run now costs you a different account.`,
-      ev);
+      `Position size scales your return and your drawdown by exactly the same factor. So this has changed ` +
+      `what a bad run costs you without changing anything about the edge that produces it — ` +
+      `if your worst historical run is ${"{maxDD}"}R, at ${ev.lastQuarterAvg}% that same run now takes a ` +
+      `different amount out of the account.`,
+      ev,
+      { lede,
+        figures: [
+          { value: `${ev.firstQuarterAvg}%`, label: "where you started" },
+          { value: `${ev.lastQuarterAvg}%`, label: "where you are now" },
+          { value: `+${ev.changePct}%`, label: "bigger bets" },
+        ],
+        chart: {
+          ...riskChart,
+          bands: [
+            { value: ev.firstQuarterAvg, label: "first quarter" },
+            { value: ev.lastQuarterAvg, label: "most recent", strong: true },
+          ],
+        },
+        verdict: `You are trading a ${ev.changePct}% larger account risk than when you started, ` +
+                 `without having decided to. Pick the number you mean and size to it.` });
   }
   if (cv > 0.5) {
     return F("warning", "risk-inconsistent",
       "Position sizing is erratic",
-      `Risk per trade ranges from ${ev.minRiskPct}% to ${ev.maxRiskPct}% (average ${ev.avgRiskPct}%, ` +
-      `variation coefficient ${ev.coeffVariation}). Inconsistent sizing means your biggest positions ` +
-      `dominate the results — so your P&L reflects which trades you felt strongest about, not whether the system works. ` +
-      `That makes the expectancy figure much less meaningful than it looks.`,
-      ev);
+      `Inconsistent sizing means your biggest positions dominate the result — so the P&L reflects which ` +
+      `trades you felt strongest about, not whether the system works. That is what makes the expectancy ` +
+      `figure less meaningful than it looks.`,
+      ev,
+      { lede,
+        figures: [
+          { value: `${ev.minRiskPct}–${ev.maxRiskPct}%`, label: "range risked" },
+          { value: `${ev.avgRiskPct}%`, label: "average" },
+        ],
+        chart: {
+          ...riskChart,
+          bands: [{ value: ev.avgRiskPct, label: "your average", strong: true }],
+        },
+        verdict: "The spread, not the average, is the problem. Two trades at four times the " +
+                 "size of the others decide the record between them." });
   }
   if (ev.over2pct >= 3) {
     return F("warning", "risk-outliers",

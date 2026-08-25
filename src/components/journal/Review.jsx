@@ -44,7 +44,38 @@ const REGIME_COLOR = {
  * reads like a form and these are sentences about someone's trading. Single
  * capitals and all-caps stay as they are, which keeps R and FY intact.
  */
+/**
+ * Keys whose generated label is technically correct and useless.
+ *
+ * `label()` turns camelCase into words, which gets "Sd risk %" and "Coeff
+ * variation" and "Over2pct" — variable names with spaces in. These are the
+ * ones a reader would have to already know the code to understand.
+ */
+const KEY_NAMES = {
+  sdRiskPct: "Spread of risk",
+  coeffVariation: "How spread out",
+  over2pct: "Trades over 2%",
+  avgRiskPct: "Average risk",
+  minRiskPct: "Smallest risk",
+  maxRiskPct: "Largest risk",
+  firstQuarterAvg: "First quarter",
+  lastQuarterAvg: "Most recent quarter",
+  changePct: "Change",
+  beyondStopCount: "Past the stop",
+  beyondStopPct: "Share past the stop",
+  medianLossR: "Typical loss",
+  worstLossR: "Worst loss",
+  avgOverrunR: "Average overrun",
+  taggedIgnoredStop: 'Tagged "ignored the stop"',
+  sizeOutcomeCorrelation: "Size vs outcome",
+  avgRiskAfterLoss: "Risk after a loss",
+  avgRiskAfterWin: "Risk after a win",
+  differencePct: "Difference",
+  sampleAfterLoss: "Trades after a loss",
+};
+
 function label(key) {
+  if (KEY_NAMES[key]) return KEY_NAMES[key];
   return String(key)
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
     // And between a run of capitals and the word that follows it, or
@@ -321,10 +352,55 @@ function BarsChart({ data, color }) {
   );
 }
 
+/** A value per trade, in order, with the claim drawn across it as lines.
+ *  Dots not a path: these are separate decisions, not a continuous quantity,
+ *  and joining them would invent a journey between two trades that had none. */
+function SeriesChart({ data, color }) {
+  /* PAD_R carries the band label, which is a value AND a phrase — "0.39% your
+     average" lost its last word at 96. */
+  const W = 640, H = 150, PAD_L = 40, PAD_R = 138, TOP = 14, BASE = 112;
+  const vs = data.points;
+  const bands = data.bands || [];
+  const hi = Math.max(...vs, ...bands.map((b) => b.value)) * 1.08;
+  const x = (i) => PAD_L + (i / Math.max(1, vs.length - 1)) * (W - PAD_L - PAD_R);
+  const y = (v) => BASE - (v / (hi || 1)) * (BASE - TOP);
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="rv-chart" role="img"
+         aria-label={`Risk per trade across ${vs.length} trades`}>
+      <line x1={PAD_L} x2={W - PAD_R} y1={BASE} y2={BASE} stroke="var(--rule)" />
+      <text x={PAD_L - 6} y={TOP + 4} textAnchor="end" className="rv-chart-lbl">
+        {hi.toFixed(2)}{data.unit}
+      </text>
+      <text x={PAD_L - 6} y={BASE + 4} textAnchor="end" className="rv-chart-lbl">0</text>
+      {vs.map((v, i) => (
+        <circle key={i} cx={x(i)} cy={y(v)} r="2.2" fill={color} opacity="0.4" />
+      ))}
+      {/* Drawn after the points so the claim sits on top of its evidence. */}
+      {bands.map((b, i) => (
+        <g key={i}>
+          <line x1={PAD_L} x2={W - PAD_R} y1={y(b.value)} y2={y(b.value)}
+                stroke={color} strokeWidth={b.strong ? 2 : 1.4}
+                strokeDasharray={b.strong ? "" : "5 4"} opacity={b.strong ? 1 : 0.6} />
+          <text x={W - PAD_R + 8} y={y(b.value) + 4}
+                className={b.strong ? "rv-chart-val" : "rv-chart-lbl"}
+                fill={b.strong ? color : "var(--ink3)"}>
+            {b.value}{data.unit} {b.label}
+          </text>
+        </g>
+      ))}
+      {data.axisNote && (
+        <text x={PAD_L} y={H - 4} className="rv-chart-lbl">{data.axisNote}</text>
+      )}
+    </svg>
+  );
+}
+
 function FindingChart({ chart, color }) {
   if (!chart) return null;
   if (chart.type === "strip") return <StripChart data={chart} color={color} />;
   if (chart.type === "bars") return <BarsChart data={chart} color={color} />;
+  if (chart.type === "series") return <SeriesChart data={chart} color={color} />;
   return null;
 }
 
