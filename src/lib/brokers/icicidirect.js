@@ -14,35 +14,35 @@
  * headings. Every row is a matched lot: quantity, both dates, both rates, both
  * values and a profit. No charge column anywhere.
  *
- * CHARGES ARE DERIVED, AND THE FILE PROVES THE DERIVATION. Purchase Value is
- * exactly Purchase Rate × Quantity, but Sale Value is NOT Sale Rate × Quantity
- * — it is short by a consistent fraction, and the file's own Profit/Loss is
- * Sale Value − Purchase Value. So the gap is what ICICI deducted:
+ * CHARGES ARE DERIVED, AND THE TWO RATE COLUMNS ARE WHAT MAKE IT POSSIBLE.
+ * There is no charge column, but both Rates are prices traded while both
+ * Values are the cash that actually moved. So each leg's cost is the gap
+ * between them:
  *
- *     charges = Sale Rate × Quantity − Sale Value
+ *     charges = (Purchase Value − Purchase Rate × Qty)     the buy leg
+ *             + (Sale Rate × Qty − Sale Value)             the sell leg
  *
- * Measured on the two reference exports, that gap is 0.346% of turnover in
- * 2025-26 and 0.892% / 0.893% in 2017-18 — one figure per era, which is
- * brokerage falling over eight years rather than rounding noise, since
- * rounding would scatter. And it reconciles to the paisa on every row:
- * (Sale Rate − Purchase Rate) × Qty − charges equals the stated Profit/Loss
- * exactly, for all three lots across both files. That identity is checked per
- * row below, so a format change is reported rather than absorbed.
+ * You pay charges on top of a purchase and have them taken out of a sale,
+ * which is why the buy gap is positive above the rate and the sell gap
+ * positive below it. Checked across every row of two reference exports: the
+ * stated Profit/Loss is always Sale Value − Purchase Value, so gross profit
+ * less the two gaps reproduces ICICI's own number to the paisa on all 18.
+ *
+ * THE BUY LEG WAS MISSED AT FIRST, off a single reference row where Purchase
+ * Value happened to equal rate × quantity — from which buy-side charges looked
+ * absent from the report altogether. They are not; they simply are not on
+ * every lot. An FY2024-25 export hides ₹253.95 inside one HDFCLIFE row and
+ * nothing inside the next, ₹321.92 across the file. Reading Purchase Value as
+ * the cost put that money into the ENTRY PRICE instead — 368.46 for shares
+ * bought at 365.20 — where it silently shifted R and never appeared as a cost
+ * at all.
  *
  * GROSS VALUES GO OUT, NOT THE FILE'S NET ONES. `import-pipeline` computes
- * exitPrice as sellValue / quantity and netProfit as profit − charges. Handing
- * it ICICI's net Sale Value would put the exit price 0.35% below the price
- * actually traded, and would subtract the charges a second time from a profit
- * that already had them taken out. So `sellValue` here is Sale Rate × Quantity
- * and `profit` is gross; the pipeline subtracts `charges` and arrives back at
- * ICICI's own number.
- *
- * ONLY THE SELL LEG IS IN THE FILE. Purchase Value carries no charges at all,
- * so the buy-side brokerage, stamp duty and GST are simply absent from this
- * report. What imports is therefore an understatement of what the round trip
- * cost — but it is the understatement ICICI itself publishes, and matching the
- * broker's own P&L is worth more here than a computed figure that would
- * disagree with every statement the user has.
+ * entryPrice and exitPrice as value / quantity, and netProfit as profit −
+ * charges. So both values here are rate × quantity: the prices that reach the
+ * journal are the prices traded, both legs' charges land in `charges` where
+ * the app can see them, and the pipeline subtracts them to arrive back at
+ * ICICI's own figure.
  *
  * THE OLD FORMAT IS REFUSED ON PURPOSE. Before ICICI added ISIN, the report
  * named stocks by ICICI's internal codes — `HDFSTA` for HDFC Standard Life,
@@ -249,38 +249,64 @@ export function parseRows(rows) {
       return;
     }
 
+    const buyRate = num(row[cols.buyRate]);
     const sellRate = num(row[cols.sellRate]);
-    const buyValue = num(row[cols.buyValue]);
+    const statedBuyValue = num(row[cols.buyValue]);
     const statedSellValue = num(row[cols.sellValue]);
     const statedProfit = num(row[cols.profit]);
 
-    // Gross, so the exit price the pipeline derives is the price traded.
+    /**
+     * Both Rates are prices traded; both Values are the cash that moved.
+     *
+     * Gross either side, so the entry and exit prices the pipeline derives are
+     * the prices actually paid and received, and BOTH legs' charges land in
+     * `charges` where the app can see them.
+     *
+     * Read the other way round at first, off a single reference row where
+     * Purchase Value happened to equal rate x quantity — from which buy-side
+     * charges looked absent from the report entirely. They are not. On a
+     * fuller file some lots carry them and some do not: an FY2024-25 export
+     * hides 253.95 inside one HDFCLIFE row's Purchase Value and nothing inside
+     * the next, and taking the stated value as the cost put that 253.95 into
+     * the entry price instead — 368.46 for shares bought at 365.20.
+     */
+    const buyValue = buyRate > 0 ? round2(buyRate * quantity) : statedBuyValue;
     const sellValue = round2(sellRate * quantity);
-    let charges = round2(sellValue - statedSellValue);
+    const buyCharges = round2(statedBuyValue - buyValue);
+    const sellCharges = round2(sellValue - statedSellValue);
+    let charges = round2(buyCharges + sellCharges);
+
+    const grossProfit = round2(sellValue - buyValue);
 
     /**
-     * The identity that says this reading is still correct.
+     * The file's own columns must agree with each other.
      *
-     * Gross profit minus the derived charge must be the file's own
-     * Profit/Loss. It holds to the paisa on every reference row, so a
-     * disagreement means the format moved — Sale Value became gross, or a
-     * charge moved to the buy leg — and the honest response is to say so on
-     * that row rather than import a number nobody can reconcile against their
-     * statement.
+     * Gross-minus-charges reducing to the stated profit is now true by
+     * construction — the charge is defined as the two gaps — so checking it
+     * would check nothing. What is still worth asserting is ICICI's internal
+     * consistency: Profit/Loss should be Sale Value less Purchase Value. If
+     * that ever stops holding, the two Value columns no longer mean what this
+     * parser reads them as, and every charge derived from them is wrong.
      */
-    const grossProfit = round2(sellValue - buyValue);
-    const drift = round2(grossProfit - charges - statedProfit);
-    if (Math.abs(drift) > 0.02) {
+    const statedDrift = round2(statedSellValue - statedBuyValue - statedProfit);
+    if (Math.abs(statedDrift) > 0.02) {
       warnings.push(
-        `Row ${i + 1} (${symbol}): the stated profit is ${statedProfit} but sale ` +
-        `rate × quantity less sale value gives ${round2(grossProfit - charges)}. ` +
-        `Charges imported as ${charges}, which may be wrong — check this trade.`
+        `Row ${i + 1} (${symbol}): the file states a profit of ${statedProfit}, but ` +
+        `its own sale value less purchase value is ` +
+        `${round2(statedSellValue - statedBuyValue)}. Charges may be wrong on this ` +
+        `trade — check it against your statement.`
       );
     }
-    if (charges < 0) {
+
+    /**
+     * A charge is a cost. Negative means a Value column moved to the other
+     * side of its Rate, which is a format change rather than a rebate.
+     */
+    if (buyCharges < -0.02 || sellCharges < -0.02) {
       warnings.push(
-        `Row ${i + 1} (${symbol}): sale value is above sale rate × quantity, so no ` +
-        `charge could be worked out. Imported with none.`
+        `Row ${i + 1} (${symbol}): worked out a negative charge ` +
+        `(buy ${buyCharges}, sell ${sellCharges}), so this trade imported with none. ` +
+        `Its purchase or sale value sits on the wrong side of the rate.`
       );
       charges = 0;
     }
