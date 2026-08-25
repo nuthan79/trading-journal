@@ -1,3 +1,5 @@
+import { scaleOutFinding } from "./positions";
+
 /**
  * Behavioural review.
  *
@@ -308,9 +310,37 @@ function riskConsistency(closed) {
    * The two quarter averages are the claim itself, so they are drawn as lines
    * rather than left in the sentence for the reader to imagine.
    */
+  /**
+   * Calendar quarters, as a step across the dots.
+   *
+   * The two flat bands showed only the endpoints — where it started and where
+   * it is — and left the reader to assume the line between them was straight.
+   * It rarely is. A step per quarter shows the path, so a book that drifted up
+   * and came back reads differently from one that climbed steadily, and the
+   * quarter it turned in is visible rather than inferred.
+   */
+  const qOf = (t) => {
+    const m = /^(\d{4})-(\d{2})/.exec(String(t.exit_date || t.entry_date || ""));
+    return m ? `${m[1].slice(2)}Q${Math.floor((Number(m[2]) - 1) / 3) + 1}` : null;
+  };
+  const qs = [];
+  rows.forEach((t, i) => {
+    const q = qOf(t);
+    if (!q) return;
+    const last = qs[qs.length - 1];
+    if (last && last.label === q) { last.to = i; last.vals.push(t.riskPct); }
+    else qs.push({ label: q, from: i, to: i, vals: [t.riskPct] });
+  });
+  /* Under three quarters a step line is two segments pretending to be a
+     trend; the bands say the same thing more honestly. */
+  const stepLine = qs.length >= 3
+    ? qs.map((x) => ({ label: x.label, from: x.from, to: x.to, value: +mean(x.vals).toFixed(3) }))
+    : null;
+
   const riskChart = {
     type: "series",
     unit: "%",
+    steps: stepLine,
     /**
      * Each point carries its own outcome, so the chart answers both halves of
      * the question at once: how big the bet was, and whether it worked. The
@@ -1469,6 +1499,16 @@ export function reviewFindings(
   push(tradingCadence(closed));
   push(dataQuality(closed));
   push(returnConcentration(closed));
+  /**
+   * Written months ago in positions.js and never called by anything.
+   *
+   * It answers the question a breakout record most needs answered — whether
+   * taking partials is protecting the account or clipping the winners that
+   * fund it — and it answers it better than bucketing by tranche count would,
+   * because it compares each scaled trade against the same position held
+   * whole rather than against other trades that were never comparable.
+   */
+  push(scaleOutFinding(closed));
   push(emotionOutcomes(closed, diary));
   // Every trade, not just the closed ones — see the note on the check.
   push(duplicatePositions(all || closed));

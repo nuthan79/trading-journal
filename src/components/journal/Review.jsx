@@ -417,12 +417,17 @@ function BarsChart({ data, color }) {
 function SeriesChart({ data, color }) {
   /* PAD_R carries the band label, which is a value AND a phrase — "0.39% your
      average" lost its last word at 96. */
-  const W = 640, H = 150;
+  /* An extra line of height when the quarter labels are drawn, or they land
+     on top of the axis note. */
+  const W = 640, H = data.steps ? 168 : 150;
   const PAD_L = 40, PAD_R = 138, TOP = 14, BASE = 112;
   /* Points may be plain numbers or {v, win}. */
   const pts = data.points.map((p) => (typeof p === "number" ? { v: p, win: null } : p));
-  const bands = data.bands || [];
-  const hi = Math.max(...pts.map((p) => p.v), ...bands.map((b) => b.value)) * 1.08;
+  /* The bands were the first and last quarter. With the full step line drawn
+     they say the same thing twice, so the steps replace them when present. */
+  const bands = data.steps ? [] : (data.bands || []);
+  const hi = Math.max(...pts.map((p) => p.v), ...bands.map((b) => b.value),
+                      ...(data.steps || []).map((q) => q.value)) * 1.08;
   const x = (i) => PAD_L + (i / Math.max(1, pts.length - 1)) * (W - PAD_L - PAD_R);
   const y = (v) => BASE - (v / (hi || 1)) * (BASE - TOP);
   const won = pts.filter((p) => p.win === true).length;
@@ -446,6 +451,28 @@ function SeriesChart({ data, color }) {
                 fill={p.win === null ? "var(--ink3)" : p.win ? "var(--long)" : "var(--short)"}
                 opacity={p.win === null ? 0.35 : 0.65} />
       ))}
+      {/* The quarterly path, drawn as steps rather than a smoothed line: each
+          segment is one quarter's average and holds flat across it, because
+          that IS what the number is — an average over a period, not a value at
+          a moment. A curve through them would invent movement between
+          quarters that nothing measured. */}
+      {data.steps && data.steps.length > 1 && (
+        <>
+          <path
+            d={data.steps.map((q, i) => {
+              const x0 = x(q.from), x1 = x(q.to);
+              return `${i ? "L" : "M"} ${x0} ${y(q.value)} L ${x1} ${y(q.value)}`;
+            }).join(" ")}
+            fill="none" stroke={color} strokeWidth="2.2"
+            strokeLinejoin="round" strokeLinecap="round" opacity="0.9" />
+          {data.steps.map((q, i) => (
+            <text key={i} x={(x(q.from) + x(q.to)) / 2} y={BASE + 14}
+                  textAnchor="middle" className="rv-chart-lbl">
+              {q.label}
+            </text>
+          ))}
+        </>
+      )}
       {/* Drawn after the points so the claim sits on top of its evidence. */}
       {bands.map((b, i) => (
         <g key={i}>

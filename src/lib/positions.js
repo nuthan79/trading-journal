@@ -306,11 +306,47 @@ export function scaleOutFinding(closedTrades) {
     avgOnLosers: s.avgDiffOnLosers,
   };
 
+  /**
+   * The split IS the finding, so it is the chart.
+   *
+   * One average hides two opposite acts. Selling part of a loser banks
+   * something before it gets worse; selling part of a winner gives up the tail
+   * that funds the whole method. A single "scaling out costs 0.4R" number
+   * averages a defensible habit with a costly one — two bars keep them apart,
+   * and they nearly always point opposite ways.
+   */
+  const shared = {
+    lede: "Every trade you sold in pieces, compared against what the same " +
+          "position would have returned held whole to your final exit. Above " +
+          "the line the partials protected you; below it they cost you.",
+    chart: {
+      type: "bars",
+      unit: "R",
+      rows: [
+        ...(s.avgDiffOnWinners != null
+          ? [{ label: "On your winners", value: s.avgDiffOnWinners }] : []),
+        ...(s.avgDiffOnLosers != null
+          ? [{ label: "On your losers", value: s.avgDiffOnLosers }] : []),
+      ],
+      axisNote: "R gained or given up per trade by taking partials",
+    },
+    figures: [
+      { value: `${s.avgDiffR > 0 ? "+" : "\u2212"}${Math.abs(s.avgDiffR)}R`, label: "per scaled trade" },
+      { value: `${s.helped} / ${s.hurt}`, label: "helped / hurt" },
+      { value: `${s.trades}`, label: "trades scaled out of" },
+    ],
+  };
+
   if (s.verdict === "costly") {
     return {
+      ...shared,
       id: "scale-out-costly",
       severity: "warning",
       title: "Scaling out is clipping your winners",
+      verdict:
+        "Separate the two motives before changing anything. Selling to cut " +
+        "risk after a move is defensible; selling because an open profit feels " +
+        "uncomfortable is the one costing you here.",
       detail:
         `Across ${s.trades} trades you scaled out of, taking partials returned ${s.avgDiffR}R per trade ` +
         `less than holding the whole position to your final exit would have — ${s.totalDifferenceR ?? s.totalDiffR}R in total. ` +
@@ -323,9 +359,13 @@ export function scaleOutFinding(closedTrades) {
   }
   if (s.verdict === "protective") {
     return {
+      ...shared,
       id: "scale-out-good",
       severity: "good",
       title: "Scaling out is earning its place",
+      verdict:
+        "Worth keeping as it is. This is the rarer outcome — for most breakout " +
+        "records the partials cost more than they save.",
       detail:
         `Partial exits added ${s.avgDiffR}R per trade over holding whole across ${s.trades} scaled trades ` +
         `(${s.totalDiffR}R total). You're banking strength before it gives back.`,
@@ -333,9 +373,13 @@ export function scaleOutFinding(closedTrades) {
     };
   }
   return {
+    ...shared,
     id: "scale-out-neutral",
     severity: "watch",
     title: "Scaling out is roughly break-even",
+    verdict:
+      "Judge it on whether it keeps you in trades you would otherwise close " +
+      "early, not on the return — on the return it is doing nothing either way.",
     detail:
       `Across ${s.trades} scaled trades, taking partials came out within ${Math.abs(s.avgDiffR)}R per trade of ` +
       `holding whole. It isn't costing you, but it isn't adding either — so treat it as a risk-management ` +
