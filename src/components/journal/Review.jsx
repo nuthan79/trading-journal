@@ -817,7 +817,10 @@ export default function Review({ closed, stats, all, diary }) {
         }
         @media (min-width: 900px) {
           .rv-thesis {
-            grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+            /* auto, not a fraction: the stat block is three fixed-content
+               cells and does not want to stretch. Giving the headline the
+               remainder is what leaves no gap to explain. */
+            grid-template-columns: minmax(0, 1fr) auto;
             align-items: center;
           }
           .rv-thesis-eyebrow { display: none; }
@@ -830,11 +833,20 @@ export default function Review({ closed, stats, all, diary }) {
           color: var(--ink3); margin: 0 0 10px;
           font-variant-numeric: tabular-nums;
         }
+        /*
+          The line is capped by its COLUMN, not by a max-width inside it.
+          A 22ch cap in an 800px column is where the gap came from — the text
+          stopped less than half way and the rest of the column stood empty.
+          The grid decides the measure; the type grows to fill it.
+        */
         .rv-thesis-h {
           font-family: 'Archivo', sans-serif; font-stretch: 125%; font-weight: 600;
-          font-size: clamp(21px, 3.1vw, 31px); line-height: 1.15;
-          letter-spacing: -0.02em; margin: 0; max-width: 22ch;
+          font-size: clamp(21px, 2.7vw, 34px); line-height: 1.12;
+          letter-spacing: -0.022em; margin: 0; max-width: 26ch;
           text-wrap: balance; color: var(--ink);
+        }
+        @media (min-width: 900px) {
+          .rv-thesis-h { max-width: none; font-size: clamp(26px, 3vw, 42px); }
         }
         /* Only the SUBJECT is coloured — the clause naming what is wrong. The
            edge verdict stays in ink so the sentence does not read as two
