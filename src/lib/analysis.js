@@ -1605,7 +1605,35 @@ function duplicatePositions(all) {
     by.get(k).push(t);
   }
 
-  const groups = [...by.values()].filter((g) => g.length > 1);
+  /**
+   * SAME SYMBOL, SAME DAY, DIFFERENT BROKERS IS NOT A DUPLICATE.
+   *
+   * This grouped on symbol and entry date alone, which is the exact rule
+   * migration 019 removed from the importer and for the same reason: buying
+   * one stock on one day through two accounts is routine, and the two rows
+   * are two real positions. `reconcile()` filters candidates through
+   * `sameBroker` before it will call anything a collision, so a check that
+   * skips that step reports pairs the importer would never confuse — and
+   * then tells the reader their next file is blocked on it, which is false.
+   *
+   * The null broker is why this is a grouping and not a key. A hand-entered
+   * trade has no broker and matches either way (deliberately — that is what
+   * lets a later import complete it), so one null fuses everything that
+   * shares the symbol and date into a single collision set. With no nulls
+   * present, each broker collides only with itself.
+   */
+  const collisionSets = (g) => {
+    if (g.length < 2) return [];
+    if (g.some((t) => !t.broker)) return [g];
+    const known = new Map();
+    for (const t of g) {
+      if (!known.has(t.broker)) known.set(t.broker, []);
+      known.get(t.broker).push(t);
+    }
+    return [...known.values()].filter((s) => s.length > 1);
+  };
+
+  const groups = [...by.values()].flatMap(collisionSets);
   if (!groups.length) return null;
 
   groups.sort((a, b) => b.length - a.length || (a[0].symbol < b[0].symbol ? -1 : 1));
@@ -1641,41 +1669,61 @@ function duplicatePositions(all) {
     trades,
     sharingASellDate: overlapping,
     scaledOutAcrossFiles: split,
-    positions: groups.slice(0, 20).map((g) => ({
-      symbol: g[0].symbol,
-      entry_date: g[0].entry_date,
-      count: g.length,
-      trades: g.map((t) => ({
-        id: t.id,
+    /**
+     * ONE ROW PER TRADE, NOT PER PAIR WITH THE TRADES NESTED INSIDE IT.
+     *
+     * The nested version rendered as `[object Object],[object Object]`: the
+     * evidence table takes a list of like-shaped objects and prints each
+     * value, and an array of objects has no printable form. It had never
+     * shown a single useful character.
+     *
+     * Flat is also the more useful shape. What decides whether a pair is one
+     * position split across two files or the same position recorded twice is
+     * the quantity, the price and where each row came from — and those only
+     * mean anything side by side, which is what rows are for.
+     */
+    positions: groups.slice(0, 12).flatMap((g) =>
+      g.map((t) => ({
+        symbol: t.symbol,
+        entry_date: t.entry_date,
         quantity: Number(t.quantity),
         entry_price: Number(t.entry_price),
         status: t.status,
-        source: t.imported ? "imported" : "entered by hand",
-      })),
-    })),
+        /* The broker name when there is one, since with two accounts that is
+           the first thing worth seeing. Null means hand-entered. */
+        source: t.broker || (t.imported ? "imported" : "entered by hand"),
+      }))
+    ),
   };
 
+  const one = groups.length === 1;
   const parts = [];
   if (split) {
     parts.push(
-      `${split} sell on entirely different dates, so nothing has been counted twice — that is one ` +
-      `position scaled out over time, arriving through two files that each saw only their own ` +
-      `financial year. The money is right; the position is split, so each half carries its own R ` +
-      `against a fraction of the risk you actually took.`
+      `${split === 1 ? "In one, the rows" : `In ${split} of them the rows`} sell on entirely ` +
+      `different dates, so nothing has been counted twice — that is one position scaled out over ` +
+      `time and recorded in two pieces, usually because two files each saw only their own financial ` +
+      `year. The money is right; the position is split, so each half carries its own R against a ` +
+      `fraction of the risk you actually took.`
     );
   }
   if (overlapping) {
     parts.push(
-      `${overlapping} share a sell date across both rows, which can mean the same exit was recorded ` +
-      `twice. Worth opening ${overlapping === 1 ? "that one" : "those"} before anything else — if it ` +
-      `is a genuine double, your P&L is overstated by it.`
+      `${overlapping === 1 ? "In one, both rows share" : `In ${overlapping} of them the rows share`} ` +
+      `a sell date, which can mean the same exit was recorded twice. Worth opening ` +
+      `${overlapping === 1 ? "that one" : "those"} before anything else — if it is a genuine double, ` +
+      `your P&L is overstated by it.`
     );
   }
 
   return F("watch", "duplicate-positions",
-    "One position recorded as two trades",
-    `${groups.length} symbol-and-date pair${groups.length === 1 ? "" : "s"} open more than once — ` +
-    `${trades} trades between them. ${parts.join(" ")} ` +
+    one ? "One position recorded as two trades" : "Some positions are recorded as two trades",
+    /* Not "through the same broker": a hand-entered row has no broker and
+       collides with every one of them, so that clause would be false on
+       exactly the pair most likely to be a genuine duplicate. The `source`
+       column says where each row came from, which is the honest version. */
+    `${groups.length} position${one ? " was" : "s were"} opened more than once in the same stock on ` +
+    `the same day — ${trades} trades between them. ${parts.join(" ")} ` +
     `Either way an import can't tell which of the pair a later sell belongs to, so it holds those ` +
     `rows back instead of guessing, and will keep doing that on every future file until they are merged.`,
     ev);

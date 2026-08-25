@@ -109,6 +109,20 @@ function label(key) {
 function value(key, v) {
   if (v === null || v === undefined) return "—";
   if (typeof v === "boolean") return v ? "yes" : "no";
+  /**
+   * A cell that was handed an object printed `[object Object]` — String() on
+   * anything non-scalar, straight into the table. It shipped that way in the
+   * duplicate-positions evidence and showed nobody a single useful character.
+   *
+   * Compact JSON instead, because the failure this replaces was silent: the
+   * fix for an ugly cell is to flatten the evidence at its source, and that
+   * only happens if the cell is legible enough to notice. The table scrolls
+   * sideways, so a long one costs nothing but its own width.
+   */
+  if (typeof v === "object") {
+    const s = JSON.stringify(v);
+    return s.length > 80 ? `${s.slice(0, 79)}…` : s;
+  }
   if (typeof v !== "number") return String(v);
   const k = String(key);
   if (/Pct$/.test(k) || /Rate$/i.test(k)) return `${v}%`;
