@@ -466,9 +466,12 @@ function SeriesChart({ data, color }) {
           and loss mean everywhere else in the app, so nothing new is being
           taught. A trade with no R stays grey rather than guessing. */}
       {pts.map((p, i) => (
+        /* pointerEvents none: the quarter band underneath is the hover target,
+           and a dot intercepting it would leave silent gaps across the chart
+           wherever a trade happened to sit. */
         <circle key={i} cx={x(i)} cy={y(p.v)} r="2.6"
                 fill={p.win === null ? "var(--ink3)" : p.win ? "var(--long)" : "var(--short)"}
-                opacity={p.win === null ? 0.35 : 0.65} />
+                opacity={p.win === null ? 0.35 : 0.65} pointerEvents="none" />
       ))}
       {/* The quarterly path, drawn as steps rather than a smoothed line: each
           segment is one quarter's average and holds flat across it, because
@@ -500,13 +503,38 @@ function SeriesChart({ data, color }) {
         const show = (q, i) => wide(q) || (roomy < 2 && (i === 0 || i === st.length - 1));
         return (
           <>
+            {/**
+              * One invisible band per quarter, carrying that quarter's numbers
+              * as a native tooltip.
+              *
+              * The levels moved to the edges so they would stop sitting on the
+              * data; hover is where they come back on demand, per quarter,
+              * without anything being drawn. A <title> rather than a built
+              * tooltip because it costs no state, follows keyboard focus, and
+              * is read out rather than merely seen.
+              *
+              * Drawn BEFORE the line so the line still reads as the top layer,
+              * and spanning the full plot height so the whole column is the
+              * target rather than a 2px stroke.
+              */}
+            {st.map((q, i) => (
+              <rect key={`h${i}`} x={x(q.from)} y={TOP - 2}
+                    width={Math.max(1, x(q.to) - x(q.from))} height={BASE - TOP + 2}
+                    fill="transparent" pointerEvents="all">
+                <title>
+                  {`${q.label} · ${q.value.toFixed(2)}${data.unit} per trade` +
+                   (q.amount != null ? ` · ${rupee(q.amount)} average` : "")}
+                </title>
+              </rect>
+            ))}
             <path
               d={st.map((q, i) => {
                 const x0 = x(q.from), x1 = x(q.to);
                 return `${i ? "L" : "M"} ${x0} ${y(q.value)} L ${x1} ${y(q.value)}`;
               }).join(" ")}
               fill="none" stroke={color} strokeWidth="2.2"
-              strokeLinejoin="round" strokeLinecap="round" opacity="0.9" />
+              strokeLinejoin="round" strokeLinecap="round"
+              opacity="0.9" pointerEvents="none" />
             {st.map((q, i) => {
               const mid = (x(q.from) + x(q.to)) / 2;
               return (
