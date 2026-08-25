@@ -358,23 +358,34 @@ function BarsChart({ data, color }) {
 function SeriesChart({ data, color }) {
   /* PAD_R carries the band label, which is a value AND a phrase — "0.39% your
      average" lost its last word at 96. */
-  const W = 640, H = 150, PAD_L = 40, PAD_R = 138, TOP = 14, BASE = 112;
-  const vs = data.points;
+  const W = 640, H = data.pointLegend ? 166 : 150;
+  const PAD_L = 40, PAD_R = 138, TOP = 14, BASE = 112;
+  /* Points may be plain numbers or {v, win}. */
+  const pts = data.points.map((p) => (typeof p === "number" ? { v: p, win: null } : p));
   const bands = data.bands || [];
-  const hi = Math.max(...vs, ...bands.map((b) => b.value)) * 1.08;
-  const x = (i) => PAD_L + (i / Math.max(1, vs.length - 1)) * (W - PAD_L - PAD_R);
+  const hi = Math.max(...pts.map((p) => p.v), ...bands.map((b) => b.value)) * 1.08;
+  const x = (i) => PAD_L + (i / Math.max(1, pts.length - 1)) * (W - PAD_L - PAD_R);
   const y = (v) => BASE - (v / (hi || 1)) * (BASE - TOP);
+  const won = pts.filter((p) => p.win === true).length;
+  const lost = pts.filter((p) => p.win === false).length;
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="rv-chart" role="img"
-         aria-label={`Risk per trade across ${vs.length} trades`}>
+         aria-label={`Risk per trade across ${pts.length} trades`}>
       <line x1={PAD_L} x2={W - PAD_R} y1={BASE} y2={BASE} stroke="var(--rule)" />
       <text x={PAD_L - 6} y={TOP + 4} textAnchor="end" className="rv-chart-lbl">
         {hi.toFixed(2)}{data.unit}
       </text>
       <text x={PAD_L - 6} y={BASE + 4} textAnchor="end" className="rv-chart-lbl">0</text>
-      {vs.map((v, i) => (
-        <circle key={i} cx={x(i)} cy={y(v)} r="2.2" fill={color} opacity="0.4" />
+      {/* Coloured by outcome, not by severity — the one place on this screen a
+          second colour earns itself, because it carries a fact the shape
+          cannot: whether the bet worked. Green and red are already what gain
+          and loss mean everywhere else in the app, so nothing new is being
+          taught. A trade with no R stays grey rather than guessing. */}
+      {pts.map((p, i) => (
+        <circle key={i} cx={x(i)} cy={y(p.v)} r="2.6"
+                fill={p.win === null ? "var(--ink3)" : p.win ? "var(--long)" : "var(--short)"}
+                opacity={p.win === null ? 0.35 : 0.65} />
       ))}
       {/* Drawn after the points so the claim sits on top of its evidence. */}
       {bands.map((b, i) => (
@@ -390,7 +401,17 @@ function SeriesChart({ data, color }) {
         </g>
       ))}
       {data.axisNote && (
-        <text x={PAD_L} y={H - 4} className="rv-chart-lbl">{data.axisNote}</text>
+        <text x={PAD_L} y={data.pointLegend ? H - 20 : H - 4} className="rv-chart-lbl">
+          {data.axisNote}
+        </text>
+      )}
+      {data.pointLegend && (won > 0 || lost > 0) && (
+        <g>
+          <circle cx={PAD_L + 4} cy={H - 8} r="3.4" fill="var(--long)" opacity="0.65" />
+          <text x={PAD_L + 13} y={H - 4} className="rv-chart-lbl">{won} won</text>
+          <circle cx={PAD_L + 74} cy={H - 8} r="3.4" fill="var(--short)" opacity="0.65" />
+          <text x={PAD_L + 83} y={H - 4} className="rv-chart-lbl">{lost} lost</text>
+        </g>
       )}
     </svg>
   );

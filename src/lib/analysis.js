@@ -311,7 +311,18 @@ function riskConsistency(closed) {
   const riskChart = {
     type: "series",
     unit: "%",
-    points: risks.map((v) => +v.toFixed(3)),
+    /**
+     * Each point carries its own outcome, so the chart answers both halves of
+     * the question at once: how big the bet was, and whether it worked. The
+     * height already showed the sizing drifting up; the colour shows whether
+     * the bets that drifted up are the ones that paid, which is the thing the
+     * headline is actually claiming.
+     */
+    points: rows.map((t) => ({
+      v: +t.riskPct.toFixed(3),
+      win: isFinite(t.r) ? t.r > 0 : null,
+    })),
+    pointLegend: true,
     axisNote: `${rows.length} trades, oldest first`,
   };
   const lede = LEDE_RISK;
