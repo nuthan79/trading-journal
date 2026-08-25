@@ -25,6 +25,7 @@
 import * as zerodha from "./zerodha";
 import * as groww from "./groww";
 import * as dhan from "./dhan";
+import * as icicidirect from "./icicidirect";
 import * as zerodhaHoldings from "./zerodha-holdings";
 import * as zerodhaTradebook from "./zerodha-tradebook";
 
@@ -47,7 +48,7 @@ export { assembleImport } from "../import-pipeline";
  * entry dates for positions a holdings file has already created, which is why
  * its kind is handled separately from the two that do write trades.
  */
-export const BROKERS = [zerodha, groww, dhan, zerodhaHoldings, zerodhaTradebook];
+export const BROKERS = [zerodha, groww, dhan, icicidirect, zerodhaHoldings, zerodhaTradebook];
 
 /** What a file yields. Absent means matched lots — the original assumption. */
 export const kindOf = (broker) => broker?.kind || "taxpnl";

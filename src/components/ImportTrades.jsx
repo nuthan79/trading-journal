@@ -6,6 +6,7 @@ import { detectBroker, brokerNames, assembleImport, kindOf, wrongReportHint } fr
 import { resolveSymbols } from "@/lib/isin";
 import * as zerodha from "@/lib/brokers/zerodha";
 import * as zerodhaHoldings from "@/lib/brokers/zerodha-holdings";
+import * as icicidirect from "@/lib/brokers/icicidirect";
 import { toHoldingRows, dateCaveat } from "@/lib/holdings";
 import { matchFifo, openPositions, datesForHeldPositions } from "@/lib/tradebook";
 import { buildReport } from "@/lib/importReport";
@@ -251,6 +252,13 @@ export default function ImportTrades({
          * header row has to say which it is.
          */
         if (zerodhaHoldings.detectRows(rows)) broker = zerodhaHoldings;
+        /**
+         * ICICI Direct's P&L is a CSV too, so it lands here rather than in the
+         * detectBroker branch above — and without this line it would be handed
+         * to Zerodha's parser by the default two screens up, which is the
+         * failure where an adapter claims a file it cannot read.
+         */
+        else if (icicidirect.detectRows(rows)) broker = icicidirect;
       } else {
         throw new Error("Expected an .xlsx or .csv file.");
       }
