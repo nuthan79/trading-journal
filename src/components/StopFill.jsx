@@ -38,23 +38,20 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
    * guess gets relabelled as a fact.
    */
   const [dates, setDates] = useState({});        // id -> YYYY-MM-DD
-  /**
-   * Rows ticked to say the guess was already right, by trade id.
-   *
-   * The other way to answer a row. Until this existed the only way to accept
-   * an assumed stop was to retype it — the rule was literally "changing it, or
-   * typing the same number back to say you meant it" — which is invisible on
-   * screen and, on a bulk 7% fill where plenty of them genuinely were 7%, cost
-   * more effort to confirm a row than to change it. Retyping 17098.05 to mean
-   * "yes, 17098.05" also puts a fat finger between a guess and a recorded
-   * fact, which is the one place in this app that must not happen quietly.
-   *
-   * Separate from `values` on purpose: `values` means "what this person
-   * typed", and a tick is not typing. Keeping them apart is what lets the row
-   * offer undo for one and not the other.
-   */
-  const [confirmed, setConfirmed] = useState({});  // id -> true
   const [saved, setSaved] = useState({});        // id -> true once written
+  const [rowBusy, setRowBusy] = useState({});    // id -> true while in flight
+  /**
+   * Written by its own tick, and still on screen.
+   *
+   * Deliberately NOT `saved`, which is what `pending` filters on: a row that
+   * left the list the instant it was written would re-flow every row beneath
+   * it while somebody is working straight down the page, and on a screen where
+   * the rows are near-identical that is how the wrong one ends up edited. So a
+   * row saved on its own goes quiet and stays put. `pending` never shrinks
+   * underneath the cursor; these are gone the next time the parent reloads,
+   * by which point they no longer carry an assumed stop and do not qualify.
+   */
+  const [justSaved, setJustSaved] = useState({});
   const [page, setPage] = useState(0);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -85,11 +82,8 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
     [values]
   );
 
-  /** Typed over. The half of "answered" that has something to undo. */
-  const edited = useCallback((t) => values[t.id] !== undefined, [values]);
-
   /**
-   * Only answered rows are saved, and there are two ways to answer.
+   * Only edited rows are saved.
    *
    * A screen full of pre-filled 7% guesses with a Save button would, on one
    * click, relabel every one of them as recorded — turning "nobody has checked
@@ -97,20 +91,21 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
    * That is worse than leaving them assumed, because the flag is the only
    * thing that remembers they were guesses.
    *
-   * So an unanswered row stays assumed and stays on this list. What changed is
-   * that saying "the guess was right" is now a tick rather than retyping the
-   * number, which was the previous answer and was both undiscoverable and
-   * absurd at four figures of rows.
+   * So an untouched row stays assumed and stays on this list. Reviewing a
+   * stop means changing it, or typing the same number back to say you meant
+   * it.
    *
-   * THE SAFEGUARD IS THAT IT STAYS PER ROW. One tick answers one trade. There
-   * is deliberately no tick-all: a control that relabelled a page of guesses
-   * as facts in one click is exactly the hazard this rule exists to prevent,
-   * and it would not stop being that hazard for having a nicer icon.
+   * A ONE-CLICK "the guess was right" WAS BUILT HERE AND TAKEN BACK OUT. It
+   * read as an obvious kindness — confirming a row cost more effort than
+   * changing it, which is backwards — and it was the wrong control, because
+   * the effort IS the check. A tick sitting on every unedited row invites
+   * somebody tired to go down the page accepting numbers nobody has looked at,
+   * and a keystroke that did the same made it faster still. What comes out the
+   * other side is a thousand invented stops wearing the word "recorded", which
+   * is the single thing this screen exists to prevent. Retyping the number is
+   * friction that buys something: you cannot type 17098.05 without reading it.
    */
-  const touched = useCallback(
-    (t) => values[t.id] !== undefined || confirmed[t.id] === true,
-    [values, confirmed]
-  );
+  const touched = useCallback((t) => values[t.id] !== undefined, [values]);
 
   /**
    * The same rule for dates, and it matters more here than for stops.
@@ -129,12 +124,13 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
   );
   /** Typed, different from the guess, and not in the future. */
   const dateReady = useCallback((t) => {
+    if (justSaved[t.id]) return false;   // already written by its own tick
     if (!dateTouched(t)) return false;
     const v = dates[t.id];
     if (!/^\d{4}-\d{2}-\d{2}$/.test(v || "")) return false;
     if (v > new Date().toISOString().slice(0, 10)) return false;
     return true;
-  }, [dates, dateTouched]);
+  }, [dates, dateTouched, justSaved]);
 
   const missingCount = pending.filter((t) => t.stop_loss == null).length;
   const assumedCount = pending.filter(
@@ -204,9 +200,10 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
   // here would promise to save rows that are deliberately left alone.
   /** A stop typed and valid — the row's other half is judged separately. */
   const stopReady = useCallback((t) => {
+    if (justSaved[t.id]) return false;   // already written by its own tick
     const p = preview(t);
     return touched(t) && p && !p.invalid;
-  }, [preview, touched]);
+  }, [preview, touched, justSaved]);
 
   // Either answer counts. A row where somebody knew the purchase date but not
   // the stop is still progress, and a button that ignored it would look broken.
@@ -300,25 +297,6 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
   };
 
   /**
-   * A row can be ticked when there is a guess sitting in it and nobody has
-   * typed over it. A row with no stop at all has nothing to agree with, and a
-   * row already typed into is already answered — offering a tick there would
-   * be a second control for a job that is done.
-   */
-  const canConfirm = useCallback(
-    (t) => isAssumed(t) && values[t.id] === undefined,
-    [values]
-  );
-
-  const toggleConfirm = useCallback((t) => {
-    setConfirmed((c) => {
-      const next = { ...c };
-      if (next[t.id]) delete next[t.id]; else next[t.id] = true;
-      return next;
-    });
-  }, []);
-
-  /**
    * Undo the typing and put the guess back.
    *
    * Worth its own control because the assumed number is not recoverable
@@ -330,27 +308,53 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
    */
   const revert = useCallback((t) => {
     setValues((v) => { const n = { ...v }; delete n[t.id]; return n; });
-    setConfirmed((c) => { const n = { ...c }; delete n[t.id]; return n; });
     inputs.current[t.id]?.focus();
   }, []);
+
+  /**
+   * Write this one row, now.
+   *
+   * The reason it exists is that Save lives at the bottom of the page and
+   * commits `slice` — the visible 25 — and "Skip these" only advances the
+   * page. So a page of careful corrections was one wrong button away from
+   * being dropped on the floor, with no way back to the page that held them.
+   * A control beside the number you just changed is both the shorter trip and
+   * the one that cannot be walked past.
+   *
+   * The row does NOT disappear when it saves. Rows leaving the list the
+   * instant they are written would re-flow everything below them mid-edit,
+   * which on a screen you work straight down is how the wrong row ends up
+   * being the one you typed into. It goes quiet, stays put, and is gone next
+   * time the page turns.
+   */
+  const saveRow = useCallback(async (t) => {
+    if (!stopReady(t) && !dateReady(t)) return;
+    setRowBusy((b) => ({ ...b, [t.id]: true }));
+    setErr("");
+    try {
+      await onSave([{
+        id: t.id,
+        ...(stopReady(t) ? { stop_loss: Number(shown(t)), stop_source: "recorded" } : {}),
+        ...(dateReady(t) ? { entry_date: dates[t.id], entry_date_source: "recorded" } : {}),
+      }]);
+      setJustSaved((s) => ({ ...s, [t.id]: true }));
+    } catch (e) {
+      setErr(e.message || "Could not save that row. Nothing was changed.");
+    }
+    setRowBusy((b) => { const n = { ...b }; delete n[t.id]; return n; });
+  }, [stopReady, dateReady, shown, dates, onSave]);
 
   /* Enter moves to the next row rather than submitting — this is a data
      entry screen and you want to keep your hands where they are.
 
-     ENTER ALSO TICKS, when the row is one that can be ticked. That is the
-     whole point of the tick at this scale: a page of stops that were already
-     right is reviewed by pressing Enter down it, reading the R as it goes,
-     rather than by hunting a mouse across twenty-five small targets. Still one
-     deliberate keypress per row, so it is not the bulk relabel the tick is
-     careful not to be.
-
-     The arrows deliberately do NOT tick. Browsing the list and answering it
-     are different acts, and only one of them should turn a guess into a fact. */
+     It deliberately does NOT save the row it leaves. A key that wrote a
+     record on the way past would make travelling down the list and answering
+     it the same gesture, and they are not: you scroll through these reading R
+     against what you remember, and most rows you pass are ones you have
+     nothing to say about yet. */
   const onKey = (e, i) => {
-    const t = slice[i];
     if (e.key === "Enter" || e.key === "ArrowDown") {
       e.preventDefault();
-      if (e.key === "Enter" && t && canConfirm(t) && !confirmed[t.id]) toggleConfirm(t);
       inputs.current[slice[i + 1]?.id]?.focus();
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
@@ -416,14 +420,13 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
             )}
             {(missingCount > 0 || assumedCount > 0) &&
               "R appears as you type — check it against what you remember."}
-            {/* Says the tick exists, because a control that only appears on
-                hover-adjacent rows is one nobody finds, and the keystroke is
-                the part that makes four figures of rows reviewable at all. */}
-            {assumedCount > 0 && (
-              <>
-                {" "}Where the guess was already right, tick it or press Enter
-                to record it as it stands.
-              </>
+            {/* Says the per-row save exists. A control that only appears on
+                a row you have already edited is one nobody meets until they
+                edit — and by then they may have walked past it to the button
+                at the bottom, which is the trip it exists to save. */}
+            {(assumedCount > 0 || missingCount > 0) && (
+              <>{" "}Each one you change can be saved on its own, beside the
+                number.</>
             )}
             {/* Third sentence, and only when there is something to say. A
                 holdings file states what you own and never when you bought it,
@@ -441,8 +444,6 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
             )}
             {(assumedCount > 0 || needDateCount > 0) &&
               " Leave one alone and it stays marked assumed."}
-            {/* The bulk-fill banner below still says "type over any of them",
-                which was the only way to answer a row when it was written. */}
           </div>
         </div>
         <button className="btn ghost sm" onClick={() => onDone?.()}>Do this later</button>
@@ -487,7 +488,7 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
             <div className="sf-bulk-note">
               {pctOk
                 ? "A starting point, so R and the plots work at all. Marked assumed — " +
-                  "type over the ones you got wrong, tick the ones you got right."
+                  "type over any of them as you work out what you really used."
                 : "That needs to be a percentage between 0 and 100."}
             </div>
           </>
@@ -557,55 +558,54 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
                         inputMode="decimal"
                         placeholder="—"
                         value={shown(t)}
-                        onChange={(e) => {
-                          const raw = e.target.value.replace(/[^0-9.]/g, "");
-                          setValues((v) => ({ ...v, [t.id]: raw }));
-                          // Typing supersedes a tick. Leaving both set would
-                          // leave the row claiming to be answered two ways.
-                          setConfirmed((c) => {
-                            if (!c[t.id]) return c;
-                            const n = { ...c }; delete n[t.id]; return n;
-                          });
-                        }}
+                        onChange={(e) =>
+                          setValues((v) => ({ ...v, [t.id]: e.target.value.replace(/[^0-9.]/g, "") }))
+                        }
                         onKeyDown={(e) => onKey(e, i)}
+                        disabled={justSaved[t.id] || rowBusy[t.id]}
                         data-bad={p?.invalid ? 1 : 0}
                       />
                       {/*
-                        TWO MARKS, TWO DIFFERENT QUESTIONS, so they are not a
-                        yes/no pair and are deliberately not drawn as one. The
-                        tick answers "was the guess right?" and only appears
-                        where a guess is still standing. The undo answers "did
-                        I mean to type that?" and only appears once something
-                        was typed. A cross for the second would read as delete,
-                        or as "this stop is wrong", next to a number whose
-                        whole job is being right.
+                        NOTHING UNTIL SOMETHING IS TYPED. A control offering to
+                        accept the row as it stands was built here and removed:
+                        it made agreeing with a guess cheaper than reading it,
+                        which is the one trade this screen must not make.
 
-                        Never both at once, so the slot holds one control.
+                        Both marks are about an edit that now exists. Save
+                        writes this row on its own, because the batch button is
+                        at the bottom of the page and "Skip these" walks past
+                        it. Undo puts the guess back, which is otherwise
+                        unrecoverable once typed over — and is an undo rather
+                        than a cross because a cross beside a price reads as
+                        delete, or as "this stop is wrong".
                       */}
-                      {canConfirm(t) ? (
-                        <button
-                          type="button"
-                          className="sf-mark"
-                          data-on={confirmed[t.id] ? 1 : 0}
-                          onClick={() => toggleConfirm(t)}
-                          title={confirmed[t.id]
-                            ? "Marked as the stop you used. Click to undo."
-                            : "The guess is right — record it as it stands (or press Enter)"}
-                          aria-label="Confirm this stop"
-                          aria-pressed={confirmed[t.id] ? "true" : "false"}
-                        >
+                      {justSaved[t.id] ? (
+                        <span className="sf-mark sf-done-mark" title="Saved">
                           <Check size={13} />
-                        </button>
-                      ) : edited(t) ? (
-                        <button
-                          type="button"
-                          className="sf-mark sf-undo"
-                          onClick={() => revert(t)}
-                          title="Put the assumed stop back"
-                          aria-label="Undo this edit"
-                        >
-                          <Undo2 size={13} />
-                        </button>
+                        </span>
+                      ) : touched(t) ? (
+                        <>
+                          <button
+                            type="button"
+                            className="sf-mark sf-save"
+                            onClick={() => saveRow(t)}
+                            disabled={rowBusy[t.id] || !!p?.invalid}
+                            title={p?.invalid ? p.invalid : "Save this stop"}
+                            aria-label="Save this stop"
+                          >
+                            <Check size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            className="sf-mark sf-undo"
+                            onClick={() => revert(t)}
+                            disabled={rowBusy[t.id]}
+                            title="Put the assumed stop back"
+                            aria-label="Undo this edit"
+                          >
+                            <Undo2 size={13} />
+                          </button>
+                        </>
                       ) : (
                         <span className="sf-mark sf-mark-gap" aria-hidden="true" />
                       )}
@@ -720,7 +720,13 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
           border: 1px solid transparent; background: none; padding: 0;
           color: var(--ink3); cursor: pointer;
         }
-        .sf-mark-gap { cursor: default; }
+        .sf-mark-gap, .sf-done-mark { cursor: default; }
+        /* Two marks wide, always. The gap and the saved tick each stand in for
+           the pair so the input edge never moves between rows. */
+        .sf-mark-gap, .sf-done-mark { width: 50px; }
+        .sf-done-mark { color: var(--long); }
+        .sf-mark:disabled { opacity: 0.35; cursor: not-allowed; }
+        .sf-save:hover:not(:disabled) { color: var(--long); border-color: var(--long); }
         .sf-mark:hover { color: var(--ink); background: var(--card); border-color: var(--rule); }
         /* Brass, not green. Green is the gain colour two columns away in R,
            and a tick that borrowed it would read as a good result rather than
