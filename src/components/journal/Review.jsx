@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { apiFetch, track } from "@/lib/db";
 import { reviewFindings, reviewThesis } from "@/lib/analysis";
 import { classifyRegime, regimeIndex, REGIME_LABEL } from "@/lib/market";
-import { signedPct } from "@/lib/format";
+import { signedPct, rupee } from "@/lib/format";
 import Link from "next/link";
 import { setupGaps } from "@/lib/gaps";
 
@@ -437,10 +437,29 @@ function SeriesChart({ data, color }) {
     <svg viewBox={`0 0 ${W} ${H}`} className="rv-chart" role="img"
          aria-label={`Risk per trade across ${pts.length} trades`}>
       <line x1={PAD_L} x2={W - PAD_R} y1={BASE} y2={BASE} stroke="var(--rule)" />
+      {/*
+        TWO SCALES, ONE ON EACH EDGE. The share of the account on the left, the
+        rupees it came to on the right — the same quantity in the two units a
+        trader actually thinks in, without either one sitting on the data.
+        Drawn as rules rather than floating text so it is clear they belong to
+        the whole chart and not to any point in it.
+      */}
+      <line x1={PAD_L} x2={PAD_L} y1={TOP - 2} y2={BASE} stroke="var(--rule)" />
       <text x={PAD_L - 6} y={TOP + 4} textAnchor="end" className="rv-chart-lbl">
         {hi.toFixed(2)}{data.unit}
       </text>
       <text x={PAD_L - 6} y={BASE + 4} textAnchor="end" className="rv-chart-lbl">0</text>
+      {data.rupeeAxis && (
+        <>
+          <line x1={W - PAD_R} x2={W - PAD_R} y1={TOP - 2} y2={BASE} stroke="var(--rule)" />
+          <text x={W - PAD_R + 7} y={TOP + 4} className="rv-chart-lbl">
+            {rupee(Math.round(hi * data.rupeeAxis.perPct))}
+          </text>
+          <text x={W - PAD_R + 7} y={BASE + 4} className="rv-chart-lbl">
+            {rupee(0)}
+          </text>
+        </>
+      )}
       {/* Coloured by outcome, not by severity — the one place on this screen a
           second colour earns itself, because it carries a fact the shape
           cannot: whether the bet worked. Green and red are already what gain
@@ -471,7 +490,12 @@ function SeriesChart({ data, color }) {
          * the "from here to here" the finding is actually about.
          */
         const st = data.steps;
-        const wide = (q) => x(q.to) - x(q.from) >= 40;
+        /* Only the quarter name rides under the axis now — the levels moved to
+           the two scales at the edges, which is where a value that applies to
+           the whole chart belongs. Centre-to-centre distance between adjacent
+           labels IS the segment width, so one fits when the segment is as wide
+           as the string plus a small gap. */
+        const wide = (q) => x(q.to) - x(q.from) >= String(q.label).length * 5.6 + 10;
         const roomy = st.filter(wide).length;
         const show = (q, i) => wide(q) || (roomy < 2 && (i === 0 || i === st.length - 1));
         return (
@@ -487,12 +511,6 @@ function SeriesChart({ data, color }) {
               const mid = (x(q.from) + x(q.to)) / 2;
               return (
                 <g key={i}>
-                  {show(q, i) && (
-                    <text x={mid} y={y(q.value) - 8} textAnchor="middle"
-                          className="rv-chart-val" fill={color}>
-                      {q.value.toFixed(2)}{data.unit}
-                    </text>
-                  )}
                   {show(q, i) && (
                     <text x={mid} y={BASE + 14} textAnchor="middle" className="rv-chart-lbl">
                       {q.label}
@@ -510,9 +528,14 @@ function SeriesChart({ data, color }) {
           <line x1={PAD_L} x2={W - PAD_R} y1={y(b.value)} y2={y(b.value)}
                 stroke={color} strokeWidth={b.strong ? 2 : 1.4}
                 strokeDasharray={b.strong ? "" : "5 4"} opacity={b.strong ? 1 : 0.6} />
-          <text x={W - PAD_R + 8} y={y(b.value) + 4}
-                className={b.strong ? "rv-chart-val" : "rv-chart-lbl"}
-                fill={b.strong ? color : "var(--ink3)"}>
+          {/* Inside the plot when the rupee scale owns the right gutter —
+              drawn there they printed straight through it. */}
+          <text
+            x={data.rupeeAxis ? W - PAD_R - 8 : W - PAD_R + 8}
+            y={y(b.value) - 7}
+            textAnchor={data.rupeeAxis ? "end" : "start"}
+            className={b.strong ? "rv-chart-val" : "rv-chart-lbl"}
+            fill={b.strong ? color : "var(--ink3)"}>
             {b.value}{data.unit} {b.label}
           </text>
         </g>

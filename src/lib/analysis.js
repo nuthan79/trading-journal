@@ -328,19 +328,64 @@ function riskConsistency(closed) {
     const q = qOf(t);
     if (!q) return;
     const last = qs[qs.length - 1];
-    if (last && last.label === q) { last.to = i; last.vals.push(t.riskPct); }
-    else qs.push({ label: q, from: i, to: i, vals: [t.riskPct] });
+    const amt = isFinite(t.riskAmt) ? t.riskAmt : null;
+    if (last && last.label === q) {
+      last.to = i; last.vals.push(t.riskPct); if (amt != null) last.amts.push(amt);
+    } else {
+      qs.push({ label: q, from: i, to: i, vals: [t.riskPct], amts: amt != null ? [amt] : [] });
+    }
   });
   /* Under three quarters a step line is two segments pretending to be a
      trend; the bands say the same thing more honestly. */
   const stepLine = qs.length >= 3
-    ? qs.map((x) => ({ label: x.label, from: x.from, to: x.to, value: +mean(x.vals).toFixed(3) }))
+    ? qs.map((x) => ({
+        label: x.label, from: x.from, to: x.to,
+        value: +mean(x.vals).toFixed(3),
+        /**
+         * The rupee figure beside the percentage, because the two together
+         * are the finding and neither is it alone. A percentage that halves
+         * while the account triples is rupee risk that went UP; a percentage
+         * holding flat on a growing account is rupee risk climbing steadily.
+         * Reading only the share, both look like nothing happened.
+         */
+        amount: x.amts.length ? Math.round(mean(x.amts)) : null,
+      }))
+    : null;
+
+  /**
+   * The rupee scale, and whether it is honest to draw one.
+   *
+   * riskAmt is riskPct of the account AT THE TIME, so the two are only
+   * proportional while the account holds still. On a book that grew, one right
+   * hand axis would be right at one end of the sample and wrong at the other —
+   * a percentage falling by half on an account that tripled is rupee risk that
+   * went UP, and an axis drawn from a single ratio would show it falling.
+   *
+   * So the ratio is measured at both ends. Within a quarter of each other it
+   * is one scale and the axis is drawn; wider than that and it is not one
+   * scale, the axis is omitted, and the caption says the rupee figure instead
+   * — which is the honest way to give a number that has no fixed position.
+   */
+  const ratios = rows
+    .filter((t) => isFinite(t.riskAmt) && t.riskPct > 0)
+    .map((t) => t.riskAmt / t.riskPct);
+  const rFirst2 = ratios.slice(0, Math.max(3, Math.floor(ratios.length / 4)));
+  const rLast2 = ratios.slice(-Math.max(3, Math.floor(ratios.length / 4)));
+  const perPct = ratios.length ? median(ratios) : null;
+  /* `drift` is taken further up for the risk trend itself — this one is about
+     the account, not the sizing. */
+  const ratioDrift = rFirst2.length && rLast2.length
+    ? Math.abs(median(rLast2) - median(rFirst2)) / median(rFirst2)
+    : 1;
+  const rupeeAxis = perPct != null && ratioDrift <= 0.25
+    ? { perPct: Math.round(perPct) }
     : null;
 
   const riskChart = {
     type: "series",
     unit: "%",
     steps: stepLine,
+    rupeeAxis,
     /**
      * Each point carries its own outcome, so the chart answers both halves of
      * the question at once: how big the bet was, and whether it worked. The
@@ -353,7 +398,14 @@ function riskConsistency(closed) {
       win: isFinite(t.r) ? t.r > 0 : null,
     })),
     pointLegend: true,
-    axisNote: `${rows.length} trades, oldest first`,
+    /* Says why there is no rupee scale, when there is not one. An axis that
+       silently disappears reads as a bug; the reason is the more useful half
+       of the finding anyway — an account that changed size is why a steady
+       percentage was never steady money. */
+    axisNote: `${rows.length} trades, oldest first` +
+      (perPct != null && ratioDrift > 0.25
+        ? " · account size moved too much for one rupee scale"
+        : ""),
   };
   const lede = LEDE_RISK;
 
