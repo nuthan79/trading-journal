@@ -92,8 +92,9 @@ const LEDE_STOPS =
   "set said they should. A stop at 1R means a loss should cost roughly what " +
   "you put at risk; this counts the ones that cost meaningfully more.";
 const LEDE_EXITS =
-  "Your winning trades, grouped by how you got out of them. Same trader, same " +
-  "setups — the only thing that differs is the way the position was closed.";
+  "Every closed trade, grouped by the reason you recorded for getting out. " +
+  "Winners and losers together, so each way out shows what it kept as well as " +
+  "what it gave up.";
 const LEDE_RISK =
   "How much of the account you put at risk on each trade, in the order you " +
   "took them. Every trade drawn as one point, oldest on the left.";
@@ -807,64 +808,116 @@ function entryQuality(closed) {
 /*  5. Exit behaviour — cutting winners short                           */
 /* ==================================================================== */
 
+/**
+ * WHAT THIS CARD MAY AND MAY NOT SAY, BECAUSE IT USED TO SAY THE WRONG ONE.
+ *
+ * It ranked WINNING trades by exit reason and asserted: "The gap is the exit
+ * method alone — it is not that one group held better trades, since both are
+ * drawn from the same winners." That sentence is false, and it was the card's
+ * entire argument.
+ *
+ * The exit reason is not an independent variable. It is assigned by what the
+ * trade did. A position is labelled "Broke support" only if it ran far enough
+ * to build support above entry and then broke it; it is labelled "Trailing
+ * stop" precisely because it stalled and retraced before anything else could
+ * fire. The label and the R are both downstream of the same thing — the price
+ * path — so the gap between the bars mostly reports which trades ran, not
+ * which way out is better. "Drawn from the same winners" was the sleight of
+ * hand: all winners, yes, but DIFFERENT winners, sorted by how they behaved.
+ *
+ * The old card then recommended acting on it — "the single cheapest thing on
+ * this page to change" — a causal claim built on a comparison that cannot
+ * support one.
+ *
+ * WHAT WOULD ACTUALLY ANSWER IT is the same trade measured against itself:
+ * what this exact position would have returned had it been left to the next
+ * trigger past where it closed. `scaleOutFinding` does that, which is why that
+ * one is allowed a verdict. Here it needs daily bars after the exit date,
+ * which this app does not keep — and it still would not settle it, because
+ * "Broke support" and "Sold into strength" are discretionary calls with no
+ * rule to simulate. So this card describes, and stops.
+ *
+ * IT ALSO READS EVERY TRADE NOW, NOT ONLY THE WINNERS. A trailing stop exists
+ * partly to end trades that would have round-tripped, and a chart of winners
+ * alone can only ever show what it cost, never what it saved. One-sided is how
+ * it came to recommend loosening a rule whose whole job is the other side of
+ * that ledger.
+ */
 function exitBehaviour(closed) {
-  const winners = closed.filter((t) => isFinite(t.r) && t.r > 0 && t.exit_reason);
-  if (winners.length < 10) return null;
+  const scored = closed.filter((t) => isFinite(t.r) && t.exit_reason);
+  if (scored.length < 12) return null;
 
   const groups = new Map();
-  for (const t of winners) {
+  for (const t of scored) {
     if (!groups.has(t.exit_reason)) groups.set(t.exit_reason, []);
     groups.get(t.exit_reason).push(t.r);
   }
   const rows = [...groups.entries()]
-    .filter(([, v]) => v.length >= 4)
-    .map(([k, v]) => ({ reason: k, n: v.length, avgR: +mean(v).toFixed(2) }))
+    .filter(([, v]) => v.length >= 5)
+    .map(([k, v]) => ({
+      reason: k, n: v.length, avgR: +mean(v).toFixed(2),
+      winRate: +((v.filter((x) => x > 0).length / v.length) * 100).toFixed(0),
+    }))
     .sort((a, b) => b.avgR - a.avgR);
 
   if (rows.length < 2) return null;
 
   const best = rows[0], worst = rows[rows.length - 1];
-  const ev = { byReason: rows, spread: +(best.avgR - worst.avgR).toFixed(2) };
+  const spread = +(best.avgR - worst.avgR).toFixed(2);
+  const ev = { byReason: rows, spread, tradesWithAReason: scored.length };
 
   const minus = (v) => String(v).replace("-", "\u2212");
   const figs = [
-    { value: `${minus(ev.spread)}R`, label: "between best and worst" },
+    { value: `${minus(spread)}R`, label: "between the widest and the narrowest" },
+    { value: `${worst.winRate}%`, label: `of "${worst.reason}" exits were winners` },
   ];
 
-  /** One bar per way out. The gap between the longest and the shortest IS the
-   *  finding, and a bar chart states it without anybody doing subtraction. */
+  /** One bar per way out, with the share that won printed on it — because the
+   *  interesting thing about an average and a win rate is where they part. */
   const chart = {
     type: "bars",
     unit: "R",
     rows: rows.map((d) => ({
       label: d.reason, value: d.avgR, n: d.n,
+      sub: `${d.winRate}% won`,
       best: d.reason === best.reason, worst: d.reason === worst.reason,
     })),
+    axisNote: "average return per trade, with the share that won, by recorded exit reason",
   };
 
-  if (best.avgR - worst.avgR >= 1) {
-    return F("warning", "exit-method",
-      `Exiting on "${worst.reason}" leaves money behind`,
-      `The gap is the exit method alone — it is not that one group held better trades, since both ` +
-      `are drawn from the same winners. In a breakout system the big winners pay for every loser, ` +
-      `so anything that caps them changes the arithmetic of the whole approach rather than trimming it.`,
+  const CONFOUND =
+    ` These are not several ways out of one population — they are several populations, sorted by ` +
+    `what the trade did. A position ends on "${best.reason}" only if it got far enough for that ` +
+    `to happen, and on "${worst.reason}" because it did not. So most of this gap reports which ` +
+    `trades ran, not which exit is better, and it is not grounds for changing a rule.`;
+
+  /* Never a warning, whatever the spread. A warning is a call to act and
+     nothing measured here can support one — see the note above. */
+  if (spread >= 1) {
+    return F("watch", "exit-method",
+      "Your exits end in very different places",
+      `Trades you closed on "${best.reason}" averaged ${best.avgR}R across ${best.n}; those closed ` +
+      `on "${worst.reason}" averaged ${worst.avgR}R across ${worst.n}.` + CONFOUND,
       ev,
-      { lede: LEDE_EXITS,
+      { magnitude: spread,
+        lede: LEDE_EXITS,
         figures: figs,
         chart,
-        verdict: `Every winner you close on "${worst.reason}" instead gives up about ` +
-                 `${ev.spread}R. That is the single cheapest thing on this page to change: ` +
-                 `it asks nothing of your entries.` });
+        verdict: "Read this as a description of how your trades end, not as a case for loosening " +
+                 "anything. The question it cannot answer — what a given trade would have done " +
+                 "if left alone — needs that same trade measured against itself, which is what " +
+                 "the scale-out check does and this one cannot." });
   }
-  return F("good", "exit-method", "Exit methods are broadly consistent",
-    `No single way of getting out is quietly costing you — the spread across your exit reasons is ` +
-    `small enough to be noise rather than a habit.`,
+  return F("good", "exit-method", "Your exits end in much the same place",
+    `The spread across your recorded exit reasons is ${spread}R, small enough that no way out ` +
+    `stands apart from the others.` + CONFOUND,
     ev,
-    { lede: LEDE_EXITS,
+    { magnitude: spread,
+      lede: LEDE_EXITS,
       figures: figs,
       chart,
-      verdict: "Nothing to fix here. Worth re-reading once you have more exits on the " +
-               "board, since this is the kind of gap that opens slowly." });
+      verdict: "Nothing to read into this either way — which is the honest reading of a " +
+               "comparison of this shape, whichever direction the bars had gone." });
 }
 
 /* ==================================================================== */
