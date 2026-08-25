@@ -456,23 +456,54 @@ function SeriesChart({ data, color }) {
           that IS what the number is — an average over a period, not a value at
           a moment. A curve through them would invent movement between
           quarters that nothing measured. */}
-      {data.steps && data.steps.length > 1 && (
-        <>
-          <path
-            d={data.steps.map((q, i) => {
-              const x0 = x(q.from), x1 = x(q.to);
-              return `${i ? "L" : "M"} ${x0} ${y(q.value)} L ${x1} ${y(q.value)}`;
-            }).join(" ")}
-            fill="none" stroke={color} strokeWidth="2.2"
-            strokeLinejoin="round" strokeLinecap="round" opacity="0.9" />
-          {data.steps.map((q, i) => (
-            <text key={i} x={(x(q.from) + x(q.to)) / 2} y={BASE + 14}
-                  textAnchor="middle" className="rv-chart-lbl">
-              {q.label}
-            </text>
-          ))}
-        </>
-      )}
+      {data.steps && data.steps.length > 1 && (() => {
+        /**
+         * The level, not just the shape.
+         *
+         * A staircase with no numbers on it says risk moved and refuses to say
+         * to what — which is the half of the claim a reader cannot supply
+         * themselves. So each tread carries its own average.
+         *
+         * IT DOES GET CUMBERSOME, at about a dozen quarters, where the treads
+         * are narrower than the numbers standing on them. So a label is drawn
+         * only where its own segment has room, and if that silences nearly
+         * everything the first and last are forced back — the two that carry
+         * the "from here to here" the finding is actually about.
+         */
+        const st = data.steps;
+        const wide = (q) => x(q.to) - x(q.from) >= 40;
+        const roomy = st.filter(wide).length;
+        const show = (q, i) => wide(q) || (roomy < 2 && (i === 0 || i === st.length - 1));
+        return (
+          <>
+            <path
+              d={st.map((q, i) => {
+                const x0 = x(q.from), x1 = x(q.to);
+                return `${i ? "L" : "M"} ${x0} ${y(q.value)} L ${x1} ${y(q.value)}`;
+              }).join(" ")}
+              fill="none" stroke={color} strokeWidth="2.2"
+              strokeLinejoin="round" strokeLinecap="round" opacity="0.9" />
+            {st.map((q, i) => {
+              const mid = (x(q.from) + x(q.to)) / 2;
+              return (
+                <g key={i}>
+                  {show(q, i) && (
+                    <text x={mid} y={y(q.value) - 8} textAnchor="middle"
+                          className="rv-chart-val" fill={color}>
+                      {q.value.toFixed(2)}{data.unit}
+                    </text>
+                  )}
+                  {show(q, i) && (
+                    <text x={mid} y={BASE + 14} textAnchor="middle" className="rv-chart-lbl">
+                      {q.label}
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+          </>
+        );
+      })()}
       {/* Drawn after the points so the claim sits on top of its evidence. */}
       {bands.map((b, i) => (
         <g key={i}>
