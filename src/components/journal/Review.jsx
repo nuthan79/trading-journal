@@ -1043,7 +1043,17 @@ function MeasureOffer({ trades, onMeasured }) {
           {result.measured > 0
             ? `Measured ${result.measured} trade${result.measured === 1 ? "" : "s"}.`
             : "Nothing new was measured."}
-          {result.skipped > 0 && ` ${result.skipped} could not be read.`}
+          {result.skipped > 0 && (
+            <>
+              {" "}{result.skipped} could not be read
+              {/* The upstream reason, so a failure explains itself instead of
+                  leaving the reader to guess between a rate limit, a bad
+                  symbol and a service that is simply down. */}
+              {result.reasons?.length > 0 && (
+                <> — {result.reasons.map((r) => `${r.n} ${r.why}`).join(", ")}</>
+              )}.
+            </>
+          )}
           {result.stopped && (
             <>
               {" "}<b>Stopped early:</b> {result.stopped} Everything measured so far is saved —

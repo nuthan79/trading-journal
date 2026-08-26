@@ -29,9 +29,15 @@ import { tickerFor } from "./bars";
  * rather than throwing the lot away. Running it again picks up what is left.
  */
 
-/** The route's own ceiling. Sending more just means it silently drops the
- *  tail, which would look like symbols that mysteriously never measure. */
-const SYMBOLS_PER_CALL = 25;
+/**
+ * MUST MATCH `MAX_SYMBOLS` in /api/bars, which slices off anything past it.
+ *
+ * Sending more does not fail — the extra symbols are dropped in silence and
+ * come back as trades that never measure however many times the button is
+ * pressed. This was 25 for one commit after the route dropped to 12, which is
+ * exactly the failure the previous version of this comment described.
+ */
+const SYMBOLS_PER_CALL = 12;
 
 const DAY = 86400000;
 const iso = (d) => String(d || "").slice(0, 10);
@@ -116,6 +122,9 @@ export async function measurePaths(trades, onProgress, opts = {}) {
 
   const groups = [...bySymbol.values()];
   let measured = 0, skipped = 0, stopped = null;
+  /* Counted by cause, not just totalled — "112 could not be read" was true
+     and told nobody anything. */
+  const reasons = new Map();
 
   for (let i = 0; i < groups.length; i += SYMBOLS_PER_CALL) {
     const batch = groups.slice(i, i + SYMBOLS_PER_CALL);
@@ -123,22 +132,47 @@ export async function measurePaths(trades, onProgress, opts = {}) {
 
     let payload;
     try {
-      payload = await apiFetch("/api/bars", {
+      const res = await apiFetch("/api/bars", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           want: batch.map(({ symbol, exchange, from, to }) => ({ symbol, exchange, from, to })),
         }),
       });
+
+      /**
+       * apiFetch HANDS BACK THE RESPONSE, NOT THE BODY.
+       *
+       * This treated it as the parsed payload, so `payload.bars` was undefined
+       * on every call and every symbol came back "could not be read" — with no
+       * error, because nothing threw. A hundred and twelve trades failed
+       * identically and the message blamed the data.
+       *
+       * Every other apiFetch caller in the app parses and checks the status;
+       * this one now does both, and a refusal the server explained in words
+       * reaches the reader in those words instead of as a silent zero.
+       */
+      payload = await res.json().catch(() => null);
+      if (!res.ok || !payload) {
+        stopped = payload?.error
+          || `The price history service answered ${res.status}.`;
+        break;
+      }
+      if (payload.error) { stopped = payload.error; break; }
     } catch (err) {
-      /* Almost always the rate limit. Everything already saved stays saved,
-         and the caller is told why it stopped rather than being handed a
-         half-finished number with no explanation. */
+      /* Offline, or the request never completed. Everything already saved
+         stays saved, and the caller is told why it stopped rather than being
+         handed a half-finished number with no explanation. */
       stopped = err?.message || "Price history is unavailable just now.";
       break;
     }
 
-    const bars = payload?.bars || {};
+    const bars = payload.bars || {};
+    /* Why the server could not read each one, kept so the caller can say
+       something better than a count. */
+    for (const s of payload.skipped || []) {
+      if (s?.why) reasons.set(s.why, (reasons.get(s.why) || 0) + 1);
+    }
     const patches = [];
 
     for (const g of batch) {
@@ -176,5 +210,10 @@ export async function measurePaths(trades, onProgress, opts = {}) {
   }
 
   onProgress?.({ done: groups.length, total: groups.length, phase: "done" });
-  return { measured, skipped, symbols: groups.length, stopped };
+  return {
+    measured, skipped, symbols: groups.length, stopped,
+    reasons: [...reasons.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([why, n]) => ({ why, n })),
+  };
 }

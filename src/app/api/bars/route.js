@@ -25,6 +25,14 @@ import { rateLimit, tooMany } from "@/lib/rateLimit";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+/**
+ * The default is ten seconds, and this route makes one upstream request per
+ * symbol IN SERIES — deliberately, because firing them together is what gets
+ * an unofficial endpoint to rate-limit. A cold batch of a dozen symbols is
+ * comfortably past ten seconds, and a timeout loses the whole batch rather
+ * than part of it.
+ */
+export const maxDuration = 60;
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -35,11 +43,18 @@ const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
  * nothing left to do, so a caller hitting it repeatedly is a loop rather than
  * a hurry.
  */
-const LIMIT = { limit: 12, windowMs: 60_000 };
+const LIMIT = { limit: 30, windowMs: 60_000 };
 
-/** Enough to measure a long book in a few passes, few enough that one request
- *  cannot sit on a serverless function until it times out. */
-const MAX_SYMBOLS = 25;
+/**
+ * Twelve, not twenty-five.
+ *
+ * Each symbol is a separate upstream request made in series, so the batch size
+ * IS the function's running time. A book of a hundred symbols is nine calls at
+ * twelve and four at twenty-five — but a timeout costs the whole batch, and
+ * losing twelve symbols' work is half the setback of losing twenty-five. The
+ * rate limit above went up to match, so a full book still measures in one go.
+ */
+const MAX_SYMBOLS = 12;
 
 export async function POST(req) {
   const userId = await userFromRequest(req);
@@ -99,7 +114,10 @@ export async function POST(req) {
        symbol still recorded as a bare scrip code, which resolves to a
        different company entirely and would look completely ordinary doing
        it. See the note in bars.js. */
-    if (!tickerFor(it.symbol, it.exchange)) { skipped.push(key); continue; }
+    if (!tickerFor(it.symbol, it.exchange)) {
+      skipped.push({ key, why: "no ticker" });
+      continue;
+    }
 
     let stored = [];
     try {
@@ -131,7 +149,10 @@ export async function POST(req) {
       /* Whatever was cached is better than nothing, and an upstream that is
          down must not erase a measurement taken last week. */
       if (stored.length) out[key] = stored;
-      else skipped.push(key);
+      /* The upstream reason, verbatim, rather than a bare key. A skip list
+         with no reasons is what made a hundred and twelve identical failures
+         take a debugging session to explain. */
+      else skipped.push({ key, why: error || "no bars" });
       continue;
     }
 
