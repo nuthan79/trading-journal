@@ -372,9 +372,40 @@ function StripChart({ data, color }) {
             stroke="var(--rule)" strokeWidth="1" />
       <line x1={tx} x2={tx} y1={12} y2={BASE + 14} stroke={color}
             strokeWidth="1.5" strokeDasharray="4 3" />
-      <text x={tx} y={H - 22} textAnchor="middle" className="rv-chart-lbl" fill={color}>
-        {data.thresholdLabel} · {String(data.threshold).replace("-", "\u2212")}{data.unit}
-      </text>
+      {(() => {
+        /**
+         * THREE LABELS ON ONE LINE, AND THE MIDDLE ONE MOVES.
+         *
+         * The threshold caption is centred on its own line, which is fine
+         * while the line sits somewhere in the middle of the axis. On a chart
+         * whose points are ALL past the threshold it sits hard against the
+         * left edge instead, and "risk free \u00b7 1.5R" printed straight through
+         * "least in front" \u2014 two captions in the same pixels, both unreadable.
+         *
+         * The end captions give way rather than the threshold one, because the
+         * threshold is the only one carrying a number. 5.4px a character for
+         * the 10.5px face; it only has to be close enough to decide whether
+         * two strings touch.
+         */
+        const CH = 5.4;
+        const mid = `${data.thresholdLabel} \u00b7 ${String(data.threshold).replace("-", "\u2212")}${data.unit}`;
+        const left = data.leftLabel || "bigger losses";
+        const right = data.rightLabel || `break even \u00b7 0${data.unit}`;
+        const half = (mid.length * CH) / 2;
+        return (
+          <>
+            <text x={tx} y={H - 22} textAnchor="middle" className="rv-chart-lbl" fill={color}>
+              {mid}
+            </text>
+            {tx - half > PAD + left.length * CH + 8 && (
+              <text x={PAD} y={H - 22} className="rv-chart-lbl">{left}</text>
+            )}
+            {tx + half < W - PAD - right.length * CH - 8 && (
+              <text x={W - PAD} y={H - 22} textAnchor="end" className="rv-chart-lbl">{right}</text>
+            )}
+          </>
+        );
+      })()}
       {placed.map((p, i) => (
         <circle key={i} cx={p.cx} cy={p.cy} r={dotR}
                 fill={p.past ? color : "var(--card)"}
@@ -383,12 +414,6 @@ function StripChart({ data, color }) {
           <title>{`${p.label}: ${String(p.v).replace("-", "\u2212")}${data.unit}`}</title>
         </circle>
       ))}
-      <text x={PAD} y={H - 22} className="rv-chart-lbl">
-        {data.leftLabel || "bigger losses"}
-      </text>
-      <text x={W - PAD} y={H - 22} textAnchor="end" className="rv-chart-lbl">
-        {data.rightLabel || `break even · 0${data.unit}`}
-      </text>
     </svg>
   );
 }

@@ -2120,12 +2120,25 @@ function roundTrips(closed) {
   const pct = +((back.length / free.length) * 100).toFixed(0);
   const peak = back.reduce((a, t) => a + t.mfe_r, 0);
   const cost = back.reduce((a, t) => a + (t.mfe_r - t.r), 0);
+  /**
+   * WHERE THEY ACTUALLY FINISHED, because without it the sentence reads as an
+   * error. "Up 21.6R at their best closes and gave back 26.2R" is arithmetic
+   * — these trades ended BELOW where they started, so the fall from the peak
+   * is necessarily larger than the peak itself — but on the page it looks
+   * like a number that cannot be right, and a reader who stops to check the
+   * subtraction has stopped reading the finding.
+   *
+   * Naming the end point closes it: 21.6 minus 26.2 is −4.6, and the three
+   * numbers reconcile in the order they are read.
+   */
+  const ended = peak - cost;
 
   return F(pct >= 30 ? "warning" : "watch", "round-trips",
     "Some trades got free, then came back",
     `${back.length} of the ${free.length} trades that reached ${FREE_AT_R}R finished at or below where ` +
     `they started — ${pct}% of them. Between them they were up ${peak.toFixed(1)}R at their best closes ` +
-    `and gave back ${cost.toFixed(1)}R from there. This is an outcome, not a verdict: the app suggests ` +
+    `and finished at ${ended >= 0 ? "" : "−"}${Math.abs(ended).toFixed(1)}R, a round ` +
+    `trip of ${cost.toFixed(1)}R. This is an outcome, not a verdict: the app suggests ` +
     `moving a stop to breakeven once a trade is ${FREE_AT_R}R in front, but that is a suggestion, and ` +
     `your own exit rules may deliberately hold the original stop longer.`,
     { measuredTrades: rows.length, becameFree: free.length, roundTripped: back.length,
@@ -2134,7 +2147,7 @@ function roundTrips(closed) {
       lede: LEDE_CAPTURE,
       figures: [
         { value: `${back.length} of ${free.length}`, label: `reached ${FREE_AT_R}R, finished at or below entry` },
-        { value: `${cost.toFixed(1)}R`, label: "given back from the peak" },
+        { value: `${cost.toFixed(1)}R`, label: "round-tripped from peak to close" },
       ],
       chart: {
         type: "strip", unit: "R", threshold: FREE_AT_R,
