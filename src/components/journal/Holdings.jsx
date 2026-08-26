@@ -1,9 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { RefreshCw, Flag } from "lucide-react";
+import { RefreshCw, Flag, Rocket, CornerDownRight } from "lucide-react";
 import { rupee, rfmt, pct, signedPct } from "@/lib/format";
 import { fyStartYear, fyLabel } from "@/lib/calc";
+/* The same thresholds the measurement used, so a badge here and a finding on
+   Review can never describe the same trade with two different numbers. */
+import { FREE_AT_R, POWER_R, POWER_DAYS } from "@/lib/path";
 import PositionDetail from "./PositionDetail";
 
 /**
@@ -24,7 +27,9 @@ const RISK_WARM_R = 3;
 const RISK_WARN_R = 5;
 
 // Once a trade is up this much, its stop can go to entry and its 1R comes back.
-const FREE_AT_R = 1.5;
+// Imported from path.js above rather than declared here: this screen's flag and
+// the measurement that fills `became_free_on` have to agree about where "risk
+// free" starts, and two copies of the number is how they would stop agreeing.
 
 
 /**
@@ -757,6 +762,36 @@ export default function Holdings({
                         <Flag size={11} />
                       </span>
                     )}
+                    {/**
+                      * Two badges read off the measured path, not off the mark.
+                      *
+                      * The breakeven flag beside them is a LIVE reading — it
+                      * asks where price is now — and these are the opposite:
+                      * facts about what this position already did, which stay
+                      * true on a day the stock is down. That difference is the
+                      * whole point of storing the path. A trade that ran to 3R
+                      * in its first week and has since come back shows no live
+                      * flag at all, and used to leave no trace anywhere.
+                      */}
+                    {r.is_power && (
+                      <span className="ps-badge ps-badge-power"
+                            title={`Closed at or past ${POWER_R}R within ${POWER_DAYS} sessions of `
+                              + `entry — the move a breakout is bought for. Measured on daily `
+                              + `closes, so it is a price this actually finished a day at.`}>
+                        <Rocket size={11} />
+                      </span>
+                    )}
+                    {/* Was free, and is not any more. The only badge here that
+                        needs both halves: the path says it got in front, the
+                        mark says where it is now. */}
+                    {r.became_free_on && isFinite(r.atR) && r.atR < 0 && (
+                      <span className="ps-badge ps-badge-back"
+                            title={`Closed past ${FREE_AT_R}R on ${r.became_free_on} and is now back `
+                              + `below what you paid. Nothing here says what to do about it — it is `
+                              + `the fact the journal could never see before.`}>
+                        <CornerDownRight size={11} />
+                      </span>
+                    )}
                     {r.status === "partial" && <span className="ps-tag">part sold</span>}
                   </td>
                   <td className="mono ps-dim">
@@ -921,6 +956,12 @@ export default function Holdings({
         and that position stops counting towards open risk, because a stop at entry cannot lose.
         Your recorded stop is untouched, so 1R and every R measured against it stay exactly as
         they are.
+        {" "}Two more marks come from price history rather than from today: a rocket says the
+        position closed at or past {POWER_R}R within {POWER_DAYS} sessions of entry, and an arrow
+        says it closed past {FREE_AT_R}R at some point and is now back below what you paid.
+        Both are records of what already happened, so unlike the flag they stay put on a day the
+        stock moves. Neither is advice — they mark the trades worth a second look, not ones you
+        have got wrong.
       </div>
 
       <style jsx>{`
@@ -1066,6 +1107,16 @@ export default function Holdings({
           color: var(--long); transition: transform 0.12s ease, opacity 0.12s ease;
         }
         .ps-flag svg { fill: currentColor; }
+        /* Sized and spaced like the flag so a row carrying all three reads as
+           one group rather than three separate marks. Not buttons: there is
+           nothing to dismiss, because neither of these is a reminder. */
+        .ps-badge {
+          display: inline-flex; align-items: center; vertical-align: middle;
+          margin-left: 5px; line-height: 1;
+        }
+        .ps-badge svg { display: block; }
+        .ps-badge-power { color: var(--brass); }
+        .ps-badge-back { color: var(--short); }
         .ps-flag:hover:not(:disabled) { transform: translateY(-1px) scale(1.15); }
         .ps-flag:disabled { opacity: 0.4; cursor: default; }
         .ps-flag.done {

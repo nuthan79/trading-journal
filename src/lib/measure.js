@@ -29,22 +29,57 @@ import { tradePath } from "./path";
  *  tail, which would look like symbols that mysteriously never measure. */
 const SYMBOLS_PER_CALL = 25;
 
+const DAY = 86400000;
+const iso = (d) => String(d || "").slice(0, 10);
+const shift = (d, n) => new Date(new Date(d).getTime() + n * DAY).toISOString().slice(0, 10);
+const today = () => new Date().toISOString().slice(0, 10);
+
+/** The last session a measurement should reach: the exit if there is one,
+ *  otherwise now. */
+export const measureTo = (t) => (t.status === "closed" ? iso(t.exit_date) : today());
+
 /**
  * Which trades can be measured, and which are deliberately skipped.
  *
  * `path_to` is the test, not `mfe_r`: a trade that was measured and never
  * became risk-free has a null in every other column, and keying on those
  * would re-measure it on every visit forever.
+ *
+ * BUT PRESENT IS NOT THE SAME AS COMPLETE, and the first version missed it. A
+ * position measured while open carries a `path_to` from that day; when it
+ * later closes, the columns still describe the part of the trade that had
+ * happened by then, and a plain "has path_to" test would call that finished
+ * forever. So the test is whether the measurement REACHES the trade's end.
+ *
+ * Three days of tolerance on that, because a trade whose final session left no
+ * bar — a halt, a suspension — would otherwise be re-read on every visit for
+ * the rest of its life and never get any further.
  */
-export function needsMeasuring(trades) {
-  return (trades || []).filter((t) =>
-    t.status === "closed" &&
-    !t.path_to &&
-    t.exchange === "NSE" &&          // a BSE scrip code is not a Yahoo ticker
-    t.stop_source !== "assumed" &&   // R against a stop nobody set is not R
-    t.symbol && t.entry_date && t.exit_date &&
-    t.entry_date < t.exit_date       // nothing to read on a same-day trade
-  );
+export function needsMeasuring(trades, { includeOpen = false } = {}) {
+  return (trades || []).filter((t) => {
+    if (!t.symbol || !t.entry_date) return false;
+    if (t.exchange !== "NSE") return false;        // a scrip code is not a ticker
+    if (t.stop_source === "assumed") return false; // R against a stop nobody set
+
+    if (t.status === "closed") {
+      if (!t.exit_date || !(iso(t.entry_date) < iso(t.exit_date))) return false;
+      return !t.path_to || t.path_to < shift(iso(t.exit_date), -3);
+    }
+
+    if (!includeOpen) return false;
+    if (!(iso(t.entry_date) < today())) return false;
+    /**
+     * Weekly, not daily, for an open position.
+     *
+     * The two things the badges rest on settle early and then stop moving —
+     * whether it ran 3R in its first five sessions is decided by day five, and
+     * whether it ever closed past 1.5R only ever becomes more true. Re-reading
+     * every symbol every day would spend the rate limit to learn almost
+     * nothing; where a position stands RIGHT NOW comes from the mark that
+     * Refresh already fetches.
+     */
+    return !t.path_to || t.path_to < shift(today(), -7);
+  });
 }
 
 /**
@@ -53,18 +88,18 @@ export function needsMeasuring(trades) {
  *                    it is doing rather than spinning
  * @returns { measured, skipped, symbols, stopped }
  */
-export async function measurePaths(trades, onProgress) {
-  const todo = needsMeasuring(trades);
+export async function measurePaths(trades, onProgress, opts = {}) {
+  const todo = needsMeasuring(trades, opts);
   if (!todo.length) return { measured: 0, skipped: 0, symbols: 0, stopped: null };
 
-  /* Earliest entry to latest exit, per listing — one window that covers every
-     trade in that symbol however many there are. */
+  /* Earliest entry to latest end, per listing — one window that covers every
+     trade in that symbol however many there are, open ones running to today. */
   const bySymbol = new Map();
   for (const t of todo) {
     const key = `${t.symbol}:${t.exchange}`;
     const cur = bySymbol.get(key);
     const from = String(t.entry_date).slice(0, 10);
-    const to = String(t.exit_date).slice(0, 10);
+    const to = measureTo(t);
     if (!cur) bySymbol.set(key, { symbol: t.symbol, exchange: t.exchange, from, to, trades: [t] });
     else {
       if (from < cur.from) cur.from = from;
