@@ -1,3 +1,4 @@
+import { YAHOO_HOSTS, BROWSER_HEADERS } from "./yahoo";
 /**
  * Market context.
  *
@@ -20,15 +21,8 @@ export const INDEX_TICKERS = {
   "NIFTYMIDCAP": "^NSEMDCP50",
 };
 
-const HOSTS = ["query1.finance.yahoo.com", "query2.finance.yahoo.com"];
+const HOSTS = YAHOO_HOSTS;
 
-const BROWSER_HEADERS = {
-  "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-  Accept: "*/*",
-  Referer: "https://finance.yahoo.com",
-};
 
 /** Daily closes for an index. Same unauthenticated endpoint as the quotes. */
 export async function fetchIndexHistory(ticker = INDEX_TICKERS.NIFTY500, range = "3y") {

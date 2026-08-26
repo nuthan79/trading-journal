@@ -20,35 +20,31 @@
  * own entry price is recorded on.
  */
 
-const HOSTS = ["query1.finance.yahoo.com", "query2.finance.yahoo.com"];
+import { YAHOO_HOSTS as HOSTS, BROWSER_HEADERS, rangeCovering } from "./yahoo";
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * WHAT 429 ACTUALLY MEANT HERE, BECAUSE IT WAS NOT A BLOCKED DEPLOYMENT.
+ * WHAT THE 429 ACTUALLY WAS, AFTER TWO WRONG ANSWERS.
  *
- * The first real run returned 429 for all ninety-seven symbols, which reads
- * like Yahoo refusing the host — except the market-regime strip at the top of
- * the same screen had just loaded, and that is the same v8 chart endpoint from
- * the same server seconds earlier. One request works. Twelve back to back do
- * not.
+ * Every symbol came back 429 on the first real run. The first guess was that
+ * Yahoo blocks the deployment; the market-regime strip on the same screen
+ * seemed to disprove it — until that route turned out to be edge-cached for
+ * an hour, so it proved nothing. The second guess was volume, and pacing the
+ * requests further apart changed nothing at all.
  *
- * So the fix is pace, not a different source: a gap between symbols, a gap
- * before trying the second host, and one retry after a longer wait. It makes a
- * cold pass slow, which costs nothing that matters — every bar fetched is
- * cached in `price_bars` for every user of the deployment, so this is a
- * one-off per symbol and never happens again.
+ * What settled it was Refresh Prices: ten sequential quote requests from the
+ * same server, in the same minute, all fine. So it was never the host and
+ * never the rate. It was this file asking differently — a User-Agent and an
+ * Accept that no other caller sent, and `period1`/`period2` where both
+ * working callers use `range=`. A fingerprint, not a limit.
+ *
+ * The headers live in yahoo.js now so there is one copy to be right. The
+ * pacing below stays because it is cheap and a burst is worth avoiding on an
+ * unofficial endpoint either way — but it was not the problem.
  */
 const RETRY_AFTER_MS = 2500;
 const HOST_GAP_MS = 400;
-
-const BROWSER_HEADERS = {
-  "User-Agent":
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
-    "(KHTML, like Gecko) Chrome/120.0 Safari/537.36",
-  Accept: "application/json,text/plain,*/*",
-  Referer: "https://finance.yahoo.com",
-};
 
 /**
  * BSE WORKS. THE SCRIP CODE DOES NOT — AND THOSE ARE DIFFERENT CLAIMS.
@@ -90,13 +86,11 @@ export async function fetchBars({ symbol, exchange = "NSE", from, to }) {
   const ticker = tickerFor(symbol, exchange);
   if (!ticker) return { bars: [], error: `${exchange} is not supported` };
 
-  const p1 = Math.floor(new Date(from).getTime() / 1000);
-  /* One day past the end, because period2 is exclusive of the final session
-     often enough that an exit-day bar goes missing without it. */
-  const p2 = Math.floor(new Date(to).getTime() / 1000) + 86400;
-  if (!Number.isFinite(p1) || !Number.isFinite(p2) || p2 <= p1) {
-    return { bars: [], error: "bad date range" };
-  }
+  if (!from || !to || from > to) return { bars: [], error: "bad date range" };
+  /* Anchored on today and reaching back past `from`, because that is the
+     shape Yahoo serves — see the note in yahoo.js. Everything returned is
+     kept; the caller trims to the window it asked for. */
+  const range = rangeCovering(from);
 
   let lastErr = null;
   /* Both hosts, then both again after a wait. The second pass is what turns a
@@ -107,12 +101,9 @@ export async function fetchBars({ symbol, exchange = "NSE", from, to }) {
     const host = attempts[i];
     if (i > 0) await sleep(i === HOSTS.length ? RETRY_AFTER_MS : HOST_GAP_MS);
     try {
-      /* No `events=div,split`. The adjusted close comes back without it, the
-         split and dividend EVENTS are not read here, and it was the one thing
-         in this URL the working market-regime request does not send. */
       const url =
         `https://${host}/v8/finance/chart/${encodeURIComponent(ticker)}` +
-        `?period1=${p1}&period2=${p2}&interval=1d`;
+        `?interval=1d&range=${range}`;
       const res = await fetch(url, { headers: BROWSER_HEADERS, cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 

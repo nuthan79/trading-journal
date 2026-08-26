@@ -173,6 +173,15 @@ export async function POST(req) {
       continue;
     }
 
+    /**
+     * EVERYTHING RETURNED IS STORED. ONLY THE WINDOW ASKED FOR IS SENT BACK.
+     *
+     * A `range=` request is anchored on today, so asking for a trade held in
+     * March returns every session since. Storing the lot is the point — the
+     * next trade in that symbol is then already covered and never goes
+     * upstream at all — but shipping years of bars to the browser for a trade
+     * that lasted three weeks would be megabytes of JSON nobody reads.
+     */
     try {
       await admin.from("price_bars").upsert(
         bars.map((b) => ({ symbol: it.symbol, exchange: it.exchange, ...b })),
@@ -182,7 +191,7 @@ export async function POST(req) {
       // The caller still gets its bars; only the cache missed out.
       console.warn("[bars] cache write failed", key, e?.message);
     }
-    out[key] = bars;
+    out[key] = bars.filter((b) => b.d >= it.from && b.d <= it.to);
   }
 
   return NextResponse.json(

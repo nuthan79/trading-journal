@@ -1,3 +1,4 @@
+import { YAHOO_HOSTS, BROWSER_HEADERS } from "./yahoo";
 /**
  * Quote sources.
  *
@@ -21,14 +22,6 @@
 
 const YAHOO_SUFFIX = { NSE: ".NS", BSE: ".BO" };
 
-const BROWSER_HEADERS = {
-  "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-  Accept: "*/*",
-  "Accept-Language": "en-US,en;q=0.9",
-  Referer: "https://finance.yahoo.com",
-};
 
 /* ------------------------------------------------------------------ */
 /*  Source: Yahoo Finance (unofficial)                                 */
@@ -42,7 +35,7 @@ const BROWSER_HEADERS = {
 /*  notice, and prices are delayed rather than live.                   */
 /* ------------------------------------------------------------------ */
 
-const HOSTS = ["query1.finance.yahoo.com", "query2.finance.yahoo.com"];
+const HOSTS = YAHOO_HOSTS;
 
 async function yahooOne({ symbol, exchange }) {
   const ticker = symbol + (YAHOO_SUFFIX[exchange] || ".NS");
