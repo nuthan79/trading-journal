@@ -31,19 +31,33 @@ const BROWSER_HEADERS = {
 };
 
 /**
- * BSE IS NOT SUPPORTED HERE AND MUST NOT BE FAKED.
+ * BSE WORKS. THE SCRIP CODE DOES NOT — AND THOSE ARE DIFFERENT CLAIMS.
  *
- * `public/symbols.json` carries the BSE scrip code as the canonical id, and
- * CODE.BO returns a DIFFERENT SECURITY on Yahoo — measured, and the reason
- * that note is in CLAUDE.md. Guessing a ticker from the symbol would silently
- * measure some other company's price path against this trade's entry, which
- * is worse than measuring nothing: the numbers would look entirely normal.
+ * This file first refused BSE outright, on the CLAUDE.md note that a scrip
+ * code is never usable as a Yahoo ticker. The note is true and the conclusion
+ * did not follow: `symbols.json` carries BOTH for every BSE listing — `s`, the
+ * ticker, and `c`, the code — and `isin.js` writes `hit.s` into the trade. So
+ * a BSE trade holds "20MICRONS", not "533022", and 20MICRONS.BO is a real
+ * ticker. `quotes.js` has mapped BSE to .BO since long before this file
+ * existed; it is how BSE holdings get a CMP at all.
+ *
+ * What the note guards against is real but narrow: a lot whose ISIN did not
+ * resolve keeps whatever the broker file called it, and a BSE file may well
+ * call it 533022. THAT is the string that must never get a suffix, because
+ * 533022.BO resolves to some other company and would measure its price path
+ * against this trade while looking entirely ordinary doing it.
+ *
+ * So the refusal is on the shape of the symbol, not on the exchange.
  */
-const SUFFIX = { NSE: ".NS" };
+const SUFFIX = { NSE: ".NS", BSE: ".BO" };
+
+/** Digits only — a scrip code that never resolved to a ticker. */
+const isScripCode = (s) => /^\d+$/.test(String(s || "").trim());
 
 export function tickerFor(symbol, exchange) {
   const suffix = SUFFIX[exchange];
-  return suffix ? `${symbol}${suffix}` : null;
+  if (!suffix || !symbol || isScripCode(symbol)) return null;
+  return `${symbol}${suffix}`;
 }
 
 const r2 = (v) => (v == null || !Number.isFinite(v) ? null : Math.round(v * 100) / 100);

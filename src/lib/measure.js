@@ -2,6 +2,10 @@
 
 import { apiFetch, savePaths } from "./db";
 import { tradePath } from "./path";
+/* The same test the route applies, imported rather than restated — this
+   screen counting a trade as measurable while the route refuses it is how a
+   button offers work that silently never happens. */
+import { tickerFor } from "./bars";
 
 /**
  * Reading the price path for trades that have never had one read.
@@ -58,7 +62,9 @@ export const measureTo = (t) => (t.status === "closed" ? iso(t.exit_date) : toda
 export function needsMeasuring(trades, { includeOpen = false } = {}) {
   return (trades || []).filter((t) => {
     if (!t.symbol || !t.entry_date) return false;
-    if (t.exchange !== "NSE") return false;        // a scrip code is not a ticker
+    /* NSE and BSE both, refused only where the symbol is a bare scrip code
+       that never resolved to a ticker — see the note in bars.js. */
+    if (!tickerFor(t.symbol, t.exchange)) return false;
     if (t.stop_source === "assumed") return false; // R against a stop nobody set
 
     if (t.status === "closed") {

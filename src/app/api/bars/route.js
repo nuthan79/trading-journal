@@ -95,10 +95,10 @@ export async function POST(req) {
 
   for (const it of items) {
     const key = `${it.symbol}:${it.exchange}`;
-    /* Refused rather than guessed. A BSE scrip code is not a Yahoo ticker —
-       CODE.BO returns a different security — so inventing one would measure
-       another company's price path against this trade and the numbers would
-       look completely ordinary. */
+    /* Refused rather than guessed. Not the exchange — both work — but a
+       symbol still recorded as a bare scrip code, which resolves to a
+       different company entirely and would look completely ordinary doing
+       it. See the note in bars.js. */
     if (!tickerFor(it.symbol, it.exchange)) { skipped.push(key); continue; }
 
     let stored = [];

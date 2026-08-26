@@ -9,6 +9,7 @@ import Link from "next/link";
 import { setupGaps } from "@/lib/gaps";
 import { processStages, recentCompliance } from "@/lib/bottleneck";
 import { needsMeasuring, measurePaths } from "@/lib/measure";
+import { tickerFor } from "@/lib/bars";
 
 /**
  * Behavioural review — arithmetic findings from the trader's own closed
@@ -981,9 +982,15 @@ function MeasureOffer({ trades, onMeasured }) {
   const todo = useMemo(() => needsMeasuring(trades), [trades]);
   const skippable = useMemo(() => {
     const closedOnes = (trades || []).filter((t) => t.status === "closed" && !t.path_to);
+    /* Not "on BSE" — that was wrong, and BSE reads fine through its ticker.
+       What cannot be read is a symbol that is still a bare scrip code because
+       its ISIN never resolved. */
+    const unresolved = closedOnes.filter((t) => !tickerFor(t.symbol, t.exchange));
     return {
-      bse: closedOnes.filter((t) => t.exchange === "BSE").length,
-      assumed: closedOnes.filter((t) => t.exchange !== "BSE" && t.stop_source === "assumed").length,
+      unresolved: unresolved.length,
+      assumed: closedOnes.filter(
+        (t) => tickerFor(t.symbol, t.exchange) && t.stop_source === "assumed"
+      ).length,
     };
   }, [trades]);
 
@@ -1020,11 +1027,12 @@ function MeasureOffer({ trades, onMeasured }) {
         {busy && progress?.total > 0 && (
           <span className="rv-dim">{progress.done} of {progress.total} symbols</span>
         )}
-        {!busy && (skippable.bse > 0 || skippable.assumed > 0) && (
+        {!busy && (skippable.unresolved > 0 || skippable.assumed > 0) && (
           <span className="rv-dim">
-            {skippable.bse > 0 && `${skippable.bse} on BSE cannot be read — a scrip code is not a
-              price-history ticker`}
-            {skippable.bse > 0 && skippable.assumed > 0 && " · "}
+            {skippable.unresolved > 0 && `${skippable.unresolved} are still recorded under a scrip
+              code rather than a ticker, so there is no price history to look up — correcting the
+              symbol on those trades makes them readable`}
+            {skippable.unresolved > 0 && skippable.assumed > 0 && " · "}
             {skippable.assumed > 0 && `${skippable.assumed} carry an assumed stop, so there is no
               real 1R to measure against`}
           </span>
