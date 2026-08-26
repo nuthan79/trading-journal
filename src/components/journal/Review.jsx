@@ -324,7 +324,35 @@ function StripChart({ data, color }) {
   const step = maxTier * 11 > MAX_STACK ? MAX_STACK / maxTier : 11;
   const dotR = Math.max(2.2, Math.min(5, step * 0.46));
   const BASE = Math.max(58, LBL_Y + 16 + maxTier * step);
-  const H = BASE + 46;
+  /* Room for two lines under the axis now: the scale, then the captions.
+     Was 46 with only the captions, which is why there was nowhere to put a
+     number and the chart could be looked at but not read. */
+  const H = BASE + 64;
+
+  /**
+   * A SCALE, BECAUSE UNTIL NOW THE DOTS HAD NO VALUES.
+   *
+   * Every bar chart on this screen prints its number at the end of the bar.
+   * This one printed nothing at all: seven dots, an axis captioned "furthest
+   * in front" with no figure on it, and no way to tell whether the rightmost
+   * trade made 3R or 30R without hovering it. The chart was decoration with a
+   * tooltip attached.
+   *
+   * Ticks on round numbers rather than at the data, so the axis reads the
+   * same whatever the book contains, and one close to the threshold is
+   * dropped — that line already carries its own value underneath it.
+   */
+  const span = hi - lo;
+  const rough = span / 5;
+  const mag = Math.pow(10, Math.floor(Math.log10(rough || 1)));
+  const n = rough / mag;
+  const tickStep = (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * mag;
+  const ticks = [];
+  for (let v = Math.ceil(lo / tickStep) * tickStep; v <= hi; v += tickStep) {
+    const rounded = +v.toFixed(6);
+    if (Math.abs(x(rounded) - tx) < 20) continue;   // the threshold owns that spot
+    ticks.push(rounded);
+  }
   const placed = data.points.map((p, i) => ({
     ...p, cx: x(p.v), cy: BASE - tiers[i] * step,
   }));
@@ -370,6 +398,15 @@ function StripChart({ data, color }) {
       })()}
       <line x1={PAD} x2={W - PAD} y1={BASE + 6} y2={BASE + 6}
             stroke="var(--rule)" strokeWidth="1" />
+      {ticks.map((v) => (
+        <g key={v}>
+          <line x1={x(v)} x2={x(v)} y1={BASE + 6} y2={BASE + 10}
+                stroke="var(--rule)" strokeWidth="1" />
+          <text x={x(v)} y={BASE + 22} textAnchor="middle" className="rv-chart-tick">
+            {String(v).replace("-", "\u2212")}{data.unit}
+          </text>
+        </g>
+      ))}
       <line x1={tx} x2={tx} y1={12} y2={BASE + 14} stroke={color}
             strokeWidth="1.5" strokeDasharray="4 3" />
       {(() => {
@@ -1610,6 +1647,12 @@ export default function Review({ closed, stats, all, diary, onMeasured }) {
         }
 
         .rv-chart { display: block; width: 100%; height: auto; margin: 14px 0 0; }
+        /* Quieter than the captions and on its own line above them — a scale
+           is there to be consulted, not read. */
+        .rv-chart-tick {
+          font-size: 9.5px; fill: var(--ink3);
+          font-variant-numeric: tabular-nums;
+        }
         .rv-chart-lbl {
           font-size: 10.5px; fill: var(--ink3);
           letter-spacing: 0.02em;

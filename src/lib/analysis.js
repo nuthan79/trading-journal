@@ -124,6 +124,9 @@ const LEDE_CAPTURE =
   "Every trade against its own best closing price while you held it. Not one " +
   "group of trades against another — the same trade, at its high point and at " +
   "the end.";
+const LEDE_ROUNDTRIP =
+  "The trades that got far enough in front for the stop to go to breakeven, " +
+  "and how far in front each of them was before it came back.";
 const LEDE_POWER =
   "The trades that were already well in front within a week of buying them, " +
   "and what each one finished at.";
@@ -2051,14 +2054,18 @@ function captureRate(closed) {
   if (!(offered > 0)) return null;
   const pct = +((taken / offered) * 100).toFixed(0);
 
+  /* The cut is in the label. "Kept about half" and "Gave most of it back" are
+     two points on one continuum, and without the boundary the reader is
+     trusting that it was drawn somewhere sensible instead of seeing where. */
   const band = (t) => {
     const k = t.r / t.mfe_r;
-    return k >= 0.6 ? "Kept most of it"
-      : k >= 0.3 ? "Kept about half"
-      : k > 0 ? "Gave most of it back"
-      : "Gave all of it back";
+    return k >= 0.6 ? "Kept most \u00b7 60%+"
+      : k >= 0.3 ? "Kept about half \u00b7 30\u201360%"
+      : k > 0 ? "Gave most back \u00b7 under 30%"
+      : "Gave it all back \u00b7 nothing left";
   };
-  const ORDER = ["Kept most of it", "Kept about half", "Gave most of it back", "Gave all of it back"];
+  const ORDER = ["Kept most \u00b7 60%+", "Kept about half \u00b7 30\u201360%",
+                 "Gave most back \u00b7 under 30%", "Gave it all back \u00b7 nothing left"];
   const counts = ORDER.map((label) => ({
     label, value: rows.filter((t) => band(t) === label).length,
   }));
@@ -2067,9 +2074,8 @@ function captureRate(closed) {
   return F("watch", "capture-rate",
     "What your trades offered, against what you took",
     `Across ${rows.length} measured trades the best closing price on each came to ${offered.toFixed(1)}R ` +
-    `between them, and you finished with ${taken.toFixed(1)}R — ${pct}% of it. Nobody keeps all of a ` +
-    `peak; selling the exact high every time is not a method anyone has. What is worth looking at is ` +
-    `the tail: ${gaveAll} of these were up at some point and finished at or below where they started.`,
+    `between them, and you finished with ${taken.toFixed(1)}R — ${pct}% of it. ${gaveAll} of them ` +
+    `were up at some point and finished at or below where they started.`,
     { tradesMeasured: rows.length, offeredR: +offered.toFixed(1), takenR: +taken.toFixed(1),
       capturePct: pct, gaveItAllBack: gaveAll },
     { magnitude: 100 - pct,
@@ -2080,11 +2086,12 @@ function captureRate(closed) {
       ],
       chart: {
         type: "bars", unit: "",
-        rows: counts.map((c) => ({ ...c, worst: c.label === "Gave all of it back" })),
+        rows: counts.map((c) => ({ ...c, worst: c.label === ORDER[3] })),
         axisNote: "trades, by how much of their best close they finished with",
       },
-      verdict: "There is no right number here, which is why it is not scored. The row " +
-               "that matters is the last one — those trades were free and ended up costing." });
+      verdict: "Nobody keeps all of a peak — selling the exact high every time is not a method " +
+               "anyone has, which is why this is not scored. The row that matters is the last " +
+               "one: those trades were free at some point and ended up costing." });
 }
 
 /**
@@ -2111,7 +2118,7 @@ function roundTrips(closed) {
       `${free.length} of your measured trades closed at or past ${FREE_AT_R}R at some point, and none ` +
       `of them finished at a loss. Whatever you are doing once a trade is in front, it is holding.`,
       { measuredTrades: rows.length, becameFree: free.length, roundTripped: 0 },
-      { lede: LEDE_CAPTURE, magnitude: 0,
+      { lede: LEDE_ROUNDTRIP, magnitude: 0,
         figures: [{ value: `${free.length}`, label: `reached ${FREE_AT_R}R` }, { value: "0", label: "came back" }],
         verdict: "Nothing to change. This is the failure mode that quietly costs the most " +
                  "and it is not happening to you." });
@@ -2138,13 +2145,11 @@ function roundTrips(closed) {
     `${back.length} of the ${free.length} trades that reached ${FREE_AT_R}R finished at or below where ` +
     `they started — ${pct}% of them. Between them they were up ${peak.toFixed(1)}R at their best closes ` +
     `and finished at ${ended >= 0 ? "" : "−"}${Math.abs(ended).toFixed(1)}R, a round ` +
-    `trip of ${cost.toFixed(1)}R. This is an outcome, not a verdict: the app suggests ` +
-    `moving a stop to breakeven once a trade is ${FREE_AT_R}R in front, but that is a suggestion, and ` +
-    `your own exit rules may deliberately hold the original stop longer.`,
+    `trip of ${cost.toFixed(1)}R.`,
     { measuredTrades: rows.length, becameFree: free.length, roundTripped: back.length,
       roundTrippedPct: pct, peakRGivenUp: +cost.toFixed(1) },
     { magnitude: pct,
-      lede: LEDE_CAPTURE,
+      lede: LEDE_ROUNDTRIP,
       figures: [
         { value: `${back.length} of ${free.length}`, label: `reached ${FREE_AT_R}R, finished at or below entry` },
         { value: `${cost.toFixed(1)}R`, label: "round-tripped from peak to close" },
@@ -2165,9 +2170,11 @@ function roundTrips(closed) {
           .sort((a, b) => b.v - a.v),
         axisNote: "how far in front each of these got, at the close, before it came back",
       },
-      verdict: `Worth knowing which of these were gap-downs and which drifted back through ` +
-               `entry with the price there to be taken. The journal can tell them apart now, ` +
-               `and only the second kind is a decision.` });
+      verdict: `An outcome, not a verdict. The app suggests moving a stop to breakeven once ` +
+               `a trade is ${FREE_AT_R}R in front, but that is a suggestion and your own rules ` +
+               `may hold the original stop deliberately. What is worth knowing is which of ` +
+               `these gapped down and which drifted back through entry with the price there ` +
+               `to be taken \u2014 only the second kind is a decision.` });
 }
 
 /**
@@ -2271,12 +2278,6 @@ function adverseExcursion(closed) {
     axisNote: "how far each winning trade closed against you before it turned",
   };
 
-  const CANNOT =
-    ` This is not a case for a wider stop, and the chart should not be read as one. A wider stop ` +
-    `would have saved some of these and also let every loser run further, and that second half ` +
-    `cannot be measured here: the journal reads prices from entry to exit, so once a trade stopped ` +
-    `out there is no record of what it would have done next.`;
-
   const belowNote = below.length
     ? ` ${below.length} of them closed a day BELOW the stop and still finished as winners, which ` +
       `means the stop was not working in the market those evenings.`
@@ -2288,10 +2289,9 @@ function adverseExcursion(closed) {
       `${near.length} of your ${winners.length} measured winners closed at ${Math.abs(NEAR_STOP_R)}R ` +
       `or worse against you at some point before turning — inside the last quarter of the distance ` +
       `to your stop. The typical winner went ${Math.abs(med).toFixed(2)}R against you first.` +
-      belowNote + CANNOT +
-      ` What it does say is how close-run the record is: on the same method and the same trades, a ` +
-      `slightly worse few days would have turned a good part of that win rate into losses. The ` +
-      `expectancy above is less settled than its sample size suggests.`,
+      belowNote +
+      ` On the same method and the same trades, a slightly worse few days would have turned a good ` +
+      `part of that win rate into losses.`,
       { measuredWinners: winners.length, medianAdverseR: +med.toFixed(2),
         withinQuarterOfStop: near.length, withinQuarterPct: nearPct,
         closedBelowStopAndWon: below.length },
