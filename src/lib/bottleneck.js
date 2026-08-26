@@ -94,14 +94,34 @@ const STAGES = [
   {
     key: "risk-control", step: 4, name: "Risk control",
     blurb: "Where your losses actually end",
-    findings: ["stop-discipline", "stop-discipline-unknown"],
+    findings: ["stop-discipline", "stop-discipline-unknown",
+               /* Both are about the stop rather than the exit: one asks how
+                  much room the trades that worked needed before they worked,
+                  the other whether the stop moved when it was said to have. */
+               "adverse-excursion", "acked-stops"],
     fields: [],
   },
   {
     key: "exit", step: 5, name: "Exit",
     blurb: "How you get out of the ones that work",
     findings: ["exit-method", "scale-out-costly", "scale-out-good",
-               "scale-out-neutral"],
+               "scale-out-neutral",
+               /**
+                * The three path findings, which is what this stage was short
+                * of. Until the bars were read the only evidence here was the
+                * exit-reason comparison — since demoted to a watch, because
+                * it sorts trades by what they did rather than by how they
+                * were closed — and the scale-out check, which needs tranches.
+                * A book with neither left the stage saying nothing.
+                *
+                * They do NOT feed the cost column, deliberately. What a trade
+                * reached is not a baseline anybody set: nobody decided to
+                * sell the exact high, so "gave back 27.9R from the peak" is
+                * not R lost against a plan the way an overrun stop or an
+                * oversized position is. The rule for that column is the
+                * trader's own baseline or no number at all.
+                */
+               "capture-rate", "round-trips", "power-trades"],
     fields: ["exit_reason"],
   },
   {

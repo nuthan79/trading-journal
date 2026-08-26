@@ -849,6 +849,23 @@ function ProcessMap({ data, week }) {
               : null}
             {" "}against your own plan.
           </>
+        ) : data.worstStage && (data.worstStage.state === "weak" || data.worstStage.state === "watch") ? (
+          /**
+           * A THIRD CASE, BECAUSE TWO WERE NOT ENOUGH ONCE THE PATH FINDINGS
+           * ARRIVED.
+           *
+           * The fallback said "what is left is what you cannot see yet",
+           * which was true while only three stages had any evidence at all.
+           * Exit now rests on three real measurements and none of them is
+           * costed — deliberately, since what a trade reached is not a
+           * baseline anybody set — so a stage can be plainly weak with no
+           * number beside it. Saying nothing was found would be wrong; so
+           * would naming it a bottleneck, which is a claim about cost.
+           */
+          <>
+            Nothing here can be costed against a baseline you set. The stage carrying the
+            most anyway is <em>{data.worstStage.name.toLowerCase()}</em>.
+          </>
         ) : (
           <>No stage is measurably leaking. What is left is what you cannot see yet.</>
         )}
