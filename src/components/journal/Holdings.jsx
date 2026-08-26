@@ -27,12 +27,28 @@ const RISK_WARN_R = 5;
 const FREE_AT_R = 1.5;
 
 
-function Summary({ label, value, sub, tone, hint }) {
+/**
+ * `foot` is a second figure below a hairline, for the one tile that carries
+ * two readings of the same thing.
+ *
+ * It sits at the BOTTOM of the tile rather than under the sub-line, because
+ * the strip is a grid and every cell is already as tall as the tallest. Placed
+ * directly under the text it would push that tile down and leave the other
+ * five with a ragged gap at the base; pinned to the bottom, the rule lands on
+ * the same baseline the tile already ends on and the row stays level.
+ */
+function Summary({ label, value, sub, tone, hint, foot, footLabel }) {
   return (
     <div className="ps-sum" title={hint || undefined}>
       <div className="ps-sum-l">{label}</div>
       <div className={`ps-sum-v mono ${tone || ""}`}>{value}</div>
       {sub != null && <div className="ps-sum-s mono">{sub}</div>}
+      {foot != null && (
+        <div className="ps-sum-foot">
+          <span className="ps-sum-foot-v mono">{foot}</span>
+          <span className="ps-sum-foot-l">{footLabel}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -374,6 +390,17 @@ export default function Holdings({
 
     return {
       exposure: sum((r) => r.liveExposure),
+      /**
+       * What the shares still held actually cost — the cash that went out and
+       * has not come back yet.
+       *
+       * Uses each row's `buyValue`, which is entry price times the quantity
+       * STILL OPEN, so a position sold down to a third contributes a third of
+       * its cost. Anything else would compare a cost that includes sold shares
+       * against an exposure that does not, and the gap between the two tiles
+       * would read as a gain the book never made.
+       */
+      invested: sum((r) => r.buyValue),
       openRisk,
       unknownCount,
       unknownExposure,
@@ -390,6 +417,23 @@ export default function Holdings({
         : NaN,
       unrealised: sum((r) => r.unrealisedPnl),
       unrealisedR: sum((r) => r.unrealisedR),
+      /**
+       * Money already taken off the table from positions that are STILL OPEN.
+       *
+       * It belongs under Unrealised for the same reason invested belongs under
+       * Exposure: the two halves of one position. A holding sold down to a
+       * third has banked something real, and until now the only place that
+       * appeared was the per-row Banked column — so the strip could show a
+       * modest unrealised figure on a position that had already paid for
+       * itself twice over, with nothing to say so.
+       *
+       * NOT the same as Realised FY / all-time, which count trades that are
+       * finished. Nothing here is finished.
+       */
+      banked: rows
+        .filter((r) => r.qtyExited > 0 && isFinite(r.realisedPnl))
+        .reduce((a, r) => a + r.realisedPnl, 0),
+      bankedFrom: rows.filter((r) => r.qtyExited > 0 && isFinite(r.realisedPnl)).length,
     };
   }, [rows]);
 
@@ -607,13 +651,32 @@ export default function Holdings({
             label="Unrealised"
             value={rupee(totals.unrealised)}
             sub={isFinite(totals.unrealisedR) ? rfmt(totals.unrealisedR) : "—"}
-            hint="Money still on the table across every holding, and what it comes to in R. This
+            hint={`Money still on the table across every holding, and what it comes to in R. This
                   one IS weighted by size, so it will not match the Now at column added up —
-                  that column is where each price stands, which is not a thing you can sum."
-
+                  that column is where each price stands, which is not a thing you can sum.${
+                    totals.bankedFrom > 0
+                      ? ` Under the line is what part-selling has already banked out of ${
+                          totals.bankedFrom} position${totals.bankedFrom === 1 ? "" : "s"} that
+                          are still open — real money, on trades that are not finished.`
+                      : ""}`}
             tone={totals.unrealised >= 0 ? "pos" : "neg"}
+            /* No line at all when nothing has been sold down. A rule under a
+               ₹0 is a reading somebody has to make, and there is nothing to
+               read. */
+            foot={totals.bankedFrom > 0 ? rupee(totals.banked) : null}
+            footLabel="banked"
           />
-          <Summary label="Exposure" value={rupee(totals.exposure)} sub="at CMP" />
+          <Summary
+            label="Exposure"
+            value={rupee(totals.exposure)}
+            sub="at CMP"
+            foot={rupee(totals.invested)}
+            footLabel="invested"
+            hint="What the open book is worth at the last price fetched, and under it what those
+                  same shares cost you. The difference between the two is the Unrealised figure
+                  beside it. A position sold in part counts only the shares still held, on both
+                  lines."
+          />
           <Summary
             label={`Realised ${realised.fyLabel}`}
             value={rupee(realised.year)}
@@ -1019,8 +1082,28 @@ export default function Holdings({
            gives up 2px rather than the padding giving up more: shrinking the
            gutters instead would run the numbers into the dividing rules and
            make the row look denser than it reads. */
-        .ps-sum { padding: 11px 13px; border-right: 1px solid var(--rule); min-width: 0; }
+        .ps-sum {
+          padding: 11px 13px; border-right: 1px solid var(--rule); min-width: 0;
+          /* Column so a tile carrying a foot can push it to the bottom edge
+             while the label and value stay at the top. */
+          display: flex; flex-direction: column;
+        }
         .ps-sum:last-child { border-right: 0; }
+        /* margin-top:auto is what pins it to the base of the cell, so the rule
+           lines up with where every other tile already ends. */
+        .ps-sum-foot {
+          margin-top: auto; padding-top: 7px;
+          border-top: 1px solid var(--rule);
+          display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap;
+        }
+        .ps-sum-foot-v {
+          font-size: 13px; font-weight: 500; color: var(--ink2);
+          font-variant-numeric: tabular-nums; white-space: nowrap;
+        }
+        .ps-sum-foot-l {
+          font-size: 9px; font-weight: 600; letter-spacing: 0.1em;
+          text-transform: uppercase; color: var(--ink3);
+        }
         .ps-sum-l {
           font-size: 9px; font-weight: 600; letter-spacing: 0.1em;
           text-transform: uppercase; color: var(--ink3);
