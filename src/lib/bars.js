@@ -22,6 +22,26 @@
 
 const HOSTS = ["query1.finance.yahoo.com", "query2.finance.yahoo.com"];
 
+export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * WHAT 429 ACTUALLY MEANT HERE, BECAUSE IT WAS NOT A BLOCKED DEPLOYMENT.
+ *
+ * The first real run returned 429 for all ninety-seven symbols, which reads
+ * like Yahoo refusing the host — except the market-regime strip at the top of
+ * the same screen had just loaded, and that is the same v8 chart endpoint from
+ * the same server seconds earlier. One request works. Twelve back to back do
+ * not.
+ *
+ * So the fix is pace, not a different source: a gap between symbols, a gap
+ * before trying the second host, and one retry after a longer wait. It makes a
+ * cold pass slow, which costs nothing that matters — every bar fetched is
+ * cached in `price_bars` for every user of the deployment, so this is a
+ * one-off per symbol and never happens again.
+ */
+const RETRY_AFTER_MS = 2500;
+const HOST_GAP_MS = 400;
+
 const BROWSER_HEADERS = {
   "User-Agent":
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
@@ -79,11 +99,20 @@ export async function fetchBars({ symbol, exchange = "NSE", from, to }) {
   }
 
   let lastErr = null;
-  for (const host of HOSTS) {
+  /* Both hosts, then both again after a wait. The second pass is what turns a
+     throttle into a delay instead of a failure. */
+  const attempts = [...HOSTS, ...HOSTS];
+
+  for (let i = 0; i < attempts.length; i++) {
+    const host = attempts[i];
+    if (i > 0) await sleep(i === HOSTS.length ? RETRY_AFTER_MS : HOST_GAP_MS);
     try {
+      /* No `events=div,split`. The adjusted close comes back without it, the
+         split and dividend EVENTS are not read here, and it was the one thing
+         in this URL the working market-regime request does not send. */
       const url =
         `https://${host}/v8/finance/chart/${encodeURIComponent(ticker)}` +
-        `?period1=${p1}&period2=${p2}&interval=1d&events=div%2Csplit`;
+        `?period1=${p1}&period2=${p2}&interval=1d`;
       const res = await fetch(url, { headers: BROWSER_HEADERS, cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 

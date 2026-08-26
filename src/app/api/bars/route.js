@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { fetchBars, tickerFor } from "@/lib/bars";
+import { fetchBars, tickerFor, sleep } from "@/lib/bars";
 import { userFromRequest } from "@/lib/apiAuth";
 import { rateLimit, tooMany } from "@/lib/rateLimit";
 
@@ -108,6 +108,21 @@ export async function POST(req) {
   const out = {};
   const skipped = [];
 
+  /**
+   * A gap between symbols, because the burst is what gets refused.
+   *
+   * One chart request from this server succeeds — the market-regime strip
+   * proves it on every page load. Twelve in a row returned 429 for all
+   * twelve. Six hundred milliseconds apart puts a cold batch at roughly ten
+   * seconds of waiting plus the fetches themselves, which is why maxDuration
+   * above is 60 rather than the default ten.
+   *
+   * Only between fetches that actually happen: a cache hit costs nothing and
+   * must not be slowed down to match.
+   */
+  const SYMBOL_GAP_MS = 600;
+  let fetched = 0;
+
   for (const it of items) {
     const key = `${it.symbol}:${it.exchange}`;
     /* Refused rather than guessed. Not the exchange — both work — but a
@@ -144,6 +159,8 @@ export async function POST(req) {
 
     if (covers) { out[key] = stored; continue; }
 
+    if (fetched > 0) await sleep(SYMBOL_GAP_MS);
+    fetched++;
     const { bars, error } = await fetchBars(it);
     if (error || !bars.length) {
       /* Whatever was cached is better than nothing, and an upstream that is

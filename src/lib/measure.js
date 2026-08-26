@@ -170,8 +170,28 @@ export async function measurePaths(trades, onProgress, opts = {}) {
     const bars = payload.bars || {};
     /* Why the server could not read each one, kept so the caller can say
        something better than a count. */
+    let throttled = 0;
     for (const s of payload.skipped || []) {
-      if (s?.why) reasons.set(s.why, (reasons.get(s.why) || 0) + 1);
+      if (!s?.why) continue;
+      reasons.set(s.why, (reasons.get(s.why) || 0) + 1);
+      if (/429/.test(s.why)) throttled++;
+    }
+
+    /**
+     * STOP WHEN A WHOLE BATCH COMES BACK THROTTLED.
+     *
+     * Carrying on through the remaining batches does not just fail — it
+     * deepens the block, so the next attempt starts worse than this one did.
+     * A single symbol refused among eleven that worked is noise and is not
+     * this; every symbol refused is the upstream saying wait.
+     *
+     * Everything measured before this point is already saved, so stopping
+     * costs nothing but the rest of this pass.
+     */
+    if (throttled >= batch.length && Object.keys(bars).length === 0) {
+      stopped = "The price source is rate-limiting this deployment. " +
+        "Everything read so far is saved — leave it a few minutes and press again.";
+      break;
     }
     const patches = [];
 
