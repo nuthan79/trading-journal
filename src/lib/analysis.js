@@ -131,6 +131,10 @@ const LEDE_ACK =
   "Trades where you marked the breakeven reminder as dealt with, against " +
   "where they actually closed — and whether the price ever traded at " +
   "breakeven for you to get out at.";
+const LEDE_ADVERSE =
+  "Your winning trades, and how far each one closed against you before it " +
+  "turned. Measured against the stop you set, so \u22121R is the line the " +
+  "trade was never meant to cross.";
 const LEDE_FEELING =
   "Your trades grouped by how the day felt when you took them, and what each " +
   "group returned.";
@@ -2134,7 +2138,15 @@ function roundTrips(closed) {
       ],
       chart: {
         type: "strip", unit: "R", threshold: FREE_AT_R,
-        thresholdLabel: `${FREE_AT_R}R · risk free`, worseIsLower: false,
+        /* Not "1.5R · risk free": the chart appends the threshold and its unit
+           itself, so naming it here printed "1.5R · risk free · 1.5R". */
+        thresholdLabel: "risk free", worseIsLower: false,
+        /* And not "past your stop", which is what this said before the caption
+           could be overridden — a sentence about the stop, over a line that
+           marks the opposite end of the trade. */
+        pastLabel: "reached this, then came back",
+        leftLabel: "least in front",
+        rightLabel: "furthest in front",
         points: back
           .map((t) => ({ v: +t.mfe_r.toFixed(2), label: t.symbol, past: true }))
           .sort((a, b) => b.v - a.v),
@@ -2192,6 +2204,114 @@ function powerTrades(closed) {
       },
       verdict: "In a breakout book these are the trades that pay for the losers, so what " +
                "happens to them matters more than what happens to the average one." });
+}
+
+/** Within this much of the stop is a near miss — a quarter of the distance
+ *  the trade was allowed to travel against you, and close enough that a
+ *  slightly worse day would have ended it. */
+const NEAR_STOP_R = -0.75;
+
+/**
+ * How far the winners went against you before they worked.
+ *
+ * THE ONE THING THIS MUST NOT SAY IS "WIDEN YOUR STOP", and the temptation is
+ * strong because the chart looks exactly like an argument for it. Widening
+ * would have saved some of these AND let every loser run further, and this
+ * data cannot see the second half at all: the journal reads bars from entry to
+ * exit, so once a trade stopped out there is no record of what it did
+ * afterwards. Half a ledger is not a case for changing a rule — the same
+ * mistake the exit-method card was making, in a new place.
+ *
+ * WHAT IT CAN SAY IS HOW CLOSE-RUN THE RECORD IS. A book where a third of the
+ * winners nearly stopped out is one where the same method, on the same trades,
+ * could have printed a very different number. That is a fact about how settled
+ * the expectancy is, it needs no counterfactual, and nothing else on the page
+ * measures it.
+ */
+function adverseExcursion(closed) {
+  const rows = measured(closed).filter((t) => isFinite(t.mae_r));
+  const winners = rows.filter((t) => t.r > 0);
+  if (winners.length < 12) return null;
+
+  const maes = winners.map((t) => t.mae_r);
+  const med = median(maes);
+  const near = winners.filter((t) => t.mae_r <= NEAR_STOP_R);
+  /* A daily CLOSE below the stop on a trade that still won means the stop was
+     not in the market that evening — worth reporting as a fact, without any
+     guess about whether it was a mental stop, a moved one, or one never
+     placed. */
+  const below = winners.filter((t) => t.mae_r <= -1);
+  const nearPct = +((near.length / winners.length) * 100).toFixed(0);
+
+  const chart = {
+    type: "strip",
+    unit: "R",
+    threshold: -1,
+    thresholdLabel: "your stop",
+    worseIsLower: true,
+    pastLabel: "closed below it and still won",
+    leftLabel: "deeper against you",
+    rightLabel: "never went against you · 0R",
+    points: winners
+      .map((t) => ({ v: +t.mae_r.toFixed(2), label: t.symbol, past: t.mae_r <= -1 }))
+      .sort((a, b) => a.v - b.v),
+    axisNote: "how far each winning trade closed against you before it turned",
+  };
+
+  const CANNOT =
+    ` This is not a case for a wider stop, and the chart should not be read as one. A wider stop ` +
+    `would have saved some of these and also let every loser run further, and that second half ` +
+    `cannot be measured here: the journal reads prices from entry to exit, so once a trade stopped ` +
+    `out there is no record of what it would have done next.`;
+
+  const belowNote = below.length
+    ? ` ${below.length} of them closed a day BELOW the stop and still finished as winners, which ` +
+      `means the stop was not working in the market those evenings.`
+    : "";
+
+  if (nearPct >= 25) {
+    return F("watch", "adverse-excursion",
+      "A lot of your winners nearly stopped out first",
+      `${near.length} of your ${winners.length} measured winners closed at ${Math.abs(NEAR_STOP_R)}R ` +
+      `or worse against you at some point before turning — inside the last quarter of the distance ` +
+      `to your stop. The typical winner went ${Math.abs(med).toFixed(2)}R against you first.` +
+      belowNote + CANNOT +
+      ` What it does say is how close-run the record is: on the same method and the same trades, a ` +
+      `slightly worse few days would have turned a good part of that win rate into losses. The ` +
+      `expectancy above is less settled than its sample size suggests.`,
+      { measuredWinners: winners.length, medianAdverseR: +med.toFixed(2),
+        withinQuarterOfStop: near.length, withinQuarterPct: nearPct,
+        closedBelowStopAndWon: below.length },
+      { magnitude: nearPct,
+        lede: LEDE_ADVERSE,
+        figures: [
+          { value: `${near.length} of ${winners.length}`, label: `went past ${Math.abs(NEAR_STOP_R)}R against you first` },
+          { value: `${String(med.toFixed(2)).replace("-", "−")}R`, label: "typical winner's worst close" },
+        ],
+        chart,
+        verdict: "Nothing to change on this evidence — the half of the question that would " +
+                 "justify a change is the half this cannot see. Worth holding beside the " +
+                 "expectancy figure as a reminder of how much of it was close." });
+  }
+
+  return F("good", "adverse-excursion",
+    "Your winners tend to work quickly",
+    `The typical winning trade closed no worse than ${Math.abs(med).toFixed(2)}R against you before ` +
+    `it turned, and only ${near.length} of ${winners.length} got within a quarter of an R of the ` +
+    `stop.` + belowNote + ` Entries that go green early are worth more than they look: the trade ` +
+    `spends less time where a bad day can end it, and the win rate rests on less luck.`,
+    { measuredWinners: winners.length, medianAdverseR: +med.toFixed(2),
+      withinQuarterOfStop: near.length, withinQuarterPct: nearPct,
+      closedBelowStopAndWon: below.length },
+    { magnitude: nearPct,
+      lede: LEDE_ADVERSE,
+      figures: [
+        { value: `${String(med.toFixed(2)).replace("-", "−")}R`, label: "typical winner's worst close" },
+        { value: `${near.length}`, label: `got within ${Math.abs(NEAR_STOP_R)}R of the stop` },
+      ],
+      chart,
+      verdict: "Nothing to fix. This is the quiet half of good timing — not how far the " +
+               "winners run, but how little they have to survive first." });
 }
 
 /**
@@ -2436,6 +2556,7 @@ export function reviewThesis(closed, findings, stats) {
     "round-trips": "what happens once a trade is in front",
     "power-trades": "what you do with the ones that run",
     "acked-stops": "whether the stops move when you say they have",
+    "adverse-excursion": "how much your winners had to survive first",
     "revenge-cadence": "how soon you re-enter",
   };
   const worst = findings.find((f) => f.severity === "critical")
@@ -2486,6 +2607,7 @@ export function reviewFindings(
   both((c) => captureRate(c));
   both((c) => roundTrips(c));
   both((c) => powerTrades(c));
+  both((c) => adverseExcursion(c));
   both((c) => acknowledgedStops(c));
   /**
    * NOT WINDOWED, AND THAT IS THE POINT OF IT.

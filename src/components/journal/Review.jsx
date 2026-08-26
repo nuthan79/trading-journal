@@ -336,11 +336,37 @@ function StripChart({ data, color }) {
           is decoration, and the count in it is the entire finding. */}
       <rect x={PAD} y={14} width={Math.max(0, tx - PAD)} height={BASE + 6 - 14}
             fill={color} opacity="0.08" />
-      {past > 0 && (
-        <text x={PAD + 6} y={28} className="rv-chart-val" fill={color}>
-          {past} past your stop
-        </text>
-      )}
+      {/* The three captions were written for the stop-discipline chart and
+          hardcoded into it. This shape now also plots how far trades went
+          AGAINST you before working, where "past your stop" and "bigger
+          losses" both describe the wrong thing — a dip is not a loss. Each
+          falls back to the original wording, so the chart that had them
+          reads exactly as it did. */}
+      {past > 0 && (() => {
+        const text = data.pastLabel
+          ? `${past} ${data.pastLabel}` : `${past} past your stop`;
+        /**
+         * The caption sits INSIDE the tint when the tint is wide enough to
+         * hold it, and beside it when it is not.
+         *
+         * It was always pinned to the left edge, which held while the only
+         * chart of this shape tinted most of its width — a book with a lot of
+         * losses past the stop. Plotting how far winners went AGAINST you
+         * tints a sliver instead, and the caption ran straight through the
+         * threshold line and out the other side.
+         *
+         * 6.2px a character is measured off the 11.5px semibold face this
+         * uses; it only has to be close enough to choose a side.
+         */
+        const w = text.length * 6.2;
+        const inside = tx - PAD > w + 12;
+        return (
+          <text x={inside ? PAD + 6 : Math.min(tx + 8, W - PAD - w)} y={28}
+                className="rv-chart-val" fill={color}>
+            {text}
+          </text>
+        );
+      })()}
       <line x1={PAD} x2={W - PAD} y1={BASE + 6} y2={BASE + 6}
             stroke="var(--rule)" strokeWidth="1" />
       <line x1={tx} x2={tx} y1={12} y2={BASE + 14} stroke={color}
@@ -356,9 +382,11 @@ function StripChart({ data, color }) {
           <title>{`${p.label}: ${String(p.v).replace("-", "\u2212")}${data.unit}`}</title>
         </circle>
       ))}
-      <text x={PAD} y={H - 22} className="rv-chart-lbl">bigger losses</text>
+      <text x={PAD} y={H - 22} className="rv-chart-lbl">
+        {data.leftLabel || "bigger losses"}
+      </text>
       <text x={W - PAD} y={H - 22} textAnchor="end" className="rv-chart-lbl">
-        {`break even · 0${data.unit}`}
+        {data.rightLabel || `break even · 0${data.unit}`}
       </text>
     </svg>
   );
