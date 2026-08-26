@@ -8,6 +8,7 @@ import { signedPct, rupee } from "@/lib/format";
 import Link from "next/link";
 import { setupGaps } from "@/lib/gaps";
 import { processStages, recentCompliance } from "@/lib/bottleneck";
+import { needsMeasuring, measurePaths } from "@/lib/measure";
 
 /**
  * Behavioural review — arithmetic findings from the trader's own closed
@@ -930,7 +931,96 @@ function ProcessMap({ data, week }) {
   );
 }
 
-export default function Review({ closed, stats, all, diary }) {
+/**
+ * The offer to read the price path, shown only while there is one to read.
+ *
+ * WHY IT IS A BUTTON AND NOT AUTOMATIC. It fetches history for every symbol in
+ * the book from an unofficial endpoint that rate-limits, and doing that
+ * unasked on page load would mean a screen that sometimes takes a minute to
+ * settle for reasons the reader cannot see. Asking also makes the cost
+ * legible: this reads market history, it writes to your trades, and you
+ * started it.
+ *
+ * IT SAYS WHAT IT CANNOT DO BEFORE IT RUNS. BSE listings and trades carrying
+ * an assumed stop are skipped, and both are common enough that discovering it
+ * afterwards — as a count that quietly does not add up — would read as a bug.
+ */
+function MeasureOffer({ trades, onMeasured }) {
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(null);
+  const [result, setResult] = useState(null);
+
+  const todo = useMemo(() => needsMeasuring(trades), [trades]);
+  const skippable = useMemo(() => {
+    const closedOnes = (trades || []).filter((t) => t.status === "closed" && !t.path_to);
+    return {
+      bse: closedOnes.filter((t) => t.exchange === "BSE").length,
+      assumed: closedOnes.filter((t) => t.exchange !== "BSE" && t.stop_source === "assumed").length,
+    };
+  }, [trades]);
+
+  if (!todo.length && !result) return null;
+
+  const run = async () => {
+    setBusy(true); setResult(null);
+    try {
+      const r = await measurePaths(trades, setProgress);
+      setResult(r);
+      if (r.measured > 0) await onMeasured?.();
+    } catch (err) {
+      setResult({ measured: 0, skipped: 0, stopped: err?.message || "Could not read price history." });
+    } finally {
+      setBusy(false); setProgress(null);
+    }
+  };
+
+  return (
+    <section className="rv-measure">
+      <div className="eyebrow" style={{ marginBottom: 6 }}>Not measured yet</div>
+      <p className="rv-measure-p">
+        The journal knows what these trades returned, not what they offered along the way.
+        Reading the daily closes for each one adds the checks that compare a trade against
+        its own best price — how much of a move you kept, which trades got in front and came
+        back, and which ran hardest in their first week.
+      </p>
+      <div className="rv-measure-row">
+        <button className="btn" onClick={run} disabled={busy}>
+          {busy
+            ? progress?.phase === "saving" ? "Saving…" : "Reading price history…"
+            : `Measure ${todo.length} trade${todo.length === 1 ? "" : "s"}`}
+        </button>
+        {busy && progress?.total > 0 && (
+          <span className="rv-dim">{progress.done} of {progress.total} symbols</span>
+        )}
+        {!busy && (skippable.bse > 0 || skippable.assumed > 0) && (
+          <span className="rv-dim">
+            {skippable.bse > 0 && `${skippable.bse} on BSE cannot be read — a scrip code is not a
+              price-history ticker`}
+            {skippable.bse > 0 && skippable.assumed > 0 && " · "}
+            {skippable.assumed > 0 && `${skippable.assumed} carry an assumed stop, so there is no
+              real 1R to measure against`}
+          </span>
+        )}
+      </div>
+      {result && (
+        <p className="rv-measure-p" style={{ marginTop: 10 }}>
+          {result.measured > 0
+            ? `Measured ${result.measured} trade${result.measured === 1 ? "" : "s"}.`
+            : "Nothing new was measured."}
+          {result.skipped > 0 && ` ${result.skipped} could not be read.`}
+          {result.stopped && (
+            <>
+              {" "}<b>Stopped early:</b> {result.stopped} Everything measured so far is saved —
+              running it again picks up the rest.
+            </>
+          )}
+        </p>
+      )}
+    </section>
+  );
+}
+
+export default function Review({ closed, stats, all, diary, onMeasured }) {
   /**
    * Setup fields the form no longer asks for by default.
    *
@@ -1075,6 +1165,8 @@ export default function Review({ closed, stats, all, diary }) {
           </span>
         )}
       </div>
+
+      <MeasureOffer trades={all || closed} onMeasured={onMeasured} />
 
       <ProcessMap data={process} week={week} />
 
@@ -1271,6 +1363,22 @@ export default function Review({ closed, stats, all, diary }) {
           border: 1px solid var(--rule); background: var(--card);
           border-radius: 3px; padding: 13px 15px; margin-bottom: 18px;
         }
+        /* ---- the offer to read price history ------------------------ */
+        .rv-measure {
+          border: 1px solid var(--rule); border-left: 3px solid var(--brass);
+          background: var(--card); border-radius: 3px;
+          padding: 13px 15px; margin-bottom: 18px;
+        }
+        .rv-measure-p {
+          font-size: 12.5px; line-height: 1.65; color: var(--ink2);
+          margin: 0; max-width: var(--note-w);
+        }
+        .rv-measure-row {
+          display: flex; align-items: center; gap: 12px;
+          flex-wrap: wrap; margin-top: 11px;
+        }
+        .rv-measure-row .rv-dim { font-size: 11.5px; max-width: 62ch; line-height: 1.5; }
+
         .rv-gap-ok { color: var(--long); }
         .rv-gaps-lead {
           font-size: 11.5px; color: var(--ink3); line-height: 1.6;

@@ -1040,6 +1040,60 @@ export async function saveStops(rows, onProgress) {
   return done;
 }
 
+/**
+ * What each trade reached, written back after the bars have been read.
+ *
+ * Same shape as saveStops and for the same reasons — one row per trade means
+ * one statement per trade, chunked and in parallel, with allSettled so a
+ * single row Postgres will not take cannot discard the four hundred that
+ * saved beside it.
+ *
+ * A `null` here is a MEASUREMENT, not an absence: it says the bars were read
+ * and this trade never became risk-free, or never gapped, or could not be
+ * decided. `path_to` is what separates "measured, nothing to report" from
+ * "not measured yet" — every caller checks that column and not `mfe_r`.
+ */
+export async function savePaths(rows, onProgress) {
+  const patchFor = (r) => ({
+    mfe_r: r.mfe_r ?? null,
+    mae_r: r.mae_r ?? null,
+    mfe_days: r.mfe_days ?? null,
+    became_free_on: r.became_free_on ?? null,
+    is_power: r.is_power ?? null,
+    gapped_breakeven: r.gapped_breakeven ?? null,
+    path_to: r.path_to ?? null,
+  });
+
+  track("paths_measured", { n: rows.length });
+
+  let done = 0;
+  const failures = [];
+
+  for (let i = 0; i < rows.length; i += STOP_CHUNK) {
+    const chunk = rows.slice(i, i + STOP_CHUNK);
+    const results = await Promise.allSettled(
+      chunk.map((r) =>
+        supabase.from("trades").update(patchFor(r)).eq("id", r.id)
+          .then(({ error }) => { if (error) throw error; })
+      )
+    );
+    results.forEach((res, j) => {
+      if (res.status === "rejected") failures.push({ row: chunk[j], error: res.reason });
+      else done++;
+    });
+    onProgress?.(Math.min(i + STOP_CHUNK, rows.length), rows.length);
+  }
+
+  if (failures.length) {
+    const first = failures[0].error;
+    throw new Error(
+      (migrationHint(first) || first?.message || "Some trades could not be saved") +
+      ` — ${done} of ${rows.length} saved, ${failures.length} failed.`
+    );
+  }
+  return done;
+}
+
 /* -------------------------------- diary ---------------------------- */
 
 export async function listDiary() {

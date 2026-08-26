@@ -1,4 +1,8 @@
 import { scaleOutFinding } from "./positions";
+/* The thresholds the path is measured against, imported rather than repeated:
+   two definitions of "risk free" is how a badge on Holdings and a finding here
+   come to disagree on screen about the same trade. */
+import { FREE_AT_R, POWER_R, POWER_DAYS } from "./path";
 /* The one finding that has to say a rupee figure mid-sentence. Everything
    else here returns numbers and lets the component format them, which is not
    available inside a prose string — see the house rule in CLAUDE.md. */
@@ -116,6 +120,17 @@ const LEDE_CHARGES =
   "What it actually cost you to place these trades, and how many of them have " +
   "no cost recorded at all. Every net figure on the app is measured after " +
   "charges, so a trade with none looks more profitable than it was.";
+const LEDE_CAPTURE =
+  "Every trade against its own best closing price while you held it. Not one " +
+  "group of trades against another — the same trade, at its high point and at " +
+  "the end.";
+const LEDE_POWER =
+  "The trades that were already well in front within a week of buying them, " +
+  "and what each one finished at.";
+const LEDE_ACK =
+  "Trades where you marked the breakeven reminder as dealt with, against " +
+  "where they actually closed — and whether the price ever traded at " +
+  "breakeven for you to get out at.";
 const LEDE_FEELING =
   "Your trades grouped by how the day felt when you took them, and what each " +
   "group returned.";
@@ -1986,6 +2001,256 @@ function duplicatePositions(all) {
 }
 
 /* ==================================================================== */
+/*  What the trades reached                                             */
+/* ==================================================================== */
+
+/**
+ * THE ONLY COMPARISONS ON THIS SCREEN THAT ARE IMMUNE TO THE SORTING PROBLEM.
+ *
+ * Every group-versus-group finding here carries the same hazard, and the
+ * exit-method card had to be rewritten because of it: split trades by
+ * something the trade's own behaviour decided, and the groups differ because
+ * the trades differ, not because the choice did.
+ *
+ * These do not split anything. Each trade is measured against ITSELF — what it
+ * reached against what was taken from it — which is the shape `scaleOutFinding`
+ * uses and the reason that one is allowed a verdict. One population, one trade
+ * at a time, nothing sorted.
+ *
+ * All of it needs `path_to`, which only exists once the bars have been read.
+ * Silent until then rather than partial: a capture ratio over the third of a
+ * book that happened to be measured is a number about that third.
+ */
+
+/** Below this the figures describe a handful of trades rather than a habit. */
+const MIN_MEASURED = 15;
+
+const measured = (closed) =>
+  closed.filter((t) => t.path_to && isFinite(t.mfe_r) && isFinite(t.r));
+
+/**
+ * How much of what the trades offered actually came back.
+ *
+ * A HUNDRED PERCENT IS NOT THE TARGET AND THE CARD MUST NOT IMPLY IT IS.
+ * Capturing the whole of every peak means selling the exact high every time,
+ * which nobody does and no method tries to. So this reports the shape of the
+ * distribution rather than scoring the ratio: the interesting trades are the
+ * ones that gave back most of a real move, and they are countable without any
+ * claim about what the number ought to be.
+ */
+function captureRate(closed) {
+  const rows = measured(closed).filter((t) => t.mfe_r > 0.5);
+  if (rows.length < MIN_MEASURED) return null;
+
+  const offered = rows.reduce((a, t) => a + t.mfe_r, 0);
+  const taken = rows.reduce((a, t) => a + t.r, 0);
+  if (!(offered > 0)) return null;
+  const pct = +((taken / offered) * 100).toFixed(0);
+
+  const band = (t) => {
+    const k = t.r / t.mfe_r;
+    return k >= 0.6 ? "Kept most of it"
+      : k >= 0.3 ? "Kept about half"
+      : k > 0 ? "Gave most of it back"
+      : "Gave all of it back";
+  };
+  const ORDER = ["Kept most of it", "Kept about half", "Gave most of it back", "Gave all of it back"];
+  const counts = ORDER.map((label) => ({
+    label, value: rows.filter((t) => band(t) === label).length,
+  }));
+  const gaveAll = counts[3].value;
+
+  return F("watch", "capture-rate",
+    "What your trades offered, against what you took",
+    `Across ${rows.length} measured trades the best closing price on each came to ${offered.toFixed(1)}R ` +
+    `between them, and you finished with ${taken.toFixed(1)}R — ${pct}% of it. Nobody keeps all of a ` +
+    `peak; selling the exact high every time is not a method anyone has. What is worth looking at is ` +
+    `the tail: ${gaveAll} of these were up at some point and finished at or below where they started.`,
+    { tradesMeasured: rows.length, offeredR: +offered.toFixed(1), takenR: +taken.toFixed(1),
+      capturePct: pct, gaveItAllBack: gaveAll },
+    { magnitude: 100 - pct,
+      lede: LEDE_CAPTURE,
+      figures: [
+        { value: `${pct}%`, label: "of the peak, kept" },
+        { value: `${gaveAll}`, label: "gave all of it back" },
+      ],
+      chart: {
+        type: "bars", unit: "",
+        rows: counts.map((c) => ({ ...c, worst: c.label === "Gave all of it back" })),
+        axisNote: "trades, by how much of their best close they finished with",
+      },
+      verdict: "There is no right number here, which is why it is not scored. The row " +
+               "that matters is the last one — those trades were free and ended up costing." });
+}
+
+/**
+ * Trades that reached the point where the stop could go to breakeven, and
+ * finished at or below entry anyway.
+ *
+ * DELIBERATELY NOT A VERDICT. The app suggests moving a stop to breakeven at
+ * 1.5R; that is a suggestion, and a trader running their own tested exit rules
+ * has every right to ignore it. Calling this indiscipline would be the journal
+ * marking somebody against its own method rather than theirs — the same error
+ * that had to come out of the exit-method card. So it counts an OUTCOME. What
+ * to do about it is the reader's call, and the card says so.
+ */
+function roundTrips(closed) {
+  const rows = measured(closed);
+  if (rows.length < MIN_MEASURED) return null;
+
+  const free = rows.filter((t) => t.became_free_on);
+  if (free.length < 5) return null;
+  const back = free.filter((t) => t.r <= 0);
+  if (!back.length) {
+    return F("good", "round-trips",
+      "Nothing that got free came back",
+      `${free.length} of your measured trades closed at or past ${FREE_AT_R}R at some point, and none ` +
+      `of them finished at a loss. Whatever you are doing once a trade is in front, it is holding.`,
+      { measuredTrades: rows.length, becameFree: free.length, roundTripped: 0 },
+      { lede: LEDE_CAPTURE, magnitude: 0,
+        figures: [{ value: `${free.length}`, label: `reached ${FREE_AT_R}R` }, { value: "0", label: "came back" }],
+        verdict: "Nothing to change. This is the failure mode that quietly costs the most " +
+                 "and it is not happening to you." });
+  }
+
+  const pct = +((back.length / free.length) * 100).toFixed(0);
+  const peak = back.reduce((a, t) => a + t.mfe_r, 0);
+  const cost = back.reduce((a, t) => a + (t.mfe_r - t.r), 0);
+
+  return F(pct >= 30 ? "warning" : "watch", "round-trips",
+    "Some trades got free, then came back",
+    `${back.length} of the ${free.length} trades that reached ${FREE_AT_R}R finished at or below where ` +
+    `they started — ${pct}% of them. Between them they were up ${peak.toFixed(1)}R at their best closes ` +
+    `and gave back ${cost.toFixed(1)}R from there. This is an outcome, not a verdict: the app suggests ` +
+    `moving a stop to breakeven once a trade is ${FREE_AT_R}R in front, but that is a suggestion, and ` +
+    `your own exit rules may deliberately hold the original stop longer.`,
+    { measuredTrades: rows.length, becameFree: free.length, roundTripped: back.length,
+      roundTrippedPct: pct, peakRGivenUp: +cost.toFixed(1) },
+    { magnitude: pct,
+      lede: LEDE_CAPTURE,
+      figures: [
+        { value: `${back.length} of ${free.length}`, label: `reached ${FREE_AT_R}R, finished at or below entry` },
+        { value: `${cost.toFixed(1)}R`, label: "given back from the peak" },
+      ],
+      chart: {
+        type: "strip", unit: "R", threshold: FREE_AT_R,
+        thresholdLabel: `${FREE_AT_R}R · risk free`, worseIsLower: false,
+        points: back
+          .map((t) => ({ v: +t.mfe_r.toFixed(2), label: t.symbol, past: true }))
+          .sort((a, b) => b.v - a.v),
+        axisNote: "how far in front each of these got, at the close, before it came back",
+      },
+      verdict: `Worth knowing which of these were gap-downs and which drifted back through ` +
+               `entry with the price there to be taken. The journal can tell them apart now, ` +
+               `and only the second kind is a decision.` });
+}
+
+/**
+ * The fastest movers, and what became of them.
+ *
+ * A breakout book is paid for by a small number of trades that work
+ * immediately, so what happens to those is worth its own card. Same-trade
+ * again: each of these is measured against its own peak, never against the
+ * trades that did not run.
+ */
+function powerTrades(closed) {
+  const rows = measured(closed);
+  if (rows.length < MIN_MEASURED) return null;
+
+  const power = rows.filter((t) => t.is_power);
+  if (power.length < 5) return null;
+
+  const kept = power.filter((t) => t.r >= POWER_R * 0.5).length;
+  const cut = power.filter((t) => t.r <= 1).length;
+  const avgPeak = mean(power.map((t) => t.mfe_r));
+  const avgTook = mean(power.map((t) => t.r));
+
+  return F(cut / power.length >= 0.4 ? "warning" : "watch", "power-trades",
+    "The ones that moved fastest",
+    `${power.length} of your trades closed at or past ${POWER_R}R within ${POWER_DAYS} sessions of ` +
+    `entry. Those are the trades a breakout method is built to catch, and they averaged ` +
+    `${avgPeak.toFixed(1)}R at their best close against ${avgTook.toFixed(1)}R taken. ` +
+    (cut > 0
+      ? `${cut} of them finished at 1R or less.`
+      : `None of them finished at 1R or less.`),
+    { measuredTrades: rows.length, powerTrades: power.length,
+      avgPeakR: +avgPeak.toFixed(2), avgTakenR: +avgTook.toFixed(2), finishedUnder1R: cut },
+    { magnitude: power.length ? +((cut / power.length) * 100).toFixed(0) : 0,
+      lede: LEDE_POWER,
+      figures: [
+        { value: `${power.length}`, label: `hit ${POWER_R}R inside ${POWER_DAYS} sessions` },
+        { value: `${avgPeak.toFixed(1)}R`, label: "average best close" },
+        { value: `${avgTook.toFixed(1)}R`, label: "average taken" },
+      ],
+      chart: {
+        type: "bars", unit: "",
+        rows: [
+          { label: `Kept ${(POWER_R * 0.5).toFixed(1)}R or more`, value: kept },
+          { label: "Finished at 1R or less", value: cut, worst: true },
+        ],
+        axisNote: `trades that reached ${POWER_R}R within ${POWER_DAYS} sessions`,
+      },
+      verdict: "In a breakout book these are the trades that pay for the losers, so what " +
+               "happens to them matters more than what happens to the average one." });
+}
+
+/**
+ * The one judgement, and it is the trader's own.
+ *
+ * `breakeven_ack_at` is them clicking "I have moved this stop to breakeven at
+ * my broker" — migration 017, which touches nothing else. So a position that
+ * was acked and then closed below entry, on a session that did NOT gap through
+ * it, is the journal reporting a difference between what they said they had
+ * done and where the trade finished. The app never asserts the stop should
+ * have been moved; only that they said it was.
+ *
+ * A null gap reading is not a gap and not a drift — it is unknown, and unknown
+ * is excluded. False is the value that accuses somebody.
+ */
+function acknowledgedStops(closed) {
+  const rows = measured(closed).filter((t) => t.breakeven_ack_at);
+  if (rows.length < 5) return null;
+
+  const broke = rows.filter((t) => t.r < 0 && t.gapped_breakeven === false);
+  const gapped = rows.filter((t) => t.r < 0 && t.gapped_breakeven === true);
+
+  if (!broke.length) {
+    return F("good", "acked-stops",
+      "The stops you said you moved, held",
+      `On ${rows.length} trades you marked the breakeven reminder as dealt with. None of them then ` +
+      `closed below entry on a session where entry was there to be taken` +
+      (gapped.length ? `; ${gapped.length} closed below it after a gap, which is not the same thing.` : `.`),
+      { ackedTrades: rows.length, closedBelowAfterDrift: 0, closedBelowAfterGap: gapped.length },
+      { lede: LEDE_ACK, magnitude: 0,
+        figures: [{ value: `${rows.length}`, label: "stops marked moved" }, { value: "0", label: "closed below entry" }],
+        verdict: "Nothing to change. This is the check with the least room for argument on " +
+                 "the page, because the standard it measures against is the one you set." });
+  }
+
+  return F("watch", "acked-stops",
+    "Some stops you marked moved still closed below entry",
+    `${broke.length} of ${rows.length} trades where you marked the breakeven reminder as dealt with ` +
+    `finished below entry anyway, on sessions that did not gap — the price traded through breakeven ` +
+    `during the day and was there to be taken. That is a gap between what was recorded and what ` +
+    `happened, and it is worth knowing which: a stop that was never actually moved reads the same ` +
+    `here as one that was moved and then pulled.` +
+    (gapped.length
+      ? ` Separately, ${gapped.length} closed below entry after a gap, and those are not this — ` +
+        `nothing could have been done about them.`
+      : ""),
+    { ackedTrades: rows.length, closedBelowAfterDrift: broke.length, closedBelowAfterGap: gapped.length },
+    { magnitude: broke.length,
+      lede: LEDE_ACK,
+      figures: [
+        { value: `${broke.length} of ${rows.length}`, label: "marked moved, closed below entry" },
+        { value: `${gapped.length}`, label: "gapped instead — not counted" },
+      ],
+      verdict: "The reminder is only worth having if clicking it means the stop moved. If it " +
+               "has become a way to clear the flag, that is worth knowing before any of the " +
+               "risk figures on Holdings are trusted." });
+}
+
+/* ==================================================================== */
 /*  Recency                                                             */
 /* ==================================================================== */
 
@@ -2168,6 +2433,9 @@ export function reviewThesis(closed, findings, stats) {
     "thin-volume": "the entries you are taking",
     "return-concentration": "how few trades carry it",
     "charges-missing": "what these trades actually cost you",
+    "round-trips": "what happens once a trade is in front",
+    "power-trades": "what you do with the ones that run",
+    "acked-stops": "whether the stops move when you say they have",
     "revenge-cadence": "how soon you re-enter",
   };
   const worst = findings.find((f) => f.severity === "critical")
@@ -2212,6 +2480,13 @@ export function reviewFindings(
   both((c) => tradingCadence(c));
   both((c) => dataQuality(c));
   both((c) => chargesRecorded(c));
+  /* Same-trade comparisons, and the only ones on the page immune to the
+     sorting problem that had to be taken out of the exit-method card. Silent
+     until the bars have been read. */
+  both((c) => captureRate(c));
+  both((c) => roundTrips(c));
+  both((c) => powerTrades(c));
+  both((c) => acknowledgedStops(c));
   /**
    * NOT WINDOWED, AND THAT IS THE POINT OF IT.
    *
