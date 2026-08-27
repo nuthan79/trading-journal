@@ -1,4 +1,4 @@
-import { YAHOO_HOSTS, BROWSER_HEADERS } from "./yahoo";
+import { YAHOO_HOSTS, BROWSER_HEADERS, rangeCovering } from "./yahoo";
 /**
  * Quote sources.
  *
@@ -209,10 +209,24 @@ const HIST_TTL_MS = 6 * 60 * 60 * 1000;
  */
 export async function getIndexHistory({ index = "nifty500", from, to } = {}) {
   const spec = INDICES.find((i) => i.id === index) || INDICES[0];
-  const p1 = Math.floor(new Date(from || "2000-01-01").getTime() / 1000);
-  const p2 = Math.floor(new Date(to || Date.now()).getTime() / 1000) + 86400;
+  /**
+   * `range=`, not `period1`/`period2`.
+   *
+   * The explicit window is the obvious way to ask for one and it is also what
+   * Yahoo refuses: every request bars.js made in that shape came back 429
+   * while the callers using `range=` were served from the same host in the
+   * same minute. This function had the same shape and nobody had noticed,
+   * because the deployment chart degrades to no index line rather than to an
+   * error — a comparison quietly missing looks like a comparison nobody drew.
+   *
+   * Asking relative and trimming afterwards costs a little extra payload and
+   * makes it the same request the working callers send.
+   */
+  const start = String(from || "2000-01-01").slice(0, 10);
+  const end = String(to || new Date().toISOString().slice(0, 10)).slice(0, 10);
+  const range = rangeCovering(start);
 
-  const key = `${spec.id}:${p1}:${p2}`;
+  const key = `${spec.id}:${range}:${start}:${end}`;
   const hit = histCache.get(key);
   if (hit && Date.now() - hit.t < HIST_TTL_MS) return hit.v;
 
@@ -220,7 +234,7 @@ export async function getIndexHistory({ index = "nifty500", from, to } = {}) {
     try {
       const url =
         `https://${host}/v8/finance/chart/${encodeURIComponent(spec.ticker)}` +
-        `?period1=${p1}&period2=${p2}&interval=1d`;
+        `?interval=1d&range=${range}`;
       const res = await fetch(url, { headers: BROWSER_HEADERS, cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
@@ -231,10 +245,10 @@ export async function getIndexHistory({ index = "nifty500", from, to } = {}) {
       const out = [];
       for (let i = 0; i < ts.length; i++) {
         if (closes[i] == null) continue;   // trading halts leave null holes
-        out.push({
-          d: new Date(ts[i] * 1000).toISOString().slice(0, 10),
-          c: Math.round(closes[i] * 100) / 100,
-        });
+        const d = new Date(ts[i] * 1000).toISOString().slice(0, 10);
+        // The range reaches back further than asked; the caller wanted a window.
+        if (d < start || d > end) continue;
+        out.push({ d, c: Math.round(closes[i] * 100) / 100 });
       }
       if (!out.length) throw new Error("no closes in response");
 

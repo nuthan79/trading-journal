@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "symbols": "node scripts/build-symbols.mjs"
+    "symbols": "node scripts/build-symbols.mjs",
+    "probe": "node --import ./scripts/probe/register.mjs scripts/probe.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

@@ -2302,9 +2302,12 @@ function adverseExcursion(closed) {
           { value: `${String(med.toFixed(2)).replace("-", "−")}R`, label: "typical winner's worst close" },
         ],
         chart,
-        verdict: "Nothing to change on this evidence — the half of the question that would " +
-                 "justify a change is the half this cannot see. Worth holding beside the " +
-                 "expectancy figure as a reminder of how much of it was close." });
+        verdict: "Not a case for a wider stop, and the chart should not be read as one. " +
+                 "Widening would have saved some of these and let every loser run further, " +
+                 "and that second half cannot be measured here — the journal reads prices " +
+                 "from entry to exit, so once a trade stopped out there is no record of what " +
+                 "it would have done next. What it does say is how close-run the record is, " +
+                 "which is worth holding beside the expectancy figure." });
   }
 
   return F("good", "adverse-excursion",
