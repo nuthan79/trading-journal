@@ -687,17 +687,52 @@ function sizingReflexes(closed) {
    */
   const bySize = [...rows].sort((a, b) => a.riskPct - b.riskPct);
   const k = bySize.length >= 50 ? 5 : 3;
-  const per = Math.floor(bySize.length / k);
-  const buckets = Array.from({ length: k }, (_, i) => {
-    const slice = i === k - 1 ? bySize.slice(i * per) : bySize.slice(i * per, (i + 1) * per);
+
+  /**
+   * A BAND IS A RANGE OF VALUES, SO A TIE CANNOT BE SPLIT ACROSS TWO OF THEM.
+   *
+   * Cutting into five equal COUNTS puts trades of identical size into
+   * different bands whenever one value is common — which it is, because most
+   * people size the same way most of the time. On a real book that produced
+   * "0.22–0.28%", then "0.28%", then "0.28–0.54%": one number ending one
+   * band, being another band entirely, and starting a third. A reader asking
+   * which band their 0.28% trade is in has no answer, and the honest one
+   * would have been "some of them are in each".
+   *
+   * So a cut moves forward past a run of equal values rather than through it.
+   * Bands come out uneven in size — a value held by a fifth of the book makes
+   * a big band — and that is the shape of the trading rather than a defect in
+   * the chart. Where that collapses the count below three the ranks below
+   * take over the labelling.
+   */
+  const at = (i) => bySize[i].riskPct;
+  const cuts = [];
+  for (let i = 1; i < k; i++) {
+    let idx = Math.floor((bySize.length * i) / k);
+    while (idx < bySize.length && idx > 0 && at(idx) === at(idx - 1)) idx++;
+    const last = cuts.length ? cuts[cuts.length - 1] : 0;
+    if (idx > last && idx < bySize.length) cuts.push(idx);
+  }
+  const bounds = [0, ...cuts, bySize.length];
+
+  const buckets = [];
+  for (let i = 0; i < bounds.length - 1; i++) {
+    const slice = bySize.slice(bounds[i], bounds[i + 1]);
+    if (!slice.length) continue;
     const lo = slice[0].riskPct, hi = slice[slice.length - 1].riskPct;
-    return {
+    /* Money as well as R, because they are not the same claim: a band can
+       return more per unit of risk and still be the smaller cheque. Averaged
+       per trade rather than totalled, so an uneven band is not read as a
+       better one for merely holding more trades. */
+    const cash = slice.map((t) => n(t.pnl)).filter(isFinite);
+    buckets.push({
       lo, hi,
       range: lo.toFixed(2) === hi.toFixed(2) ? `${lo.toFixed(2)}%` : `${lo.toFixed(2)}–${hi.toFixed(2)}%`,
       value: +mean(slice.map((t) => t.r)).toFixed(2),
+      cash: cash.length === slice.length ? mean(cash) : null,
       n: slice.length,
-    };
-  });
+    });
+  }
   /**
    * Rank labels when the ranges collide.
    *
@@ -706,21 +741,30 @@ function sizingReflexes(closed) {
    * identical and make the chart read as broken. The rank is what actually
    * separates them, and the range only helps when the ranges differ.
    */
-  const RANKS = k === 5
+  /* Keyed on how many bands survived the tie rule, not on k — a book with one
+     dominant size collapses to fewer, and RANKS[i] must still name them. */
+  const RANKS = buckets.length === 5
     ? ["Smallest", "2nd", "Middle", "4th", "Largest"]
+    : buckets.length === 4
+    ? ["Smallest", "2nd", "3rd", "Largest"]
     : ["Smallest", "Middle", "Largest"];
-  const distinct = new Set(buckets.map((b) => b.range)).size === k;
+  const distinct = new Set(buckets.map((b) => b.range)).size === buckets.length;
   const sizeChart = {
     type: "bars",
     unit: "R",
     rows: buckets.map((b, i) => ({
-      label: distinct ? b.range : RANKS[i],
+      label: distinct ? b.range : (RANKS[i] || b.range),
       value: b.value,
+      /* The rupee average beside the R, because "+2.96R" and "+1.04R" say
+         nothing about which band actually made more money — and on a card
+         about position SIZE that is the question being asked. */
+      sub: b.cash == null ? null : rupee(Math.round(b.cash)),
       n: b.n,
     })),
     axisNote: distinct
-      ? "risk per trade, smallest to largest"
-      : `by size, smallest to largest · ${buckets[0].lo.toFixed(2)}–${buckets[k - 1].hi.toFixed(2)}% risk`,
+      ? "risk per trade, smallest to largest · average R and average rupees per trade"
+      : `by size, smallest to largest · ${buckets[0].lo.toFixed(2)}–` +
+        `${buckets[buckets.length - 1].hi.toFixed(2)}% risk`,
   };
 
   if (isFinite(corr) && corr < -0.2) {

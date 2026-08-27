@@ -98,3 +98,62 @@ test("the path findings reach the process map", () => {
   ok(exit.findingIds.length > 0, "Exit rested on nothing at all before they were wired in");
   eq(exit.costR, null, "and they must not be costed — no baseline anybody set");
 });
+
+/* ---- size bands -------------------------------------------------------- */
+
+test("a tie is never split across two size bands", () => {
+  /* Equal-count quintiles put trades of identical size into different bands
+     whenever one value is common, which it is. On a real book that produced
+     "0.22–0.28%", then "0.28%", then "0.28–0.54%" — one number ending one
+     band, being another, and starting a third, with no answer to which band
+     a 0.28% trade was in. */
+  const mk = (i, riskPct, r) => ({
+    id: `z${i}`, symbol: `S${i}`, status: "closed", exchange: "NSE",
+    entry_date: `2026-0${1 + (i % 9)}-05`, exit_date: `2026-0${1 + (i % 9)}-20`,
+    quantity: 100, entry_price: 100, exit_price: 100, stop_loss: 90,
+    stop_source: "recorded", exit_reason: "Target hit", mistakes: [], exits: [],
+    riskPct, r, riskAmt: riskPct * 10000, pnl: r * riskPct * 10000, heldDays: 10,
+  });
+  /* A third of the book sitting on exactly 0.28, which is what broke it. */
+  const rows = [];
+  let i = 0;
+  for (const p of [0.05, 0.10, 0.16, 0.20, 0.22, 0.25]) for (let j = 0; j < 6; j++) rows.push(mk(i++, p, 1.4));
+  for (let j = 0; j < 30; j++) rows.push(mk(i++, 0.28, -0.2));
+  for (const p of [0.34, 0.41, 0.54]) for (let j = 0; j < 6; j++) rows.push(mk(i++, p, 1.1));
+
+  const f = find(rows, "conviction-inverted") || find(rows, "conviction-works");
+  ok(f, "one of the conviction findings should fire on this book");
+
+  const labels = f.chart.rows.map((r) => r.label);
+  const numbers = labels.flatMap((l) => (l.match(/[\d.]+/g) || []).map(Number));
+  const counts = new Map();
+  for (const v of numbers) counts.set(v, (counts.get(v) || 0) + 1);
+  for (const [v, c] of counts) {
+    ok(c <= 2, `${v}% appears in ${c} labels — a value may end one band and start the next, no more`);
+  }
+  /* And no band may be a bare singleton sitting between two ranges that both
+     touch it, which is the shape that had no reading at all. */
+  const singles = labels.filter((l) => !l.includes("–") && l.endsWith("%"));
+  for (const s of singles) {
+    const v = parseFloat(s);
+    const touching = labels.filter((l) => l !== s && l.includes(String(v))).length;
+    eq(touching, 0, `${s} is its own band and also a boundary of ${touching} others`);
+  }
+});
+
+test("the size bands carry rupees as well as R", () => {
+  const mk = (i, riskPct, r) => ({
+    id: `y${i}`, symbol: `S${i}`, status: "closed", exchange: "NSE",
+    entry_date: `2026-0${1 + (i % 9)}-05`, exit_date: `2026-0${1 + (i % 9)}-20`,
+    quantity: 100, entry_price: 100, exit_price: 100, stop_loss: 90,
+    stop_source: "recorded", exit_reason: "Target hit", mistakes: [], exits: [],
+    riskPct, r, riskAmt: riskPct * 10000, pnl: r * riskPct * 10000, heldDays: 10,
+  });
+  /* Bigger bets, worse outcomes — otherwise the correlation is zero and
+     neither conviction finding has anything to say. */
+  const rows = Array.from({ length: 60 }, (_, i) => mk(i, 0.1 + i * 0.01, 2.4 - i * 0.07));
+  const f = find(rows, "conviction-inverted") || find(rows, "conviction-works");
+  ok(f, "a finding should fire");
+  ok(f.chart.rows.every((r) => r.sub && /₹/.test(r.sub)),
+     "R alone does not say which band made more money");
+});
