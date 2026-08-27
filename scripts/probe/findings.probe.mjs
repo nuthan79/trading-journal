@@ -157,3 +157,63 @@ test("the size bands carry rupees as well as R", () => {
   ok(f.chart.rows.every((r) => r.sub && /₹/.test(r.sub)),
      "R alone does not say which band made more money");
 });
+
+test("no chart anywhere splits a tie across two labelled bands", () => {
+  /**
+   * The general form of the 0.28% bug, run over every bars chart at once.
+   *
+   * A book where one value dominates a dimension is what exposes it, and it
+   * is also what a real book looks like — people size the same way, hold for
+   * similar spans, stop out at the same R. Data spread evenly, which is what
+   * you write when generating it, never finds this.
+   */
+  const mk = (i, o = {}) => ({
+    id: `w${i}`, symbol: `S${i % 20}`, status: "closed", exchange: "NSE",
+    entry_date: `2026-0${1 + (i % 9)}-05`, exit_date: `2026-0${1 + (i % 9)}-20`,
+    quantity: 100, entry_price: 100, exit_price: 100, stop_loss: 90,
+    stop_source: "recorded", exit_reason: ["Target hit", "Trailing stop"][i % 2],
+    mistakes: [], charges: 320, imported: true, exits: [],
+    vol_pct_avg: 120, mfe_r: 2.4, mae_r: -0.5, mfe_days: 6,
+    became_free_on: "2026-01-12", is_power: false, path_to: "2026-02-20", ...o,
+  });
+  const at = (i, riskPct, r) =>
+    mk(i, { riskPct, r, riskAmt: riskPct * 10000, pnl: r * riskPct * 10000, heldDays: 5 + (i % 20) });
+
+  /* Small bets good, big bets bad — so a conviction finding fires at all —
+     with a third of the book sitting on exactly 0.28%, which is the mass
+     that used to be cut in half by an index-based quantile. */
+  const rows = [];
+  let i = 0;
+  for (const p of [0.05, 0.09, 0.14, 0.18, 0.22, 0.25]) for (let j = 0; j < 5; j++) rows.push(at(i++, p, 2.0));
+  for (let j = 0; j < 30; j++) rows.push(at(i++, 0.28, 0.5));
+  for (const p of [0.31, 0.36, 0.42, 0.47, 0.54]) for (let j = 0; j < 6; j++) rows.push(at(i++, p, -0.5));
+
+  const out = reviewFindings(rows, { all: rows, diary: [] });
+  const list = Array.isArray(out) ? out : (out.findings || out.items || []);
+  const charts = list.filter((f) => f.chart?.type === "bars" && f.chart.rows?.length);
+
+  let inspected = 0;
+  for (const f of charts) {
+    const labels = f.chart.rows.map((r) => String(r.label));
+    /* Only labels that are numeric bands — "Trailing stop" makes no claim
+       about ranges, and neither does "Best 9". */
+    const banded = labels.filter((l) => /^[\d.]+\s*(?:[\u2013-]|to)?\s*[\d.]*%?$/.test(l));
+    if (banded.length < 2) continue;
+    inspected++;
+
+    const seen = new Map();
+    for (const l of banded) {
+      for (const tok of l.match(/[\d.]+/g) || []) seen.set(tok, (seen.get(tok) || 0) + 1);
+    }
+    for (const [tok, count] of seen) {
+      ok(count <= 2,
+         `${f.id}: "${tok}" is in ${count} band labels (${banded.join(", ")}) — a value may ` +
+         `close one band and open the next, never be a third band as well`);
+    }
+  }
+
+  /* A sweep that inspected nothing passes for the wrong reason. This caught
+     itself: the first fixture produced no banded chart at all, so the test
+     was green while the bug it was written for was still in the code. */
+  ok(inspected > 0, "no banded chart was inspected — the fixture proves nothing");
+});
