@@ -47,7 +47,22 @@ export const STOP_NONE = "none";
  * Both are excluded, for different reasons, by one rule.
  */
 export const hasRealStop = (t) =>
-  !!t && t.stop_source !== STOP_ASSUMED && t.stop_source !== STOP_NONE;
+  !!t &&
+  /**
+   * A stop has to EXIST before it can be trusted, and the first version of
+   * this forgot to say so.
+   *
+   * `stop_loss` is nullable — migration 006 dropped the NOT NULL that
+   * schema.sql still shows — and an import with no stop writes null to both
+   * columns. A source of null is neither "assumed" nor "none", so those rows
+   * were passing a test named "has a real stop" while having no stop at all.
+   *
+   * Nothing broke, because every caller also demanded a finite R and a trade
+   * with no stop has none. That is luck rather than design: the predicate was
+   * relying on its callers to catch what its own name promised.
+   */
+  t.stop_loss != null &&
+  t.stop_source !== STOP_ASSUMED && t.stop_source !== STOP_NONE;
 
 /** Nothing on record, and the trader has said so. Not a gap — an answer. */
 export const noStopOnRecord = (t) => !!t && t.stop_source === STOP_NONE;

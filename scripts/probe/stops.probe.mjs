@@ -11,6 +11,15 @@ const T = (o = {}) => ({ stop_loss: 90, stop_source: "recorded", ...o });
 
 test("the three states mean three different things", () => {
   eq(hasRealStop(T()), true);
+  /* stop_loss is nullable — 006 dropped the NOT NULL that schema.sql still
+     shows — and an import with no stop writes null to BOTH columns. A null
+     source is neither assumed nor none, so those rows passed a test called
+     "has a real stop" while having no stop at all. */
+  eq(hasRealStop(T({ stop_loss: null, stop_source: null })), false,
+     "no stop at all is not a trustworthy stop");
+  eq(hasRealStop(T({ stop_loss: null })), false);
+  eq(needsStop(T({ stop_loss: null, stop_source: null })), true,
+     "and it stays in the queue, because it is still owed an answer");
   eq(hasRealStop(T({ stop_source: "assumed" })), false, "a number the importer invented");
   eq(hasRealStop(T({ stop_source: STOP_NONE })), false, "no denominator at all");
 

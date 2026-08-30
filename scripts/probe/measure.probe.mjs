@@ -3,8 +3,11 @@ import { needsMeasuring, measureTo, measurePaths } from "@/lib/measure";
 
 const DAY = 86400000;
 const d = (n) => new Date(Date.now() + n * DAY).toISOString().slice(0, 10);
+/* stop_loss included, because a trade recording a stop has one. Leaving it
+   out described a trade that cannot exist, and the looser predicate let it
+   pass — three cases here were green on a fixture that was wrong. */
 const T = (o) => ({
-  symbol: "ACME", exchange: "NSE", stop_source: "recorded",
+  symbol: "ACME", exchange: "NSE", stop_loss: 90, stop_source: "recorded",
   status: "closed", entry_date: d(-60), exit_date: d(-10), ...o,
 });
 
