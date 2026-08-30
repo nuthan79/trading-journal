@@ -648,6 +648,21 @@ export default function StopFill({ trades, onSave, onDone, realStopCount = 0, pa
         }
         .sf-bulk-ask { grid-column: 1 / -1; color: #6B4E13; font-size: 12px; }
         .sf-bulk-acts { grid-column: 1 / -1; display: flex; gap: 8px; }
+        /**
+         * SPANS, because this row is a grid of auto auto 1fr, and a long
+         * paragraph in an auto column sizes that column to fit it.
+         *
+         * Dropped in without this it landed in column one, blew the column
+         * out to most of the width, and squeezed the note in column three
+         * into a single word per line down the right-hand edge — with a large
+         * blank where the row used to be.
+         */
+        .sf-bulk-none {
+          grid-column: 1 / -1;
+          border-top: 1px solid var(--rule); padding-top: 11px; margin-top: 2px;
+          display: grid; gap: 6px; justify-items: start;
+        }
+        .sf-bulk-none .sf-bulk-note { max-width: var(--note-w); }
         @media (max-width: 640px) { .sf-bulk { grid-template-columns: 1fr; } }
         .sf-head {
           display: flex; align-items: flex-end; justify-content: space-between;
