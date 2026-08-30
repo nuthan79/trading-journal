@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import StopFill from "@/components/StopFill";
 import { saveStops } from "@/lib/db";
 import { useJournal } from "../JournalContext";
+import { hasRealStop, STOP_NONE } from "@/lib/stops";
 
 export default function StopsPage() {
   const router = useRouter();
@@ -59,6 +60,10 @@ export default function StopsPage() {
     <div className="sec">
       <StopFill
         trades={needStops}
+        /* Marking the queue "no stop on record" removes it from every R
+           figure, so the button says what would be left rather than letting
+           it be discovered afterwards. */
+        realStopCount={trades.filter(hasRealStop).length}
         onSave={async (rows, onProgress) => {
           const n = await saveStops(rows, onProgress);
           await reloadTrades();
@@ -70,9 +75,16 @@ export default function StopsPage() {
            */
           const stops = rows.filter((r) => r.stop_loss !== undefined).length;
           const dates = rows.filter((r) => r.entry_date !== undefined).length;
+          /* Marking "no stop on record" writes a source and nothing else, so
+             counting only stops and dates reported "0 rows saved" over a
+             successful write. */
+          const none = rows.filter(
+            (r) => r.stop_loss === undefined && r.stop_source === STOP_NONE
+          ).length;
           const parts = [];
           if (stops) parts.push(`${stops} stop${stops === 1 ? "" : "s"}`);
           if (dates) parts.push(`${dates} date${dates === 1 ? "" : "s"}`);
+          if (none) parts.push(`${none} marked as having no stop on record`);
           const assumed = stops > 0 && rows.every(
             (r) => r.stop_loss === undefined || r.stop_source === "assumed"
           );

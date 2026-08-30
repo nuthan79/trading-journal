@@ -1008,6 +1008,18 @@ export async function saveStops(rows, onProgress) {
           entry_date_source: r.entry_date_source || "recorded",
         }
       : {}),
+    /**
+     * A row that carries only a source, and nothing else.
+     *
+     * "No stop on record" writes `stop_source` alone: the stop column keeps
+     * whatever the importer put there, since it is `not null check (> 0)` and
+     * a stop of zero would mean breakeven rather than none. Without this
+     * clause the patch came out EMPTY and the update wrote nothing at all,
+     * silently — the button would have reported success over a no-op.
+     */
+    ...(r.stop_loss === undefined && r.stop_source !== undefined
+      ? { stop_source: r.stop_source }
+      : {}),
   });
 
   track("stops_filled", { n: rows.length });

@@ -3,6 +3,7 @@
 import { useState, useMemo, useCallback, useRef } from "react";
 import { Check, ChevronRight } from "lucide-react";
 import { rupee, rfmt, pct } from "@/lib/format";
+import { STOP_NONE } from "@/lib/stops";
 
 /**
  * Fill in the missing stops.
@@ -25,7 +26,7 @@ const isAssumed = (t) => t.stop_source === "assumed" && t.stop_loss != null;
 /** A purchase date the importer invented, because the file carried none. */
 const dateAssumed = (t) => t.entry_date_source === "assumed";
 
-export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
+export default function StopFill({ trades, onSave, onDone, realStopCount = 0, pageSize = 25 }) {
   const [values, setValues] = useState({});      // id -> raw input
   /**
    * Purchase dates typed here, by trade id.
@@ -47,6 +48,7 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
   // happen, and until they exist the journal shows nothing at all.
   const [bulkPct, setBulkPct] = useState("7");
   const [confirming, setConfirming] = useState(false);
+  const [noneConfirming, setNoneConfirming] = useState(false);
   const [progress, setProgress] = useState(null);
 
   const pending = useMemo(
@@ -239,6 +241,11 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
   const pctNum = Number(bulkPct);
   const pctOk = pctNum > 0 && pctNum < 100;
 
+  /* What the R half of the app would still have to read once these leave.
+     Counted on the whole book, which only the page has, and said BEFORE the
+     click rather than discovered after it. */
+  const realStops = realStopCount;
+
   /**
    * Give every remaining trade the same stop, as a percentage from its entry.
    *
@@ -247,6 +254,33 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
    * risk, not a record of where the stops were. Anything filled in by hand
    * afterwards overwrites both the number and the label.
    */
+  /**
+   * Mark the queue as having no stop on record.
+   *
+   * Writes `stop_source` and NOTHING else — `stop_loss` keeps whatever the
+   * importer put there, because the column is `not null check (> 0)` and a
+   * stop of zero would mean breakeven rather than none. Nothing reads it
+   * while the source says none; see stops.js.
+   */
+  const markNone = async () => {
+    if (busy) return;
+    setBusy(true); setErr(""); setNoneConfirming(false);
+
+    const rows = stopPending.map((t) => ({ id: t.id, stop_source: STOP_NONE }));
+    try {
+      await onSave(rows, (n, total) => setProgress({ n, total }));
+      setSaved((s) => {
+        const next = { ...s };
+        rows.forEach((r) => (next[r.id] = true));
+        return next;
+      });
+    } catch (e) {
+      setErr(e?.message || "Could not save.");
+    } finally {
+      setBusy(false); setProgress(null);
+    }
+  };
+
   const fillAll = async () => {
     if (!pctOk || busy) return;
     setBusy(true); setErr(""); setConfirming(false);
@@ -394,7 +428,29 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
           filled reads as a screen that has not noticed what you did. */}
       {stopPending.length > 0 && (
       <div className="sf-bulk">
-        {confirming ? (
+        {noneConfirming ? (
+          <>
+            <div className="sf-bulk-ask">
+              Mark all {stopPending.length} as having no stop on record? They leave this queue
+              for good and stay in every money figure, but nothing measured in R will count
+              them again{realStops > 0
+                ? `, leaving ${realStops} trade${realStops === 1 ? "" : "s"} for the R half of
+                   the app to read`
+                : `, and on this journal that leaves the R half of the app with nothing to read`}.
+              You can still type a real stop on any of them later.
+            </div>
+            <div className="sf-bulk-acts">
+              <button className="btn" onClick={markNone} disabled={busy}>
+                {busy
+                  ? progress ? `Marking ${progress.n} of ${progress.total}…` : "Marking…"
+                  : `Yes, no stop on record for ${stopPending.length}`}
+              </button>
+              <button className="btn ghost" onClick={() => setNoneConfirming(false)} disabled={busy}>
+                Cancel
+              </button>
+            </div>
+          </>
+        ) : confirming ? (
           <>
             <div className="sf-bulk-ask">
               Give all {stopPending.length} of them a stop {pctNum}% from entry?
@@ -429,7 +485,42 @@ export default function StopFill({ trades, onSave, onDone, pageSize = 25 }) {
               {pctOk
                 ? "A starting point, so R and the plots work at all. Marked assumed — " +
                   "type over any of them as you work out what you really used."
-                : "That needs to be a percentage between 0 and 100."}
+                /* "between 0 and 100" while refusing 0 is not what the rule
+                   says. Zero is also what somebody types when they mean there
+                   was no stop, which is a real answer and now has a button of
+                   its own rather than an error message. */
+                : "That needs to be more than 0 and no more than 100. If there was no stop " +
+                  "on these at all, say so below instead."}
+            </div>
+
+            {/**
+              * THE THIRD ANSWER, AND THE REASON THIS QUEUE CAN NOW EMPTY.
+              *
+              * A Zerodha tax P&L carries no stop column, so every imported
+              * trade arrives assumed. The only ways out were typing a number
+              * that was not true — which puts an invented 1R under every R
+              * figure in the app — or leaving it assumed and being nagged for
+              * ever. Somebody whose files never carried stops had no honest
+              * move at all.
+              *
+              * Named for what is knowable. "No stop on record" is always true
+              * of these; "I traded without a stop" often is not, since the
+              * importer assumed one because the FILE lacked a column.
+              */}
+            <div className="sf-bulk-none">
+              <button className="btn ghost sm" onClick={() => setNoneConfirming(true)}>
+                Or: no stop on record for these {stopPending.length}
+              </button>
+              <div className="sf-bulk-note">
+                Says the number cannot be recovered rather than inventing one. They leave this
+                queue for good, stay in every money figure — P&amp;L, win rate, XIRR — and drop out
+                of everything measured in R, because there is no 1R to measure against.
+                {realStops > 0
+                  ? ` That leaves ${realStops} trade${realStops === 1 ? "" : "s"} carrying a stop
+                     you set, which is what the R half of the app would then be reading.`
+                  : " On this journal that leaves nothing for the R half of the app to read."}
+                {" "}Reversible — type a real stop later and it counts again.
+              </div>
             </div>
           </>
         )}

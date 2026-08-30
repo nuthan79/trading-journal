@@ -6,6 +6,7 @@ import { tradePath } from "./path";
    screen counting a trade as measurable while the route refuses it is how a
    button offers work that silently never happens. */
 import { tickerFor } from "./bars";
+import { hasRealStop } from "./stops";
 
 /**
  * Reading the price path for trades that have never had one read.
@@ -71,7 +72,7 @@ export function needsMeasuring(trades, { includeOpen = false } = {}) {
     /* NSE and BSE both, refused only where the symbol is a bare scrip code
        that never resolved to a ticker — see the note in bars.js. */
     if (!tickerFor(t.symbol, t.exchange)) return false;
-    if (t.stop_source === "assumed") return false; // R against a stop nobody set
+    if (!hasRealStop(t)) return false;   // no 1R to measure a path against
 
     if (t.status === "closed") {
       if (!t.exit_date || !(iso(t.entry_date) < iso(t.exit_date))) return false;

@@ -14,6 +14,7 @@ import { resolveTradingViewChart } from "@/lib/charts";
 import { entryCharges, mergeConfig } from "@/lib/charges";
 import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
 import { quoteFor } from "@/lib/db";
+import { hasRealStop } from "@/lib/stops";
 
 /**
  * The market price, under a price field.
@@ -311,15 +312,24 @@ function toPayload(t) {
      * was taken, and the only reason to change it is that it was wrong.
      */
     initial_stop_loss: numOrNull(t.stop_loss),
-    // An assumed stop stays assumed until someone actually changes it. Saving
-    // the form for an unrelated field — a note, a pattern — shouldn't quietly
-    // promote a number this app invented into one the trader stands behind.
+    /**
+     * A stop nobody has stood behind stays that way until somebody changes
+     * it. Saving the form for an unrelated field — a note, a pattern —
+     * must not quietly promote a number this app invented into one the
+     * trader vouches for.
+     *
+     * The old test was `!== "assumed"`, which meant "recorded" to everything
+     * else — including a trade marked as having NO stop on record. Opening
+     * one of those to add a note would have written the importer's leftover
+     * number back as a real stop, putting it into every R figure. Asking
+     * `hasRealStop` instead means the rule covers whatever states exist
+     * rather than the one that existed when it was written.
+     */
     stop_source: numOrNull(t.stop_loss) == null
       ? null
-      : t.stop_source !== "assumed" ||
-        String(t.stop_loss) !== String(t._loadedStop ?? "")
+      : hasRealStop(t) || String(t.stop_loss) !== String(t._loadedStop ?? "")
       ? "recorded"
-      : "assumed",
+      : t.stop_source,
     pattern: t.pattern || null,
     pivot_price: numOrNull(t.pivot_price),
     vol_pct_avg: numOrNull(t.vol_pct_avg),

@@ -6,6 +6,7 @@ import { Plus, Pencil, Trash2, Download, Image as ImageIcon, X } from "lucide-re
 import { rupee, rfmt, pct, signedPct } from "@/lib/format";
 import PositionDetail from "./PositionDetail";
 import { SETUP_FIELDS } from "@/lib/gaps";
+import { noStopOnRecord } from "@/lib/stops";
 
 const num = (v) => (v === "" || v === null || v === undefined ? NaN : Number(v));
 
@@ -258,7 +259,8 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                         ? "Assumed at import, not a stop you set — every R on this row follows from it"
                         : undefined}>
                     {isFinite(num(t.stop_loss)) ? Number(t.stop_loss).toFixed(2) : "—"}
-                    {t.stop_source === "assumed" && <i className="tr-assumed">assumed</i>}</td>
+                    {t.stop_source === "assumed" && <i className="tr-assumed">assumed</i>}
+                    {noStopOnRecord(t) && <i className="tr-assumed">no stop</i>}</td>
                   <td className="num" style={{ fontSize: 12 }}>{isFinite(t.slPct) ? pct(t.slPct, 1) : "—"}</td>
                   <td className="num">{t.quantity}</td>
                   <td className="num" style={{ fontSize: 12 }}

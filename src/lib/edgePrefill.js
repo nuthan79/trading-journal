@@ -1,4 +1,5 @@
 import { stats } from "./calc";
+import { hasRealStop } from "./stops";
 
 /**
  * The six calculator inputs, measured from a real journal instead of guessed.
@@ -56,7 +57,7 @@ export function edgePrefill(closed = [], { accountSize, defaultRiskPct } = {}) {
   /* Assumed stops out first, then non-computable R. Order matters only for the
      counts: `assumedCount` should report trades excluded for having an invented
      stop, not trades that were also missing an exit price. */
-  const withRealStop = closed.filter((t) => t.stop_source !== "assumed");
+  const withRealStop = closed.filter(hasRealStop);
   const assumedCount = closed.length - withRealStop.length;
 
   const usable = withRealStop.filter((t) => Number.isFinite(t.r));

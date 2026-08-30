@@ -1,4 +1,5 @@
 import { scaleOutEffect } from "./positions";
+import { hasRealStop } from "./stops";
 
 /**
  * The trading process as stages, and which one is leaking.
@@ -147,7 +148,7 @@ const RANK = { critical: 0, warning: 1, watch: 2, good: 3 };
  */
 function riskControlCost(closed) {
   const measured = closed.filter(
-    (t) => t.stop_source !== "assumed" && Number.isFinite(t.r)
+    (t) => hasRealStop(t) && Number.isFinite(t.r)
   );
   const losers = measured.filter((t) => t.r <= 0);
   if (losers.length < 8) return { sample: losers.length, costR: null, costRupees: null };
@@ -182,7 +183,7 @@ function riskControlCost(closed) {
  */
 function sizingCost(closed) {
   const sized = closed.filter(
-    (t) => Number.isFinite(t.r) && t.stop_source !== "assumed" &&
+    (t) => Number.isFinite(t.r) && hasRealStop(t) &&
            num(t.riskPct) > 0 && num(t.riskAmt) > 0
   );
   if (sized.length < 12) return { sample: sized.length, costR: null, costRupees: null };
@@ -488,7 +489,7 @@ export function recentCompliance(closed = [], { days = 7, asOf = new Date() } = 
   });
 
   const scored = recent.filter((t) => Number.isFinite(t.r));
-  const measured = scored.filter((t) => t.stop_source !== "assumed");
+  const measured = scored.filter(hasRealStop);
   const losses = measured.filter((t) => t.r <= 0);
   const overruns = losses.filter((t) => t.r < OVERRUN_R);
   const risks = recent.map((t) => num(t.riskPct)).filter((v) => v != null && v > 0);

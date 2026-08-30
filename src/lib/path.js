@@ -31,6 +31,8 @@
  * the chance to honour it.
  */
 
+import { hasRealStop } from "./stops";
+
 const num = (v) => { const x = Number(v); return Number.isFinite(x) ? x : null; };
 const iso = (d) => String(d || "").slice(0, 10);
 
@@ -61,12 +63,13 @@ export function tradePath(t, bars) {
   if (!(perShare > 0)) return null;
 
   /**
-   * An ASSUMED stop is not a line the trader drew, so R measured against it is
-   * R against a number the importer invented. `analysis.js` refuses assumed
-   * stops for the same reason and this has to refuse them too, or the two
-   * screens disagree about what a trade reached.
+   * No usable 1R, no path worth measuring — see stops.js for the one rule
+   * every R figure in the app shares. An assumed stop is a number the
+   * importer invented, and a trade with no stop on record has no denominator
+   * at all; measuring either would put a figure on the page that the rest of
+   * the app has already excluded.
    */
-  if (t.stop_source === "assumed") return null;
+  if (!hasRealStop(t)) return null;
 
   const from = iso(t.entry_date);
   /* An open position runs to the last bar there is. */

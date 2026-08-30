@@ -7,6 +7,7 @@ import { FREE_AT_R, POWER_R, POWER_DAYS } from "./path";
    else here returns numbers and lets the component format them, which is not
    available inside a prose string — see the house rule in CLAUDE.md. */
 import { rupee } from "./format";
+import { hasRealStop } from "./stops";
 
 /**
  * Behavioural review.
@@ -169,7 +170,7 @@ function stopDiscipline(closed) {
    * "overruns" are just the trades that happened to fall further than that
    * percentage, which says nothing about discipline at all.
    */
-  const measured = closed.filter((t) => t.stop_source !== "assumed");
+  const measured = closed.filter(hasRealStop);
   const losers = measured.filter((t) => isFinite(t.r) && t.r <= 0);
   if (losers.length < 8) {
     const assumed = closed.length - measured.length;
@@ -366,7 +367,7 @@ function riskConsistency(closed) {
    * trader may already have decided on.
    */
   const rows = chron(closed)
-    .filter((t) => t.stop_source !== "assumed")
+    .filter(hasRealStop)
     .filter((t) => isFinite(t.riskPct) && t.riskPct > 0);
   if (rows.length < 12) return null;
 

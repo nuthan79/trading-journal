@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { headline } from "@/lib/calc";
 import { rupee, rfmt, pct, days } from "@/lib/format";
+import { hasRealStop } from "@/lib/stops";
 
 /**
  * The headline block: eighteen numbers, two rows, no chrome.
@@ -49,7 +50,10 @@ export default function HeadlineNumbers({ closed, openingCapital, flows = [] }) 
 
   // Counted here rather than in calc.js: it qualifies how these numbers should
   // be read, and nothing downstream computes with it.
-  const assumed = closed.filter((t) => t.stop_source === "assumed").length;
+  /* Both kinds sit out of the R figures, so both belong in the caveat under
+     them — an assumed stop and no stop at all are different answers to the
+     same question and neither yields a 1R. */
+  const assumed = closed.filter((t) => !hasRealStop(t)).length;
 
   /**
    * Three bands, because these numbers answer three different questions and

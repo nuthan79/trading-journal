@@ -1,4 +1,5 @@
 import { isConstructiveEntry, isExecutionError, ENTRY_EMOTIONS, EXIT_EMOTIONS } from "./constants";
+import { hasRealStop } from "./stops";
 
 /**
  * What the recorded feelings are worth, arithmetically.
@@ -36,7 +37,7 @@ const pctOf = (n, d) => (d > 0 ? (n / d) * 100 : NaN);
  *  the same basis `analysis.js` and the Edge tab use, so the three screens
  *  cannot quietly disagree about which trades count. */
 export const measurable = (closed = []) =>
-  closed.filter((t) => t.stop_source !== "assumed" && Number.isFinite(t.r));
+  closed.filter((t) => hasRealStop(t) && Number.isFinite(t.r));
 
 /**
  * Expectancy by the state you were in when you took it.
