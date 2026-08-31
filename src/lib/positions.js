@@ -1,3 +1,4 @@
+import { noStopOnRecord } from "./stops";
 /**
  * Tranched positions.
  *
@@ -61,7 +62,26 @@ export function derivePosition(t, accountSize) {
    * still carrying a stale initial_stop_loss from before this shows the stop
    * the trader last set, rather than the one they had already corrected.
    */
-  const stop = firstNum(t.stop_loss, t.initial_stop_loss);
+  /**
+   * NO STOP ON RECORD MEANS NO STOP HERE, WHATEVER THE COLUMN STILL HOLDS.
+   *
+   * `stop_loss` keeps the importer's leftover number when a trade is marked
+   * this way — the column is nullable but there was no reason to erase what
+   * was there, and erasing it would lose the number somebody might later
+   * recognise. But reading it produces a 1R, and from that an R, an SL% and a
+   * risk figure on a trade whose whole point is that none of those are known.
+   *
+   * That shipped: the trades table showed "no stop" beside a stop price of
+   * 6928.17, a 7.0% SL and −0.27R on the same row, and the footer went on
+   * totalling R over 1185 trades that had just been declared unmeasurable.
+   * The findings had already excluded them, so the screens disagreed with
+   * each other about the same trade.
+   *
+   * An ASSUMED stop still computes, deliberately — that is what the bulk fill
+   * is for, so the plots work at all while the real numbers are recovered.
+   * The two states differ here precisely because they mean different things.
+   */
+  const stop = noStopOnRecord(t) ? NaN : firstNum(t.stop_loss, t.initial_stop_loss);
 
   // Exit tranches, oldest first.
   //

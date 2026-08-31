@@ -6,6 +6,7 @@ import { hasRealStop, needsStop, noStopOnRecord, STOP_NONE } from "@/lib/stops";
 import { reviewFindings } from "@/lib/analysis";
 import { tradePath } from "@/lib/path";
 import { needsMeasuring } from "@/lib/measure";
+import { derivePosition } from "@/lib/positions";
 
 const T = (o = {}) => ({ stop_loss: 90, stop_source: "recorded", ...o });
 
@@ -99,4 +100,35 @@ test("a stopless trade has no path to measure", () => {
     ...t, id: "x", symbol: "ACME", exchange: "NSE", status: "closed",
     path_to: null, stop_source: STOP_NONE,
   }]).length, 0, "and it is never queued for measurement");
+});
+
+test("no stop on record produces no R, no SL%, no risk", () => {
+  /**
+   * The column keeps the importer's leftover number, so this has to refuse it
+   * at the point R is computed or every screen goes on quoting it.
+   *
+   * It shipped without that: the trades table showed "no stop" beside a stop
+   * of 6928.17, a 7.0% SL and −0.27R on one row, and the footer kept
+   * totalling R across 1185 trades that had just been declared unmeasurable.
+   * The findings had already excluded them, so two screens disagreed about
+   * the same trade.
+   */
+  const base = {
+    entry_price: 7449.65, quantity: 115, stop_loss: 6928.17,
+    side: "long", status: "closed", exit_price: 7313.50,
+    exit_date: "2026-04-29", charges: 0, exits: [],
+  };
+  const assumed = derivePosition({ ...base, stop_source: "assumed" }, 1000000);
+  const none = derivePosition({ ...base, stop_source: STOP_NONE }, 1000000);
+
+  /* An assumed stop still computes — that is what the bulk fill is for, so
+     the plots work while the real numbers are recovered. */
+  ok(Number.isFinite(assumed.r), "an assumed stop still yields an R");
+  ok(Number.isFinite(assumed.slPct), "and an SL%");
+
+  eq(Number.isFinite(none.r), false, "no stop on record, no R");
+  eq(Number.isFinite(none.slPct), false, "no stop on record, no SL%");
+  eq(Number.isFinite(none.riskAmt), false, "and nothing at risk to report");
+  /* Money is still knowable and must survive. */
+  ok(Number.isFinite(none.pnl), "P&L does not depend on a stop");
 });
