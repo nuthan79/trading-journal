@@ -3,6 +3,7 @@
 import { Suspense, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Trades from "@/components/journal/Trades";
+import { saveStops } from "@/lib/db";
 import { useJournal } from "../JournalContext";
 
 /**

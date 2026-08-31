@@ -73,6 +73,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
   const [priceDraft, setPriceDraft] = useState("");
   const [pctDraft, setPctDraft] = useState("");
   const [savingStop, setSavingStop] = useState(false);
+  const [stopErr, setStopErr] = useState("");
 
   /* A short's stop sits ABOVE entry, so the sign follows the side rather than
      assuming long — the same rule the bulk fill uses. */
@@ -101,7 +102,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
     const pc = pctFromPrice(t, p);
     setPctDraft(isFinite(pc) ? String(pc) : "");
   };
-  const cancelStop = () => { setEditStop(null); setPriceDraft(""); setPctDraft(""); };
+  const cancelStop = () => { setEditStop(null); setPriceDraft(""); setPctDraft(""); setStopErr(""); };
 
   const typePrice = (t, v) => {
     setPriceDraft(v);
@@ -118,14 +119,36 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
     const price = Number(priceDraft);
     const entry = Number(t.entry_price);
     /* The same guards the stops queue applies: a stop on the wrong side of
-       entry produces a negative 1R and poisons every R that follows from it.
-       Refused quietly rather than saved and flagged later. */
-    if (!(price > 0) || !(entry > 0) || price === entry) return;
-    if (t.side === "short" ? price <= entry : price >= entry) return;
-    setSavingStop(true);
+       entry produces a negative 1R and poisons every R that follows from it. */
+    if (!(price > 0) || !(entry > 0) || price === entry) {
+      setStopErr("Type a stop price, or a percent from entry.");
+      return;
+    }
+    if (t.side === "short" ? price <= entry : price >= entry) {
+      setStopErr(t.side === "short"
+        ? "A short's stop sits above entry."
+        : "A stop has to sit below entry.");
+      return;
+    }
+    setSavingStop(true); setStopErr("");
     try {
       await onSaveStop?.(t.id, Math.round(price * 100) / 100);
       cancelStop();
+    } catch (e) {
+      /**
+       * A SAVE THAT FAILS HAS TO SAY SO.
+       *
+       * There was no catch here, so when the handler threw — the page called
+       * saveStops without importing it, a plain ReferenceError — the promise
+       * rejected into nothing. The editor stayed open with the typed numbers
+       * in it and no message, which reads as a button that does not work
+       * rather than as a save that failed. Silence is the worst outcome
+       * available to a write.
+       *
+       * The editor deliberately stays open on failure: the typed value is
+       * still the best thing on screen and closing would throw it away.
+       */
+      setStopErr(e?.message || "Could not save that stop.");
     } finally {
       setSavingStop(false);
     }
@@ -428,6 +451,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                                 title="Save this stop">
                           <Check size={12} />
                         </button>
+                        {stopErr && <i className="tr-stoperr">{stopErr}</i>}
                       </span>
                     ) : (
                       <>
@@ -619,6 +643,11 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
         .tr-stopedit .in { width: 78px; padding: 3px 6px; font-size: 12px; text-align: right; }
         .tr-stopedit .tr-pctin { width: 52px; }
         .tr-stophint { font-style: normal; font-size: 11px; color: var(--ink3); }
+        .tr-stoperr {
+          display: block; font-style: normal; font-size: 10px;
+          color: var(--short); text-align: right; margin-top: 2px;
+          white-space: normal; max-width: 150px;
+        }
         .tr-stopok {
           display: inline-flex; align-items: center; justify-content: center;
           width: 20px; height: 20px; padding: 0; border-radius: 3px;
