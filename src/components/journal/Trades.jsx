@@ -57,6 +57,22 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
   const noStopCount = useMemo(() => (all || []).filter(noStopOnRecord).length, [all]);
 
   /**
+   * THE PENCIL BELONGS TO ONE VIEW, NOT TO EVERY VIEW.
+   *
+   * It was on every row on every tab, which left the No stop tab with no job
+   * of its own: if you could fix a stop from All or Closed, the tab was only
+   * a filter you could approximate by sorting on SL %. Two things doing
+   * almost the same work is how a screen stops being explainable.
+   *
+   * So the tabs read and this one edits. All / Open / Closed / Winners /
+   * Losers are views of the book; No stop is the worklist, it carries the
+   * count, and it is the only place a stop can be typed into a row. That is
+   * a rule somebody can hold in their head, which the previous arrangement
+   * was not.
+   */
+  const onNoStopView = filter === "nostop" || missing === "stop";
+
+  /**
    * ONE PENCIL, TWO LINKED BOXES.
    *
    * The full form stays for pattern, chart, exit reason and emotion — those
@@ -74,22 +90,6 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
    * you used, ONE number is stored — the price — because that is what 1R is
    * measured from. The percent is a way in, not a second fact.
    */
-  /**
-   * THE PENCIL BELONGS TO ONE VIEW, NOT TO EVERY VIEW.
-   *
-   * It was on every row on every tab, which left the No stop tab with no job
-   * of its own: if you could fix a stop from All or Closed, the tab was only
-   * a filter you could approximate by sorting on SL %. Two things doing
-   * almost the same work is how a screen stops being explainable.
-   *
-   * So the tabs read and this one edits. All / Open / Closed / Winners /
-   * Losers are views of the book; No stop is the worklist, it carries the
-   * count, and it is the only place a stop can be typed into a row. That is
-   * a rule somebody can hold in their head, which the previous arrangement
-   * was not.
-   */
-  const onNoStopView = filter === "nostop" || missing === "stop";
-
   const [editStop, setEditStop] = useState(null);   // trade id
   const [priceDraft, setPriceDraft] = useState("");
   const [pctDraft, setPctDraft] = useState("");

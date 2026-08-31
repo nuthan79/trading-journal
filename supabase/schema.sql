@@ -34,6 +34,12 @@ create table if not exists public.trades (
   entry_date       date    not null,
   entry_price      numeric not null check (entry_price > 0),
   quantity         numeric not null check (quantity   > 0),
+  -- NOT NULL here is the ORIGINAL shape, and migration 006 dropped it: an
+  -- import arrives with no stop when the broker file has no stop column, and
+  -- both this and stop_source come through null. Read this file as the
+  -- starting point and the numbered migrations as what happened since —
+  -- believing this line is how a predicate came to be named hasRealStop
+  -- while passing trades that had no stop at all.
   stop_loss        numeric not null check (stop_loss  > 0),
 
   -- setup
