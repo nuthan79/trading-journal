@@ -6,7 +6,7 @@ import { Plus, Pencil, Trash2, Download, Image as ImageIcon, X, Check } from "lu
 import { rupee, rfmt, pct, signedPct } from "@/lib/format";
 import PositionDetail from "./PositionDetail";
 import { SETUP_FIELDS } from "@/lib/gaps";
-import { noStopOnRecord, hasRealStop } from "@/lib/stops";
+import { noStopOnRecord, hasRealStop, canHaveStop } from "@/lib/stops";
 
 const num = (v) => (v === "" || v === null || v === undefined ? NaN : Number(v));
 
@@ -36,23 +36,12 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
   const noStopCount = useMemo(() => (all || []).filter(noStopOnRecord).length, [all]);
 
   /**
-   * Typing a stop into the row, without opening the form.
+   * ONE PENCIL, TWO LINKED BOXES.
    *
    * The full form stays for pattern, chart, exit reason and emotion — those
    * want a chart open beside you and a modal is the right shape for them. A
    * stop usually needs neither, so charging a modal for the commonest edit on
    * this screen was the wrong price.
-   *
-   * The input starts EMPTY on a trade with no stop on record, because there
-   * is nothing on record to correct. On an assumed one it carries the guess,
-   * exactly as the stops queue does — you are editing a number somebody
-   * invented, and an empty box would make you reconstruct it from nothing.
-   * Either way a value has to be TYPED before anything saves: the one-click
-   * "the guess was right" the stops queue deliberately lacks is absent here
-   * too.
-   */
-  /**
-   * ONE PENCIL, TWO LINKED BOXES.
    *
    * "746.42" is what the broker shows; "seven percent" is what a rule says
    * and what somebody actually recalls about a trade from two years ago.
@@ -416,7 +405,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                         {isFinite(num(t.stop_loss)) ? Number(t.stop_loss).toFixed(2) : "\u2014"}
                         {/* Sits at the right edge of this cell, which puts it
                             between the two numbers it edits. */}
-                        {!hasRealStop(t) && onSaveStop && (
+                        {!hasRealStop(t) && canHaveStop(t) && onSaveStop && (
                           <button className="tr-stoppen"
                                   title="Type the stop — as a price or a percent"
                                   onClick={(e) => { e.stopPropagation(); beginStop(t); }}>

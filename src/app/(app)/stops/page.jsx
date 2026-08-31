@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import StopFill from "@/components/StopFill";
 import { saveStops } from "@/lib/db";
 import { useJournal } from "../JournalContext";
-import { hasRealStop, noStopOnRecord, STOP_NONE } from "@/lib/stops";
+import { hasRealStop, noStopOnRecord, needsStop, STOP_NONE } from "@/lib/stops";
 
 export default function StopsPage() {
   const router = useRouter();
@@ -48,8 +48,9 @@ export default function StopsPage() {
    */
   const needStops = useMemo(
     () => trades.filter((t) => {
-      const stopWanted = t.acquisition !== "bonus" &&
-                         (t.stop_loss == null || t.stop_source === "assumed");
+      /* One definition, in stops.js — the bonus rule and the assumed rule
+         together, so a fifth caller cannot get half of it. */
+      const stopWanted = needsStop(t);
       const dateWanted = t.entry_date_source === "assumed";
       return stopWanted || dateWanted;
     }),

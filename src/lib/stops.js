@@ -68,10 +68,25 @@ export const hasRealStop = (t) =>
 export const noStopOnRecord = (t) => !!t && t.stop_source === STOP_NONE;
 
 /**
+ * CAN this trade have a stop at all?
+ *
+ * A bonus, split or allotment cost nothing, so there is no risk underneath it
+ * to stop out of and no 1R to divide by. That is not a gap somebody should be
+ * asked to fill; it is an absence with a reason.
+ *
+ * The rule lived in three places — the topbar count, the stops queue twice —
+ * and the fourth thing that needed it did not have it: the inline pencil
+ * offered to set a stop on a free share, on a row whose entry reads "FREE"
+ * and whose size is zero. Same shape as the nine copies of hasRealStop, one
+ * commit later.
+ */
+export const canHaveStop = (t) => !!t && t.acquisition !== "bonus";
+
+/**
  * Still owed an answer, and therefore still in the queue.
  *
  * `none` is deliberately absent: it is resolved. Counting it as outstanding
  * is what made the queue impossible to empty in the first place.
  */
 export const needsStop = (t) =>
-  !!t && (t.stop_loss == null || t.stop_source === STOP_ASSUMED);
+  canHaveStop(t) && (t.stop_loss == null || t.stop_source === STOP_ASSUMED);

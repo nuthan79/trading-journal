@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, eq, ok } from "./harness.mjs";
-import { hasRealStop, needsStop, noStopOnRecord, STOP_NONE } from "@/lib/stops";
+import { hasRealStop, needsStop, noStopOnRecord, canHaveStop, STOP_NONE } from "@/lib/stops";
 import { reviewFindings } from "@/lib/analysis";
 import { tradePath } from "@/lib/path";
 import { needsMeasuring } from "@/lib/measure";
@@ -131,4 +131,17 @@ test("no stop on record produces no R, no SL%, no risk", () => {
   eq(Number.isFinite(none.riskAmt), false, "and nothing at risk to report");
   /* Money is still knowable and must survive. */
   ok(Number.isFinite(none.pnl), "P&L does not depend on a stop");
+});
+
+test("a free share is never asked for a stop", () => {
+  /* A bonus, split or allotment cost nothing, so there is no risk under it to
+     stop out of. The rule lived in three places and the fourth thing that
+     needed it — the inline pencil — did not have it, and offered to set a
+     stop on a row whose entry read FREE and whose size was zero. */
+  const bonus = { acquisition: "bonus", stop_loss: null, stop_source: null, entry_price: 0 };
+  const bought = { acquisition: null, stop_loss: null, stop_source: null, entry_price: 500 };
+  eq(canHaveStop(bonus), false);
+  eq(canHaveStop(bought), true);
+  eq(needsStop(bonus), false, "and it must never enter the queue either");
+  eq(needsStop(bought), true);
 });
