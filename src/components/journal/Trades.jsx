@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { matchesEdgeFilter, describeEdgeFilter } from "@/lib/edge";
 import { Plus, Pencil, Trash2, Download, Image as ImageIcon, X, Check } from "lucide-react";
 import { rupee, rfmt, pct, signedPct } from "@/lib/format";
@@ -53,6 +53,22 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
    * you used, ONE number is stored — the price — because that is what 1R is
    * measured from. The percent is a way in, not a second fact.
    */
+  /**
+   * THE PENCIL BELONGS TO ONE VIEW, NOT TO EVERY VIEW.
+   *
+   * It was on every row on every tab, which left the No stop tab with no job
+   * of its own: if you could fix a stop from All or Closed, the tab was only
+   * a filter you could approximate by sorting on SL %. Two things doing
+   * almost the same work is how a screen stops being explainable.
+   *
+   * So the tabs read and this one edits. All / Open / Closed / Winners /
+   * Losers are views of the book; No stop is the worklist, it carries the
+   * count, and it is the only place a stop can be typed into a row. That is
+   * a rule somebody can hold in their head, which the previous arrangement
+   * was not.
+   */
+  const onNoStopView = filter === "nostop" || missing === "stop";
+
   const [editStop, setEditStop] = useState(null);   // trade id
   const [priceDraft, setPriceDraft] = useState("");
   const [pctDraft, setPctDraft] = useState("");
@@ -168,6 +184,10 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
     || (missing === "stop" ? NO_STOP_FIELD : null);
   const edgeDesc = useMemo(() => (edge ? describeEdgeFilter(edge) : null), [edge]);
 
+  /* Switching tabs mid-edit would leave an editor open on a row that is no
+     longer on screen, and its state pointing at a trade nobody can see. */
+  useEffect(() => { if (!onNoStopView) cancelStop(); }, [onNoStopView]);   // eslint-disable-line react-hooks/exhaustive-deps
+
   const rows = useMemo(() => {
     let r = all;
     // Arrives from the mistakes table on Performance. Exact match, not a
@@ -254,6 +274,15 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
 
   return (
     <div className="sec">
+      {onNoStopView && !missingField && (
+        <div className="tr-chip">
+          <span>
+            No stop on record, so no R — they still count in every money figure.
+            Click the pencil to type one, as a price or a percent.
+          </span>
+          <span className="tr-chip-n">{rows.length} of {all.length}</span>
+        </div>
+      )}
       {(mistake || missingField || edgeDesc) && (
         <div className="tr-chip">
           <span>
@@ -402,10 +431,10 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                       </span>
                     ) : (
                       <>
-                        {isFinite(num(t.stop_loss)) ? Number(t.stop_loss).toFixed(2) : "\u2014"}
+                        {isFinite(num(t.stop_loss)) ? Number(t.stop_loss).toFixed(2) : "—"}
                         {/* Sits at the right edge of this cell, which puts it
                             between the two numbers it edits. */}
-                        {!hasRealStop(t) && canHaveStop(t) && onSaveStop && (
+                        {onNoStopView && !hasRealStop(t) && canHaveStop(t) && onSaveStop && (
                           <button className="tr-stoppen"
                                   title="Type the stop — as a price or a percent"
                                   onClick={(e) => { e.stopPropagation(); beginStop(t); }}>
