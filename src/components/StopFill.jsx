@@ -3,6 +3,7 @@
 import { useState, useMemo, useCallback, useRef } from "react";
 import { Check, ChevronRight } from "lucide-react";
 import { rupee, rfmt, pct } from "@/lib/format";
+import Link from "next/link";
 import { STOP_NONE } from "@/lib/stops";
 
 /**
@@ -26,7 +27,7 @@ const isAssumed = (t) => t.stop_source === "assumed" && t.stop_loss != null;
 /** A purchase date the importer invented, because the file carried none. */
 const dateAssumed = (t) => t.entry_date_source === "assumed";
 
-export default function StopFill({ trades, onSave, onDone, realStopCount = 0, pageSize = 25 }) {
+export default function StopFill({ trades, onSave, onDone, realStopCount = 0, noStopCount = 0, pageSize = 25 }) {
   const [values, setValues] = useState({});      // id -> raw input
   /**
    * Purchase dates typed here, by trade id.
@@ -348,11 +349,36 @@ export default function StopFill({ trades, onSave, onDone, realStopCount = 0, pa
       <section className="sf-done">
         <div className="sf-tick"><Check size={18} /></div>
         <h2 className="disp sf-h">Nothing left to check</h2>
-        <p>
-          Every trade has a stop you have recorded and a purchase date you have
-          confirmed, so expectancy, the R distribution, holding period and the
-          review page are all reading your own numbers rather than guesses.
-        </p>
+        {/**
+          * The old copy said "every trade has a stop you have recorded",
+          * which stops being true the moment somebody marks a batch as
+          * having none — and that is exactly when they land here. A screen
+          * congratulating you on data you just told it you do not have is
+          * worse than no screen.
+          */}
+        {noStopCount > 0 ? (
+          <>
+            <p>
+              Nothing is waiting on you. {noStopCount.toLocaleString("en-IN")} trade
+              {noStopCount === 1 ? " is" : "s are"} marked as having no stop on record, so
+              {noStopCount === 1 ? " it sits" : " they sit"} out of every R figure on purpose
+              — that is an answer, not a gap. Everything else carries a stop you recorded.
+            </p>
+            <p className="sf-done-note">
+              If you ever dig one of those numbers out, you can add it and that trade counts
+              again.{" "}
+              <Link href="/trades?missing=stop">
+                Show the {noStopCount.toLocaleString("en-IN")} →
+              </Link>
+            </p>
+          </>
+        ) : (
+          <p>
+            Every trade has a stop you have recorded and a purchase date you have
+            confirmed, so expectancy, the R distribution, holding period and the
+            review page are all reading your own numbers rather than guesses.
+          </p>
+        )}
         <button className="btn" onClick={() => onDone?.()}>Back to the journal</button>
         <style jsx>{`
           .sf-done {

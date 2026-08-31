@@ -6,7 +6,7 @@ import { Plus, Pencil, Trash2, Download, Image as ImageIcon, X } from "lucide-re
 import { rupee, rfmt, pct, signedPct } from "@/lib/format";
 import PositionDetail from "./PositionDetail";
 import { SETUP_FIELDS } from "@/lib/gaps";
-import { noStopOnRecord } from "@/lib/stops";
+import { noStopOnRecord, hasRealStop } from "@/lib/stops";
 
 const num = (v) => (v === "" || v === null || v === undefined ? NaN : Number(v));
 
@@ -52,7 +52,21 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
     return m;
   }, [diary]);
 
-  const missingField = SETUP_FIELDS.find((f) => f.key === missing) || null;
+  /**
+   * `?missing=stop` reaches the trades marked as having no stop on record.
+   *
+   * Deliberately NOT added to SETUP_FIELDS: those are the chart-read fields
+   * the Edge screen needs, and putting a stop among them would add a sixth
+   * row to the Review data-gaps card duplicating the /stops queue. This is a
+   * different question with a different home.
+   *
+   * It exists because those trades leave /stops once resolved — correctly,
+   * they are answered — and there was then no list of them anywhere. One at
+   * a time through this table always worked; finding them did not.
+   */
+  const NO_STOP_FIELD = { key: "stop", label: "stop", has: hasRealStop };
+  const missingField = SETUP_FIELDS.find((f) => f.key === missing)
+    || (missing === "stop" ? NO_STOP_FIELD : null);
   const edgeDesc = useMemo(() => (edge ? describeEdgeFilter(edge) : null), [edge]);
 
   const rows = useMemo(() => {

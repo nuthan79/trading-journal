@@ -14,7 +14,7 @@ import { resolveTradingViewChart } from "@/lib/charts";
 import { entryCharges, mergeConfig } from "@/lib/charges";
 import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
 import { quoteFor } from "@/lib/db";
-import { hasRealStop } from "@/lib/stops";
+import { hasRealStop, noStopOnRecord } from "@/lib/stops";
 
 /**
  * The market price, under a price field.
@@ -669,8 +669,23 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                 <CmpHint cmp={cmp} closed={derivedStatus === "closed"} /></label>
               <label className="f"><span>Stop loss</span>
                 <input className="in" inputMode="decimal" value={t.stop_loss} onChange={set("stop_loss")} />
-                <div className="hint" style={{ color: slBandLabel === "wide" || slBandLabel === "very wide" ? "var(--brass)" : undefined }}>
-                  {isFinite(d.slPct) ? `${d.slPct.toFixed(1)}% from entry — ${slBandLabel}` : "How far the stop sits from entry"}
+                {/**
+                  * A trade marked "no stop on record" still SHOWS a number —
+                  * the importer's leftover, kept because erasing it would
+                  * lose one somebody might later recognise. Nothing is
+                  * derived from it, so slPct is NaN and the hint fell back to
+                  * generic help text, leaving a stop price sitting in a box
+                  * with no indication it is inert.
+                  *
+                  * Saving without touching it is already safe — the source
+                  * only flips to recorded when the value changes — but "safe"
+                  * and "obvious" are different things, and this is the moment
+                  * somebody is deciding whether to type the real one.
+                  */}
+                <div className="hint" style={{ color: noStopOnRecord(t) || slBandLabel === "wide" || slBandLabel === "very wide" ? "var(--brass)" : undefined }}>
+                  {noStopOnRecord(t)
+                    ? "No stop on record — this figure is the importer's and nothing is measured from it. Type the real one to bring this trade back into your R figures."
+                    : isFinite(d.slPct) ? `${d.slPct.toFixed(1)}% from entry — ${slBandLabel}` : "How far the stop sits from entry"}
                 </div>
                 {derivedStatus !== "closed" && <DayEdgeHint cmp={cmp} side={t.side} />}</label>
               <label className="f"><span>Quantity</span>

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import StopFill from "@/components/StopFill";
 import { saveStops } from "@/lib/db";
 import { useJournal } from "../JournalContext";
-import { hasRealStop, STOP_NONE } from "@/lib/stops";
+import { hasRealStop, noStopOnRecord, STOP_NONE } from "@/lib/stops";
 
 export default function StopsPage() {
   const router = useRouter();
@@ -64,6 +64,10 @@ export default function StopsPage() {
            figure, so the button says what would be left rather than letting
            it be discovered afterwards. */
         realStopCount={trades.filter(hasRealStop).length}
+        /* So the "nothing left" screen can say what is actually true, rather
+           than congratulating somebody on stops they just told it they do
+           not have. */
+        noStopCount={trades.filter(noStopOnRecord).length}
         onSave={async (rows, onProgress) => {
           const n = await saveStops(rows, onProgress);
           await reloadTrades();
