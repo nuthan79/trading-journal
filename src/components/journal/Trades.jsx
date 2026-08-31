@@ -33,6 +33,27 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
   const [filter, setFilter] = useState("all");
   const [q, setQ] = useState("");
   const [sort, setSort] = useState({ k: "entry_date", dir: -1 });
+
+  /**
+   * Each tab opens in the order that suits what it holds.
+   *
+   * Newest first either way — the question is which date. A closed trade is
+   * read by when it FINISHED: a position opened last January and sold last
+   * week is recent news, and entry order buried it eleven rows down among
+   * trades that closed months earlier. An open one has no exit to sort by, so
+   * it stays on entry.
+   *
+   * All and No stop mix the two and keep entry order, because an open
+   * position sorted on a date it does not have collects at one end whichever
+   * way the arrow points — which is not an ordering, just a partition.
+   *
+   * Clicking a column still wins, until the next tab change.
+   */
+  const OPENING_SORT = { closed: { k: "exit_date", dir: -1 } };
+  const chooseFilter = (id) => {
+    setFilter(id);
+    setSort(OPENING_SORT[id] || { k: "entry_date", dir: -1 });
+  };
   const noStopCount = useMemo(() => (all || []).filter(noStopOnRecord).length, [all]);
 
   /**
@@ -339,7 +360,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
             */}
           {[["all","All"],["open","Open"],["closed","Closed"],["winners","Winners"],["losers","Losers"],
             ...(noStopCount > 0 ? [["nostop", `No stop · ${noStopCount}`]] : [])].map(([id,l]) => (
-            <button key={id} data-on={filter === id ? 1 : 0} onClick={() => setFilter(id)}>{l}</button>
+            <button key={id} data-on={filter === id ? 1 : 0} onClick={() => chooseFilter(id)}>{l}</button>
           ))}
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
