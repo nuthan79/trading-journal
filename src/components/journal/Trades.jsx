@@ -262,8 +262,22 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
     }
     if (filter === "open") r = r.filter((t) => t.status === "open");
     if (filter === "closed") r = r.filter((t) => t.status === "closed");
-    if (filter === "winners") r = r.filter((t) => t.r > 0);
-    if (filter === "losers") r = r.filter((t) => isFinite(t.r) && t.r <= 0);
+    /**
+     * WON OR LOST IS A QUESTION ABOUT MONEY, NOT ABOUT R.
+     *
+     * These filtered on `r`, which is NaN wherever there is no stop to divide
+     * by — so on a book with ninety-six stopless trades both tabs were nearly
+     * empty while Closed listed the same trades with their profits and losses
+     * printed beside them. A trade that made forty-five thousand rupees is a
+     * winner whether or not anybody wrote down a stop.
+     *
+     * Nothing is reclassified by this. For any trade that HAS a stop,
+     * r = pnl / riskAmt with riskAmt positive, so `r > 0` and `pnl > 0` pick
+     * out exactly the same trades. The only difference is that the ones R
+     * could never see stop being dropped in silence.
+     */
+    if (filter === "winners") r = r.filter((t) => isFinite(t.pnl) && t.pnl > 0);
+    if (filter === "losers") r = r.filter((t) => isFinite(t.pnl) && t.pnl <= 0);
     if (filter === "nostop") r = r.filter(noStopOnRecord);
     if (q.trim()) {
       const s = q.trim().toLowerCase();

@@ -145,3 +145,32 @@ test("a free share is never asked for a stop", () => {
   eq(needsStop(bonus), false, "and it must never enter the queue either");
   eq(needsStop(bought), true);
 });
+
+test("won or lost is decided on money, not on R", () => {
+  /**
+   * Both tabs filtered on `r`, which is NaN wherever there is no stop to
+   * divide by — so a book with ninety-six stopless trades showed nearly
+   * nothing under Winners or Losers while Closed listed the same trades with
+   * their profits printed beside them.
+   *
+   * The equivalence is the point: for a trade WITH a stop, r = pnl / riskAmt
+   * and riskAmt is positive, so the two tests pick the same trades. Anything
+   * that breaks that has changed what "winner" means.
+   */
+  const mk = (o) => ({
+    entry_price: 1000, quantity: 100, side: "long", status: "closed",
+    exit_price: o.win ? 1200 : 900, exit_date: "2026-02-20", charges: 0, exits: [],
+    stop_loss: o.stop ? 950 : 950, stop_source: o.stop ? "recorded" : STOP_NONE,
+  });
+  for (const win of [true, false]) {
+    const withStop = derivePosition(mk({ win, stop: true }), 1000000);
+    const without = derivePosition(mk({ win, stop: false }), 1000000);
+
+    eq(Number.isFinite(withStop.r), true, "a recorded stop still yields R");
+    eq(withStop.r > 0, withStop.pnl > 0, "R and money must agree where both exist");
+
+    eq(Number.isFinite(without.r), false, "no stop, no R — that part is unchanged");
+    eq(Number.isFinite(without.pnl), true, "but the money is always knowable");
+    eq(without.pnl > 0, win, "and it decides which tab the trade belongs in");
+  }
+});
