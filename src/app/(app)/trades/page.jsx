@@ -47,7 +47,8 @@ function TradesInner() {
     : null), [edgeKey]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const { all, diary, saveDiaryEntry, removeChartFromEntry,
-          openEditTrade, openExitTrade, removeTrade, openNewTrade } = useJournal();
+          openEditTrade, openExitTrade, removeTrade, openNewTrade,
+          reloadTrades, say } = useJournal();
 
   return (
     <Trades
@@ -59,6 +60,24 @@ function TradesInner() {
       onClearFilter={() => router.push("/trades")}
       onAttachChart={saveDiaryEntry}
       onRemoveChart={removeChartFromEntry}
+      /**
+       * Typing a stop straight into the row.
+       *
+       * The full form is still there for pattern, chart, reason and emotion —
+       * those need a chart open beside you. A stop usually does not, so
+       * making it cost a modal was the wrong price for the commonest edit on
+       * this screen.
+       *
+       * Marked RECORDED, because typing a number is somebody answering. The
+       * one-click "the guess was right" that the stops queue deliberately
+       * does not have is still absent here: there is no control that commits
+       * a value nobody typed.
+       */
+      onSaveStop={async (id, stop) => {
+        await saveStops([{ id, stop_loss: stop, stop_source: "recorded" }]);
+        await reloadTrades();
+        say("Stop saved.");
+      }}
       onEdit={openEditTrade}
       onExit={openExitTrade}
       onDelete={removeTrade}

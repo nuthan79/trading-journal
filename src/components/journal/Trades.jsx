@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { matchesEdgeFilter, describeEdgeFilter } from "@/lib/edge";
-import { Plus, Pencil, Trash2, Download, Image as ImageIcon, X } from "lucide-react";
+import { Plus, Pencil, Trash2, Download, Image as ImageIcon, X, Check } from "lucide-react";
 import { rupee, rfmt, pct, signedPct } from "@/lib/format";
 import PositionDetail from "./PositionDetail";
 import { SETUP_FIELDS } from "@/lib/gaps";
@@ -28,11 +28,120 @@ function exportCsv(all) {
 }
 
 export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNew,
-                                 onAttachChart, onRemoveChart, mistake = "", missing = "", edge = null, onClearFilter }) {
+                                 onAttachChart, onRemoveChart, onSaveStop,
+                                 mistake = "", missing = "", edge = null, onClearFilter }) {
   const [filter, setFilter] = useState("all");
   const [q, setQ] = useState("");
   const [sort, setSort] = useState({ k: "entry_date", dir: -1 });
   const noStopCount = useMemo(() => (all || []).filter(noStopOnRecord).length, [all]);
+
+  /**
+   * Typing a stop into the row, without opening the form.
+   *
+   * The full form stays for pattern, chart, exit reason and emotion — those
+   * want a chart open beside you and a modal is the right shape for them. A
+   * stop usually needs neither, so charging a modal for the commonest edit on
+   * this screen was the wrong price.
+   *
+   * The input starts EMPTY on a trade with no stop on record, because there
+   * is nothing on record to correct. On an assumed one it carries the guess,
+   * exactly as the stops queue does — you are editing a number somebody
+   * invented, and an empty box would make you reconstruct it from nothing.
+   * Either way a value has to be TYPED before anything saves: the one-click
+   * "the guess was right" the stops queue deliberately lacks is absent here
+   * too.
+   */
+  /**
+   * ONE PENCIL, TWO LINKED BOXES.
+   *
+   * "746.42" is what the broker shows; "seven percent" is what a rule says
+   * and what somebody actually recalls about a trade from two years ago.
+   * Two separate editors would have made you decide which you were about to
+   * remember before you started typing.
+   *
+   * So the pencil sits between the two columns and opens both. Type a price
+   * and the percent fills in; type a percent and the price does. Whichever
+   * you used, ONE number is stored — the price — because that is what 1R is
+   * measured from. The percent is a way in, not a second fact.
+   */
+  const [editStop, setEditStop] = useState(null);   // trade id
+  const [priceDraft, setPriceDraft] = useState("");
+  const [pctDraft, setPctDraft] = useState("");
+  const [savingStop, setSavingStop] = useState(false);
+
+  /* A short's stop sits ABOVE entry, so the sign follows the side rather than
+     assuming long — the same rule the bulk fill uses. */
+  const dirOf = (t) => (t.side === "short" ? -1 : 1);
+  const priceFromPct = (t, pct) => {
+    const entry = Number(t.entry_price);
+    if (!(entry > 0) || !isFinite(pct) || !(pct > 0) || pct >= 100) return NaN;
+    return Math.round(entry * (1 - (dirOf(t) * pct) / 100) * 100) / 100;
+  };
+  const pctFromPrice = (t, price) => {
+    const entry = Number(t.entry_price);
+    if (!(entry > 0) || !isFinite(price) || !(price > 0)) return NaN;
+    return Math.round(((entry - price) / entry) * dirOf(t) * 1000) / 10;
+  };
+
+  const beginStop = (t) => {
+    setEditStop(t.id);
+    /* Empty on a trade with no stop on record — there is nothing to correct.
+       On an assumed one the guess is carried in, exactly as the stops queue
+       does it: you are editing a number somebody invented, and an empty box
+       would make you reconstruct it from nothing. Either way a value has to
+       be TYPED before anything saves, so the one-click "the guess was right"
+       that the stops queue deliberately lacks is absent here too. */
+    const p = noStopOnRecord(t) ? NaN : Number(t.stop_loss);
+    setPriceDraft(isFinite(p) ? String(p) : "");
+    const pc = pctFromPrice(t, p);
+    setPctDraft(isFinite(pc) ? String(pc) : "");
+  };
+  const cancelStop = () => { setEditStop(null); setPriceDraft(""); setPctDraft(""); };
+
+  const typePrice = (t, v) => {
+    setPriceDraft(v);
+    const pc = pctFromPrice(t, Number(v));
+    setPctDraft(v === "" || !isFinite(pc) ? "" : String(pc));
+  };
+  const typePct = (t, v) => {
+    setPctDraft(v);
+    const p = priceFromPct(t, Number(v));
+    setPriceDraft(v === "" || !isFinite(p) ? "" : String(p));
+  };
+
+  const commitStop = async (t) => {
+    const price = Number(priceDraft);
+    const entry = Number(t.entry_price);
+    /* The same guards the stops queue applies: a stop on the wrong side of
+       entry produces a negative 1R and poisons every R that follows from it.
+       Refused quietly rather than saved and flagged later. */
+    if (!(price > 0) || !(entry > 0) || price === entry) return;
+    if (t.side === "short" ? price <= entry : price >= entry) return;
+    setSavingStop(true);
+    try {
+      await onSaveStop?.(t.id, Math.round(price * 100) / 100);
+      cancelStop();
+    } finally {
+      setSavingStop(false);
+    }
+  };
+
+  /* Moving between the two boxes must not close the editor, and they live in
+     different cells — so the marker travels with them and blur checks where
+     focus actually went. */
+  const stopKeys = (t) => ({
+    "data-stopedit": t.id,
+    disabled: savingStop,
+    onKeyDown: (e) => {
+      if (e.key === "Enter") { e.preventDefault(); commitStop(t); }
+      if (e.key === "Escape") { e.preventDefault(); cancelStop(); }
+    },
+    onBlur: (e) => {
+      if (e.relatedTarget?.dataset?.stopedit === String(t.id)) return;
+      cancelStop();
+    },
+  });
+
   const [detailId, setDetailId] = useState(null);
 
   /**
@@ -286,10 +395,51 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                   <td className="num" title={t.stop_source === "assumed"
                         ? "Assumed at import, not a stop you set — every R on this row follows from it"
                         : undefined}>
-                    {isFinite(num(t.stop_loss)) ? Number(t.stop_loss).toFixed(2) : "—"}
+                    {editStop === t.id ? (
+                      <span className="tr-stopedit">
+                        <input className="in" inputMode="decimal" autoFocus
+                               aria-label={`Stop price for ${t.symbol}`}
+                               value={priceDraft}
+                               onChange={(e) => typePrice(t, e.target.value)}
+                               {...stopKeys(t)} />
+                        {/* onMouseDown, not onClick: blur fires first and would
+                            close the editor before a click could land. */}
+                        <button className="tr-stopok" data-stopedit={t.id}
+                                disabled={savingStop}
+                                onMouseDown={(e) => { e.preventDefault(); commitStop(t); }}
+                                title="Save this stop">
+                          <Check size={12} />
+                        </button>
+                      </span>
+                    ) : (
+                      <>
+                        {isFinite(num(t.stop_loss)) ? Number(t.stop_loss).toFixed(2) : "\u2014"}
+                        {/* Sits at the right edge of this cell, which puts it
+                            between the two numbers it edits. */}
+                        {!hasRealStop(t) && onSaveStop && (
+                          <button className="tr-stoppen"
+                                  title="Type the stop — as a price or a percent"
+                                  onClick={(e) => { e.stopPropagation(); beginStop(t); }}>
+                            <Pencil size={11} />
+                          </button>
+                        )}
+                      </>
+                    )}
                     {t.stop_source === "assumed" && <i className="tr-assumed">assumed</i>}
                     {noStopOnRecord(t) && <i className="tr-assumed">no stop</i>}</td>
-                  <td className="num" style={{ fontSize: 12 }}>{isFinite(t.slPct) ? pct(t.slPct, 1) : "—"}</td>
+                  <td className="num" style={{ fontSize: 12 }}>
+                    {editStop === t.id ? (
+                      <span className="tr-stopedit">
+                        <input className="in tr-pctin" inputMode="decimal"
+                               aria-label={`Stop percent for ${t.symbol}`}
+                               value={pctDraft}
+                               onChange={(e) => typePct(t, e.target.value)}
+                               {...stopKeys(t)} />
+                        <i className="tr-stophint">%</i>
+                      </span>
+                    ) : (
+                      isFinite(t.slPct) ? pct(t.slPct, 1) : "—"
+                    )}</td>
                   <td className="num">{t.quantity}</td>
                   <td className="num" style={{ fontSize: 12 }}
                       title="Entry price × quantity — what the position cost">
@@ -447,6 +597,27 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
         .tr-sym:hover { border-bottom-color: var(--brass); }
         /* Small, but never absent. Reading an R off a stop this app invented
            without knowing that is the one mistake this column can cause. */
+        .tr-stopedit { display: inline-flex; align-items: center; gap: 4px; }
+        .tr-stopedit .in { width: 78px; padding: 3px 6px; font-size: 12px; text-align: right; }
+        .tr-stopedit .tr-pctin { width: 52px; }
+        .tr-stophint { font-style: normal; font-size: 11px; color: var(--ink3); }
+        .tr-stopok {
+          display: inline-flex; align-items: center; justify-content: center;
+          width: 20px; height: 20px; padding: 0; border-radius: 3px;
+          border: 1px solid var(--long); background: var(--long);
+          color: var(--paper); cursor: pointer;
+        }
+        /* Quiet until the row is hovered: it sits on ninety-seven rows at
+           once, and a full column of icons reads as a column of buttons
+           rather than as an offer. Always visible where there is no hover. */
+        .tr-stoppen {
+          margin-left: 5px; padding: 0; border: 0; background: none;
+          color: var(--ink3); cursor: pointer; vertical-align: middle;
+          opacity: 0; transition: opacity 120ms;
+        }
+        tr:hover .tr-stoppen, .tr-stoppen:focus-visible { opacity: 1; }
+        .tr-stoppen:hover { color: var(--brass); }
+        @media (hover: none) { .tr-stoppen { opacity: 1; } }
         .tr-assumed {
           display: block; font-style: normal; font-size: 9px;
           letter-spacing: 0.06em; text-transform: uppercase; color: var(--brass);
