@@ -32,6 +32,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
   const [filter, setFilter] = useState("all");
   const [q, setQ] = useState("");
   const [sort, setSort] = useState({ k: "entry_date", dir: -1 });
+  const noStopCount = useMemo(() => (all || []).filter(noStopOnRecord).length, [all]);
   const [detailId, setDetailId] = useState(null);
 
   /**
@@ -101,6 +102,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
     if (filter === "closed") r = r.filter((t) => t.status === "closed");
     if (filter === "winners") r = r.filter((t) => t.r > 0);
     if (filter === "losers") r = r.filter((t) => isFinite(t.r) && t.r <= 0);
+    if (filter === "nostop") r = r.filter(noStopOnRecord);
     if (q.trim()) {
       const s = q.trim().toLowerCase();
       r = r.filter((t) => (t.symbol || "").toLowerCase().includes(s) ||
@@ -174,7 +176,19 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
       )}
       <div className="sechead">
         <div className="seg">
-          {[["all","All"],["open","Open"],["closed","Closed"],["winners","Winners"],["losers","Losers"]].map(([id,l]) => (
+          {/**
+            * "No stop" appears only when there are some, because a chip for an
+            * empty set is a question nobody asked.
+            *
+            * It lives here rather than only on the stops queue, which is where
+            * the link to these trades was. That screen is reachable while it
+            * has work in it and through Settings afterwards — so the one list
+            * somebody might want months later sat behind a route they would
+            * have to already know about. A filter over trades belongs with the
+            * other filters over trades.
+            */}
+          {[["all","All"],["open","Open"],["closed","Closed"],["winners","Winners"],["losers","Losers"],
+            ...(noStopCount > 0 ? [["nostop", `No stop · ${noStopCount}`]] : [])].map(([id,l]) => (
             <button key={id} data-on={filter === id ? 1 : 0} onClick={() => setFilter(id)}>{l}</button>
           ))}
         </div>

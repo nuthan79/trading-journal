@@ -392,6 +392,14 @@ export default function StopFill({ trades, onSave, onDone, realStopCount = 0, no
           }
           .sf-h { font-size: 18px; margin: 0 0 8px; }
           p { font-size: 13px; color: var(--ink2); margin: 0 0 18px; }
+          /* The one link on this screen was rendering as default browser blue
+             and underlined, which appears nowhere else in the app. */
+          .sf-done-note { font-size: 12px; color: var(--ink3); }
+          .sf-done-note :global(a) {
+            color: var(--brass); font-weight: 600; text-decoration: none;
+            white-space: nowrap;
+          }
+          .sf-done-note :global(a:hover) { text-decoration: underline; }
         `}</style>
       </section>
     );
