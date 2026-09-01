@@ -33,15 +33,21 @@ const RISK_WARN_R = 5;
 
 
 /**
- * A total written out to the rupee.
+ * Written out to the rupee. Used by Today, and deliberately by nothing else.
  *
- * The strip is the one place in the app showing figures somebody reads as
- * BALANCES rather than scans as a column, and "₹10.92 L" cannot be checked
- * against a broker statement. The tiers stay everywhere else — see the note on
- * `moneyParts` for why this is an exception rather than a new default.
+ * The whole strip was tried this way and put back. Read together, five figures
+ * in full turn a summary into a ledger — the tiers are what let the eye take
+ * the row in at a glance, and losing them cost more than the precision was
+ * worth.
+ *
+ * Today is the exception because of what it IS. It is the only figure here
+ * that changes between one visit and the next, and the only one somebody
+ * checks against what their broker app is showing them this morning. "−₹10.9k"
+ * cannot be checked against anything. The other four are aggregates nobody
+ * reconciles to the rupee, and "₹10.92 L" is the faster read for those.
  *
  * The paise are set smaller and dimmer. At this length one uniform size makes
- * the eye stop on the wrong group of digits; the lakhs are what is being read
+ * the eye stop on the wrong group of digits; the rupees are what is being read
  * and the decimals only need to be there, not to compete.
  */
 function Money({ v }) {
@@ -674,7 +680,7 @@ export default function Holdings({
               running on has nothing to push out of line. */}
           <Summary
             label="Unrealised"
-            value={<Money v={totals.unrealised} />}
+            value={rupee(totals.unrealised)}
             sub={isFinite(totals.unrealisedR) ? rfmt(totals.unrealisedR) : "—"}
             hint={`Money still on the table across every holding, and what it comes to in R. This
                   one IS weighted by size, so it will not match the Now at column added up —
@@ -688,14 +694,14 @@ export default function Holdings({
             /* No line at all when nothing has been sold down. A rule under a
                ₹0 is a reading somebody has to make, and there is nothing to
                read. */
-            foot={totals.bankedFrom > 0 ? <Money v={totals.banked} /> : null}
+            foot={totals.bankedFrom > 0 ? rupee(totals.banked) : null}
             footLabel="banked"
           />
           <Summary
             label="Exposure"
-            value={<Money v={totals.exposure} />}
+            value={rupee(totals.exposure)}
             sub="at CMP"
-            foot={<Money v={totals.invested} />}
+            foot={rupee(totals.invested)}
             footLabel="invested"
             hint="What the open book is worth at the last price fetched, and under it what those
                   same shares cost you. The difference between the two is the Unrealised figure
@@ -704,13 +710,13 @@ export default function Holdings({
           />
           <Summary
             label={`Realised ${realised.fyLabel}`}
-            value={<Money v={realised.year} />}
+            value={rupee(realised.year)}
             sub={isFinite(realised.yearR) ? rfmt(realised.yearR) : "—"}
             tone={realised.year >= 0 ? "pos" : "neg"}
           />
           <Summary
             label="Realised all-time"
-            value={<Money v={realised.all} />}
+            value={rupee(realised.all)}
             sub={isFinite(realised.allR)
               ? `${rfmt(realised.allR)}${curve.n > 0 ? ` · ${curve.n} trades` : ""}`
               : "—"}
