@@ -138,7 +138,11 @@ export async function POST(req) {
     try {
       const { data } = await admin
         .from("price_bars")
-        .select("d,o,h,l,c")
+        /* v included, and it is load-bearing twice over: without it a cached
+           bar reaches the chart with no volume however many times it is
+           refetched, AND the noVolume test below can never become false, so
+           every listing goes upstream on every single request. */
+        .select("d,o,h,l,c,v")
         .eq("symbol", it.symbol)
         .eq("exchange", it.exchange)
         .gte("d", it.from)
@@ -157,7 +161,29 @@ export async function POST(req) {
       stored[0].d <= nextSession(it.from) &&
       stored[stored.length - 1].d >= prevSession(it.to);
 
-    if (covers) { out[key] = stored; continue; }
+    /**
+     * COVERED IN DATES IS NOT COVERED IN COLUMNS.
+     *
+     * Migration 044 added volume to bars that had been stored for months
+     * without it. Those rows span every window anyone asks for, so `covers`
+     * was true and the network was never touched — which meant a chart of a
+     * CLOSED trade would have had no volume for the life of the app. Only
+     * open positions, whose window runs to today and therefore never quite
+     * reaches the stored edge, would ever have refetched.
+     *
+     * So a range with no volume anywhere in it counts as a miss. ALL rather
+     * than SOME, deliberately: Yahoo returns a genuine null for a session
+     * with no trading, and `some` would refetch a symbol for ever over a
+     * single holiday it can never fill.
+     *
+     * Self-limiting. The refetch writes volume for the whole range, after
+     * which this is false and the symbol is never asked again. One extra
+     * upstream request per listing, once, spread over whenever its charts are
+     * first opened.
+     */
+    const noVolume = stored.length > 0 && stored.every((b) => b.v == null);
+
+    if (covers && !noVolume) { out[key] = stored; continue; }
 
     if (fetched > 0) await sleep(SYMBOL_GAP_MS);
     fetched++;

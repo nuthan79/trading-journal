@@ -128,3 +128,33 @@ test("client and server agree on how a listing is named", () => {
     ok(/barsKeyFor/.test(src), `${f} does not use barsKeyFor at all`);
   }
 });
+
+test("the bars cache reads back every column it decides on", () => {
+  /* A near miss worth pinning. The route now treats a range whose bars have
+     no volume as a cache MISS, so 044's back-catalogue refetches once and
+     gains volume. That test reads b.v — and the select listed only d,o,h,l,c,
+     so v came back undefined for every row, noVolume was permanently true,
+     and every listing would have gone upstream on every request. A cache that
+     can never be satisfied is worse than no cache: it is a loop against an
+     unofficial endpoint. */
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+  const route = readFileSync(path.join(root, "src/app/api/bars/route.js"), "utf8");
+
+  const sel = route.match(/\.select\("([a-z,]+)"\)/);
+  ok(sel, "could not find the price_bars select");
+  const cols = sel[1].split(",");
+
+  /* Every column the coverage logic tests must be one it actually reads. */
+  const tested = [...route.matchAll(/\bb\.([a-z]+)\s*==\s*null/g)].map((m) => m[1]);
+  ok(tested.length > 0, "no column-presence test found — has the logic moved?");
+  for (const c of tested) {
+    ok(cols.includes(c),
+       `the route decides on b.${c} but selects only "${sel[1]}" — ` +
+       `${c} is always undefined, so that branch is stuck on`);
+  }
+
+  /* And the columns a chart draws must all come back. */
+  for (const c of ["d", "o", "h", "l", "c", "v"]) {
+    ok(cols.includes(c), `the chart draws ${c} but the route does not select it`);
+  }
+});
