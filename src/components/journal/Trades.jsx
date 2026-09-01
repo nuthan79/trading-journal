@@ -7,7 +7,7 @@ import { rupee, rfmt, pct, signedPct } from "@/lib/format";
 import PositionDetail from "./PositionDetail";
 import { SETUP_FIELDS } from "@/lib/gaps";
 import { noStopOnRecord, hasRealStop, canHaveStop } from "@/lib/stops";
-import { matches, describeFilter, seedFromTab } from "@/lib/filters";
+import { matches, describeFilter, seedFromTab, sortForFilter } from "@/lib/filters";
 import SavedViews from "./SavedViews";
 
 const num = (v) => (v === "" || v === null || v === undefined ? NaN : Number(v));
@@ -37,17 +37,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
   const [q, setQ] = useState("");
   const [sort, setSort] = useState({ k: "entry_date", dir: -1 });
 
-  /**
-   * A saved view and a tab are alternatives, not layers.
-   *
-   * Both answer "which trades", so leaving a tab switched on underneath a view
-   * would silently intersect the two — you would apply "Everything over 2R",
-   * see nine trades, and have no way to tell that Losers was still narrowing
-   * it. Choosing either one clears the other, so what is on screen is always
-   * explained by exactly one control.
-   */
   const [view, setView] = useState(null);
-  const applyView = (v) => { setView(v); if (v) setFilter("all"); };
 
   /**
    * Each tab opens in the order that suits what it holds.
@@ -69,6 +59,30 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
     setFilter(id);
     setView(null);
     setSort(OPENING_SORT[id] || { k: "entry_date", dir: -1 });
+  };
+
+  /**
+   * A saved view and a tab are alternatives, not layers.
+   *
+   * Both answer "which trades", so leaving a tab switched on underneath a view
+   * would silently intersect the two — you would apply "Everything over 2R",
+   * see nine trades, and have no way to tell that Losers was still narrowing
+   * it. Choosing either one clears the other, so what is on screen is always
+   * explained by exactly one control.
+   *
+   * A view also brings its own opening order, since a view that asks about the
+   * big R multiples is not answered by entry-date order. Clearing one restores
+   * the order the current tab would have opened in, so leaving a view leaves
+   * the table where picking that tab would have put it.
+   */
+  const applyView = (v) => {
+    setView(v);
+    if (v) {
+      setFilter("all");
+      setSort(sortForFilter(v) || { k: "entry_date", dir: -1 });
+    } else {
+      setSort(OPENING_SORT[filter] || { k: "entry_date", dir: -1 });
+    }
   };
   const noStopCount = useMemo(() => (all || []).filter(noStopOnRecord).length, [all]);
 
@@ -368,7 +382,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
               asks, so the list never narrows for a reason you cannot read. */}
           <span>Showing <b>{view.name}</b> — {describeFilter(view).toLowerCase()}</span>
           <span className="tr-chip-n">{rows.length} of {all.length}</span>
-          <button className="btn ghost sm" onClick={() => setView(null)}>
+          <button className="btn ghost sm" onClick={() => applyView(null)}>
             <X size={12} />Clear
           </button>
         </div>

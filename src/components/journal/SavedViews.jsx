@@ -180,7 +180,24 @@ function RuleRow({ rule, symbols, onChange, onRemove, canRemove }) {
 function Builder({ all, draft, existing, onCancel, onSave }) {
   const [f, setF] = useState(draft);
   const [name, setName] = useState(draft.name || "");
-  const [touchedName, setTouchedName] = useState(!!draft.name);
+  /**
+   * WHETHER THE NAME FOLLOWS THE RULES DEPENDS ON WHERE IT CAME FROM.
+   *
+   * On a new view it plainly should: you have not named anything yet. On an
+   * EDIT it used to freeze, so changing "R multiple is above 2" to 5 left the
+   * view still called "…above 2" — a name that now says something false about
+   * its own contents, which is worse than no name.
+   *
+   * But a name somebody actually chose must survive editing. "Big winners" is
+   * theirs, and rewriting it to "R multiple is above 5" because they nudged a
+   * threshold would be the app overwriting their words.
+   *
+   * The test that separates them is already sitting here: if the name still
+   * reads exactly as the rules describe themselves, it IS the suggestion and
+   * should keep tracking. If it differs by so much as a word, it was typed.
+   */
+  const [touchedName, setTouchedName] = useState(
+    !!draft.name && draft.name.trim() !== suggestName(draft).trim());
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
@@ -510,6 +527,15 @@ function Styles() {
       .sv-num i:first-child { left: 9px; }
       .sv-num i:last-child { right: 9px; }
       .sv-num:has(i:first-child) .sv-val { padding-left: 20px; }
+      /* A trailing unit and the browser's own spin buttons want the same
+         corner, and the spinner only appears on focus — so "days" read fine
+         until the moment somebody typed into it, then had arrows through it.
+         The arrows go: this is a box you type a threshold into, and nudging
+         a stop distance one whole percent at a time was never the point. */
+      .sv-num:has(i:last-child) .sv-val { padding-right: 38px; }
+      .sv-num .sv-val::-webkit-outer-spin-button,
+      .sv-num .sv-val::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+      .sv-num .sv-val { -moz-appearance: textfield; appearance: textfield; }
 
       .sv-multi { display: flex; flex-wrap: wrap; gap: 5px; align-items: center;
         border: 1px solid var(--rule); border-radius: 2px; padding: 5px 6px;

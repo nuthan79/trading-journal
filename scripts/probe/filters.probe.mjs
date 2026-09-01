@@ -1,7 +1,11 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { test, eq, ok } from "./harness.mjs";
 import {
   FIELDS, fieldOf, opsFor, arityOf, matchesRule, matches, isComplete,
   windowFor, describeFilter, suggestName, seedFromTab, withField, withOp,
+  sortForFilter,
 } from "@/lib/filters";
 
 const T = (o = {}) => ({
@@ -244,6 +248,92 @@ test("a filter reads back as a sentence", () => {
     }
   }
   ok(seen > 60, `only ${seen} field/operator pairs were exercised`);
+});
+
+/* ------------------------------------------------------------------ */
+
+test("every sortable field has a real column in the trades table", () => {
+  /* sortable means "the table has a th() for this". Sorting on a field with
+     no header reorders the list with nothing on screen to explain why, and
+     the arrow that says which column is driving it has nowhere to appear.
+     Read out of Trades.jsx so the two cannot drift apart. */
+  const src = readFileSync(path.resolve(
+    fileURLToPath(import.meta.url), "..", "..", "..",
+    "src/components/journal/Trades.jsx"), "utf8");
+  const columns = new Set(
+    [...src.matchAll(/\bth\("([a-zA-Z_]+)"/g)].map((m) => m[1]));
+  ok(columns.size > 10, `only ${columns.size} th() columns parsed — has the syntax changed?`);
+
+  for (const f of FIELDS) {
+    if (f.sortable) {
+      ok(columns.has(f.key),
+         `${f.key} is marked sortable but Trades.jsx has no th("${f.key}")`);
+    }
+  }
+});
+
+test("a view opens in the order the question implies", () => {
+  const F1 = (field, op, value) => ({ conjunction: "and",
+    rules: [{ field, op, value, value2: "" }] });
+
+  /* Reaching upward puts the largest first — the whole point of asking. */
+  eq(JSON.stringify(sortForFilter(F1("r", "gt", 5))), '{"k":"r","dir":-1}');
+  eq(JSON.stringify(sortForFilter(F1("r", "gte", 5))), '{"k":"r","dir":-1}');
+
+  /* Reaching down puts the worst first: "Net P&L is at most 0" opens on the
+     biggest loss, not on the trade that lost eleven rupees. */
+  eq(JSON.stringify(sortForFilter(F1("pnl", "lte", 0))), '{"k":"pnl","dir":1}');
+  eq(JSON.stringify(sortForFilter(F1("pnl", "lt", 0))), '{"k":"pnl","dir":1}');
+
+  /* Dates are newest-first, like every other list in the app. */
+  eq(JSON.stringify(sortForFilter(F1("exit_date", "after", "2025-03-15"))),
+     '{"k":"exit_date","dir":-1}');
+
+  /* A middle has no direction, and neither does a name. */
+  eq(sortForFilter({ conjunction: "and",
+    rules: [{ field: "r", op: "between", value: 1, value2: 3 }] }), null);
+  eq(sortForFilter(F1("pattern", "anyof", ["VCP"])), null, "no order in a pattern name");
+  eq(sortForFilter(F1("r", "empty")), null);
+  eq(sortForFilter({ rules: [] }), null);
+
+  /* Fields with no column are skipped rather than sorted on invisibly. */
+  eq(sortForFilter(F1("charges", "gt", 500)), null, "charges has no column");
+  eq(sortForFilter(F1("mfe_r", "gt", 2)), null, "mfe_r has no column");
+
+  /* The FIRST condition that yields an order wins — a rule somebody can hold
+     in their head, unlike a scoring scheme across several conditions. */
+  eq(JSON.stringify(sortForFilter({ conjunction: "and", rules: [
+    { field: "pattern", op: "anyof", value: ["VCP"] },
+    { field: "r", op: "gt", value: 2, value2: "" },
+    { field: "pnl", op: "gt", value: 0, value2: "" },
+  ] })), '{"k":"r","dir":-1}', "pattern gives no order, so R decides — not P&L");
+
+  /* An incomplete condition must not steer the order either. */
+  eq(JSON.stringify(sortForFilter({ conjunction: "and", rules: [
+    { field: "pnl", op: "gt", value: "", value2: "" },
+    { field: "r", op: "gt", value: 2, value2: "" },
+  ] })), '{"k":"r","dir":-1}');
+
+  /* A stored sort beats derivation. Nothing writes one yet. */
+  eq(JSON.stringify(sortForFilter({ sort_key: "heldDays", sort_dir: 1,
+    rules: [{ field: "r", op: "gt", value: 5, value2: "" }] })),
+    '{"k":"heldDays","dir":1}');
+});
+
+test("the suggested name is recognisable as its own suggestion", () => {
+  /* How the builder decides whether an EDIT's name should keep following the
+     rules: a name equal to the suggestion was generated and should track; any
+     other name was typed and is the user's. That test only works while
+     suggestName is a pure function of the rules — if it ever picked up a
+     timestamp or a count of anything outside them, every saved name would
+     stop matching and every edit would start overwriting chosen names. */
+  const f = { conjunction: "and",
+    rules: [{ field: "r", op: "gt", value: 2, value2: "" }] };
+  eq(suggestName(f), suggestName({ ...f, name: "Big winners" }),
+     "the name must not feed back into the suggestion");
+  eq(suggestName(f), suggestName({ ...f, id: "x", position: 4 }),
+     "nor may anything else stored alongside the rules");
+  eq(suggestName(f) === "R multiple is above 2", true, suggestName(f));
 });
 
 test("an unknown field never silently drops every trade", () => {

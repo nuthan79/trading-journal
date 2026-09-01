@@ -47,9 +47,22 @@ import { fyStartYear } from "./calc";
  * compare identically but they are typed, displayed and suffixed differently,
  * and a rule that reads "Net P&L is below ₹0" is worth the extra type.
  */
+/**
+ * `sortable` means THE TRADES TABLE HAS A COLUMN FOR THIS, and nothing more.
+ *
+ * It is what lets a view open in an order that suits what it asks — "R is
+ * above 5" landing biggest-R-first rather than by entry date. The flag is
+ * about the column existing, not about the order being meaningful: sorting on
+ * a field with no header would reorder the list with nothing on screen to
+ * explain why, and the arrow that normally says which column is driving it
+ * would have nowhere to appear. `sortForFilter` decides direction separately,
+ * and declines on the ones with no natural direction.
+ *
+ * Kept honest by a probe that reads the th() calls out of Trades.jsx.
+ */
 export const FIELDS = [
   // --- the position -------------------------------------------------
-  { key: "symbol", label: "Symbol", type: "symbol", group: "Position" },
+  { key: "symbol", label: "Symbol", type: "symbol", group: "Position", sortable: true },
   { key: "exchange", label: "Exchange", type: "enum", group: "Position",
     options: ["NSE", "BSE"] },
   { key: "side", label: "Side", type: "enum", group: "Position",
@@ -57,19 +70,20 @@ export const FIELDS = [
   { key: "status", label: "Status", type: "enum", group: "Position",
     options: ["open", "closed"], display: { open: "Open", closed: "Closed" } },
   { key: "broker", label: "Broker", type: "text", group: "Position" },
-  { key: "quantity", label: "Quantity", type: "number", group: "Position" },
-  { key: "entry_price", label: "Entry price", type: "money", group: "Position" },
-  { key: "exposure", label: "Position size", type: "money", group: "Position" },
+  { key: "quantity", label: "Quantity", type: "number", group: "Position", sortable: true },
+  { key: "entry_price", label: "Entry price", type: "money", group: "Position", sortable: true },
+  { key: "exposure", label: "Position size", type: "money", group: "Position", sortable: true },
 
   // --- dates --------------------------------------------------------
-  { key: "entry_date", label: "Entry date", type: "date", group: "Dates" },
-  { key: "exit_date", label: "Exit date", type: "date", group: "Dates" },
-  { key: "heldDays", label: "Days held", type: "number", group: "Dates", unit: "days" },
+  { key: "entry_date", label: "Entry date", type: "date", group: "Dates", sortable: true },
+  { key: "exit_date", label: "Exit date", type: "date", group: "Dates", sortable: true },
+  { key: "heldDays", label: "Days held", type: "number", group: "Dates", unit: "days",
+    sortable: true },
 
   // --- risk ---------------------------------------------------------
-  { key: "stop_loss", label: "Stop", type: "money", group: "Risk" },
-  { key: "slPct", label: "Stop distance", type: "percent", group: "Risk" },
-  { key: "riskAmt", label: "Risk taken", type: "money", group: "Risk" },
+  { key: "stop_loss", label: "Stop", type: "money", group: "Risk", sortable: true },
+  { key: "slPct", label: "Stop distance", type: "percent", group: "Risk", sortable: true },
+  { key: "riskAmt", label: "Risk taken", type: "money", group: "Risk", sortable: true },
   { key: "riskPct", label: "Risk of account", type: "percent", group: "Risk" },
   /* The three stop states, as a filter. This is what makes the "No stop" chip
      expressible as a saved view rather than a hard-coded tab. */
@@ -78,9 +92,9 @@ export const FIELDS = [
     display: { recorded: "Recorded", assumed: "Assumed by import", none: "No stop on record" } },
 
   // --- outcome ------------------------------------------------------
-  { key: "pnl", label: "Net P&L", type: "money", group: "Outcome" },
-  { key: "r", label: "R multiple", type: "r", group: "Outcome" },
-  { key: "exitPct", label: "Return", type: "percent", group: "Outcome" },
+  { key: "pnl", label: "Net P&L", type: "money", group: "Outcome", sortable: true },
+  { key: "r", label: "R multiple", type: "r", group: "Outcome", sortable: true },
+  { key: "exitPct", label: "Return", type: "percent", group: "Outcome", sortable: true },
   { key: "charges", label: "Charges", type: "money", group: "Outcome" },
   { key: "exit_reason", label: "Exit reason", type: "enum", group: "Outcome",
     options: EXIT_REASONS },
@@ -89,11 +103,14 @@ export const FIELDS = [
 
   // --- the setup ----------------------------------------------------
   { key: "pattern", label: "Pattern", type: "enum", group: "Setup",
-    options: PATTERNS },
-  { key: "weinstein_stage", label: "Weinstein stage", type: "number", group: "Setup" },
-  { key: "rs_rank", label: "RS rank", type: "number", group: "Setup" },
-  { key: "vol_pct_avg", label: "Breakout volume", type: "percent", group: "Setup" },
-  { key: "distPivot", label: "Distance from pivot", type: "percent", group: "Setup" },
+    options: PATTERNS, sortable: true },
+  { key: "weinstein_stage", label: "Weinstein stage", type: "number", group: "Setup",
+    sortable: true },
+  { key: "rs_rank", label: "RS rank", type: "number", group: "Setup", sortable: true },
+  { key: "vol_pct_avg", label: "Breakout volume", type: "percent", group: "Setup",
+    sortable: true },
+  { key: "distPivot", label: "Distance from pivot", type: "percent", group: "Setup",
+    sortable: true },
 
   // --- review -------------------------------------------------------
   { key: "mistakes", label: "Tags", type: "tags", group: "Review",
@@ -423,6 +440,44 @@ export function suggestName(filter) {
   const first = describeRule(rules[0]);
   const rest = rules.length - 1;
   return rest > 0 ? `${first} +${rest} more` : first;
+}
+
+/**
+ * The order a view should open in.
+ *
+ * A view that asks for R above 5 is a question about the big ones, and
+ * answering it in entry-date order buries the answer — you wrote the
+ * condition to find the extremes, so the extremes go at the top.
+ *
+ * THE OPERATOR CARRIES THE DIRECTION, which is why this is derived rather
+ * than configured. "is above" and "is at least" are reaching upward, so the
+ * largest come first; "is below" and "is at most" are reaching down, so
+ * "Net P&L is at most 0" opens with the worst loss rather than the smallest.
+ * `between` and `equals` are asking about a middle and get no opinion. Dates
+ * always come back newest-first, matching every other list in the app.
+ *
+ * Only the FIRST condition that yields an order is used — "the first thing
+ * you asked for decides the order" is a rule somebody can hold in their head,
+ * where a scoring scheme across several conditions is not. And this is only
+ * ever a starting position: clicking a column still wins, until the view
+ * changes.
+ *
+ * A stored sort_key wins over all of it. Nothing writes one yet; it is the
+ * home for a per-view order somebody pins by hand, if that is ever wanted.
+ */
+export function sortForFilter(filter) {
+  if (filter?.sort_key) {
+    return { k: filter.sort_key, dir: filter.sort_dir === 1 ? 1 : -1 };
+  }
+  for (const rule of (filter?.rules || []).filter(isComplete)) {
+    const f = fieldOf(rule.field);
+    if (!f || !f.sortable) continue;
+    if (f.type === "date") return { k: f.key, dir: -1 };
+    if (!isNumeric(f.type)) continue;
+    if (rule.op === "gt" || rule.op === "gte") return { k: f.key, dir: -1 };
+    if (rule.op === "lt" || rule.op === "lte") return { k: f.key, dir: 1 };
+  }
+  return null;
 }
 
 /**
