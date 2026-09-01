@@ -1128,9 +1128,21 @@ function MeasureOffer({ trades, onMeasured }) {
               {/* The upstream reason, so a failure explains itself instead of
                   leaving the reader to guess between a rate limit, a bad
                   symbol and a service that is simply down. */}
+              {/* NAMED, not counted. "1 HTTP 404" is unactionable; the symbol
+                  is the whole fix. Capped at six so one bad import cannot
+                  print a paragraph of tickers. */}
               {result.reasons?.length > 0 && (
-                <> — {result.reasons.map((r) => `${r.n} ${r.why}`).join(", ")}</>
+                <> — {result.reasons.map((r) => {
+                  const shown = (r.symbols || []).slice(0, 6).join(", ");
+                  const more = (r.symbols?.length || 0) - 6;
+                  return `${shown}${more > 0 ? ` +${more} more` : ""} (${r.why})`;
+                }).join("; ")}</>
               )}.
+              {result.reasons?.some((r) => /404/.test(r.why)) && (
+                <> A 404 means the price source has no such ticker — usually a
+                  listing that was renamed or delisted, or a symbol that never
+                  resolved on import. Correcting it on the trade is the fix.</>
+              )}
             </>
           )}
           {result.stopped && (

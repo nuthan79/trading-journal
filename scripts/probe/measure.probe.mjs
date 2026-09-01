@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { test, eq, ok } from "./harness.mjs";
 import { needsMeasuring, measureTo, measurePaths } from "@/lib/measure";
 
@@ -120,4 +123,34 @@ test("one symbol refused among many that worked carries on", async () => {
   eq(calls, 3, "three batches of twelve");
   eq(r.stopped, null);
   eq(r.measured, 27);
+});
+
+/* ------------------------------------------------------------------ */
+
+test("a failure names the symbol it failed on", () => {
+  /* A pass that could not read one trade reported "1 could not be read — 1
+     HTTP 404" and left the reader guessing which of a hundred and twenty
+     trades it meant. The reason without the symbol is unactionable: a 404 is
+     almost always a renamed or delisted ticker and the fix is to correct that
+     ONE symbol, which you cannot do until you know it.
+
+     Static, because the aggregation sits inside measurePaths and reaching it
+     needs the whole API round trip stubbed. The two halves that have to agree
+     are the shape produced and the shape read. */
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+  const m = readFileSync(path.join(root, "src/lib/measure.js"), "utf8");
+  const rv = readFileSync(path.join(root, "src/components/journal/Review.jsx"), "utf8");
+
+  ok(/reasons\.get\(s\.why\)\.add\(/.test(m),
+     "measure.js is not keeping WHICH listing failed, only how many");
+  ok(/s\.key/.test(m), "the skipped key is never read, so the symbol is lost");
+  ok(/symbols:\s*\[\.\.\.syms\]/.test(m),
+     "the symbols are collected but not returned to the caller");
+
+  ok(/r\.symbols/.test(rv),
+     "Review is back to printing a bare count instead of the symbol");
+  /* And the old shape must not come back: `${r.n} ${r.why}` was the line that
+     produced "1 HTTP 404". */
+  ok(!/\$\{r\.n\}\s+\$\{r\.why\}/.test(rv),
+     "the count-only message is back in Review");
 });

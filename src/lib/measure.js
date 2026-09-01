@@ -169,12 +169,19 @@ export async function measurePaths(trades, onProgress, opts = {}) {
     }
 
     const bars = payload.bars || {};
-    /* Why the server could not read each one, kept so the caller can say
-       something better than a count. */
+    /* Why the server could not read each one, AND WHICH ONE.
+       
+       The symbol used to be dropped here and only the reason counted, so a
+       failed pass said "1 could not be read — 1 HTTP 404" and left the reader
+       guessing which of a hundred and twenty trades it meant. A 404 is
+       actionable — it is almost always a delisted or renamed ticker, and the
+       fix is to correct that one symbol — but only if you know which one. */
     let throttled = 0;
     for (const s of payload.skipped || []) {
       if (!s?.why) continue;
-      reasons.set(s.why, (reasons.get(s.why) || 0) + 1);
+      if (!reasons.has(s.why)) reasons.set(s.why, new Set());
+      /* The key is SYMBOL:EXCHANGE; the symbol is the half worth showing. */
+      reasons.get(s.why).add(String(s.key || "").split(":")[0] || "?");
       if (/429/.test(s.why)) throttled++;
     }
 
@@ -234,7 +241,7 @@ export async function measurePaths(trades, onProgress, opts = {}) {
   return {
     measured, skipped, symbols: groups.length, stopped,
     reasons: [...reasons.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .map(([why, n]) => ({ why, n })),
+      .sort((a, b) => b[1].size - a[1].size)
+      .map(([why, syms]) => ({ why, n: syms.size, symbols: [...syms] })),
   };
 }
