@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { matchesEdgeFilter, describeEdgeFilter } from "@/lib/edge";
 import { Plus, Pencil, Trash2, Download, Image as ImageIcon, X, Check } from "lucide-react";
-import { rupee, rfmt, pct, signedPct } from "@/lib/format";
+import { rupee, rfmt, pct, signedPct, exportFilename } from "@/lib/format";
 import PositionDetail from "./PositionDetail";
 import { SETUP_FIELDS } from "@/lib/gaps";
 import { noStopOnRecord, hasRealStop, canHaveStop } from "@/lib/stops";
@@ -12,20 +12,31 @@ import SavedViews from "./SavedViews";
 
 const num = (v) => (v === "" || v === null || v === undefined ? NaN : Number(v));
 
-function exportCsv(all) {
+/**
+ * WHAT IS ON SCREEN, NOT WHAT IS IN THE BOOK.
+ *
+ * This took `all` and exported the whole journal however the table was
+ * filtered — so a view narrowed to twenty-seven trades handed back
+ * ninety-seven, and nothing about the file said which. A download button
+ * sitting inside a filtered table is a claim about that table.
+ *
+ * Rows arrive already filtered AND sorted, so the file opens in the order the
+ * screen was in, which is the other half of the same promise.
+ */
+function exportCsv(rows, label) {
   const cols = ["symbol", "exchange", "side", "entry_date", "entry_price", "quantity", "stop_loss",
     "exposure", "riskAmt", "riskPct", "pattern", "pivot_price", "distPivot", "vol_pct_avg",
     "weinstein_stage", "rs_rank",
     "exit_date", "exit_price", "avgExitPrice", "exitPct", "exit_reason", "charges", "pnl", "r",
     "heldDays", "mistakes", "notes"];
   const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const lines = [cols.join(",")].concat(all.map((t) =>
+  const lines = [cols.join(",")].concat((rows || []).map((t) =>
     cols.map((c) => esc(Array.isArray(t[c]) ? t[c].join(" | ") :
       typeof t[c] === "number" ? (isFinite(t[c]) ? t[c].toFixed(4) : "") : t[c])).join(",")));
   const blob = new Blob([lines.join("\n")], { type: "text/csv" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = `trades-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = exportFilename(label);
   a.click(); URL.revokeObjectURL(a.href);
 }
 
@@ -340,6 +351,27 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
    * different sets of rows — printing them side by side without saying so
    * invites reading one as the other's explanation.
    */
+  /**
+   * What the table is currently showing, in a few words, for the filename.
+   *
+   * Ordered by how specific each control is rather than by how it is reached:
+   * a saved view is the narrowest thing on screen and a tab the broadest, so
+   * a view wins even though both are active. Search is appended rather than
+   * substituted, because "closed" and "closed, matching GODREJ" are different
+   * files and a name that called them both "closed" would be the same problem
+   * this replaces.
+   */
+  const viewLabel = useMemo(() => {
+    const parts = [];
+    if (view) parts.push(view.name);
+    else if (mistake) parts.push(`tagged ${mistake}`);
+    else if (missingField) parts.push(`missing ${missingField.label}`);
+    else if (edgeDesc) parts.push(`${edgeDesc.label} ${edgeDesc.value}`);
+    else if (filter !== "all") parts.push(filter === "nostop" ? "no stop" : filter);
+    if (q.trim()) parts.push(`matching ${q.trim()}`);
+    return parts.join(" ") || "all trades";
+  }, [view, mistake, missingField, edgeDesc, filter, q]);
+
   const totals = useMemo(() => {
     const pnl = rows.map((t) => t.pnl).filter(isFinite);
     const rs = rows.map((t) => t.r).filter(isFinite);
@@ -465,7 +497,14 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
               </button>
             )}
           </div>
-          <button className="btn ghost sm" onClick={() => exportCsv(all)}><Download size={13} />CSV</button>
+          {/* `rows`, not `all` — see the note on exportCsv. The count is on the
+              button so what you are about to download is stated before you
+              click it, not discovered when the file opens. */}
+          <button className="btn ghost sm" title={`Download the ${rows.length} trade${
+                    rows.length === 1 ? "" : "s"} shown, as ${exportFilename(viewLabel)}`}
+                  onClick={() => exportCsv(rows, viewLabel)}>
+            <Download size={13} />CSV · {rows.length}
+          </button>
         </div>
       </div>
 

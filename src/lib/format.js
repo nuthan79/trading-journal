@@ -105,6 +105,41 @@ export function signedPct(v, dp = 1) {
 
 export const days = (v) => (isFinite(v) ? `${Math.round(v)} d` : "—");
 
+/**
+ * A download filename that says what is in the file.
+ *
+ * "trades-2026-09-01.csv" is indistinguishable from every other export ever
+ * taken, and two of them in a Downloads folder cannot be told apart — one may
+ * be the whole book and the other twenty-seven trades from one saved view.
+ *
+ * SLUGGED HARD, because `label` can be a saved view's name and that is free
+ * text somebody typed. A colon is legal in a view name and illegal in a
+ * filename on Windows; a slash is legal and, on every platform, a path
+ * separator. Anything outside a-z0-9 becomes a hyphen rather than being
+ * escaped, which also spares the whole question of how a browser's download
+ * handler treats a percent sign.
+ *
+ * THE STAMP IS LOCAL TIME, NOT ISO. It exists so a second export five minutes
+ * later is a different file rather than silently becoming "(1)". A file saved
+ * at nine in the morning that reads 0330 fails at exactly that job, so UTC is
+ * the wrong clock here even though it is the right one everywhere else in
+ * this app.
+ */
+export function exportFilename(label, { ext = "csv", prefix = "ledgerr",
+                                        now = new Date() } = {}) {
+  const slug = String(label ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60)
+    /* A 60-char cut can land mid-word and leave a trailing hyphen. */
+    .replace(/-+$/, "");
+  const p = (n) => String(n).padStart(2, "0");
+  const stamp = `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}` +
+                `-${p(now.getHours())}${p(now.getMinutes())}`;
+  return [prefix, slug, stamp].filter(Boolean).join("-") + `.${ext}`;
+}
+
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
                 "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
