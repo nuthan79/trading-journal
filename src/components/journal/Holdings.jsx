@@ -6,6 +6,23 @@ import { rupee, rfmt, pct, signedPct, moneyParts, exportFilename } from "@/lib/f
 import { downloadCsv } from "@/lib/csv";
 
 /**
+ * BUILT, VERIFIED, AND DELIBERATELY NOT SHIPPED. Flip this to true.
+ *
+ * The holdings export works — the columns below are exported in table order,
+ * the file was checked byte for byte, and a probe keeps the column list honest
+ * whether or not the button is on screen. It is hidden because it is not
+ * wanted for users yet, not because anything about it is unfinished.
+ *
+ * Left as a flag rather than removed, and rather than commented out. Removed,
+ * it gets rebuilt from nothing later; commented out, the columns rot silently
+ * because nothing type-checks or probes a comment. This way the code stays
+ * live, the probe keeps testing it, and turning it on is one word.
+ *
+ * The trades export is unaffected and stays visible.
+ */
+const SHOW_HOLDINGS_CSV = false;
+
+/**
  * The columns of the holdings table, in the order the table shows them, plus
  * the two facts the table encodes as styling rather than as text.
  *
@@ -635,12 +652,14 @@ export default function Holdings({
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {/* The count is on the button so what is about to be downloaded is
               stated before the click, not discovered when the file opens. */}
-          <button className="btn ghost sm" disabled={!rows.length}
-                  title={`Download the ${rows.length} holding${rows.length === 1 ? "" : "s"}
-                          shown, in this order, as ${exportFilename("holdings")}`}
-                  onClick={() => downloadCsv(rows, HOLDING_COLS, exportFilename("holdings"))}>
-            <Download size={13} />CSV · {rows.length}
-          </button>
+          {SHOW_HOLDINGS_CSV && (
+            <button className="btn ghost sm" disabled={!rows.length}
+                    title={`Download the ${rows.length} holding${rows.length === 1 ? "" : "s"}
+                            shown, in this order, as ${exportFilename("holdings")}`}
+                    onClick={() => downloadCsv(rows, HOLDING_COLS, exportFilename("holdings"))}>
+              <Download size={13} />CSV · {rows.length}
+            </button>
+          )}
           <button className="btn ghost sm" onClick={onRefresh} disabled={refreshing}>
             <RefreshCw size={13} />{refreshing ? "Refreshing…" : "Refresh prices"}
           </button>
