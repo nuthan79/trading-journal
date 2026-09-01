@@ -51,6 +51,46 @@ export function inr(v, { compact = true, decimals = 2 } = {}) {
 /** With the rupee sign — for money amounts standing on their own. */
 export const rupee = (v, opts) => (v == null || !isFinite(v) ? "—" : `₹${inr(v, opts)}`);
 
+/**
+ * A figure written out in full: 50,35,939.09 rather than 50.36 L.
+ *
+ * NOT a replacement for `inr`. The tiers exist because "17.70 L" reads faster
+ * than "17,70,000" in a column of forty trade P&Ls, and that is still true.
+ * This is for the few places showing ONE number that somebody reads as a
+ * balance — the top-of-screen totals — where rounding to two significant
+ * figures throws away the rupees they are trying to check.
+ *
+ * `compact: false` on `inr` was close but not this: it drops the decimals
+ * entirely above ₹100, so a balance came out as 50,35,939 with the paise
+ * silently gone.
+ *
+ * Returned in PARTS rather than as one string so a caller can set the decimals
+ * smaller. At this length that is not decoration — 50,35,939.09 read at one
+ * size makes the eye stop on the wrong group of digits, and the lakhs are the
+ * part being read.
+ */
+export function moneyParts(v) {
+  if (v == null || !isFinite(v)) return null;
+  const s = new Intl.NumberFormat("en-IN", {
+    minimumFractionDigits: 2, maximumFractionDigits: 2,
+  }).format(Math.abs(v));
+  const cut = s.lastIndexOf(".");
+  return {
+    neg: v < 0,
+    /* The minus is the typographic one used everywhere else here, not a
+       hyphen — it is the width of a digit, so a column of these stays aligned. */
+    sign: v < 0 ? "−" : "",
+    int: cut < 0 ? s : s.slice(0, cut),
+    dec: cut < 0 ? "00" : s.slice(cut + 1),
+  };
+}
+
+/** The same figure as one string, for anywhere that cannot take markup. */
+export function rupeeFull(v) {
+  const p = moneyParts(v);
+  return p ? `${p.sign}₹${p.int}.${p.dec}` : "—";
+}
+
 export function rfmt(v, dp = 2) {
   if (!isFinite(v)) return "—";
   return `${v >= 0 ? "+" : ""}${v.toFixed(dp)}R`;

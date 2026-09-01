@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { RefreshCw, Flag, Rocket, CornerDownRight } from "lucide-react";
-import { rupee, rfmt, pct, signedPct } from "@/lib/format";
+import { rupee, rfmt, pct, signedPct, moneyParts } from "@/lib/format";
 import { fyStartYear, fyLabel } from "@/lib/calc";
 /* The same thresholds the measurement used, so a badge here and a finding on
    Review can never describe the same trade with two different numbers. */
@@ -31,6 +31,26 @@ const RISK_WARN_R = 5;
 // the measurement that fills `became_free_on` have to agree about where "risk
 // free" starts, and two copies of the number is how they would stop agreeing.
 
+
+/**
+ * A total written out to the rupee.
+ *
+ * The strip is the one place in the app showing figures somebody reads as
+ * BALANCES rather than scans as a column, and "₹10.92 L" cannot be checked
+ * against a broker statement. The tiers stay everywhere else — see the note on
+ * `moneyParts` for why this is an exception rather than a new default.
+ *
+ * The paise are set smaller and dimmer. At this length one uniform size makes
+ * the eye stop on the wrong group of digits; the lakhs are what is being read
+ * and the decimals only need to be there, not to compete.
+ */
+function Money({ v }) {
+  const p = moneyParts(v);
+  if (!p) return "—";
+  return (
+    <>{p.sign}₹{p.int}<span className="ps-dec">.{p.dec}</span></>
+  );
+}
 
 /**
  * `foot` is a second figure below a hairline, for the one tile that carries
@@ -634,7 +654,7 @@ export default function Holdings({
               has to scroll sideways to find. */}
           <Summary
             label="Today"
-            value={isFinite(totals.today) ? rupee(totals.today) : "—"}
+            value={<Money v={totals.today} />}
             sub={!totals.todayN
               ? "no previous close yet — hit Refresh prices"
               : `${signedPct(totals.todayPct)}${totals.todayN < rows.length
@@ -654,7 +674,7 @@ export default function Holdings({
               running on has nothing to push out of line. */}
           <Summary
             label="Unrealised"
-            value={rupee(totals.unrealised)}
+            value={<Money v={totals.unrealised} />}
             sub={isFinite(totals.unrealisedR) ? rfmt(totals.unrealisedR) : "—"}
             hint={`Money still on the table across every holding, and what it comes to in R. This
                   one IS weighted by size, so it will not match the Now at column added up —
@@ -668,14 +688,14 @@ export default function Holdings({
             /* No line at all when nothing has been sold down. A rule under a
                ₹0 is a reading somebody has to make, and there is nothing to
                read. */
-            foot={totals.bankedFrom > 0 ? rupee(totals.banked) : null}
+            foot={totals.bankedFrom > 0 ? <Money v={totals.banked} /> : null}
             footLabel="banked"
           />
           <Summary
             label="Exposure"
-            value={rupee(totals.exposure)}
+            value={<Money v={totals.exposure} />}
             sub="at CMP"
-            foot={rupee(totals.invested)}
+            foot={<Money v={totals.invested} />}
             footLabel="invested"
             hint="What the open book is worth at the last price fetched, and under it what those
                   same shares cost you. The difference between the two is the Unrealised figure
@@ -684,13 +704,13 @@ export default function Holdings({
           />
           <Summary
             label={`Realised ${realised.fyLabel}`}
-            value={rupee(realised.year)}
+            value={<Money v={realised.year} />}
             sub={isFinite(realised.yearR) ? rfmt(realised.yearR) : "—"}
             tone={realised.year >= 0 ? "pos" : "neg"}
           />
           <Summary
             label="Realised all-time"
-            value={rupee(realised.all)}
+            value={<Money v={realised.all} />}
             sub={isFinite(realised.allR)
               ? `${rfmt(realised.allR)}${curve.n > 0 ? ` · ${curve.n} trades` : ""}`
               : "—"}
@@ -1166,6 +1186,14 @@ export default function Holdings({
         }
         .ps-sum-v.pos { color: var(--long); }
         .ps-sum-v.neg { color: var(--short); }
+        /* The paise, set back. Inherits colour through opacity rather than
+           taking one of its own, so it stays a quieter version of whichever
+           tone the figure is wearing instead of turning grey on a red total. */
+        .ps-dec { font-size: 0.68em; opacity: 0.55; }
+        /* Tabular figures so the five totals line up as a row of balances.
+           The strip is monospaced already; this also pins the foot line, which
+           carries the same numbers one size down. */
+        .ps-sum-v, .ps-sum-foot-v { font-variant-numeric: tabular-nums; }
         .ps-sum-s { font-size: 11px; color: var(--ink3); margin-top: 3px; }
         /* Reads as text until you go near it — the row is a table row, not a
            list of links, and underlining every symbol would say otherwise. */
