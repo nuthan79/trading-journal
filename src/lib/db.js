@@ -1380,6 +1380,47 @@ export async function saveFilterOrder(ids) {
       .then(({ error }) => { if (error) throw error; })));
 }
 
+/* ------------------------------ chart drill ------------------------- */
+
+export async function listDrillCards() {
+  const rows = await fetchAllPages(() =>
+    supabase.from("drill_cards").select("trade_id,seen,wrong,last_seen"));
+  /* Keyed by trade for the deck builder, which asks per card rather than
+     scanning a list. */
+  return Object.fromEntries((rows || []).map((r) => [r.trade_id, r]));
+}
+
+/**
+ * One write for a whole session, not one per card.
+ *
+ * A drill is ten answers in about a minute; ten round trips would make the
+ * last card wait on the first. The counters are read-modify-written from what
+ * the deck already had in hand, which is safe here because a session is one
+ * person on one screen — two drills at once would lose a count, and losing a
+ * count changes the ORDER of a future deck and nothing else.
+ */
+export async function saveDrillSession(answers, prior = {}) {
+  const user_id = await uid();
+  const seenAt = new Date().toISOString();
+  const rows = (answers || [])
+    .filter((a) => a?.card?.id)
+    .map((a) => {
+      const was = prior[a.card.id] || { seen: 0, wrong: 0 };
+      const right = (a.called === "take") === !!a.card.won;
+      return {
+        user_id,
+        trade_id: a.card.id,
+        seen: (was.seen || 0) + 1,
+        wrong: (was.wrong || 0) + (right ? 0 : 1),
+        last_seen: seenAt,
+      };
+    });
+  if (!rows.length) return;
+  const { error } = await supabase
+    .from("drill_cards").upsert(rows, { onConflict: "user_id,trade_id" });
+  if (error) throw error;
+}
+
 /* ------------------------------ settings --------------------------- */
 
 export async function getProfile() {

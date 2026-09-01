@@ -11,26 +11,9 @@ import { noStopOnRecord, hasRealStop, canHaveStop } from "@/lib/stops";
 import { isOpen, isClosed, isPartial } from "@/lib/positions";
 import { matches, describeFilter, seedFromTab, sortForFilter } from "@/lib/filters";
 import SavedViews from "./SavedViews";
+import { SHOW_CHART_WALL } from "@/lib/flags";
 import ChartWall from "./ChartWall";
 
-/**
- * BUILT, MEASURED, AND DELIBERATELY NOT SHOWN. Flip this to true.
- *
- * The chart wall works — twenty-four Lightweight Charts instances mount in
- * ~85ms, scroll at 121fps and leak nothing across paging, all measured. It is
- * held back to be a paid feature later, not because anything about it is
- * unfinished.
- *
- * A flag rather than a deletion, and rather than a comment. Deleted, it gets
- * rebuilt from nothing; commented out, candles.js and its probes rot silently
- * as fields are renamed around them. This way the code stays live, the eleven
- * chart probes keep running, and turning it on is one word.
- *
- * Nothing is paid for while it is off: lightweight-charts is imported
- * dynamically from TradeChart, so a user who never sees the toggle never
- * downloads the library.
- */
-const SHOW_CHART_WALL = false;
 
 const num = (v) => (v === "" || v === null || v === undefined ? NaN : Number(v));
 

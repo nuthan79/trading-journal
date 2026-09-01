@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { SHOW_CHART_DRILL } from "@/lib/flags";
 
 /**
  * The four screens that interpret the record, under one tab.
@@ -28,6 +29,9 @@ const SUB = [
   { href: "/analysis/what-if", label: "What-if" },
   { href: "/analysis/mindset", label: "Mindset" },
   { href: "/analysis/review", label: "Review" },
+  /* Built, and held back as a paid feature — see lib/flags.js. The tab is not
+     rendered while the flag is off, so the route exists and is unreachable. */
+  ...(SHOW_CHART_DRILL ? [{ href: "/analysis/drill", label: "Drill" }] : []),
 ];
 
 export default function AnalysisLayout({ children }) {
