@@ -19,5 +19,15 @@
 /** The wall of per-trade candlestick charts on Trades. Pro feature, later. */
 export const SHOW_CHART_WALL = false;
 
-/** Deal winners and losers blind, and score the calls. Pro feature, later. */
-export const SHOW_CHART_DRILL = false;
+/**
+ * Deal winners and losers blind, and score the calls.
+ *
+ * ON, for testing on a real book — 36 closed trades carry a chart. Intended as
+ * a paid feature, so expect this to go back to false; the code is written to
+ * be switched either way rather than removed.
+ *
+ * Note this does NOT depend on SHOW_CHART_WALL. The drill's reveal renders a
+ * TradeChart directly, so the "what happened" half works while the wall on
+ * Trades stays hidden.
+ */
+export const SHOW_CHART_DRILL = true;
