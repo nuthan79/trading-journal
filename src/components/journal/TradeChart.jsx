@@ -84,16 +84,7 @@ export default function TradeChart({ trade, bars, height = 220, compact = false 
           scaleMargins: { top: 0.08, bottom: 0.26 },
           mode: 1,                    // logarithmic. See the note above.
         },
-        timeScale: {
-          borderColor: grid, visible: !compact, fixLeftEdge: true, fixRightEdge: true,
-          /* EMPTY SESSIONS AT THE RIGHT, ON PURPOSE. A price line's tag is
-             drawn from the axis leftward INTO the plot, so with the last
-             candle flush against the axis "entry 1128.40" sat on top of the
-             final week of price — exactly where the eye goes to see how the
-             trade ended. This reserves a strip for the tags to land in. Wider
-             on a large chart because the tags carry more text there. */
-          rightOffset: compact ? 4 : 12,
-        },
+        timeScale: { borderColor: grid, visible: !compact, fixLeftEdge: true },
         crosshair: { mode: 0 },
         handleScroll: false,          // the window is the point; panning off it loses the trade
         handleScale: false,
@@ -150,29 +141,67 @@ export default function TradeChart({ trade, bars, height = 220, compact = false 
       }
 
       /* EVERY EXIT. A 55%-closed position is two moments, not one. */
-      /* The PRICE under the arrow, not just "in". An arrow says when; the
-         number says at what — and the number is what somebody is reading the
-         chart to check against the row beneath it. The share is appended only
-         when there was more than one tranche, since "100%" on a single exit
-         is noise. Text is dropped entirely on a thumbnail, where it would
-         cover the candles it is annotating. */
-      const px = (v) => (isFinite(v) ? v.toFixed(2) : "");
+      /**
+       * IN and OUT, and nothing else but the share.
+       *
+       * The price was tried under each arrow and taken out: the arrow already
+       * points AT the candle whose price it would repeat, so the number
+       * annotated something the chart was showing anyway — and it did it by
+       * covering the candles either side. The entry and stop levels are on the
+       * axis where prices belong.
+       *
+       * The share stays, because that is the one thing the chart cannot say by
+       * pointing: two arrows look identical whether the position came off in
+       * halves or ninety-ten. Only where there was more than one tranche —
+       * "100%" on a single exit is noise.
+       */
       const markers = [];
       if (o.entry?.time) {
         markers.push({ time: o.entry.time, position: "belowBar", color: long,
-                       shape: "arrowUp", text: compact ? "" : `in ${px(o.entry.price)}` });
+                       shape: "arrowUp", text: compact ? "" : "IN" });
       }
       o.exits.forEach((e, i) => {
         const share = o.exitShare[i];
-        const part = isFinite(share) && o.exits.length > 1 ? ` · ${Math.round(share)}%` : "";
+        const part = isFinite(share) && o.exits.length > 1 ? ` ${Math.round(share)}%` : "";
         markers.push({
           time: e.time, position: "aboveBar", color: short, shape: "arrowDown",
-          text: compact ? "" : `out ${px(e.price)}${part}`,
+          text: compact ? "" : `OUT${part}`,
         });
       });
       if (markers.length) createSeriesMarkers(candles, markers);
 
-      chart.timeScale().fitContent();
+      /**
+       * EMPTY SESSIONS AT THE RIGHT, AND SET AS A RANGE RATHER THAN AS AN
+       * OFFSET.
+       *
+       * A price line's title is drawn from the axis leftward INTO the plot, so
+       * with the last candle flush against the axis "entry" and "stop" sat on
+       * top of the final week of price — exactly where the eye goes to see how
+       * the trade ended.
+       *
+       * The first attempt set `rightOffset` and it did nothing, because
+       * fitContent() runs after it and fits the data to the full width, which
+       * is precisely the thing the offset was asking not to happen. Setting
+       * the logical range says both at once: show every bar, and leave this
+       * many bar-widths blank after the last one. `fixRightEdge` had to go
+       * with it — it clamps the view to the last bar, which is the same
+       * override wearing a different name.
+       */
+      /**
+       * THE GAP IS SIZED IN PIXELS, THEN CONVERTED TO BARS.
+       *
+       * A price line's title is a fixed lump of text — "entry 1622.41" is
+       * about ninety pixels wide whatever the chart is showing. Reserving a
+       * number of BARS instead was the mistake: twelve bars is a comfortable
+       * gap on a book of forty sessions and twenty-four pixels on a book of a
+       * hundred and eighty, which is how the tags were still sitting on the
+       * candles after the first fix.
+       *
+       * Solving `pad * width / (n + pad) = tagPx` for pad gives the number of
+       * bar-widths that comes to tagPx on THIS chart at THIS width. Recomputed
+       * inside fit(), because the answer changes with the width.
+       */
+      const tagPx = compact ? 6 : 92;
 
       /* The OHLC readout, which is the other thing the library gives for
          nothing. Only where there is room to print it. */
@@ -183,11 +212,29 @@ export default function TradeChart({ trade, bars, height = 220, compact = false 
         });
       }
 
-      const ro = new ResizeObserver(() => {
-        if (box.current) chart.applyOptions({ width: box.current.clientWidth });
-      });
+      /**
+       * THE RANGE IS RE-APPLIED ON EVERY RESIZE, not set once.
+       *
+       * Lightweight Charts keeps BAR SPACING across a width change, not the
+       * visible range — so a chart that grew wider went on drawing its bars at
+       * the old pitch and let the extra width become blank space. On a window
+       * resize that turned the modest strip reserved for the tags into most of
+       * the plot, with the candles crushed into the left third.
+       *
+       * Cheap to redo, and it means the reserved strip stays proportional at
+       * every width rather than only at the one it happened to mount at.
+       */
+      const fit = () => {
+        if (!box.current) return;
+        const w = box.current.clientWidth;
+        chart.applyOptions({ width: w });
+        const pad = Math.max(2,
+          Math.round((tagPx * bars.length) / Math.max(w - tagPx, 80)));
+        chart.timeScale().setVisibleLogicalRange({ from: -0.5, to: bars.length - 1 + pad });
+      };
+      const ro = new ResizeObserver(fit);
       ro.observe(box.current);
-      chart.applyOptions({ width: box.current.clientWidth });
+      fit();
       chart.__ro = ro;
     })();
 
