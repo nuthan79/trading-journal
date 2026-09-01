@@ -20,14 +20,12 @@
 export const SHOW_CHART_WALL = false;
 
 /**
- * Deal winners and losers blind, and score the calls.
+ * Deal winners and losers blind, and score the calls. Pro feature, later.
  *
- * ON, for testing on a real book — 36 closed trades carry a chart. Intended as
- * a paid feature, so expect this to go back to false; the code is written to
- * be switched either way rather than removed.
+ * Was briefly on to test against a real book of 36 charted trades, and is back
+ * off. Independent of SHOW_CHART_WALL: the reveal renders a TradeChart
+ * directly, so turning this on alone brings the "what happened" half with it.
  *
- * Note this does NOT depend on SHOW_CHART_WALL. The drill's reveal renders a
- * TradeChart directly, so the "what happened" half works while the wall on
- * Trades stays hidden.
+ * Needs migration 045, which is already applied to the live database.
  */
-export const SHOW_CHART_DRILL = true;
+export const SHOW_CHART_DRILL = false;
