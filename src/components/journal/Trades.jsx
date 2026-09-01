@@ -386,11 +386,23 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
   const totals = useMemo(() => {
     const pnl = rows.map((t) => t.pnl).filter(isFinite);
     const rs = rows.map((t) => t.r).filter(isFinite);
+    const money = pnl.reduce((a, b) => a + b, 0);
     return {
       n: rows.length,
-      pnl: pnl.reduce((a, b) => a + b, 0),
+      pnl: money,
       r: rs.reduce((a, b) => a + b, 0),
       withR: rs.length,
+      /**
+       * DIVIDED BY WHAT WENT INTO THE SUM, NOT BY WHAT IS ON SCREEN.
+       *
+       * `n` counts rows; the total counts rows with a finite P&L, and those
+       * are not the same list — a position with no mark yet has no number to
+       * add. Dividing the total by `n` would quietly shrink the average by
+       * however many of those are in view, which is worst on the Open tab
+       * where there are most of them.
+       */
+      withPnl: pnl.length,
+      avg: pnl.length ? money / pnl.length : NaN,
     };
   }, [rows]);
 
@@ -709,8 +721,26 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                 <td colSpan={11}>
                   <b>{totals.n}</b> {totals.n === 1 ? "trade" : "trades"} shown
                 </td>
-                <td className={`num ${totals.pnl >= 0 ? "pos" : "neg"}`}>
-                  {rupee(totals.pnl)}
+                <td className={`num ${totals.withPnl === 0 ? "" : totals.pnl >= 0 ? "pos" : "neg"}`}
+                    title={totals.withPnl < totals.n
+                      ? `${totals.n - totals.withPnl} of these have no P&L yet — an open position with no mark`
+                      : undefined}>
+                  {/* A dash, not ₹0, when nothing in view has a P&L. Summing an
+                      empty list gives zero, and zero here reads as "you made
+                      nothing" rather than "there is nothing to add up" — which
+                      is what the Open tab shows before any price is fetched.
+                      The R column beside it has always said "—" for exactly
+                      this, and the two disagreeing was the tell. */}
+                  {totals.withPnl ? rupee(totals.pnl) : "—"}
+                  {/* The average under the total, in the same place the R
+                      column puts its own caveat, so the footer reads as two
+                      columns each explaining itself rather than as a row of
+                      numbers with a note tacked on. Said "per trade" out loud
+                      because this table has repeat symbols in it, and an
+                      unlabelled average invites reading it per stock. */}
+                  {isFinite(totals.avg) && totals.withPnl > 1 && (
+                    <i className="tr-tot-sub">{rupee(totals.avg)} per trade</i>
+                  )}
                 </td>
                 <td className={`num ${totals.r >= 0 ? "pos" : "neg"}`}
                     title={totals.withR < totals.n
