@@ -129,6 +129,13 @@ export async function fetchBars({ symbol, exchange = "NSE", from, to }) {
           h: r2(q.high?.[i] == null ? null : q.high[i] * f),
           l: r2(q.low?.[i] == null ? null : q.low[i] * f),
           c: r2(c * f),
+          /* NOT adjusted by f. The split factor divides prices because a
+             hundred-rupee share became two fifty-rupee ones; the same event
+             DOUBLES the share count, so applying a price factor to volume
+             would move it the wrong way. Left as reported — the chart reads
+             volume against its own recent average, where a consistent series
+             matters more than an absolute one. */
+          v: q.volume?.[i] == null ? null : Math.round(q.volume[i]),
         });
       }
       if (!bars.length) throw new Error("no bars in response");

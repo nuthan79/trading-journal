@@ -4,6 +4,11 @@ import { useMemo, useState } from "react";
 import { RefreshCw, Flag, Rocket, CornerDownRight, Download } from "lucide-react";
 import { rupee, rfmt, pct, signedPct, moneyParts, exportFilename } from "@/lib/format";
 import { downloadCsv } from "@/lib/csv";
+import { fyStartYear, fyLabel } from "@/lib/calc";
+/* The same thresholds the measurement used, so a badge here and a finding on
+   Review can never describe the same trade with two different numbers. */
+import { FREE_AT_R, POWER_R, POWER_DAYS } from "@/lib/path";
+import PositionDetail from "./PositionDetail";
 
 /**
  * BUILT, VERIFIED, AND DELIBERATELY NOT SHIPPED. Flip this to true.
@@ -60,11 +65,6 @@ const HOLDING_COLS = [
   { key: "atR", header: "now_at_r" },
   { key: "broker", header: "broker" },
 ];
-import { fyStartYear, fyLabel } from "@/lib/calc";
-/* The same thresholds the measurement used, so a badge here and a finding on
-   Review can never describe the same trade with two different numbers. */
-import { FREE_AT_R, POWER_R, POWER_DAYS } from "@/lib/path";
-import PositionDetail from "./PositionDetail";
 
 /**
  * What is on the table right now.
@@ -657,7 +657,7 @@ export default function Holdings({
                     title={`Download the ${rows.length} holding${rows.length === 1 ? "" : "s"}
                             shown, in this order, as ${exportFilename("holdings")}`}
                     onClick={() => downloadCsv(rows, HOLDING_COLS, exportFilename("holdings"))}>
-              <Download size={13} />CSV · {rows.length}
+              <Download size={13} />CSV
             </button>
           )}
           <button className="btn ghost sm" onClick={onRefresh} disabled={refreshing}>

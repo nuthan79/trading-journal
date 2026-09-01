@@ -44,6 +44,35 @@ const firstNum = (...vals) => {
  * A trade with no exits behaves exactly as it did before this existed, so old
  * code paths and old rows keep working.
  */
+/**
+ * THREE STATUSES, TWO STATES. A part-sold position is OPEN.
+ *
+ * `status` has three values — open, partial, closed — because the schema needs
+ * to know a position was sold down. But there are only two states a screen
+ * ever asks about: is size still on the table, or is this finished? A part-sold
+ * position still has shares, still has risk running, and still wants a mark.
+ *
+ * WHY THIS IS A FUNCTION AND NOT A COMPARISON. The rule was written out by
+ * hand in six places — the mark-on-load pass, the open list, the topbar count,
+ * the position derivation, TradeForm and Holdings — and the seventh got it
+ * wrong: the Trades screen's Open tab tested `status === "open"` alone, so a
+ * part-sold position appeared in neither Open nor Closed and fell out of the
+ * screen entirely while sitting in plain view on Holdings.
+ *
+ * Same shape as hasRealStop in stops.js, one file later. A rule with more than
+ * one copy has a wrong copy; it is only a question of which screen finds it.
+ *
+ * The SQL twin is `.in("status", ["open", "partial"])` in db.js, which cannot
+ * import this and has to be changed alongside it.
+ */
+export const isOpen = (t) => !!t && (t.status === "open" || t.status === "partial");
+
+/** Finished. Nothing left on the table. */
+export const isClosed = (t) => !!t && t.status === "closed";
+
+/** Sold down but not out — the state that has to be asked for by name. */
+export const isPartial = (t) => !!t && t.status === "partial";
+
 export function derivePosition(t, accountSize) {
   const dir = t.side === "short" ? -1 : 1;
   const entry = n(t.entry_price);

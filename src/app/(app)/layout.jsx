@@ -13,7 +13,7 @@ import {
   signUpWithPassword, signInWithGoogle,
   sendPasswordReset, avatarUrl, trackVisit, setAnalyticsFlag } from "@/lib/db";
 import { stats } from "@/lib/calc";
-import { derivePosition } from "@/lib/positions";
+import { derivePosition, isOpen, isPartial } from "@/lib/positions";
 import FirstRun from "@/components/journal/FirstRun";
 import TradeForm from "@/components/journal/TradeForm";
 import SettingsSheet from "@/components/journal/SettingsSheet";
@@ -358,7 +358,7 @@ export default function AppLayout({ children }) {
         setFilters(sv);
 
         // A partial still has size running, so it wants a mark like any open one.
-        const openNow = t.filter((x) => x.status === "open" || x.status === "partial");
+        const openNow = t.filter(isOpen);
         if (openNow.length) {
           markOpenPositions(openNow).then(({ marked }) => {
             if (marked.length) mergeMarks(marked);
@@ -460,7 +460,7 @@ export default function AppLayout({ children }) {
   // 'partial' counts as open: there is still size on the table, still risk
   // running, and it still wants a mark-to-market.
   const open = useMemo(
-    () => all.filter((t) => t.status === "open" || t.status === "partial"),
+    () => all.filter(isOpen),
     [all]
   );
   // Counted off the raw rows: a derived trade has stop_loss folded into NaN
@@ -522,11 +522,11 @@ export default function AppLayout({ children }) {
     [shown]
   );
   const openCount = useMemo(
-    () => shown.filter((t) => t.status === "open" || t.status === "partial").length,
+    () => shown.filter(isOpen).length,
     [shown]
   );
   const partialCount = useMemo(
-    () => shown.filter((t) => t.status === "partial").length,
+    () => shown.filter(isPartial).length,
     [shown]
   );
   const S = useMemo(() => stats(closed), [closed]);

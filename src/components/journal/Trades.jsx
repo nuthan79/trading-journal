@@ -8,6 +8,7 @@ import { downloadCsv } from "@/lib/csv";
 import PositionDetail from "./PositionDetail";
 import { SETUP_FIELDS } from "@/lib/gaps";
 import { noStopOnRecord, hasRealStop, canHaveStop } from "@/lib/stops";
+import { isOpen, isClosed, isPartial } from "@/lib/positions";
 import { matches, describeFilter, seedFromTab, sortForFilter } from "@/lib/filters";
 import SavedViews from "./SavedViews";
 
@@ -296,8 +297,10 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
     if (edge) {
       r = r.filter((t) => t.status === "closed" && matchesEdgeFilter(t, edge));
     }
-    if (filter === "open") r = r.filter((t) => t.status === "open");
-    if (filter === "closed") r = r.filter((t) => t.status === "closed");
+    /* isOpen, not status === "open" — a part-sold position is open, and
+       testing the string alone dropped it out of BOTH tabs. See positions.js. */
+    if (filter === "open") r = r.filter(isOpen);
+    if (filter === "closed") r = r.filter(isClosed);
     /**
      * WON OR LOST IS A QUESTION ABOUT MONEY, NOT ABOUT R.
      *
@@ -492,13 +495,14 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
               </button>
             )}
           </div>
-          {/* `rows`, not `all` — see the note on exportCsv. The count is on the
-              button so what you are about to download is stated before you
-              click it, not discovered when the file opens. */}
+          {/* `rows`, not `all` — see the note on exportCsv. The count lives in
+              the tooltip rather than on the button: "CSV · 27" reads as a
+              debug readout next to a row of plain word buttons, and the count
+              is already stated twice on this screen. */}
           <button className="btn ghost sm" title={`Download the ${rows.length} trade${
                     rows.length === 1 ? "" : "s"} shown, as ${exportFilename(viewLabel)}`}
                   onClick={() => exportCsv(rows, viewLabel)}>
-            <Download size={13} />CSV · {rows.length}
+            <Download size={13} />CSV
           </button>
         </div>
       </div>
@@ -623,11 +627,11 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                   <td className="num" style={{ fontSize: 12 }}
                       title="Entry price × quantity — what the position cost">
                     {isFinite(t.exposure) ? rupee(t.exposure) : "—"}</td>
-                  <td className="num" title={t.status === "partial"
+                  <td className="num" title={isPartial(t)
                         ? "Average of the sells so far — the rest is still open"
                         : undefined}>
                     {isFinite(t.avgExitPrice) ? t.avgExitPrice.toFixed(2) : "—"}
-                    {t.status === "partial" && <i className="tr-part">part</i>}</td>
+                    {isPartial(t) && <i className="tr-part">part</i>}</td>
                   <td className={`num ${isFinite(t.exitPct) ? (t.exitPct >= 0 ? "pos" : "neg") : ""}`}
                       style={{ fontSize: 12 }}
                       title="Price move from entry to the average exit, before charges">

@@ -67,8 +67,13 @@ export const FIELDS = [
     options: ["NSE", "BSE"] },
   { key: "side", label: "Side", type: "enum", group: "Position",
     options: ["long", "short"], display: { long: "Long", short: "Short" } },
+  /* All THREE, because the schema stores three. Offering only open and closed
+     made a part-sold position unaskable: it matched neither value, so no saved
+     view could reach it and "Status is any of Open" quietly excluded positions
+     that are open. */
   { key: "status", label: "Status", type: "enum", group: "Position",
-    options: ["open", "closed"], display: { open: "Open", closed: "Closed" } },
+    options: ["open", "partial", "closed"],
+    display: { open: "Open", partial: "Part sold", closed: "Closed" } },
   { key: "broker", label: "Broker", type: "text", group: "Position" },
   { key: "quantity", label: "Quantity", type: "number", group: "Position", sortable: true },
   { key: "entry_price", label: "Entry price", type: "money", group: "Position", sortable: true },
@@ -493,7 +498,10 @@ export function sortForFilter(filter) {
 export function seedFromTab(tab) {
   const r = (field, op, value) => ({ field, op, value, value2: "" });
   switch (tab) {
-    case "open": return [r("status", "anyof", ["open"])];
+    /* Both values, because the tab means both — a part-sold position is open.
+       Seeding only "open" would have produced a saved view that quietly
+       disagreed with the tab it was copied from. */
+    case "open": return [r("status", "anyof", ["open", "partial"])];
     case "closed": return [r("status", "anyof", ["closed"])];
     case "winners": return [r("pnl", "gt", 0)];
     case "losers": return [r("pnl", "lte", 0)];
