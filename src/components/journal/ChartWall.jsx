@@ -20,7 +20,7 @@
  * returned, not just the trade window.
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { rupee, rfmt, dmy } from "@/lib/format";
 import { apiFetch } from "@/lib/db";
@@ -35,16 +35,26 @@ const PER_PAGE = 24;
    trades it never touched. */
 const PER_CALL = 12;
 
+/**
+ * TWO SIZES, NOT THREE. Medium was dropped as useless, and it was: at three
+ * across it was still too small for the axis labels and the crosshair readout
+ * to be switched on, so it was a small chart taking a large chart's room —
+ * worse than either at the job either was for.
+ *
+ * The two that are left are two different jobs. Small is for SHAPE: four
+ * across, no axes, scan a page of them for the ones that look wrong. Large is
+ * for READING one: two across, price axis, dates, crosshair with the OHLC.
+ */
 const SIZES = {
   small: { cols: 4, height: 150, compact: true },
-  medium: { cols: 3, height: 200, compact: true },
   large: { cols: 2, height: 300, compact: false },
 };
 
-export default function ChartWall({ rows = [], onMeasure, measuring = false }) {
-  const [size, setSize] = useState("medium");
+export default function ChartWall({ rows = [] }) {
+  const [size, setSize] = useState("small");
   const [page, setPage] = useState(0);
   const [bars, setBars] = useState({});
+  const [skips, setSkips] = useState({});
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
@@ -63,43 +73,58 @@ export default function ChartWall({ rows = [], onMeasure, measuring = false }) {
   const drawable = shown.filter((t) => t.symbol && t.entry_date
     && tickerFor(t.symbol, t.exchange));
 
-  useEffect(() => {
-    if (!drawable.length) return;
-    /* Same key the response is filed under, or this refetches every listing on
-       every render while the charts it already has sit there. */
+  /**
+   * FETCHING BARS IS NOT "MEASURING".
+   *
+   * The button here used to run measurePaths — the MFE/MAE pass — which gates
+   * on hasRealStop. On a book where most trades carry an assumed stop that
+   * pass finds nothing to do and returns silently, so the button looked
+   * broken because it was doing a job the wall never needed. A chart wants
+   * BARS for its window; the path measurement is a different question with a
+   * different home on Review.
+   *
+   * So the retry is this same read-through fetch, run again with the local
+   * cache ignored for the listings still missing. And when the server declines
+   * a listing it says why, which is the difference between a blank square and
+   * a blank square you can do something about.
+   */
+  const load = useCallback(async (force = false) => {
     const want = windowsFor(drawable)
-      .filter((w) => !bars[barsKeyFor(w.symbol, w.exchange)]);
+      .filter((w) => force || !bars[barsKeyFor(w.symbol, w.exchange)]);
     if (!want.length) return;
 
-    let dead = false;
     setLoading(true);
     setErr("");
-    (async () => {
-      try {
-        for (let i = 0; i < want.length; i += PER_CALL) {
-          if (dead) return;
-          const res = await apiFetch("/api/bars", {
-            method: "POST",
-            body: JSON.stringify({ want: want.slice(i, i + PER_CALL) }),
-          });
-          const payload = await res.json().catch(() => null);
-          if (!res.ok || !payload) {
-            setErr(payload?.error || `The price history service answered ${res.status}.`);
-            break;
-          }
-          if (dead) return;
-          /* Merged, not replaced: paging back to a page whose bars are already
-             in hand must not refetch them. */
-          setBars((b) => ({ ...b, ...payload.bars }));
+    try {
+      for (let i = 0; i < want.length; i += PER_CALL) {
+        const res = await apiFetch("/api/bars", {
+          method: "POST",
+          body: JSON.stringify({ want: want.slice(i, i + PER_CALL) }),
+        });
+        const payload = await res.json().catch(() => null);
+        if (!res.ok || !payload) {
+          setErr(payload?.error || `The price history service answered ${res.status}.`);
+          break;
         }
-      } catch (e) {
-        if (!dead) setErr(e?.message || "Could not load price history.");
-      } finally {
-        if (!dead) setLoading(false);
+        /* Merged, not replaced: paging back to a page whose bars are already
+           in hand must not refetch them. */
+        setBars((b) => ({ ...b, ...payload.bars }));
+        if (payload.skipped?.length) {
+          setSkips((sk) => ({
+            ...sk,
+            ...Object.fromEntries(payload.skipped.map((x) => [x.key, x.why])),
+          }));
+        }
       }
-    })();
-    return () => { dead = true; };
-  }, [drawable.map(barsKey).join(","), page]);   // eslint-disable-line react-hooks/exhaustive-deps
+    } catch (e) {
+      setErr(e?.message || "Could not load price history.");
+    } finally {
+      setLoading(false);
+    }
+  }, [drawable, bars]);
+
+  /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  useEffect(() => { load(false); }, [drawable.map(barsKey).join(","), page]);
 
   const cfg = SIZES[size];
   const missing = shown.filter((t) => !hasBars(barsFor(t, bars))).length;
@@ -116,13 +141,13 @@ export default function ChartWall({ rows = [], onMeasure, measuring = false }) {
           {pages > 1 && <> · showing {page * PER_PAGE + 1}–{Math.min((page + 1) * PER_PAGE, rows.length)}</>}
           {loading && <span className="cw-load"> · loading price history…</span>}
           {!loading && missing > 0 && (
-            <span className="cw-load"> · {missing} not measured yet</span>
+            <span className="cw-load"> · {missing} without price history</span>
           )}
         </div>
         <div className="cw-right">
-          {!loading && missing > 0 && onMeasure && (
-            <button className="btn ghost sm" onClick={onMeasure} disabled={measuring}>
-              <RefreshCw size={12} />{measuring ? "Measuring…" : "Measure these"}
+          {!loading && missing > 0 && (
+            <button className="btn ghost sm" onClick={() => load(true)}>
+              <RefreshCw size={12} />Load history
             </button>
           )}
           <div className="seg">
@@ -145,9 +170,14 @@ export default function ChartWall({ rows = [], onMeasure, measuring = false }) {
               {hasBars(mine)
                 ? <TradeChart trade={t} bars={mine} height={cfg.height} compact={cfg.compact} />
                 : <div className="cw-blank" style={{ height: cfg.height }}>
+                    {/* A reason beats a blank square. "no ticker" is a BSE lot
+                        whose ISIN never resolved, still carrying a scrip code;
+                        anything else is what the upstream actually said. */}
                     {!tickerFor(t.symbol, t.exchange)
                       ? "No price history for this listing"
-                      : loading ? "…" : "Not measured yet"}
+                      : loading ? "…"
+                      : skips[barsKey(t)] === "no ticker" ? "Symbol not recognised"
+                      : skips[barsKey(t)] || "No history yet"}
                   </div>}
               <div className="cw-meta">
                 <div className="cw-sym">

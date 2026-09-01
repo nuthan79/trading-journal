@@ -39,7 +39,7 @@ const exportCsv = (rows, label) =>
 
 export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNew,
                                  onAttachChart, onRemoveChart, onSaveStop,
-                                 filters = [], onSaveView, onDeleteView, onMeasure, measuring = false,
+                                 filters = [], onSaveView, onDeleteView,
                                  mistake = "", missing = "", edge = null, onClearFilter }) {
   const [filter, setFilter] = useState("all");
   const [q, setQ] = useState("");
@@ -527,7 +527,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
       </div>
 
       {asCharts ? (
-        <ChartWall rows={rows} onMeasure={onMeasure} measuring={measuring} />
+        <ChartWall rows={rows} />
       ) : (
       <div className="card scroll">
         {rows.length === 0 ? (

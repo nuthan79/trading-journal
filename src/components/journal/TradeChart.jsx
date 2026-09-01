@@ -33,7 +33,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { rupee, rfmt, dmy } from "@/lib/format";
+import { dmy } from "@/lib/format";
 import { overlays, hasBars } from "@/lib/candles";
 
 /* Loaded once for the whole wall, not once per chart. Twenty-four charts
@@ -65,10 +65,10 @@ export default function TradeChart({ trade, bars, height = 220, compact = false 
       if (dead || !box.current) return;
 
       const { createChart, CandlestickSeries, HistogramSeries, createSeriesMarkers } = mod;
-      const ink = CSS("--ink", "#131C1A"), ink3 = CSS("--ink3", "#7C8B87");
+      const ink3 = CSS("--ink3", "#7C8B87");
       const grid = CSS("--grid", "#CFD8D4"), rule = CSS("--rule", "#DCE3E0");
       const long = CSS("--long", "#0F7A63"), short = CSS("--short", "#A83E27");
-      const brass = CSS("--brass", "#B8862F"), card = CSS("--card", "#FBFCFB");
+      const card = CSS("--card", "#FBFCFB");
 
       chart = createChart(box.current, {
         height,
@@ -84,7 +84,16 @@ export default function TradeChart({ trade, bars, height = 220, compact = false 
           scaleMargins: { top: 0.08, bottom: 0.26 },
           mode: 1,                    // logarithmic. See the note above.
         },
-        timeScale: { borderColor: grid, visible: !compact, fixLeftEdge: true, fixRightEdge: true },
+        timeScale: {
+          borderColor: grid, visible: !compact, fixLeftEdge: true, fixRightEdge: true,
+          /* EMPTY SESSIONS AT THE RIGHT, ON PURPOSE. A price line's tag is
+             drawn from the axis leftward INTO the plot, so with the last
+             candle flush against the axis "entry 1128.40" sat on top of the
+             final week of price — exactly where the eye goes to see how the
+             trade ended. This reserves a strip for the tags to land in. Wider
+             on a large chart because the tags carry more text there. */
+          rightOffset: compact ? 4 : 12,
+        },
         crosshair: { mode: 0 },
         handleScroll: false,          // the window is the point; panning off it loses the trade
         handleScale: false,
@@ -141,17 +150,24 @@ export default function TradeChart({ trade, bars, height = 220, compact = false 
       }
 
       /* EVERY EXIT. A 55%-closed position is two moments, not one. */
+      /* The PRICE under the arrow, not just "in". An arrow says when; the
+         number says at what — and the number is what somebody is reading the
+         chart to check against the row beneath it. The share is appended only
+         when there was more than one tranche, since "100%" on a single exit
+         is noise. Text is dropped entirely on a thumbnail, where it would
+         cover the candles it is annotating. */
+      const px = (v) => (isFinite(v) ? v.toFixed(2) : "");
       const markers = [];
       if (o.entry?.time) {
         markers.push({ time: o.entry.time, position: "belowBar", color: long,
-                       shape: "arrowUp", text: compact ? "" : "in" });
+                       shape: "arrowUp", text: compact ? "" : `in ${px(o.entry.price)}` });
       }
       o.exits.forEach((e, i) => {
         const share = o.exitShare[i];
+        const part = isFinite(share) && o.exits.length > 1 ? ` · ${Math.round(share)}%` : "";
         markers.push({
           time: e.time, position: "aboveBar", color: short, shape: "arrowDown",
-          text: compact ? "" : (isFinite(share) && o.exits.length > 1
-            ? `out ${Math.round(share)}%` : "out"),
+          text: compact ? "" : `out ${px(e.price)}${part}`,
         });
       });
       if (markers.length) createSeriesMarkers(candles, markers);
@@ -201,7 +217,11 @@ export default function TradeChart({ trade, bars, height = 220, compact = false 
       )}
       <style jsx>{`
         .tc-wrap { position: relative; }
-        .tc-box { width: 100%; }
+        /* The plot gets its own hairline. Without it the candles bleed into
+           the card edge and a wall of them reads as one field of ticks rather
+           than as a row of separate charts. */
+        .tc-box { width: 100%; border: 1px solid var(--rule); border-radius: 2px;
+          overflow: hidden; background: var(--card); }
         .tc-ohlc { position: absolute; top: 4px; left: 6px; display: flex; gap: 9px;
           font-size: 10px; color: var(--ink2); background: var(--card);
           padding: 2px 6px; border-radius: 2px; pointer-events: none;
