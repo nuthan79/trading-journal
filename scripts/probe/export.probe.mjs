@@ -66,3 +66,114 @@ test("the CSV button exports what is on screen, not the whole book", () => {
      "the CSV button is not passing the filtered rows");
   ok(!/exportCsv\(all\b/.test(src), "exportCsv(all) is back");
 });
+
+/* ------------------------------------------------------------------ */
+
+import { toCsv } from "@/lib/csv";
+
+const parse = (s) => s.split("\r\n").map((line) => {
+  const out = []; let cur = ""; let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQ) {
+      if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+      else if (ch === '"') inQ = false;
+      else cur += ch;
+    } else if (ch === '"') inQ = true;
+    else if (ch === ",") { out.push(cur); cur = ""; }
+    else cur += ch;
+  }
+  out.push(cur);
+  return out;
+});
+
+test("a header comes from the column, a cell from the value", () => {
+  const csv = toCsv([{ a: 1, b: "x" }], [{ key: "a", header: "amount" }, "b"]);
+  const rows = parse(csv);
+  eq(rows[0].join("|"), "amount|b", "a bare string column is its own header");
+  eq(rows[1].join("|"), "1.0000|x");
+  eq(csv.includes("\r\n"), true, "CRLF, or Excel on Windows reads one long line");
+});
+
+test("the values that break a naive writer", () => {
+  /* Every one of these is legal in a trade note or a symbol, and each one
+     shifts every following column by one if it escapes wrongly. */
+  const rows = [{
+    note: 'He said "buy the dip", so I did',
+    tags: ["Oversized", "Revenge trade"],
+    multiline: "line one\nline two",
+    comma: "1,00,000 shares",
+    lead: "   padded   ",
+    r: NaN, inf: Infinity, zero: 0, nul: null, undef: undefined,
+    yes: true, no: false,
+  }];
+  const cols = ["note","tags","multiline","comma","lead","r","inf","zero","nul","undef","yes","no"];
+  const out = parse(toCsv(rows, cols));
+  const rec = Object.fromEntries(out[0].map((h, i) => [h, out[1][i]]));
+
+  eq(rec.note, 'He said "buy the dip", so I did', "a quote and a comma survived intact");
+  eq(rec.tags, "Oversized | Revenge trade", "an array joins on a pipe, not a comma");
+  eq(rec.comma, "1,00,000 shares");
+  eq(rec.lead, "   padded   ", "leading space kept rather than eaten");
+  eq(rec.zero, "0.0000", "zero is a number, not a blank");
+  eq(rec.nul, "");
+  eq(rec.undef, "");
+  eq(rec.yes, "yes");
+  eq(rec.no, "no", "false is a value; blanking it would read as missing");
+  /* NaN and Infinity must never reach a spreadsheet — one poisons every
+     formula summing the column. */
+  eq(rec.r, "", "NaN becomes empty");
+  eq(rec.inf, "", "Infinity becomes empty");
+
+  /* The embedded newline is the one that silently corrupts a file: unquoted,
+     it ends the record early and everything after shifts up a row. */
+  ok(toCsv(rows, cols).split("\r\n").length === 2,
+     "an embedded newline broke the record count");
+});
+
+test("every column of both exports resolves against a real row", () => {
+  /* A column naming a field that does not exist is not an error anywhere —
+     it exports a silent empty column, which looks like missing data. */
+  const src = (f) => readFileSync(path.resolve(fileURLToPath(import.meta.url),
+    "..", "..", "..", f), "utf8");
+  const holdings = src("src/components/journal/Holdings.jsx");
+  const keys = [...holdings.matchAll(/\{ key: "([a-zA-Z0-9_]+)", header:/g)].map((m) => m[1]);
+  ok(keys.length > 15, `only ${keys.length} holding columns parsed`);
+
+  /* EVERY COLUMN MUST PARSE, or the check below silently skips the ones it
+     could not read. The first version used [a-zA-Z_]+ with no digits, so a
+     deliberately broken column named broker9 was not extracted at all and the
+     probe passed while pointing at a field that does not exist. A parser that
+     drops what it cannot understand reports a clean bill of health on the
+     subset it happened to manage. */
+  const declared = (holdings.match(/\{ key: "/g) || []).length;
+  eq(keys.length, declared,
+     `${declared} columns are declared but only ${keys.length} parsed — ` +
+     `the rest are being skipped, not checked`);
+
+  /* A holdings row is `{ ...trade, ...derivePosition(trade), ...rowsMapAdds }`,
+     so all three are where a legitimate key can come from. The first draft of
+     this checked only Holdings.jsx and schema.sql and failed on slPct, which
+     is real and born in positions.js — a probe too narrow to know where the
+     data comes from reports its own blind spot as a bug. */
+  /* WITH THE DECLARATION CUT OUT. The first version of this searched
+     Holdings.jsx whole — which contains the column list itself, so every key
+     matched its own declaration and the check passed with a column pointing at
+     a field that does not exist. Verified the fix by breaking a column on
+     purpose and watching it fail. */
+  const decl = holdings.indexOf("const HOLDING_COLS");
+  const end = holdings.indexOf("];", decl);
+  ok(decl > 0 && end > decl, "could not locate the column declaration to exclude");
+  const holdingsBody = holdings.slice(0, decl) + holdings.slice(end);
+  ok(!/\bHOLDING_COLS\s*=/.test(holdingsBody), "the declaration was not actually removed");
+
+  const universe = holdingsBody + src("src/lib/positions.js") + src("supabase/schema.sql");
+  for (const k of keys) {
+    ok(new RegExp(`\\b${k}\\b`).test(universe),
+       `holdings CSV column "${k}" is produced by nothing in Holdings.jsx, ` +
+       `positions.js or the schema — it would export a silent empty column`);
+  }
+
+  /* And the guard against a vacuous version of the check above. */
+  ok(!/\bnotAFieldAnywhere\b/.test(universe), "the universe string is not being searched");
+});

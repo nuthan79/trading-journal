@@ -1,8 +1,48 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { RefreshCw, Flag, Rocket, CornerDownRight } from "lucide-react";
-import { rupee, rfmt, pct, signedPct, moneyParts } from "@/lib/format";
+import { RefreshCw, Flag, Rocket, CornerDownRight, Download } from "lucide-react";
+import { rupee, rfmt, pct, signedPct, moneyParts, exportFilename } from "@/lib/format";
+import { downloadCsv } from "@/lib/csv";
+
+/**
+ * The columns of the holdings table, in the order the table shows them, plus
+ * the two facts the table encodes as styling rather than as text.
+ *
+ * Readable headers rather than field names, which the trades export cannot
+ * have — that file has always written raw keys and somebody may be keying a
+ * spreadsheet on them. A new export has no such history to keep.
+ *
+ * `stop_source` and `unknown_risk` are here because on screen they are a tint
+ * and a word: a stop the importer invented is labelled ASSUMED under the
+ * number, and a position with no stop at all is what the risk column refuses
+ * to call zero. Exported without them, an assumed stop becomes an ordinary
+ * one and the distinction the whole app is built around dies in the download.
+ */
+const HOLDING_COLS = [
+  { key: "symbol", header: "symbol" },
+  { key: "exchange", header: "exchange" },
+  { key: "entry_date", header: "entered" },
+  { key: "days", header: "days_held" },
+  { key: "qtyOpen", header: "open_qty" },
+  { key: "openPct", header: "open_pct" },
+  { key: "entry_price", header: "entry" },
+  { key: "stop", header: "stop" },
+  { key: "stop_source", header: "stop_source" },
+  { key: "unknownRisk", header: "no_stop_on_record" },
+  { key: "slPct", header: "sl_pct" },
+  { key: "toStop", header: "to_stop_pct" },
+  { key: "buyValue", header: "buy_value" },
+  { key: "liveExposure", header: "exposure_at_cmp" },
+  { key: "openRiskAmt", header: "open_risk" },
+  { key: "netRiskR", header: "open_risk_r" },
+  { key: "mark", header: "cmp" },
+  { key: "changePct", header: "change_pct" },
+  { key: "realisedPnl", header: "banked" },
+  { key: "unrealisedPnl", header: "unrealised" },
+  { key: "atR", header: "now_at_r" },
+  { key: "broker", header: "broker" },
+];
 import { fyStartYear, fyLabel } from "@/lib/calc";
 /* The same thresholds the measurement used, so a badge here and a finding on
    Review can never describe the same trade with two different numbers. */
@@ -592,9 +632,19 @@ export default function Holdings({
             )}
           </div>
         </div>
-        <button className="btn ghost sm" onClick={onRefresh} disabled={refreshing}>
-          <RefreshCw size={13} />{refreshing ? "Refreshing…" : "Refresh prices"}
-        </button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {/* The count is on the button so what is about to be downloaded is
+              stated before the click, not discovered when the file opens. */}
+          <button className="btn ghost sm" disabled={!rows.length}
+                  title={`Download the ${rows.length} holding${rows.length === 1 ? "" : "s"}
+                          shown, in this order, as ${exportFilename("holdings")}`}
+                  onClick={() => downloadCsv(rows, HOLDING_COLS, exportFilename("holdings"))}>
+            <Download size={13} />CSV · {rows.length}
+          </button>
+          <button className="btn ghost sm" onClick={onRefresh} disabled={refreshing}>
+            <RefreshCw size={13} />{refreshing ? "Refreshing…" : "Refresh prices"}
+          </button>
+        </div>
       </div>
 
       {/* The dial sits with the open-risk figure it describes, rather than as a

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { matchesEdgeFilter, describeEdgeFilter } from "@/lib/edge";
 import { Plus, Pencil, Trash2, Download, Image as ImageIcon, X, Check } from "lucide-react";
 import { rupee, rfmt, pct, signedPct, exportFilename } from "@/lib/format";
+import { downloadCsv } from "@/lib/csv";
 import PositionDetail from "./PositionDetail";
 import { SETUP_FIELDS } from "@/lib/gaps";
 import { noStopOnRecord, hasRealStop, canHaveStop } from "@/lib/stops";
@@ -23,22 +24,16 @@ const num = (v) => (v === "" || v === null || v === undefined ? NaN : Number(v))
  * Rows arrive already filtered AND sorted, so the file opens in the order the
  * screen was in, which is the other half of the same promise.
  */
-function exportCsv(rows, label) {
-  const cols = ["symbol", "exchange", "side", "entry_date", "entry_price", "quantity", "stop_loss",
-    "exposure", "riskAmt", "riskPct", "pattern", "pivot_price", "distPivot", "vol_pct_avg",
-    "weinstein_stage", "rs_rank",
-    "exit_date", "exit_price", "avgExitPrice", "exitPct", "exit_reason", "charges", "pnl", "r",
-    "heldDays", "mistakes", "notes"];
-  const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const lines = [cols.join(",")].concat((rows || []).map((t) =>
-    cols.map((c) => esc(Array.isArray(t[c]) ? t[c].join(" | ") :
-      typeof t[c] === "number" ? (isFinite(t[c]) ? t[c].toFixed(4) : "") : t[c])).join(",")));
-  const blob = new Blob([lines.join("\n")], { type: "text/csv" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = exportFilename(label);
-  a.click(); URL.revokeObjectURL(a.href);
-}
+/* Field names, not labels — this header row is what it has always written and
+   somebody may have a spreadsheet keyed on it. */
+const TRADE_COLS = ["symbol", "exchange", "side", "entry_date", "entry_price", "quantity",
+  "stop_loss", "exposure", "riskAmt", "riskPct", "pattern", "pivot_price", "distPivot",
+  "vol_pct_avg", "weinstein_stage", "rs_rank",
+  "exit_date", "exit_price", "avgExitPrice", "exitPct", "exit_reason", "charges", "pnl", "r",
+  "heldDays", "mistakes", "notes"];
+
+const exportCsv = (rows, label) =>
+  downloadCsv(rows, TRADE_COLS, exportFilename(label));
 
 export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNew,
                                  onAttachChart, onRemoveChart, onSaveStop,
