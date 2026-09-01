@@ -406,7 +406,26 @@ export default function SavedViews({ all = [], filters = [], activeId = null,
       {draft && (
         <Builder all={all} draft={draft} existing={filters}
                  onCancel={() => setDraft(null)}
-                 onSave={async (f) => { await onSave(f); setDraft(null); }} />
+                 onSave={async (f) => {
+                   /**
+                    * SAVED MEANS APPLIED.
+                    *
+                    * Saving used to close the dialog and leave the table on
+                    * whatever it was showing before — so the last thing you
+                    * saw was a panel counting 27 matching trades, and the
+                    * first thing you got back was all 97. You have just
+                    * described a slice of the book and named it; wanting to
+                    * look at it is the reason you built it.
+                    *
+                    * The row comes back from the database rather than being
+                    * assumed from the draft, because a new view has no id
+                    * until it is written — applying the draft would leave the
+                    * menu unable to mark which view is active.
+                    */
+                   const row = await onSave(f);
+                   setDraft(null);
+                   if (row) onApply(row);
+                 }} />
       )}
       <Styles />
     </div>
