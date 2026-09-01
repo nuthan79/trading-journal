@@ -1308,23 +1308,55 @@ export async function listFilters() {
 }
 
 /**
- * Upsert on (user, name), not on id.
+ * Saving over an existing NAME replaces that view — resolved here, not by
+ * ON CONFLICT.
  *
- * Saving a view under a name that already exists REPLACES it, which is what
- * the unique index in 043 enforces and what somebody editing a view expects.
- * Upserting on `id` alone would insert a second row with the same name and
- * leave two indistinguishable entries in the menu — and then fail the index
- * anyway, with a constraint error instead of the save they asked for.
+ * WHY NOT UPSERT. 043's unique index is on (user_id, lower(name)), so that
+ * two views cannot differ only in capitals. That is an EXPRESSION index, and
+ * Postgres will not match a conflict target of plain columns to one: asking
+ * for ON CONFLICT (user_id, name) is answered with "there is no unique or
+ * exclusion constraint matching the ON CONFLICT specification" rather than an
+ * insert. PostgREST only accepts column names as a conflict target, so there
+ * is no spelling of lower(name) that would reach it either.
+ *
+ * The alternative was to drop lower() from the index so the upsert could
+ * match it. That trades a real rule for a syntax convenience: the builder
+ * already warns "saving replaces the view with this name" from a
+ * case-insensitive comparison, and the database would then quietly disagree
+ * with the warning and create a second row.
+ *
+ * So the existing row is looked up first. Two round trips instead of one, on
+ * a table holding a handful of rows per user — and RLS scopes the read, so
+ * this only ever sees the signed-in user's own views. Matching in JS rather
+ * than with .ilike() because a name is free text: "50% days" is a legal view
+ * name and every character in it is a LIKE wildcard.
  */
 export async function saveFilter(f) {
   const user_id = await uid();
-  const row = { ...f, user_id, name: String(f.name || "").trim() };
-  if (!row.name) throw new Error("A view needs a name.");
-  if (!row.id) delete row.id;
-  const { data, error } = await supabase
-    .from("saved_filters")
-    .upsert(row, { onConflict: row.id ? "id" : "user_id,name" })
-    .select().single();
+  const name = String(f.name || "").trim();
+  if (!name) throw new Error("A view needs a name.");
+
+  /* created_at and updated_at are the database's to keep — updated_at has a
+     trigger on it, and carrying either back from an edited row would let the
+     client rewrite history it did not author. */
+  const { created_at, updated_at, ...rest } = f;   // eslint-disable-line no-unused-vars
+  const row = { ...rest, user_id, name };
+
+  let id = row.id || null;
+  if (!id) {
+    delete row.id;
+    const { data: mine, error: e1 } = await supabase
+      .from("saved_filters").select("id,name");
+    if (e1) throw e1;
+    const hit = (mine || []).find(
+      (x) => String(x.name).trim().toLowerCase() === name.toLowerCase());
+    if (hit) id = hit.id;
+  }
+
+  const q = id
+    ? supabase.from("saved_filters").update(row).eq("id", id)
+    : supabase.from("saved_filters").insert(row);
+  const { data, error } = await q.select().single();
   if (error) throw error;
   return data;
 }
