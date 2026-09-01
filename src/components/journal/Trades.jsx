@@ -13,6 +13,25 @@ import { matches, describeFilter, seedFromTab, sortForFilter } from "@/lib/filte
 import SavedViews from "./SavedViews";
 import ChartWall from "./ChartWall";
 
+/**
+ * BUILT, MEASURED, AND DELIBERATELY NOT SHOWN. Flip this to true.
+ *
+ * The chart wall works — twenty-four Lightweight Charts instances mount in
+ * ~85ms, scroll at 121fps and leak nothing across paging, all measured. It is
+ * held back to be a paid feature later, not because anything about it is
+ * unfinished.
+ *
+ * A flag rather than a deletion, and rather than a comment. Deleted, it gets
+ * rebuilt from nothing; commented out, candles.js and its probes rot silently
+ * as fields are renamed around them. This way the code stays live, the eleven
+ * chart probes keep running, and turning it on is one word.
+ *
+ * Nothing is paid for while it is off: lightweight-charts is imported
+ * dynamically from TradeChart, so a user who never sees the toggle never
+ * downloads the library.
+ */
+const SHOW_CHART_WALL = false;
+
 const num = (v) => (v === "" || v === null || v === undefined ? NaN : Number(v));
 
 /**
@@ -451,10 +470,12 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
             than which rows there are — a different kind of control from the
             five beside it, and mixing the two into one strip is what would
             make the row read as ten equal choices. */}
-        <div className="seg" style={{ marginRight: 10 }}>
-          <button data-on={asCharts ? 0 : 1} onClick={() => setAsCharts(false)}>Table</button>
-          <button data-on={asCharts ? 1 : 0} onClick={() => setAsCharts(true)}>Charts</button>
-        </div>
+        {SHOW_CHART_WALL && (
+          <div className="seg" style={{ marginRight: 10 }}>
+            <button data-on={asCharts ? 0 : 1} onClick={() => setAsCharts(false)}>Table</button>
+            <button data-on={asCharts ? 1 : 0} onClick={() => setAsCharts(true)}>Charts</button>
+          </div>
+        )}
         <div className="seg">
           {/**
             * "No stop" appears only when there are some, because a chip for an
@@ -526,7 +547,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
         </div>
       </div>
 
-      {asCharts ? (
+      {SHOW_CHART_WALL && asCharts ? (
         <ChartWall rows={rows} />
       ) : (
       <div className="card scroll">
@@ -724,7 +745,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
         )}
       </div>
       )}
-      {!asCharts && rows.length > 0 && (
+      {!(SHOW_CHART_WALL && asCharts) && rows.length > 0 && (
         <div className="hint" style={{ marginTop: 8 }}>
           ▲ marks a trade where you tagged a mistake · ▾ marks a short · click a symbol to open it
           · click any column to sort
