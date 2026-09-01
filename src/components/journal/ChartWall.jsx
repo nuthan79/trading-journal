@@ -24,7 +24,7 @@ import { useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { rupee, rfmt, dmy } from "@/lib/format";
 import { apiFetch } from "@/lib/db";
-import { tickerFor } from "@/lib/bars";
+import { tickerFor, barsKeyFor } from "@/lib/bars";
 import { isPartial } from "@/lib/positions";
 import { windowsFor, barsFor, barsKey, hasBars } from "@/lib/candles";
 import TradeChart from "./TradeChart";
@@ -65,7 +65,10 @@ export default function ChartWall({ rows = [], onMeasure, measuring = false }) {
 
   useEffect(() => {
     if (!drawable.length) return;
-    const want = windowsFor(drawable).filter((w) => !bars[`${w.symbol}|${w.exchange}`]);
+    /* Same key the response is filed under, or this refetches every listing on
+       every render while the charts it already has sit there. */
+    const want = windowsFor(drawable)
+      .filter((w) => !bars[barsKeyFor(w.symbol, w.exchange)]);
     if (!want.length) return;
 
     let dead = false;

@@ -5,7 +5,7 @@ import { tradePath } from "./path";
 /* The same test the route applies, imported rather than restated — this
    screen counting a trade as measurable while the route refuses it is how a
    button offers work that silently never happens. */
-import { tickerFor } from "./bars";
+import { tickerFor, barsKeyFor } from "./bars";
 import { hasRealStop } from "./stops";
 
 /**
@@ -109,7 +109,7 @@ export async function measurePaths(trades, onProgress, opts = {}) {
      trade in that symbol however many there are, open ones running to today. */
   const bySymbol = new Map();
   for (const t of todo) {
-    const key = `${t.symbol}:${t.exchange}`;
+    const key = barsKeyFor(t.symbol, t.exchange);
     const cur = bySymbol.get(key);
     const from = String(t.entry_date).slice(0, 10);
     const to = measureTo(t);
@@ -197,7 +197,7 @@ export async function measurePaths(trades, onProgress, opts = {}) {
     const patches = [];
 
     for (const g of batch) {
-      const series = bars[`${g.symbol}:${g.exchange}`];
+      const series = bars[barsKeyFor(g.symbol, g.exchange)];
       if (!series || !series.length) { skipped += g.trades.length; continue; }
 
       for (const t of g.trades) {

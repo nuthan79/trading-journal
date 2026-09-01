@@ -76,6 +76,30 @@ export function tickerFor(symbol, exchange) {
   return `${symbol}${suffix}`;
 }
 
+/**
+ * HOW A LISTING IS NAMED ON THE WIRE. One definition, because it is a
+ * CONTRACT between two files that never see each other.
+ *
+ * /api/bars returns its bars in an object keyed by this string, and every
+ * caller looks them up by rebuilding it. There were three hand-built copies:
+ * the route, measure.js, and the chart wall — and the third invented
+ * "SYMBOL|EXCHANGE" where the wire speaks "SYMBOL:EXCHANGE". Nothing failed.
+ * The request went out, the bars came back, every lookup missed, and all
+ * twenty-four charts said "Not measured yet" — which is exactly what they
+ * would say if the data were genuinely absent.
+ *
+ * That is the shape of the failure worth guarding: a mismatch between two
+ * halves of a wire format is not a crash, it is silence that looks like an
+ * empty result. Nothing a build or a type can catch.
+ *
+ * Normalised the way the ROUTE normalises, since the route is what emits the
+ * keys — a lowercase symbol in the database would otherwise come back
+ * uppercased and miss on the way in.
+ */
+export const barsKeyFor = (symbol, exchange) =>
+  `${String(symbol || "").toUpperCase().trim()}:` +
+  `${String(exchange || "NSE").toUpperCase().trim()}`;
+
 const r2 = (v) => (v == null || !Number.isFinite(v) ? null : Math.round(v * 100) / 100);
 
 /**

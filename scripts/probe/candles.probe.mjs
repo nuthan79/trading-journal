@@ -1,6 +1,10 @@
 import { test, eq, ok } from "./harness.mjs";
-import { chartWindow, windowsFor, barsFor, overlays, hasBars,
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { chartWindow, windowsFor, barsFor, overlays, hasBars, barsKey,
          LEAD_DAYS, TRAIL_DAYS } from "@/lib/candles";
+import { barsKeyFor } from "@/lib/bars";
 
 const TODAY = "2026-09-01";
 const T = (o = {}) => ({ id: "t1", symbol: "RELIANCE", exchange: "NSE",
@@ -44,8 +48,10 @@ test("one fetch per listing, not per trade", () => {
 test("each chart draws only its own window out of the listing's bars", () => {
   const bars = [];
   for (let d = 1; d <= 28; d++) bars.push({ d: `2026-05-${String(d).padStart(2, "0")}`, c: 100 });
-  const mine = barsFor(T({ entry_date: "2026-05-20", exit_date: "2026-05-25" }),
-                       { "RELIANCE|NSE": bars }, TODAY);
+  /* Keyed with the real builder, not a literal — a literal is how this probe
+     kept passing while the wire format underneath it changed. */
+  const trade = T({ entry_date: "2026-05-20", exit_date: "2026-05-25" });
+  const mine = barsFor(trade, { [barsKey(trade)]: bars }, TODAY);
   ok(mine.length > 0 && mine.length <= bars.length);
   eq(barsFor(T(), {}, TODAY).length, 0, "no bars for the listing is not a crash");
 });
@@ -94,4 +100,31 @@ test("an entry outside the window does not fabricate a marker", () => {
   eq(hasBars([]), false);
   eq(hasBars([{ d: "x" }]), false, "one bar is not a chart");
   eq(hasBars([{ d: "x" }, { d: "y" }]), true);
+});
+
+
+test("client and server agree on how a listing is named", () => {
+  /* THE BUG THIS IS FOR. /api/bars returns its bars keyed by a string, and
+     the chart wall rebuilt that string to look them up. The route speaks
+     "SYMBOL:EXCHANGE"; the wall invented "SYMBOL|EXCHANGE". Nothing failed —
+     the request went out, the bars came back, every lookup missed, and all
+     twenty-four charts said "Not measured yet", which is indistinguishable
+     from the data genuinely being absent.
+
+     A mismatch between two halves of a wire format is not a crash. It is
+     silence that looks like an empty result, and no build or type can see it. */
+  eq(barsKeyFor("RELIANCE", "NSE"), "RELIANCE:NSE");
+  eq(barsKeyFor("reliance", "nse"), "RELIANCE:NSE", "normalised the way the route does");
+  eq(barsKeyFor(" TCS ", undefined), "TCS:NSE", "exchange defaults, symbol is trimmed");
+  eq(barsKey({ symbol: "RELIANCE", exchange: "NSE" }), barsKeyFor("RELIANCE", "NSE"));
+
+  /* And nobody may build it by hand again — in either direction. */
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+  for (const f of ["src/app/api/bars/route.js", "src/lib/measure.js",
+                   "src/lib/candles.js", "src/components/journal/ChartWall.jsx"]) {
+    const src = readFileSync(path.join(root, f), "utf8");
+    const hand = src.match(/\$\{[^}]*symbol[^}]*\}[:|]\$\{[^}]*exchange[^}]*\}/g) || [];
+    eq(hand.length, 0, `${f} builds the bars key by hand: ${hand.join(", ")}`);
+    ok(/barsKeyFor/.test(src), `${f} does not use barsKeyFor at all`);
+  }
 });

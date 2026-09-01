@@ -15,6 +15,7 @@
  */
 
 import { hasRealStop, STOP_ASSUMED } from "./stops";
+import { barsKeyFor } from "./bars";
 
 const DAY = 86_400_000;
 const iso = (d) => new Date(d).toISOString().slice(0, 10);
@@ -64,7 +65,7 @@ export function windowsFor(trades, today = iso(Date.now())) {
   for (const t of trades || []) {
     const w = chartWindow(t, today);
     if (!w || !t.symbol) continue;
-    const key = `${t.symbol}|${t.exchange || "NSE"}`;
+    const key = barsKeyFor(t.symbol, t.exchange);
     const cur = by.get(key);
     if (!cur) by.set(key, { symbol: t.symbol, exchange: t.exchange || "NSE", ...w });
     else {
@@ -75,7 +76,10 @@ export function windowsFor(trades, today = iso(Date.now())) {
   return [...by.values()];
 }
 
-export const barsKey = (t) => `${t.symbol}|${t.exchange || "NSE"}`;
+/* Delegates rather than rebuilds: this is the string /api/bars keys its
+   response by, and a second spelling of it is silence that looks like no data.
+   See the note on barsKeyFor. */
+export const barsKey = (t) => barsKeyFor(t?.symbol, t?.exchange);
 
 /** Only the sessions this trade's own chart shows, out of the listing's set. */
 export function barsFor(t, byKey, today = iso(Date.now())) {

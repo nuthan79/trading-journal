@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { fetchBars, tickerFor, sleep } from "@/lib/bars";
+import { fetchBars, tickerFor, sleep, barsKeyFor } from "@/lib/bars";
 import { userFromRequest } from "@/lib/apiAuth";
 import { rateLimit, tooMany } from "@/lib/rateLimit";
 
@@ -124,7 +124,7 @@ export async function POST(req) {
   let fetched = 0;
 
   for (const it of items) {
-    const key = `${it.symbol}:${it.exchange}`;
+    const key = barsKeyFor(it.symbol, it.exchange);
     /* Refused rather than guessed. Not the exchange — both work — but a
        symbol still recorded as a bare scrip code, which resolves to a
        different company entirely and would look completely ordinary doing
