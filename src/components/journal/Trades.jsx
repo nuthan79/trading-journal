@@ -11,6 +11,7 @@ import { noStopOnRecord, hasRealStop, canHaveStop } from "@/lib/stops";
 import { isOpen, isClosed, isPartial } from "@/lib/positions";
 import { matches, describeFilter, seedFromTab, sortForFilter } from "@/lib/filters";
 import SavedViews from "./SavedViews";
+import ChartWall from "./ChartWall";
 
 const num = (v) => (v === "" || v === null || v === undefined ? NaN : Number(v));
 
@@ -38,13 +39,23 @@ const exportCsv = (rows, label) =>
 
 export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNew,
                                  onAttachChart, onRemoveChart, onSaveStop,
-                                 filters = [], onSaveView, onDeleteView,
+                                 filters = [], onSaveView, onDeleteView, onMeasure, measuring = false,
                                  mistake = "", missing = "", edge = null, onClearFilter }) {
   const [filter, setFilter] = useState("all");
   const [q, setQ] = useState("");
   const [sort, setSort] = useState({ k: "entry_date", dir: -1 });
 
   const [view, setView] = useState(null);
+
+  /**
+   * Table or wall — two ways of reading the same rows, not two screens.
+   *
+   * The wall renders `rows`, so every filter, saved view and search that
+   * narrows the table narrows it too. That was the point: a view for "R above
+   * 5" becomes a wall of exactly those trades, which is what makes it worth
+   * having over scrolling a broker's chart list.
+   */
+  const [asCharts, setAsCharts] = useState(false);
 
   /**
    * Each tab opens in the order that suits what it holds.
@@ -436,6 +447,14 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
         </div>
       )}
       <div className="sechead">
+        {/* Ahead of the tabs, because it changes what a row LOOKS like rather
+            than which rows there are — a different kind of control from the
+            five beside it, and mixing the two into one strip is what would
+            make the row read as ten equal choices. */}
+        <div className="seg" style={{ marginRight: 10 }}>
+          <button data-on={asCharts ? 0 : 1} onClick={() => setAsCharts(false)}>Table</button>
+          <button data-on={asCharts ? 1 : 0} onClick={() => setAsCharts(true)}>Charts</button>
+        </div>
         <div className="seg">
           {/**
             * "No stop" appears only when there are some, because a chip for an
@@ -507,6 +526,9 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
         </div>
       </div>
 
+      {asCharts ? (
+        <ChartWall rows={rows} onMeasure={onMeasure} measuring={measuring} />
+      ) : (
       <div className="card scroll">
         {rows.length === 0 ? (
           <div className="empty">
@@ -701,7 +723,8 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
           </table>
         )}
       </div>
-      {rows.length > 0 && (
+      )}
+      {!asCharts && rows.length > 0 && (
         <div className="hint" style={{ marginTop: 8 }}>
           ▲ marks a trade where you tagged a mistake · ▾ marks a short · click a symbol to open it
           · click any column to sort

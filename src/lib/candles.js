@@ -1,13 +1,10 @@
 /**
- * The geometry behind a trade chart. No React, no DOM — just numbers in,
- * path strings out, so the awkward parts can be probed without a browser.
+ * What a trade chart needs to know, independent of who draws it.
  *
- * WHY PATHS AND NOT ELEMENTS. A candle drawn as its own <rect> plus its own
- * <line> is two DOM nodes; a wall of twenty-four charts at two hundred
- * sessions each is twelve thousand of them, and the page stops being
- * scrollable. Every candle of one colour goes into ONE path instead — four
- * paths for the price pane, two for volume — so the same wall is about a
- * hundred nodes and the browser stops caring.
+ * Lightweight Charts does the scales, the candles and the axes. What it cannot
+ * know is anything about the TRADE: which window to show, where the stop sat,
+ * which sessions the exits landed on. That is all here, as plain data, so it
+ * can be probed without a canvas.
  *
  * WHAT IS MEASURED AND WHAT IS DRAWN ARE THE SAME THING. The extremes marked
  * on a chart come from `mfe_r` and `mae_r` on the trade row, computed by
@@ -16,6 +13,8 @@
  * chart would say a trade reached 3.1R while the card said 2.8R, and there
  * would be no way to tell which was lying.
  */
+
+import { hasRealStop, STOP_ASSUMED } from "./stops";
 
 const DAY = 86_400_000;
 const iso = (d) => new Date(d).toISOString().slice(0, 10);
@@ -30,184 +29,81 @@ export const LEAD_DAYS = 92;    // roughly three months of base before entry
 export const TRAIL_DAYS = 45;   // and six weeks of what happened after
 
 /**
- * How much of the price history one trade's chart should cover.
+ * How much price history one trade's chart should cover.
  *
  * A closed trade gets context on both sides: enough before entry to see the
- * base that was being bought, and enough after the exit to see whether
- * leaving was right. An OPEN position ends at today instead — it has no
- * "after", and a chart that stopped at some fixed point would be showing a
- * position you still hold as though it were finished.
+ * base that was being bought, and enough after the exit to see whether leaving
+ * was right. An OPEN position ends at today instead — it has no "after", and a
+ * chart stopping at a fixed point would show a position you still hold as
+ * though it were finished. That was the user's first requirement.
  *
  * The trailing edge is clamped to today either way, because there are no bars
- * from the future and asking for them makes the cache think it has a hole it
- * can never fill — which would send every chart upstream on every open.
+ * from the future and asking for them makes the read-through cache think it
+ * has a hole it can never fill — which would send every chart upstream on
+ * every single open.
  */
 export function chartWindow(t, today = iso(Date.now())) {
   const entry = t?.entry_date ? iso(t.entry_date) : null;
   if (!entry) return null;
   const open = t.status !== "closed" || !t.exit_date;
   const end = open ? today : shift(iso(t.exit_date), TRAIL_DAYS);
-  return {
-    from: shift(entry, -LEAD_DAYS),
-    to: end > today ? today : end,
-  };
+  return { from: shift(entry, -LEAD_DAYS), to: end > today ? today : end };
 }
 
-/* ------------------------------------------------------------------ *
- *  Scales
- * ------------------------------------------------------------------ */
-
-const lg = (v) => Math.log(Math.max(v, 1e-9));
-
 /**
- * Price to pixels, logarithmic.
+ * One window per LISTING, not per trade.
  *
- * Log rather than linear, and not as a preference: on a chart spanning months
- * of a stock that ran from 600 to 920, a linear axis makes the same 10% move
- * look half as tall at the bottom as at the top. Two moves that cost the same
- * in R would then be drawn at different sizes, which is exactly the comparison
- * this wall of charts exists to make.
- *
- * `extra` carries the levels drawn ON the chart — stop, entry, exits. They
- * have to widen the range or a stop below everything the window contains gets
- * clipped to the edge and reads as though price came down to touch it.
+ * Two trades in the same symbol six months apart are two charts and one
+ * fetch — the API caches by symbol and day, so asking for the union costs the
+ * same as asking for either and saves a round trip. Anything the union covers
+ * beyond what a chart draws is stored, not shipped: the route trims to the
+ * window it was asked for.
  */
-export function priceScale(bars, extra, { top = 0, height = 100, pad = 0.06 } = {}) {
-  const vals = [];
-  for (const b of bars || []) {
-    const h = num(b.h), l = num(b.l), c = num(b.c);
-    if (h != null) vals.push(h);
-    if (l != null) vals.push(l);
-    if (h == null && l == null && c != null) vals.push(c);
+export function windowsFor(trades, today = iso(Date.now())) {
+  const by = new Map();
+  for (const t of trades || []) {
+    const w = chartWindow(t, today);
+    if (!w || !t.symbol) continue;
+    const key = `${t.symbol}|${t.exchange || "NSE"}`;
+    const cur = by.get(key);
+    if (!cur) by.set(key, { symbol: t.symbol, exchange: t.exchange || "NSE", ...w });
+    else {
+      if (w.from < cur.from) cur.from = w.from;
+      if (w.to > cur.to) cur.to = w.to;
+    }
   }
-  for (const v of extra || []) { const n = num(v); if (n != null && n > 0) vals.push(n); }
-  if (!vals.length) return null;
-
-  let lo = Math.min(...vals), hi = Math.max(...vals);
-  if (!(lo > 0)) lo = Math.min(...vals.filter((v) => v > 0)) || 1;
-  if (hi <= lo) hi = lo * 1.01;
-
-  const a = lg(lo), b = lg(hi), room = (b - a) * pad;
-  const min = a - room, max = b + room;
-  const y = (p) => {
-    const n = num(p);
-    if (n == null || n <= 0) return null;
-    return top + ((max - lg(n)) / (max - min)) * height;
-  };
-  y.lo = Math.exp(min);
-  y.hi = Math.exp(max);
-  y.invert = (py) => Math.exp(max - ((py - top) / height) * (max - min));
-  return y;
+  return [...by.values()];
 }
 
-/** Sessions to pixels. Bars are a band, not a point — `w` is the candle width. */
-export function timeScale(count, { left = 0, width = 100, gap = 0.28 } = {}) {
-  const n = Math.max(count, 1);
-  const band = width / n;
-  const x = (i) => left + band * (i + 0.5);
-  x.band = band;
-  x.w = Math.max(band * (1 - gap), 1);
-  /* Below two pixels a body is a smear, so the candle degrades to its wick
-     alone rather than drawing a rectangle nobody can read. */
-  x.hairline = x.w < 2;
-  x.at = (px) => Math.min(n - 1, Math.max(0, Math.floor((px - left) / band)));
-  return x;
-}
+export const barsKey = (t) => `${t.symbol}|${t.exchange || "NSE"}`;
 
-/**
- * Axis labels at round numbers, spaced evenly in LOG terms.
- *
- * Stepping linearly and rounding would bunch every label at one end of the
- * axis, which is what the log scale was avoiding in the first place.
- */
-export function priceTicks(y, count = 5) {
-  if (!y) return [];
-  const a = lg(y.lo), b = lg(y.hi);
-  const out = [];
-  for (let i = 0; i <= count; i++) {
-    const v = Math.exp(a + ((b - a) * i) / count);
-    const mag = Math.pow(10, Math.floor(Math.log10(v)) - 1);
-    const r = Math.round(v / mag) * mag;
-    if (!out.some((o) => Math.abs(o - r) < mag / 2)) out.push(r);
-  }
-  return out.filter((v) => v > y.lo && v < y.hi);
+/** Only the sessions this trade's own chart shows, out of the listing's set. */
+export function barsFor(t, byKey, today = iso(Date.now())) {
+  const w = chartWindow(t, today);
+  const all = byKey?.[barsKey(t)];
+  if (!w || !Array.isArray(all)) return [];
+  return all.filter((b) => b.d >= w.from && b.d <= w.to);
 }
 
 /* ------------------------------------------------------------------ *
- *  Paths
+ *  What goes on top
  * ------------------------------------------------------------------ */
-
-const r1 = (n) => Math.round(n * 10) / 10;
 
 /**
- * Candles, as four path strings: bodies and wicks, up and down.
+ * A marker has to land on a session that EXISTS.
  *
- * Direction is close against the PREVIOUS close, not against the same bar's
- * open. A day that gapped down and then recovered to finish above its open is
- * still a down day for anybody holding it, and colouring it green because of
- * where the auction happened to start would tell the wrong story on exactly
- * the days that matter. The first bar has no previous close and falls back to
- * its own open.
+ * Lightweight Charts drops a marker whose time is not one of the series' own
+ * points, silently — so an exit on a Saturday, or on a holiday, or on a day
+ * the stock was halted, simply would not be drawn. The next session that does
+ * exist is the honest place for it: the trade did happen, and the bar it is
+ * pinned to is the first one that could show it.
  */
-export function candlePaths(bars, x, y) {
-  const up = { body: [], wick: [] }, down = { body: [], wick: [] };
-  let prevC = null;
-
-  (bars || []).forEach((b, i) => {
-    const o = num(b.o), h = num(b.h), l = num(b.l), c = num(b.c);
-    if (c == null) return;
-    const ref = prevC == null ? (o == null ? c : o) : prevC;
-    const side = c >= ref ? up : down;
-    prevC = c;
-
-    const cx = r1(x(i));
-    const yh = y(h == null ? c : h), yl = y(l == null ? c : l);
-    if (yh != null && yl != null) side.wick.push(`M${cx} ${r1(yh)}V${r1(yl)}`);
-
-    if (x.hairline || o == null) return;
-    const yo = y(o), yc = y(c);
-    if (yo == null || yc == null) return;
-    const x0 = r1(cx - x.w / 2), x1 = r1(cx + x.w / 2);
-    /* A doji has zero height and would vanish; it is given the thinnest
-       body that still renders as a line. */
-    const t = Math.min(yo, yc), bm = Math.max(yo, yc);
-    const b2 = bm - t < 0.6 ? t + 0.6 : bm;
-    side.body.push(`M${x0} ${r1(t)}H${x1}V${r1(b2)}H${x0}Z`);
-  });
-
-  return {
-    upBody: up.body.join(""), upWick: up.wick.join(""),
-    downBody: down.body.join(""), downWick: down.wick.join(""),
-  };
-}
-
-/** Volume, coloured by the same rule, scaled to its own pane. */
-export function volumePaths(bars, x, { top, height }) {
-  const vols = (bars || []).map((b) => num(b.v)).filter((v) => v != null && v > 0);
-  if (!vols.length) return null;
-  const max = Math.max(...vols);
-  const up = [], down = [];
-  let prevC = null;
-
-  (bars || []).forEach((b, i) => {
-    const v = num(b.v), c = num(b.c), o = num(b.o);
-    if (c == null) return;
-    const ref = prevC == null ? (o == null ? c : o) : prevC;
-    const side = c >= ref ? up : down;
-    prevC = c;
-    if (v == null || v <= 0) return;
-    const h = Math.max((v / max) * height, 0.6);
-    const cx = r1(x(i));
-    const x0 = r1(cx - x.w / 2), x1 = r1(cx + x.w / 2);
-    side.push(`M${x0} ${r1(top + height)}V${r1(top + height - h)}H${x1}V${r1(top + height)}Z`);
-  });
-
-  return { up: up.join(""), down: down.join("") };
-}
-
-/* ------------------------------------------------------------------ *
- *  What to draw on top
- * ------------------------------------------------------------------ */
+const landOn = (days, d) => {
+  if (!d) return null;
+  const want = iso(d);
+  if (days.includes(want)) return want;
+  return days.find((x) => x >= want) || null;
+};
 
 /**
  * The levels and moments this trade wants marked.
@@ -216,36 +112,42 @@ export function volumePaths(bars, x, { top, height }) {
  * this chart, and drawing a single dot at the average would put a marker on a
  * day nothing happened while hiding the two days something did. On a journal
  * built to ask whether scaling out helped, that is the one thing the chart is
- * for.
+ * for — and it is exactly what the reference implementation gets wrong, giving
+ * a 55%-closed position a single exit dot.
  */
 export function overlays(t, bars) {
   const days = (bars || []).map((b) => b.d);
-  const at = (d) => (d ? days.indexOf(iso(d)) : -1);
-  /* A weekend or a holiday has no bar. The marker lands on the next session
-     that does, rather than disappearing. */
-  const near = (d) => {
-    if (!d) return -1;
-    const want = iso(d);
-    const exact = days.indexOf(want);
-    if (exact >= 0) return exact;
-    const after = days.findIndex((x) => x >= want);
-    return after >= 0 ? after : -1;
-  };
-
-  const entry = num(t.entry_price);
+  const entryPrice = num(t.entry_price);
   const stop = num(t.stop_loss);
+
   const exits = (t.exits || [])
     .filter((e) => num(e.price) != null && e.exit_date)
-    .map((e) => ({ i: near(e.exit_date), price: num(e.price), qty: num(e.quantity) }))
-    .filter((e) => e.i >= 0);
+    .map((e) => ({
+      time: landOn(days, e.exit_date),
+      price: num(e.price),
+      qty: num(e.quantity),
+    }))
+    .filter((e) => e.time)
+    .sort((a, b) => (a.time < b.time ? -1 : 1));
+
+  const soldQty = exits.reduce((s, e) => s + (e.qty || 0), 0);
+  const total = num(t.quantity) || 0;
 
   return {
-    entry: entry == null ? null : { i: near(t.entry_date), price: entry },
-    stop: stop == null ? null : stop,
+    entry: entryPrice == null ? null
+      : { time: landOn(days, t.entry_date), price: entryPrice },
+    /* A stop the importer invented is not a level the trader chose, and a
+       trade with no stop on record has none at all — neither gets a line
+       pretending otherwise. hasRealStop is that exact question and already
+       has one answer; writing the comparison out again here is how a tenth
+       copy of it would have got in. */
+    stop: hasRealStop(t) ? stop : null,
+    assumedStop: stop != null && t.stop_source === STOP_ASSUMED ? stop : null,
     exits,
-    levels: [entry, stop, ...exits.map((e) => e.price)].filter((v) => v != null),
-    lastIndex: days.length - 1,
-    at,
+    /* Share of the position each tranche took, so the marker can say "40%"
+       rather than making three exits look alike. */
+    exitShare: exits.map((e) => (total > 0 && e.qty ? (e.qty / total) * 100 : NaN)),
+    fullyOut: total > 0 && soldQty >= total - 1e-6,
   };
 }
 

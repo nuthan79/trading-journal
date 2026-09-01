@@ -1,9 +1,10 @@
 "use client";
 
-import { Suspense, useMemo } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Trades from "@/components/journal/Trades";
 import { saveStops } from "@/lib/db";
+import { measurePaths, needsMeasuring } from "@/lib/measure";
 import { useJournal } from "../JournalContext";
 
 /**
@@ -51,11 +52,38 @@ function TradesInner() {
           openEditTrade, openExitTrade, removeTrade, openNewTrade,
           reloadTrades, say, filters, saveView, removeView } = useJournal();
 
+  /**
+   * Fetching the price history the charts need.
+   *
+   * The same pass the Review screen and Holdings already run — one function,
+   * so a trade measured from here is measured the same way and lands in the
+   * same columns. `includeOpen` because an open position IS charted, right up
+   * to today's candle, and the closed-only default would leave every holding
+   * on the wall permanently blank.
+   */
+  const [measuring, setMeasuring] = useState(false);
+  const onMeasure = async () => {
+    const todo = needsMeasuring(all, { includeOpen: true });
+    if (!todo.length) return;
+    setMeasuring(true);
+    try {
+      const r = await measurePaths(todo);
+      await reloadTrades();
+      say(r?.stopped ? r.stopped : `Measured ${r?.measured ?? todo.length}.`);
+    } catch (e) {
+      say(e?.message || "Could not fetch price history.");
+    } finally {
+      setMeasuring(false);
+    }
+  };
+
   return (
     <Trades
       all={all}
       diary={diary}
       filters={filters}
+      onMeasure={onMeasure}
+      measuring={measuring}
       onSaveView={saveView}
       onDeleteView={removeView}
       mistake={mistake}
