@@ -8,7 +8,8 @@ import {
   supabase, getProfile, saveProfile as dbSaveProfile,
   listTrades, listExitsByTrade, saveExits, saveTrade as dbSaveTrade, deleteTrade as dbDeleteTrade,
   listDiary, saveDiary as dbSaveDiary, deleteDiary as dbDeleteDiary,
-  listFlows, markOpenPositions, signInWithPassword, signOut,
+  listFlows, listFilters, saveFilter, deleteFilter,
+  markOpenPositions, signInWithPassword, signOut,
   signUpWithPassword, signInWithGoogle,
   sendPasswordReset, avatarUrl, trackVisit, setAnalyticsFlag } from "@/lib/db";
 import { stats } from "@/lib/calc";
@@ -280,6 +281,7 @@ export default function AppLayout({ children }) {
   const [exitsByTrade, setExitsByTrade] = useState({});
   const [diary, setDiary] = useState([]);
   const [flows, setFlows] = useState([]);
+  const [filters, setFilters] = useState([]);
   const [editing, setEditing] = useState(null);
   const [showForm, setShowForm] = useState(false);
   // Opened via Exit rather than Edit: the form starts on a fresh sell row.
@@ -311,17 +313,49 @@ export default function AppLayout({ children }) {
     return t;
   }, []);
 
+  /**
+   * Saved views, written through and re-read from the row the server returns.
+   *
+   * The list is replaced by name as well as by id, because saving over an
+   * existing name REPLACES that view (043's unique index) — matching on id
+   * alone would leave the old row in the menu beside the new one until a
+   * reload, showing two entries the database says are one.
+   */
+  const saveView = useCallback(async (f) => {
+    const row = await saveFilter(f);
+    setFilters((xs) => {
+      const rest = xs.filter((x) => x.id !== row.id
+        && x.name.trim().toLowerCase() !== row.name.trim().toLowerCase());
+      return [...rest, row].sort((a, b) =>
+        (a.position - b.position) || a.created_at.localeCompare(b.created_at));
+    });
+    say("View saved.");
+    return row;
+  }, [say]);
+
+  const removeView = useCallback(async (id) => {
+    await deleteFilter(id);
+    setFilters((xs) => xs.filter((x) => x.id !== id));
+    say("View deleted.");
+  }, [say]);
+
   useEffect(() => {
     if (!profile?.onboarded_at) return;
     (async () => {
       try {
-        const [t, d, fl, ex] = await Promise.all([
+        const [t, d, fl, ex, sv] = await Promise.all([
           listTrades(), listDiary(), listFlows(), listExitsByTrade(),
+          /* A journal that predates migration 043 has no saved_filters table
+             and would fail the whole load on one missing feature. Views are a
+             convenience over trades; they are not worth taking the book down
+             for, so this one degrades to an empty menu on its own. */
+          listFilters().catch(() => []),
         ]);
         setTrades(t);
         setDiary(d);
         setFlows(fl);
         setExitsByTrade(ex);
+        setFilters(sv);
 
         // A partial still has size running, so it wants a mark like any open one.
         const openNow = t.filter((x) => x.status === "open" || x.status === "partial");
@@ -801,6 +835,7 @@ export default function AppLayout({ children }) {
         removeTrade,
         saveDiaryEntry, removeDiaryEntry, removeChartFromEntry,
         mergeMarks, reloadTrades,
+        filters, saveView, removeView,
       }}
     >
       <div>

@@ -1295,6 +1295,59 @@ export async function deleteFlow(id) {
   if (error) throw error;
 }
 
+/* --------------------------- saved views --------------------------- */
+
+export async function listFilters() {
+  return fetchAllPages(() =>
+    supabase
+      .from("saved_filters")
+      .select("*")
+      .order("position")
+      .order("created_at", { ascending: true })
+  );
+}
+
+/**
+ * Upsert on (user, name), not on id.
+ *
+ * Saving a view under a name that already exists REPLACES it, which is what
+ * the unique index in 043 enforces and what somebody editing a view expects.
+ * Upserting on `id` alone would insert a second row with the same name and
+ * leave two indistinguishable entries in the menu — and then fail the index
+ * anyway, with a constraint error instead of the save they asked for.
+ */
+export async function saveFilter(f) {
+  const user_id = await uid();
+  const row = { ...f, user_id, name: String(f.name || "").trim() };
+  if (!row.name) throw new Error("A view needs a name.");
+  if (!row.id) delete row.id;
+  const { data, error } = await supabase
+    .from("saved_filters")
+    .upsert(row, { onConflict: row.id ? "id" : "user_id,name" })
+    .select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteFilter(id) {
+  const { error } = await supabase.from("saved_filters").delete().eq("id", id);
+  if (error) throw error;
+}
+
+/**
+ * Persist a reorder.
+ *
+ * UPDATEs rather than an upsert, because an upsert sends an INSERT carrying
+ * only id/position and `name` is NOT NULL — the row would have to survive the
+ * insert's constraint check before ON CONFLICT could turn it into an update.
+ * Not worth finding out at runtime which of those Postgres does first.
+ */
+export async function saveFilterOrder(ids) {
+  await Promise.all((ids || []).map((id, i) =>
+    supabase.from("saved_filters").update({ position: i }).eq("id", id)
+      .then(({ error }) => { if (error) throw error; })));
+}
+
 /* ------------------------------ settings --------------------------- */
 
 export async function getProfile() {

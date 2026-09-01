@@ -49,12 +49,15 @@ function TradesInner() {
 
   const { all, diary, saveDiaryEntry, removeChartFromEntry,
           openEditTrade, openExitTrade, removeTrade, openNewTrade,
-          reloadTrades, say } = useJournal();
+          reloadTrades, say, filters, saveView, removeView } = useJournal();
 
   return (
     <Trades
       all={all}
       diary={diary}
+      filters={filters}
+      onSaveView={saveView}
+      onDeleteView={removeView}
       mistake={mistake}
       missing={missing}
       edge={edge}

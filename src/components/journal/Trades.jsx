@@ -7,6 +7,8 @@ import { rupee, rfmt, pct, signedPct } from "@/lib/format";
 import PositionDetail from "./PositionDetail";
 import { SETUP_FIELDS } from "@/lib/gaps";
 import { noStopOnRecord, hasRealStop, canHaveStop } from "@/lib/stops";
+import { matches, describeFilter, seedFromTab } from "@/lib/filters";
+import SavedViews from "./SavedViews";
 
 const num = (v) => (v === "" || v === null || v === undefined ? NaN : Number(v));
 
@@ -29,10 +31,23 @@ function exportCsv(all) {
 
 export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNew,
                                  onAttachChart, onRemoveChart, onSaveStop,
+                                 filters = [], onSaveView, onDeleteView,
                                  mistake = "", missing = "", edge = null, onClearFilter }) {
   const [filter, setFilter] = useState("all");
   const [q, setQ] = useState("");
   const [sort, setSort] = useState({ k: "entry_date", dir: -1 });
+
+  /**
+   * A saved view and a tab are alternatives, not layers.
+   *
+   * Both answer "which trades", so leaving a tab switched on underneath a view
+   * would silently intersect the two — you would apply "Everything over 2R",
+   * see nine trades, and have no way to tell that Losers was still narrowing
+   * it. Choosing either one clears the other, so what is on screen is always
+   * explained by exactly one control.
+   */
+  const [view, setView] = useState(null);
+  const applyView = (v) => { setView(v); if (v) setFilter("all"); };
 
   /**
    * Each tab opens in the order that suits what it holds.
@@ -52,6 +67,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
   const OPENING_SORT = { closed: { k: "exit_date", dir: -1 } };
   const chooseFilter = (id) => {
     setFilter(id);
+    setView(null);
     setSort(OPENING_SORT[id] || { k: "entry_date", dir: -1 });
   };
   const noStopCount = useMemo(() => (all || []).filter(noStopOnRecord).length, [all]);
@@ -279,6 +295,10 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
     if (filter === "winners") r = r.filter((t) => isFinite(t.pnl) && t.pnl > 0);
     if (filter === "losers") r = r.filter((t) => isFinite(t.pnl) && t.pnl <= 0);
     if (filter === "nostop") r = r.filter(noStopOnRecord);
+    /* Applied to the same derived rows the table draws, which is what makes a
+       rule on pnl, r, slPct or heldDays possible at all — none of those are
+       columns, they come out of derivePosition. */
+    if (view) r = r.filter((t) => matches(t, view));
     if (q.trim()) {
       const s = q.trim().toLowerCase();
       r = r.filter((t) => (t.symbol || "").toLowerCase().includes(s) ||
@@ -290,7 +310,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
         return ((isFinite(av) ? av : -1e12) - (isFinite(bv) ? bv : -1e12)) * sort.dir;
       return String(av || "").localeCompare(String(bv || "")) * sort.dir;
     });
-  }, [all, mistake, missingField, edge, filter, q, sort]);
+  }, [all, mistake, missingField, edge, filter, view, q, sort]);
 
   // Resolved by id against the filtered list, not held as an object: change
   // the filter or the sort while it's open and the panel follows the row,
@@ -341,6 +361,18 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
           <span className="tr-chip-n">{rows.length} of {all.length}</span>
         </div>
       )}
+      {view && (
+        <div className="tr-chip">
+          {/* The rules spelled out, not just the name. A view called "Q3 pain"
+              is a label somebody chose months ago; this is what it actually
+              asks, so the list never narrows for a reason you cannot read. */}
+          <span>Showing <b>{view.name}</b> — {describeFilter(view).toLowerCase()}</span>
+          <span className="tr-chip-n">{rows.length} of {all.length}</span>
+          <button className="btn ghost sm" onClick={() => setView(null)}>
+            <X size={12} />Clear
+          </button>
+        </div>
+      )}
       {(mistake || missingField || edgeDesc) && (
         <div className="tr-chip">
           <span>
@@ -374,10 +406,32 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
             */}
           {[["all","All"],["open","Open"],["closed","Closed"],["winners","Winners"],["losers","Losers"],
             ...(noStopCount > 0 ? [["nostop", `No stop · ${noStopCount}`]] : [])].map(([id,l]) => (
-            <button key={id} data-on={filter === id ? 1 : 0} onClick={() => chooseFilter(id)}>{l}</button>
+            <button key={id} data-on={view ? 0 : filter === id ? 1 : 0}
+                    onClick={() => chooseFilter(id)}>{l}</button>
           ))}
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {/**
+            * THE TABS STAY VISIBLE; ONLY THE SAVED ONES GO IN A MENU.
+            *
+            * The obvious move is to sweep All / Open / Closed / Winners /
+            * Losers into this dropdown too, under a "Quick filters" heading.
+            * That trades one click for two on the five filters used most, and
+            * hides which one is active behind a closed menu. Six buttons is
+            * not enough to be worth a menu; a growing list of saved views is.
+            */}
+          <SavedViews
+            all={all}
+            filters={filters}
+            activeId={view?.id || null}
+            onApply={applyView}
+            onSave={onSaveView}
+            onDelete={async (id) => {
+              await onDeleteView(id);
+              setView((v) => (v && v.id === id ? null : v));
+            }}
+            seed={{ rules: seedFromTab(filter), conjunction: "and" }}
+          />
           {/*
             The clear button lives INSIDE the field, which is why the wrapper
             exists. Extra right padding on the input keeps a long symbol from
