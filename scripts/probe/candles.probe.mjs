@@ -158,3 +158,20 @@ test("the bars cache reads back every column it decides on", () => {
     ok(cols.includes(c), `the chart draws ${c} but the route does not select it`);
   }
 });
+
+test("one batch size, not three that happen to agree", () => {
+  /* The route caps a request and SILENTLY drops the rest, so a caller that
+     batches larger reports success over listings it never fetched — which is
+     what a size of 25 against a cap of 12 already did once. Three constants
+     agreeing is the state every N-copies bug is in until it is not. */
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+  const files = ["src/app/api/bars/route.js", "src/lib/measure.js",
+                 "src/components/journal/ChartWall.jsx"];
+  for (const f of files) {
+    const src = readFileSync(path.join(root, f), "utf8");
+    ok(/BARS_PER_REQUEST/.test(src), `${f} does not use the shared batch size`);
+    ok(!/=\s*(1[0-9]|2[0-9])\s*;\s*$/m.test(src.split("\n")
+       .filter((l) => /MAX_SYMBOLS|PER_CALL/.test(l)).join("\n")),
+       `${f} has gone back to a literal batch size`);
+  }
+});

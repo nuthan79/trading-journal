@@ -77,6 +77,27 @@ export function tickerFor(symbol, exchange) {
 }
 
 /**
+ * HOW MANY LISTINGS ONE REQUEST MAY CARRY. One number, for the same reason
+ * the key above is one function.
+ *
+ * The route caps a request at this many and SILENTLY DROPS the rest — so a
+ * caller that batches by a larger number gets a short answer and reports
+ * success over listings it never fetched. That already happened once, when a
+ * batch size of 25 met a cap of 12 and a measure run said it had read symbols
+ * it had not touched.
+ *
+ * There were three copies of it: the route's own cap and one in each caller.
+ * All three agreed, which is the state every N-copies bug is in right up
+ * until it is not.
+ *
+ * Twelve because each symbol is a separate upstream request made in series,
+ * so the batch size IS the function's running time, and a timeout costs the
+ * whole batch — losing twelve symbols' work is half the setback of losing
+ * twenty-five.
+ */
+export const BARS_PER_REQUEST = 12;
+
+/**
  * HOW A LISTING IS NAMED ON THE WIRE. One definition, because it is a
  * CONTRACT between two files that never see each other.
  *

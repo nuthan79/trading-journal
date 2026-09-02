@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { fetchBars, tickerFor, sleep, barsKeyFor } from "@/lib/bars";
+import { fetchBars, tickerFor, sleep, barsKeyFor, BARS_PER_REQUEST } from "@/lib/bars";
 import { userFromRequest } from "@/lib/apiAuth";
 import { rateLimit, tooMany } from "@/lib/rateLimit";
 
@@ -54,7 +54,7 @@ const LIMIT = { limit: 30, windowMs: 60_000 };
  * losing twelve symbols' work is half the setback of losing twenty-five. The
  * rate limit above went up to match, so a full book still measures in one go.
  */
-const MAX_SYMBOLS = 12;
+const MAX_SYMBOLS = BARS_PER_REQUEST;
 
 export async function POST(req) {
   const userId = await userFromRequest(req);

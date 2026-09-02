@@ -24,7 +24,7 @@ import { useCallback, useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { rupee, rfmt, dmy } from "@/lib/format";
 import { apiFetch } from "@/lib/db";
-import { tickerFor, barsKeyFor } from "@/lib/bars";
+import { tickerFor, barsKeyFor, BARS_PER_REQUEST } from "@/lib/bars";
 import { isPartial } from "@/lib/positions";
 import { windowsFor, barsFor, barsKey, hasBars } from "@/lib/candles";
 import TradeChart from "./TradeChart";
@@ -33,7 +33,7 @@ const PER_PAGE = 24;
 /* Matches MAX_SYMBOLS in /api/bars. A mismatch here silently drops the tail of
    every batch — the same bug that made a measure run report success over
    trades it never touched. */
-const PER_CALL = 12;
+const PER_CALL = BARS_PER_REQUEST;
 
 /**
  * TWO SIZES, NOT THREE. Medium was dropped as useless, and it was: at three

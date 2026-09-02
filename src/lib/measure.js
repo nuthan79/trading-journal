@@ -5,7 +5,7 @@ import { tradePath } from "./path";
 /* The same test the route applies, imported rather than restated — this
    screen counting a trade as measurable while the route refuses it is how a
    button offers work that silently never happens. */
-import { tickerFor, barsKeyFor } from "./bars";
+import { tickerFor, barsKeyFor, BARS_PER_REQUEST } from "./bars";
 import { hasRealStop } from "./stops";
 
 /**
@@ -38,7 +38,7 @@ import { hasRealStop } from "./stops";
  * pressed. This was 25 for one commit after the route dropped to 12, which is
  * exactly the failure the previous version of this comment described.
  */
-const SYMBOLS_PER_CALL = 12;
+const SYMBOLS_PER_CALL = BARS_PER_REQUEST;
 
 const DAY = 86400000;
 const iso = (d) => String(d || "").slice(0, 10);
