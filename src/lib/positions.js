@@ -99,27 +99,63 @@ export const isPartial = (t) => !!t && t.status === "partial";
 export function realisationEvents(t) {
   const exits = t?.exits || [];
   if (!exits.length) return [];
+
+  /**
+   * ALL OR NOTHING. A tranche with no date cannot be placed in a period and a
+   * tranche with no price cannot be valued — and dropping one silently is
+   * money vanishing from every total built on these. Measured on a fixture:
+   * one undated tranche took ₹2,000 out of a ₹3,500 position and the periods
+   * stopped summing to the book.
+   *
+   * So if any part of the position cannot be split honestly, none of it is.
+   * The caller falls back to whole-trade attribution, which is where it was
+   * before and is at worst in the wrong period rather than absent.
+   */
+  const usable = exits.every((e) =>
+    e.exit_date && isFinite(n(e.price)) && isFinite(n(e.quantity)));
+  const total = n(t.realisedPnl);
+  if (!usable || !isFinite(total)) return [];
+
   const entry = n(t.entry_price);
   const dir = t.side === "short" ? -1 : 1;
+  const gross = exits.map((e) => (n(e.price) - entry) * n(e.quantity) * dir);
+  const grossSum = sum(gross);
+
+  /**
+   * THE CHARGE IS DERIVED FROM THE POSITION, NOT READ OFF IT.
+   *
+   * The first version read `t.charges` and subtracted each tranche's own —
+   * which double-counted, because on a DERIVED trade `charges` has already
+   * been replaced by the total of both. Thirty rupees went missing from a
+   * fixture and would have gone missing from every real book.
+   *
+   * grossSum − realisedPnl is what the position actually paid in charges,
+   * whatever any field says, so the parts add back to the whole by
+   * construction rather than by agreement. The last tranche takes the
+   * remainder so the sum is exact to the paisa instead of nearly.
+   */
+  const chargeTotal = grossSum - total;
   const qtyOut = sum(exits.map((e) => n(e.quantity) || 0));
-  const tradeCharges = n(t.charges) || 0;
   const risk = n(t.riskAmt);
 
-  return exits
-    .filter((e) => e.exit_date && isFinite(n(e.price)))
-    .map((e) => {
-      const q = n(e.quantity) || 0;
-      const gross = (n(e.price) - entry) * q * dir;
-      const share = qtyOut > 0 ? q / qtyOut : 0;
-      const pnl = gross - (n(e.charges) || 0) - tradeCharges * share;
-      return {
-        date: String(e.exit_date).slice(0, 10),
-        pnl,
-        r: risk > 0 ? pnl / risk : NaN,
-        qty: q,
-        trade: t,
-      };
-    });
+  let allocated = 0;
+  return exits.map((e, i) => {
+    const q = n(e.quantity) || 0;
+    const last = i === exits.length - 1;
+    const chg = last ? chargeTotal - allocated
+      : chargeTotal * (qtyOut > 0 ? q / qtyOut : 1 / exits.length);
+    allocated += chg;
+    const pnl = gross[i] - chg;
+    return {
+      date: String(e.exit_date).slice(0, 10),
+      pnl,
+      /* Risk is fixed at entry for the whole position, so these sum to
+         realisedR with no weighting to argue about. */
+      r: risk > 0 ? pnl / risk : NaN,
+      qty: q,
+      trade: t,
+    };
+  });
 }
 
 export function derivePosition(t, accountSize) {

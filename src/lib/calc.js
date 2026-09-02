@@ -236,7 +236,33 @@ export function chronological(closed) {
  * account, and only the second one is what you actually have to sit through.
  */
 export function equityCurve(closed, { openingCapital = 0, flows = [] } = {}) {
-  const rows = chronological(closed);
+  /**
+   * THE CURVE STEPS ON EVERY SELL, NOT ON EVERY POSITION.
+   *
+   * `exit_date` is a position's LAST tranche, so a position sold across
+   * months put its whole result on the later date — the curve stayed flat
+   * through money that had already arrived, then jumped. Drawdown is measured
+   * off this walk, so a peak-to-trough that really happened between two
+   * partial sells was invisible, and one that never happened appeared at the
+   * final exit.
+   *
+   * Each sell is now its own step, dated when it happened. A position that
+   * cannot be split — an undated tranche — falls back to one step at its exit,
+   * which is where it was before. realisationEvents guarantees the parts sum
+   * to the position, so the curve ENDS in exactly the same place either way;
+   * only the shape between the ends changes, and only towards the truth.
+   */
+  const rows = chronological(closed).flatMap((t) => {
+    const evs = realisationEvents(t);
+    if (!evs.length) return [t];
+    return evs.map((e) => ({
+      id: t.id, entry_date: t.entry_date, exit_date: e.date,
+      pnl: e.pnl, r: e.r,
+    }));
+  }).sort((a, b) => {
+    const x = a.exit_date || a.entry_date, y = b.exit_date || b.entry_date;
+    return x < y ? -1 : x > y ? 1 : 0;
+  });
   const fl = [...flows]
     .map((f) => ({ d: new Date(f.flow_date), a: Number(f.amount) }))
     .filter((f) => isFinite(f.a))

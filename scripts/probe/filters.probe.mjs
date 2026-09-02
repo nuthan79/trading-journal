@@ -343,3 +343,44 @@ test("an unknown field never silently drops every trade", () => {
   eq(matchesRule(T(), R("field_that_no_longer_exists", "gt", 0)), true);
   eq(matches(T(), F([R("gone", "gt", 0)])), true);
 });
+
+test("'sold on' asks about every sell; 'exit date' asks about the last one", () => {
+  /* The distinction that surfaced the periodisation bug. A view for the
+     financial year matched a position whose FIRST sells were sixteen months
+     earlier, because the position finished inside the year. Both questions
+     are legitimate; they were just not both askable. */
+  const split = {
+    id: "pgel", status: "closed",
+    entry_date: "2024-05-28", exit_date: "2025-08-28",
+    exits: [{ exit_date: "2024-11-19" }, { exit_date: "2025-05-07" },
+            { exit_date: "2025-08-28" }],
+  };
+  const fy2526 = (field) => ({ field, op: "between",
+    value: "2025-04-01", value2: "2026-03-31" });
+  const fy2425 = (field) => ({ field, op: "between",
+    value: "2024-04-01", value2: "2025-03-31" });
+
+  eq(matchesRule(split, fy2526("exit_date")), true, "it did finish in FY25-26");
+  eq(matchesRule(split, fy2425("exit_date")), false, "and not in FY24-25");
+  eq(matchesRule(split, fy2526("soldOn")), true, "it sold in FY25-26");
+  eq(matchesRule(split, fy2425("soldOn")), true, "AND in FY24-25 — the point");
+
+  /* On a position closed in one go the two must agree exactly, or the new
+     field is a second answer to a question that only has one. */
+  const whole = { id: "w", status: "closed", exit_date: "2025-06-10",
+                  exits: [{ exit_date: "2025-06-10" }] };
+  for (const f of [fy2526, fy2425]) {
+    eq(matchesRule(whole, f("soldOn")), matchesRule(whole, f("exit_date")),
+       "the two fields disagree on a position with one sell");
+  }
+
+  /* A legacy row with no tranche list is still findable. */
+  const legacy = { id: "l", status: "closed", exit_date: "2025-06-10" };
+  eq(matchesRule(legacy, fy2526("soldOn")), true);
+
+  /* And the unknown-field escape hatch must not be what makes it work: an
+     unknown field returns TRUE by design, so a broken implementation would
+     match everything and look correct. */
+  eq(matchesRule(split, { ...fy2425("soldOn"), op: "after", value: "2030-01-01" }), false,
+     "soldOn is matching everything — it is falling through to the unknown-field path");
+});

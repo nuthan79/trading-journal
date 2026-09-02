@@ -1,5 +1,5 @@
 import { test, eq, ok, near } from "./harness.mjs";
-import { byPeriod, fyLabel } from "@/lib/calc";
+import { byPeriod, fyLabel, headline } from "@/lib/calc";
 import { derivePosition, realisationEvents } from "@/lib/positions";
 
 /* A position bought once and sold in tranches, some either side of 1 April. */
@@ -34,15 +34,25 @@ test("the tranches add back to the position, to the rupee", () => {
 });
 
 test("position-level charges are split across the sells, not dumped on one", () => {
-  const withCharges = pos("chg", 100, 100, 93, [
-    ["2025-06-10", 40, 130], ["2025-07-10", 60, 140],
-  ]);
-  withCharges.charges = 1000;
+  /* Charges set BEFORE deriving, so realisedPnl reflects them. The first
+     version of this probe mutated `charges` afterwards and so described a
+     position whose own P&L disagreed with its own charges — testing a
+     contract no real trade can be in, and passing only because the code then
+     read the field it should not have been reading. */
+  const t = { symbol: "X", side: "long", status: "closed", entry_date: "2024-05-01",
+    entry_price: 100, quantity: 100, stop_loss: 93, stop_source: "recorded",
+    charges: 1000,
+    exits: [{ exit_date: "2025-06-10", quantity: 40, price: 130, charges: 0 },
+            { exit_date: "2025-07-10", quantity: 60, price: 140, charges: 0 }] };
+  const withCharges = { ...t, ...derivePosition(t, 5e6), status: "closed",
+                        exits: t.exits };
   const evs = realisationEvents(withCharges);
-  /* 40/100 and 60/100 of the trade-level charge. Anything else still sums,
-     but puts money in the wrong period on a boundary-spanning position. */
+  /* 40/100 and 60/100 of the position's charge. Any other split still sums to
+     the whole, but puts money in the wrong period on a position that spans a
+     boundary — which is the entire point of this file. */
   near(evs[0].pnl, (130 - 100) * 40 - 400, 0.01);
   near(evs[1].pnl, (140 - 100) * 60 - 600, 0.01);
+  near(evs[0].pnl + evs[1].pnl, withCharges.realisedPnl, 0.005);
 });
 
 test("money lands in the year it was realised, not the year the position closed", () => {
@@ -106,4 +116,81 @@ test("a legacy row with no tranches still appears", () => {
   const rows = byPeriod([bare], "fy", { openingCapital: 5e6, basis: "exit" });
   eq(rows.length, 1);
   near(rows[0].pnl, 500, 0.01);
+});
+
+/* ------------------------------------------------------------------ *
+ *  Money conservation. These exist because the first version of the
+ *  tranche split lost money three different ways at once.
+ * ------------------------------------------------------------------ */
+
+const derived = (o) => {
+  const t = { symbol: "X", side: "long", status: "closed", entry_date: "2024-05-01",
+    entry_price: 100, quantity: 100, stop_loss: 93, stop_source: "recorded",
+    charges: 0, ...o };
+  const d = derivePosition(t, 5e6);
+  return { ...t, ...d, status: "closed", exits: d.exits };
+};
+
+test("charges are derived from the position, not read off a field", () => {
+  /* The first version subtracted `t.charges` AND each tranche's own. On a
+     DERIVED trade `charges` has already been replaced by the total of both,
+     so exit charges came off twice and ₹30 vanished from a ₹3,170 position —
+     and would have vanished from every real book. */
+  const t = derived({ id: "chg", exits: [
+    { exit_date: "2024-11-19", quantity: 40, price: 120, charges: 10 },
+    { exit_date: "2025-06-10", quantity: 60, price: 140, charges: 20 }] });
+  const evs = realisationEvents(t);
+  near(evs.reduce((a, e) => a + e.pnl, 0), t.realisedPnl, 0.005,
+       "the parts must add to the whole whatever `charges` means on the way in");
+  near(evs.reduce((a, e) => a + e.r, 0), t.realisedR, 1e-9);
+});
+
+test("a tranche that cannot be placed means the position is not split at all", () => {
+  /* Dropping the unusable one silently is money leaving every total built on
+     these: one undated tranche took ₹2,000 out of a ₹3,500 position. All or
+     nothing — the caller then attributes the whole position, which is at
+     worst in the wrong period rather than absent. */
+  const noDate = derived({ id: "nodate", exits: [
+    { exit_date: "2025-06-10", quantity: 50, price: 130, charges: 0 },
+    { exit_date: null, quantity: 50, price: 140, charges: 0 }] });
+  eq(realisationEvents(noDate).length, 0, "no partial split");
+
+  const noPrice = derived({ id: "noprice", exits: [
+    { exit_date: "2025-06-10", quantity: 50, price: 130, charges: 0 },
+    { exit_date: "2025-07-10", quantity: 50, price: null, charges: 0 }] });
+  eq(realisationEvents(noPrice).length, 0);
+
+  /* And they still reach the table, through the whole-trade fallback. */
+  const rows = byPeriod([noDate], "fy", { openingCapital: 5e6, basis: "exit" });
+  eq(rows.length, 1, "it must not disappear");
+  near(rows[0].pnl, noDate.pnl, 0.01);
+});
+
+test("periods sum to the book even with awkward positions in it", () => {
+  /* The whole point. A book that mixes clean positions, split ones, and ones
+     that cannot be split must still add up at every grain — because the
+     all-time total is what three screens reconcile against, and a mismatch
+     here is the kind that survives a reconciliation by being in the periods
+     rather than in the total. */
+  const book = [
+    derived({ id: "a", exits: [{ exit_date: "2025-06-10", quantity: 100, price: 130, charges: 5 }] }),
+    derived({ id: "b", exits: [
+      { exit_date: "2024-11-19", quantity: 40, price: 120, charges: 10 },
+      { exit_date: "2025-06-10", quantity: 60, price: 140, charges: 20 }] }),
+    derived({ id: "c", exits: [
+      { exit_date: "2025-06-10", quantity: 50, price: 130, charges: 0 },
+      { exit_date: null, quantity: 50, price: 140, charges: 0 }] }),
+    derived({ id: "d", exit_date: "2025-06-10", exit_price: 130, exits: [] }),
+  ];
+  const bookPnl = book.reduce((a, t) => a + (isFinite(t.pnl) ? t.pnl : 0), 0);
+  ok(isFinite(bookPnl) && bookPnl !== 0, `the fixture itself is broken: ${bookPnl}`);
+
+  for (const grain of ["month", "quarter", "fy"]) {
+    const rows = byPeriod(book, grain, { openingCapital: 5e6, basis: "exit" });
+    near(rows.reduce((a, r) => a + r.pnl, 0), bookPnl, 0.01, `${grain} money`);
+  }
+  /* And the dashboard headline, which does NOT go through byPeriod, still
+     agrees — the two must never drift. */
+  near(headline(book, { openingCapital: 5e6, flows: [] }).netPnl, bookPnl, 0.01,
+       "headline and the period rows disagree");
 });

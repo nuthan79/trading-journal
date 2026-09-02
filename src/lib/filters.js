@@ -82,6 +82,24 @@ export const FIELDS = [
   // --- dates --------------------------------------------------------
   { key: "entry_date", label: "Entry date", type: "date", group: "Dates", sortable: true },
   { key: "exit_date", label: "Exit date", type: "date", group: "Dates", sortable: true },
+  /**
+   * A SECOND DATE FIELD, because a tranched position has two honest answers.
+   *
+   * "Exit date" is when the position FINISHED — its last sell. That is the
+   * right question for "which trades did I close in this window", and it is
+   * what the column in the table shows.
+   *
+   * It is the wrong question for "what did I realise in this window", and
+   * asking it that way is what surfaced the whole periodisation bug: a view
+   * for the financial year returned positions whose first sells were sixteen
+   * months earlier, because the position finished inside the year even though
+   * much of its money did not arrive in it.
+   *
+   * So this one matches if ANY sell landed in the window. The two differ only
+   * on positions sold across the boundary, which is exactly where the
+   * distinction matters.
+   */
+  { key: "soldOn", label: "Sold on (any part)", type: "date", group: "Dates" },
   { key: "heldDays", label: "Days held", type: "number", group: "Dates", unit: "days",
     sortable: true },
 
@@ -292,6 +310,34 @@ const low = (v) => String(v ?? "").trim().toLowerCase();
  * exception is the `empty` operator, which is the only way to ASK for absence
  * and therefore the only operator that treats it as a match.
  */
+/**
+ * One date against one rule.
+ *
+ * Split out because two fields need it and they hold different shapes: a
+ * trade has ONE exit date, and a position has a LIST of sell dates. The first
+ * attempt at the list version recursed back into matchesRule with a made-up
+ * field name, which fieldOf did not know — and an unknown field returns TRUE
+ * by design, so the filter would have matched every trade in the book while
+ * looking like it worked.
+ */
+function matchesDate(d, rule) {
+  if (!d) return false;
+  const op = rule.op;
+  if (op === "within") {
+    const w = windowFor(rule.value);
+    return !!w && d >= w[0] && d <= w[1];
+  }
+  if (op === "after") return !!rule.value && d >= dayIso(rule.value);
+  if (op === "before") return !!rule.value && d <= dayIso(rule.value);
+  if (op === "between") {
+    const a = dayIso(rule.value), b = dayIso(rule.value2);
+    if (!a || !b) return false;
+    const [lo, hi] = a <= b ? [a, b] : [b, a];
+    return d >= lo && d <= hi;
+  }
+  return false;
+}
+
 export function matchesRule(t, rule) {
   if (!t || !rule || !rule.field) return true;
   const f = fieldOf(rule.field);
@@ -325,23 +371,27 @@ export function matchesRule(t, rule) {
     return false;
   }
 
-  if (f.type === "date") {
-    const d = dayIso(raw);
-    if (!d) return false;
-    if (op === "within") {
-      const w = windowFor(rule.value);
-      return !!w && d >= w[0] && d <= w[1];
-    }
-    if (op === "after") return !!rule.value && d >= dayIso(rule.value);
-    if (op === "before") return !!rule.value && d <= dayIso(rule.value);
-    if (op === "between") {
-      const a = dayIso(rule.value), b = dayIso(rule.value2);
-      if (!a || !b) return false;
-      const [lo, hi] = a <= b ? [a, b] : [b, a];
-      return d >= lo && d <= hi;
-    }
-    return false;
+  /**
+   * ANY sell in the window, not the position's last one.
+   *
+   * Every other date field asks about one date on the trade. This one asks
+   * about a LIST, so it cannot go through the single-value path below —
+   * `raw` here is the tranche dates, and the rule is that the position
+   * matches if any of them do.
+   */
+  if (rule.field === "soldOn") {
+    const days = Array.isArray(t.exits)
+      ? t.exits.map((e) => dayIso(e.exit_date)).filter(Boolean)
+      : [];
+    /* A position with no tranche list falls back to its own exit date, so a
+       legacy row is still findable rather than silently unmatched. */
+    const all = days.length ? days : [dayIso(t.exit_date)].filter(Boolean);
+    if (op === "empty") return all.length === 0;
+    if (op === "notempty") return all.length > 0;
+    return all.some((d) => matchesDate(d, rule));
   }
+
+  if (f.type === "date") return matchesDate(dayIso(raw), rule);
 
   if (f.type === "tags") {
     const have = new Set((Array.isArray(raw) ? raw : []).map(low));
