@@ -90,6 +90,9 @@ export default function PeriodPerformance({ closed, openingCapital, flows = [], 
       trades: rows.reduce((a, r) => a + r.trades, 0),
       pnl: rows.reduce((a, r) => a + num(r.pnl), 0),
       totalR: rows.reduce((a, r) => a + num(r.totalR), 0),
+      /* How many trades the R columns actually cover, which is not the trade
+         count — see the note on the R cell below. */
+      withR: rows.reduce((a, r) => a + num(r.n), 0),
       green: rows.filter((r) => r.pnl > 0).length,
     };
   }, [rows]);
@@ -183,9 +186,42 @@ export default function PeriodPerformance({ closed, openingCapital, flows = [], 
                 <td className={`num ${r.returnPct >= 0 ? "pos" : "neg"}`}>
                   {r.returnPct == null ? <span className="pp-dim">—</span> : signedPct(r.returnPct)}
                 </td>
-                <td className={`num ${r.totalR >= 0 ? "pos" : "neg"}`}>{rfmt(r.totalR, 1)}</td>
-                <td className={`num ${r.expectancy >= 0 ? "pos" : "neg"}`}>{rfmt(r.expectancy)}</td>
-                <td className="num">{pct(r.winRate, 0)}</td>
+                {/**
+                  * R, EXPECTANCY AND WIN RATE COVER A DIFFERENT SET OF TRADES
+                  * FROM THE MONEY BESIDE THEM.
+                  *
+                  * stats() sums R over `rows.map(r).filter(isFinite)` — trades
+                  * with a stop on record — while pnl, avg value and the trade
+                  * count take the lot. On a row with stopless trades the two
+                  * halves describe different populations and nothing said so,
+                  * which is how a month reading "−₹1.06 L" and "+1.7R" looks
+                  * like an error rather than a fact about sizing.
+                  *
+                  * The count goes under R because that is the column somebody
+                  * reads against the money. Shown only when it differs — "of 9"
+                  * on a row of 9 is noise.
+                  */}
+                <td className={`num ${r.totalR >= 0 ? "pos" : "neg"}`}
+                    title={r.n < r.trades
+                      ? `${r.trades - r.n} of these ${r.trades} trades have no stop recorded, so no R. The money columns count all ${r.trades}.`
+                      : undefined}>
+                  {rfmt(r.totalR, 1)}
+                  {isFinite(r.n) && r.n > 0 && r.n < r.trades && (
+                    <i className="pp-rn">of {r.n}</i>
+                  )}
+                </td>
+                <td className={`num ${r.expectancy >= 0 ? "pos" : "neg"}`}
+                    title={r.n < r.trades
+                      ? `Per trade across the ${r.n} with a stop recorded, not all ${r.trades}`
+                      : undefined}>
+                  {rfmt(r.expectancy)}
+                </td>
+                <td className="num"
+                    title={r.n < r.trades
+                      ? `Of the ${r.n} trades with a stop recorded, not all ${r.trades}`
+                      : undefined}>
+                  {pct(r.winRate, 0)}
+                </td>
                 <td className="num">{rupee(r.avgValue)}</td>
                 <td className="num" title={r.avgRiskPct != null ? `${pct(r.avgRiskPct, 2)} of capital` : undefined}>
                   {rupee(r.avgRisk)}
@@ -215,8 +251,14 @@ export default function PeriodPerformance({ closed, openingCapital, flows = [], 
                   {rupee(totals.pnl)}
                 </td>
                 <td className="num pp-dim">—</td>
-                <td className={`num ${totals.totalR >= 0 ? "pos" : "neg"}`}>
+                <td className={`num ${totals.totalR >= 0 ? "pos" : "neg"}`}
+                    title={totals.withR < totals.trades
+                      ? `${totals.trades - totals.withR} of these ${totals.trades} trades have no stop recorded, so no R`
+                      : undefined}>
                   {rfmt(totals.totalR, 1)}
+                  {totals.withR > 0 && totals.withR < totals.trades && (
+                    <i className="pp-rn">of {totals.withR}</i>
+                  )}
                 </td>
                 {/* Header has 11 columns: 5 filled above + these 5 + the bar
                     column below. Getting this sum wrong shifts the whole
@@ -258,6 +300,15 @@ export default function PeriodPerformance({ closed, openingCapital, flows = [], 
           gap: 14px; flex-wrap: wrap; margin-bottom: 10px;
         }
         .pp-sub { font-size: 12px; color: var(--ink2); margin-top: 3px; max-width: 620px; }
+        /* NOT pp-sub, which is the paragraph under the heading — 12px and 620
+           wide. Reusing it here would have put caption type inside a numeric
+           cell and given it a max-width it has no use for. Same shape as
+           tr-tot-sub on the trades footer, which says the same thing about the
+           same column. */
+        .pp-rn {
+          display: block; font-style: normal; font-size: 10px;
+          color: var(--ink3); margin-top: 1px; font-weight: 400;
+        }
         .pp-dim { color: var(--ink3); font-size: 11px; }
         /* Lighter than the total above it: a derived figure, not a sum. */
         .pp-avg td { border-top: 1px solid var(--rule); }
