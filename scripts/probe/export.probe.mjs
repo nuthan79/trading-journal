@@ -202,3 +202,40 @@ test("a stored date string never becomes a Date just to read its month", () => {
   ok(!/new Date\(t\.exit_date\)\.getMonth/.test(h),
      "exit_date is being parsed and read local again — that is the zone bug");
 });
+
+test("the file is named for the user's journal, and that name is free text", () => {
+  /* The prefix was the constant "ledgerr" and is now whatever somebody typed
+     into Settings — so it arrives with spaces, capitals and punctuation
+     exactly as the label does, and has to be slugged the same way. A folder of
+     exports from three people is otherwise three identical-looking sets. */
+  eq(exportFilename("closed", { prefix: "Nuthan Ledger", now: AT }),
+     "nuthan-ledger-closed-2026-09-01-1432.csv");
+  /* A possessive stays one word: an apostrophe is dropped, not made a
+     separator, so this is abhis-ledger and not abhi-s-ledger. */
+  eq(exportFilename("closed", { prefix: "Abhi's Ledger!", now: AT }),
+     "abhis-ledger-closed-2026-09-01-1432.csv");
+  eq(exportFilename("closed", { prefix: "Nuthan’s Ledger", now: AT }),
+     "nuthans-ledger-closed-2026-09-01-1432.csv", "the curly one too");
+  eq(exportFilename("closed", { prefix: "Breakout Ledger", now: AT }),
+     "breakout-ledger-closed-2026-09-01-1432.csv");
+
+  /* Missing or unusable falls back rather than producing a file that starts
+     with a hyphen or with the date. */
+  for (const p of ["", null, undefined, "   ", "***"]) {
+    eq(exportFilename("closed", { prefix: p, now: AT }),
+       "ledgerr-closed-2026-09-01-1432.csv", `from prefix ${JSON.stringify(p)}`);
+  }
+
+  /* Still filesystem-safe with a hostile journal name. */
+  const f = exportFilename("all trades", { prefix: "../../etc", now: AT });
+  ok(/^[a-z0-9.-]+$/.test(f), f);
+  ok(!f.includes("/") && !f.includes(".."), f);
+
+  /* And both screens pass it rather than leaving the brand hard-coded. */
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+  for (const rel of ["src/components/journal/Trades.jsx",
+                     "src/components/journal/Holdings.jsx"]) {
+    const src = readFileSync(path.join(root, rel), "utf8");
+    ok(/prefix: journalName/.test(src), `${rel} does not name the file after the journal`);
+  }
+});

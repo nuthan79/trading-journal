@@ -9,7 +9,7 @@ import { useJournal } from "../JournalContext";
 export default function HoldingsPage() {
   const {
     open, closed, diary, mergeMarks, say, reloadTrades, saveDiaryEntry, removeChartFromEntry,
-    openEditTrade, openExitTrade, removeTrade,
+    openEditTrade, openExitTrade, removeTrade, profile,
   } = useJournal();
   const [refreshing, setRefreshing] = useState(false);
 
@@ -63,7 +63,8 @@ export default function HoldingsPage() {
 
   return (
     <Holdings
-      open={open}
+journalName={profile?.journal_name}
+            open={open}
       closed={closed}
       diary={diary}
       onRefresh={refresh}

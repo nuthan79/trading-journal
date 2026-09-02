@@ -127,13 +127,24 @@ export const days = (v) => (isFinite(v) ? `${Math.round(v)} d` : "—");
  */
 export function exportFilename(label, { ext = "csv", prefix = "ledgerr",
                                         now = new Date() } = {}) {
-  const slug = String(label ?? "")
+  /* THE PREFIX IS SLUGGED TOO, because it stopped being a constant. It is the
+     user's own name for their journal now — "Nuthan Ledger", or anything else
+     they typed into Settings — so it arrives with spaces, capitals and
+     whatever punctuation they felt like, exactly as the label does. */
+  const clean = (v, max) => String(v ?? "")
     .toLowerCase()
+    /* Apostrophes are DROPPED, not turned into a separator, so a possessive
+       survives as one word: "Nuthan's Ledger" is nuthans-ledger and not
+       nuthan-s-ledger, which reads as two names badly joined. Both the curly
+       and the straight one, because a name typed on a phone gets the curly. */
+    .replace(/['’]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 60)
-    /* A 60-char cut can land mid-word and leave a trailing hyphen. */
+    .slice(0, max)
+    /* A cut can land mid-word and leave a trailing hyphen. */
     .replace(/-+$/, "");
+  const slug = clean(label, 60);
+  prefix = clean(prefix, 40) || "ledgerr";
   const p = (n) => String(n).padStart(2, "0");
   const stamp = `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}` +
                 `-${p(now.getHours())}${p(now.getMinutes())}`;

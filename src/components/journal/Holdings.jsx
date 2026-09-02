@@ -244,7 +244,7 @@ function BreakevenFlag({ c, busy, onAck }) {
 }
 
 export default function Holdings({
-  open, closed, diary = [], onRefresh, refreshing, onAckBreakeven,
+  open, closed, diary = [], journalName = "", onRefresh, refreshing, onAckBreakeven,
   onEditTrade, onExitTrade, onDeleteTrade, onAttachChart, onRemoveChart,
 }) {
   const [detailId, setDetailId] = useState(null);
@@ -672,8 +672,8 @@ export default function Holdings({
           {SHOW_HOLDINGS_CSV && (
             <button className="btn ghost sm" disabled={!rows.length}
                     title={`Download the ${rows.length} holding${rows.length === 1 ? "" : "s"}
-                            shown, in this order, as ${exportFilename("holdings")}`}
-                    onClick={() => downloadCsv(rows, HOLDING_COLS, exportFilename("holdings"))}>
+                            shown, in this order, as ${exportFilename("holdings", { prefix: journalName })}`}
+                    onClick={() => downloadCsv(rows, HOLDING_COLS, exportFilename("holdings", { prefix: journalName }))}>
               <Download size={13} />CSV
             </button>
           )}

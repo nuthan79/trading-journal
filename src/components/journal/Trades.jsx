@@ -36,12 +36,15 @@ const TRADE_COLS = ["symbol", "exchange", "side", "entry_date", "entry_price", "
   "exit_date", "exit_price", "avgExitPrice", "exitPct", "exit_reason", "charges", "pnl", "r",
   "heldDays", "mistakes", "notes"];
 
-const exportCsv = (rows, label) =>
-  downloadCsv(rows, TRADE_COLS, exportFilename(label));
+/* Named for THEIR journal, not for the app. A folder of exports from three
+   people is three sets of "ledgerr-closed-…" otherwise, and the one thing
+   that would tell them apart is the one thing the file does not say. */
+const exportCsv = (rows, label, journalName) =>
+  downloadCsv(rows, TRADE_COLS, exportFilename(label, { prefix: journalName }));
 
 export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNew,
                                  onAttachChart, onRemoveChart, onSaveStop,
-                                 filters = [], onSaveView, onDeleteView,
+                                 filters = [], onSaveView, onDeleteView, journalName = "",
                                  mistake = "", missing = "", edge = null, onClearFilter }) {
   const [filter, setFilter] = useState("all");
   const [q, setQ] = useState("");
@@ -535,8 +538,8 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
               debug readout next to a row of plain word buttons, and the count
               is already stated twice on this screen. */}
           <button className="btn ghost sm" title={`Download the ${rows.length} trade${
-                    rows.length === 1 ? "" : "s"} shown, as ${exportFilename(viewLabel)}`}
-                  onClick={() => exportCsv(rows, viewLabel)}>
+                    rows.length === 1 ? "" : "s"} shown, as ${exportFilename(viewLabel, { prefix: journalName })}`}
+                  onClick={() => exportCsv(rows, viewLabel, journalName)}>
             <Download size={13} />CSV
           </button>
         </div>
