@@ -2,30 +2,15 @@
 
 import { useMemo, useState } from "react";
 import { RefreshCw, Flag, Rocket, CornerDownRight, Download } from "lucide-react";
-import { rupee, rfmt, pct, signedPct, moneyParts, exportFilename } from "@/lib/format";
+import { rupee, rfmt, pct, signedPct, moneyParts, exportFilename,
+         monthShort } from "@/lib/format";
 import { downloadCsv } from "@/lib/csv";
+import { SHOW_HOLDINGS_CSV } from "@/lib/flags";
 import { fyStartYear, fyLabel } from "@/lib/calc";
 /* The same thresholds the measurement used, so a badge here and a finding on
    Review can never describe the same trade with two different numbers. */
 import { FREE_AT_R, POWER_R, POWER_DAYS } from "@/lib/path";
 import PositionDetail from "./PositionDetail";
-
-/**
- * BUILT, VERIFIED, AND DELIBERATELY NOT SHIPPED. Flip this to true.
- *
- * The holdings export works — the columns below are exported in table order,
- * the file was checked byte for byte, and a probe keeps the column list honest
- * whether or not the button is on screen. It is hidden because it is not
- * wanted for users yet, not because anything about it is unfinished.
- *
- * Left as a flag rather than removed, and rather than commented out. Removed,
- * it gets rebuilt from nothing later; commented out, the columns rot silently
- * because nothing type-checks or probes a comment. This way the code stays
- * live, the probe keeps testing it, and turning it on is one word.
- *
- * The trades export is unaffected and stays visible.
- */
-const SHOW_HOLDINGS_CSV = false;
 
 /**
  * The columns of the holdings table, in the order the table shows them, plus
@@ -542,10 +527,42 @@ export default function Holdings({
       const d = t.exit_date || t.entry_date;
       return d && fyStartYear(new Date(d)) === thisFy;
     });
+    /**
+     * The calendar month, on the EXIT date only.
+     *
+     * The financial-year figure above falls back to entry_date when there is
+     * no exit, which is right for a bucket a whole year wide — a trade closed
+     * without a recorded exit date still belongs to the year it was taken in,
+     * and dropping it would understate the year. A MONTH cannot afford that
+     * guess: a position entered in September and closed in November is not
+     * September's result, and counting it there would put money in a month it
+     * was never made in. So a trade with no exit date sits out of this figure
+     * rather than being placed by its entry.
+     */
+    const now = new Date();
+    /**
+     * COMPARED AS TEXT, NOT PARSED INTO A DATE.
+     *
+     * `new Date("2026-09-01")` is UTC midnight, and `.getMonth()` reads it
+     * back in the LOCAL zone — so west of Greenwich that trade belongs to
+     * August, and a month's realised total would be wrong by however many
+     * trades closed on the first. format.js already carries this warning
+     * against `dmy`, which parses by hand for exactly this reason; this used
+     * Date and walked into it anyway.
+     *
+     * Both sides are "YYYY-MM", so comparing the prefixes settles it with no
+     * parsing and no zone at all. The month itself is still taken from the
+     * local clock, which is right: "this month" means the user's month.
+     */
+    const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const inMonth = closed.filter(
+      (t) => t.exit_date && String(t.exit_date).slice(0, 7) === ym);
     const sumPnl = (list) => list.reduce((a, t) => a + (isFinite(t.pnl) ? t.pnl : 0), 0);
     const sumR = (list) => list.reduce((a, t) => a + (isFinite(t.r) ? t.r : 0), 0);
     return {
-      fyLabel: fyLabel(new Date()),
+      fyLabel: fyLabel(now),
+      monthLabel: monthShort(now),
+      month: sumPnl(inMonth), monthR: sumR(inMonth), monthN: inMonth.length,
       year: sumPnl(inFy), yearR: sumR(inFy),
       all: sumPnl(closed), allR: sumR(closed),
     };
@@ -776,6 +793,22 @@ export default function Holdings({
                   same shares cost you. The difference between the two is the Unrealised figure
                   beside it. A position sold in part counts only the shares still held, on both
                   lines."
+          />
+          {/* The month sits between what is open and the year, keeping the
+              row in order of how much time each figure covers: today, the
+              open book, what it is worth, this month, this year, all of it. */}
+          <Summary
+            label={`Realised ${realised.monthLabel}`}
+            value={rupee(realised.month)}
+            sub={realised.monthN === 0
+              ? "nothing closed yet"
+              : `${isFinite(realised.monthR) ? rfmt(realised.monthR) : "—"} · ${
+                  realised.monthN} trade${realised.monthN === 1 ? "" : "s"}`}
+            tone={realised.monthN === 0 ? undefined : realised.month >= 0 ? "pos" : "neg"}
+            hint="Closed in this calendar month, by exit date. A trade with no exit date
+                  recorded is left out rather than placed by when it was entered — a
+                  position opened in one month and closed in another is not the first
+                  month's result."
           />
           <Summary
             label={`Realised ${realised.fyLabel}`}
@@ -1101,22 +1134,22 @@ export default function Holdings({
         }
         .ps-riskfig-gap a:hover { border-bottom-color: var(--brass); }
         .ps-strip {
-          display: grid; grid-template-columns: repeat(5, 1fr);
+          display: grid; grid-template-columns: repeat(6, 1fr);
           border: 1px solid var(--rule); border-radius: 3px;
           background: var(--card); overflow: hidden;
         }
-        /* Below this the strip cannot hold five figures beside a 290px card
+        /* Below this the strip cannot hold its figures beside a 290px card
            without clipping them, so it takes its own full-width row. Raised
-           from 1100px when Today made it five: the same wrap happens sooner
-           with one more column to fit. */
-        @media (max-width: 1320px) {
+           twice: 1100 when Today made it five, and again when the month made
+           it six. Each column added moves the wrap earlier. */
+        @media (max-width: 1460px) {
           .ps-top { grid-template-columns: 1fr; }
         }
-        /* Three and two rather than five, because five 1fr columns in a phone
-           width give each figure about 70px and ₹17.16 L does not fit in it.
-           The odd one sits alone on the second row, which is untidy but
-           legible — the alternative is an ellipsis in the middle of a number. */
-        @media (max-width: 900px) {
+        /* Three, then two — factors of six, so every row is full and the strip
+           never ends with one figure alone against four empty cells. That was
+           already untidy at five, where the odd one sat by itself; six divides
+           where five did not. */
+        @media (max-width: 1100px) {
           .ps-strip { grid-template-columns: repeat(3, 1fr); }
         }
         @media (max-width: 720px) {

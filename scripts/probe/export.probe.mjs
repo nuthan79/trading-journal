@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, eq, ok } from "./harness.mjs";
-import { exportFilename } from "@/lib/format";
+import { exportFilename, monthShort } from "@/lib/format";
 
 const AT = new Date(2026, 8, 1, 14, 32);        // 1 Sep 2026, 14:32 local
 
@@ -176,4 +176,29 @@ test("every column of both exports resolves against a real row", () => {
 
   /* And the guard against a vacuous version of the check above. */
   ok(!/\bnotAFieldAnywhere\b/.test(universe), "the universe string is not being searched");
+});
+
+test("a stored date string never becomes a Date just to read its month", () => {
+  /* `new Date("2026-09-01")` is UTC midnight and every getter reads it back
+     LOCAL, so west of Greenwich that date is August. format.js already warns
+     about this against dmy, and the holdings month total walked into it
+     anyway — a trade closed on the 1st would have counted in the wrong month.
+
+     monthShort is the helper most likely to be handed a date string next, so
+     it is pinned here in both forms. */
+  eq(monthShort("2026-09-01"), "Sep", "the first of the month stays in its month");
+  eq(monthShort("2026-01-01"), "Jan");
+  eq(monthShort("2026-12-31"), "Dec");
+  eq(monthShort("2026-09-15T00:00:00.000Z"), "Sep", "a full stamp reads the same");
+  eq(monthShort(new Date(2026, 8, 15)), "Sep", "a Date still works");
+  eq(monthShort(""), "");
+
+  /* And the comparison the holdings month actually uses is on text, not on a
+     parsed date — the same fix, at the call site. */
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+  const h = readFileSync(path.join(root, "src/components/journal/Holdings.jsx"), "utf8");
+  ok(/String\(t\.exit_date\)\.slice\(0, 7\) === ym/.test(h),
+     "the month filter is back to parsing exit_date into a Date");
+  ok(!/new Date\(t\.exit_date\)\.getMonth/.test(h),
+     "exit_date is being parsed and read local again — that is the zone bug");
 });

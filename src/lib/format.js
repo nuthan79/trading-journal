@@ -140,8 +140,34 @@ export function exportFilename(label, { ext = "csv", prefix = "ledgerr",
   return [prefix, slug, stamp].filter(Boolean).join("-") + `.${ext}`;
 }
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/**
+ * Exported so a month name is spelled ONE way across the app.
+ *
+ * The alternative is toLocaleString(..., { month: "short" }), which gives
+ * "Sept" for September under some ICU builds and "Sep" under others — four
+ * letters where every date in the table says three, and a value that can
+ * differ between the server and the browser, which is one of the causes React
+ * lists for a hydration mismatch.
+ */
+export const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * The short month a date falls in — the same word `dmy` would print.
+ *
+ * Takes a Date OR a stored "YYYY-MM-DD", and reads the string form by hand
+ * for the reason `dmy` does: `new Date("2026-09-01")` is UTC midnight, and
+ * every getter reads it back in the local zone, so west of Greenwich that
+ * date is August. A helper handed a date string is the obvious way for that
+ * bug to arrive, so it cannot.
+ */
+export const monthShort = (d) => {
+  if (typeof d === "string") {
+    const m = Number(String(d).slice(5, 7));
+    return MONTHS[m - 1] || "";
+  }
+  return MONTHS[new Date(d).getMonth()] || "";
+};
 
 /**
  * A date to read rather than to sort by. Tables keep ISO because a column of

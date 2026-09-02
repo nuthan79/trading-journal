@@ -16,6 +16,16 @@
  * dynamic import that lands in its own chunk no route lists as eager.
  */
 
+/**
+ * The CSV download on Holdings. Not wanted for users yet.
+ *
+ * Lived as its own constant at the top of Holdings.jsx until this file
+ * existed, and then stayed there — so "the one place features are held back"
+ * was true of two flags out of three, which is the sort of claim that quietly
+ * stops being worth reading.
+ */
+export const SHOW_HOLDINGS_CSV = false;
+
 /** The wall of per-trade candlestick charts on Trades. Pro feature, later. */
 export const SHOW_CHART_WALL = false;
 
