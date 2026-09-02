@@ -3,6 +3,8 @@
  * also the one worth writing tests against.
  */
 
+import { realisationEvents } from "./positions";
+
 const n = (v) => (v === "" || v == null ? NaN : Number(v));
 
 /* ------------------------------------------------------------------ */
@@ -371,11 +373,56 @@ export function byPeriod(
     }
   }
 
+  /**
+   * ON THE EXIT BASIS A PERIOD HOLDS REALISATIONS, NOT TRADES.
+   *
+   * `exit_date` is a position's LAST tranche, so grouping by it credited a
+   * position sold across a boundary entirely to the later period. Measured on
+   * a real book: ₹5.77 lakh net in the wrong financial year across 48
+   * tranches. The all-time totals were right the whole time — only the buckets
+   * were wrong, which is the kind of wrong that survives a reconciliation.
+   *
+   * So each SELL is its own event, carrying its own money and its own R, and
+   * lands in the period it actually happened in. `realisationEvents` splits
+   * them so they sum back to the position exactly.
+   *
+   * EVERY COLUMN MOVES WITH IT, deliberately. Leaving the count and the win
+   * rate keyed to the final exit would put two populations on one row — money
+   * describing sells, everything else describing positions — which is the
+   * confusion this change exists to remove. So `trades` becomes the number of
+   * DISTINCT POSITIONS that realised money in the period, and a position sold
+   * across a boundary is counted in both. The column no longer sums to the
+   * book's trade count across periods, and that is the honest answer rather
+   * than a rounding error: the position really was in both years.
+   *
+   * The ENTRY basis is untouched. It groups by when a decision was taken, and
+   * a decision happens once — splitting it across the sells that followed
+   * would be meaningless.
+   */
   const buckets = new Map();
+  const put = (k, when, t, pnl, r) => {
+    if (!buckets.has(k)) {
+      buckets.set(k, { key: k, first: when, trades: [], seen: new Set(), events: [] });
+    }
+    const b = buckets.get(k);
+    if (when < b.first) b.first = when;
+    if (!b.seen.has(t.id)) { b.seen.add(t.id); b.trades.push(t); }
+    b.events.push({ trade: t, when, pnl, r });
+  };
+
   for (const t of rows) {
-    const k = label(dateOf(t));
-    if (!buckets.has(k)) buckets.set(k, { key: k, first: dateOf(t), trades: [] });
-    buckets.get(k).trades.push(t);
+    if (byEntry) {
+      put(label(t.entry_date), t.entry_date, t, t.pnl, t.r);
+      continue;
+    }
+    const events = realisationEvents(t);
+    if (!events.length) {
+      /* No tranches to split — a legacy row, or one whose exits never landed.
+         It keeps the old behaviour rather than vanishing from the table. */
+      put(label(realisedOn(t)), realisedOn(t), t, t.pnl, t.r);
+      continue;
+    }
+    for (const e of events) put(label(e.date), e.date, t, e.pnl, e.r);
   }
 
   // Walk periods in order, carrying equity forward so each % return is on the
@@ -403,8 +450,42 @@ export function byPeriod(
     let inflow = 0;
     while (fi < fl.length && fl[fi].d <= periodEnd) { inflow += fl[fi].a; fi++; }
     equity += inflow;
-    const s = stats(b.trades);
-    const pnl = b.trades.reduce((a, t) => a + (isFinite(t.pnl) ? t.pnl : 0), 0);
+    /**
+     * ROLLED UP TO THE POSITION FIRST, then measured.
+     *
+     * A position that sold twice inside one period is one result there, not
+     * two — so win rate answers "did this position make money in this period",
+     * which is a question about a trade, rather than "was this sell green",
+     * which is a question about an order and would count scaling out of a
+     * winner as several wins.
+     *
+     * Summing the parts first also keeps totalR identical either way, so the
+     * R column is unchanged by the rollup and only its bucketing moved.
+     */
+    const perPosition = new Map();
+    for (const e of b.events) {
+      const cur = perPosition.get(e.trade.id)
+        || { pnl: 0, r: 0, hasR: false, exit_date: e.when, entry_date: e.trade.entry_date };
+      if (isFinite(e.pnl)) cur.pnl += e.pnl;
+      if (isFinite(e.r)) { cur.r += e.r; cur.hasR = true; }
+      if (e.when > cur.exit_date) cur.exit_date = e.when;
+      perPosition.set(e.trade.id, cur);
+    }
+    const results = [...perPosition.values()].map((x) => ({
+      /* NaN rather than 0 where no tranche had an R — stats() filters on
+         isFinite, and a zero here would enter a stopless position into the
+         win rate as a loss. */
+      r: x.hasR ? x.r : NaN,
+      pnl: x.pnl,
+      exit_date: x.exit_date,
+      entry_date: x.entry_date,
+    }));
+
+    const s = stats(results);
+    const pnl = results.reduce((a, x) => a + (isFinite(x.pnl) ? x.pnl : 0), 0);
+    /* Position-level facts, so averaged over the distinct positions in the
+       period rather than over the sells — a position sold four times did not
+       have four position sizes. */
     const value = b.trades.reduce((a, t) => a + (isFinite(t.exposure) ? t.exposure : 0), 0);
     const risk = b.trades.reduce((a, t) => a + (isFinite(t.riskAmt) ? t.riskAmt : 0), 0);
     equity += pnl;

@@ -7,6 +7,7 @@ import { rupee, rfmt, pct, signedPct, moneyParts, exportFilename,
 import { downloadCsv } from "@/lib/csv";
 import { SHOW_HOLDINGS_CSV } from "@/lib/flags";
 import { fyStartYear, fyLabel } from "@/lib/calc";
+import { realisationEvents } from "@/lib/positions";
 /* The same thresholds the measurement used, so a badge here and a finding on
    Review can never describe the same trade with two different numbers. */
 import { FREE_AT_R, POWER_R, POWER_DAYS } from "@/lib/path";
@@ -523,10 +524,32 @@ export default function Holdings({
 
   const realised = useMemo(() => {
     const thisFy = fyStartYear(new Date());
-    const inFy = closed.filter((t) => {
+    /**
+     * BY THE SELL, NOT BY THE POSITION.
+     *
+     * `exit_date` is a position's LAST tranche, so filtering on it credited a
+     * position sold across 1 April entirely to the later year — ₹5.77 lakh of
+     * one real book sitting in the wrong financial year. Each sell is now
+     * counted in the year it happened, the same way the period tables do it.
+     *
+     * A position with no tranches recorded falls back to its own dates, so a
+     * legacy row still counts somewhere rather than disappearing.
+     */
+    const events = closed.flatMap((t) => {
+      const evs = realisationEvents(t);
+      if (evs.length) return evs;
       const d = t.exit_date || t.entry_date;
-      return d && fyStartYear(new Date(d)) === thisFy;
+      return d ? [{ date: String(d).slice(0, 10), pnl: t.pnl, r: t.r, trade: t }] : [];
     });
+    /* Read off the STRING, not through Date — `new Date("2025-04-01")` is UTC
+       midnight and fyStartYear reads it back local, so west of Greenwich the
+       first day of a financial year falls into the previous one. Same rule as
+       fyStartYear, April to March, without the zone. */
+    const fyOf = (iso) => {
+      const y = Number(iso.slice(0, 4));
+      return Number(iso.slice(5, 7)) < 4 ? y - 1 : y;
+    };
+    const inFy = events.filter((e) => fyOf(e.date) === thisFy);
     /**
      * The calendar month, on the EXIT date only.
      *
@@ -555,16 +578,21 @@ export default function Holdings({
      * local clock, which is right: "this month" means the user's month.
      */
     const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-    const inMonth = closed.filter(
-      (t) => t.exit_date && String(t.exit_date).slice(0, 7) === ym);
-    const sumPnl = (list) => list.reduce((a, t) => a + (isFinite(t.pnl) ? t.pnl : 0), 0);
-    const sumR = (list) => list.reduce((a, t) => a + (isFinite(t.r) ? t.r : 0), 0);
+    const inMonth = events.filter((e) => e.date.slice(0, 7) === ym);
+    const sumPnl = (list) => list.reduce((a, x) => a + (isFinite(x.pnl) ? x.pnl : 0), 0);
+    const sumR = (list) => list.reduce((a, x) => a + (isFinite(x.r) ? x.r : 0), 0);
+    /* Distinct POSITIONS, not sells — "6 trades" must not become "9" because
+       three of them were scaled out of. */
+    const positions = (list) => new Set(list.map((e) => e.trade?.id ?? e)).size;
     return {
       fyLabel: fyLabel(now),
       monthLabel: monthShort(now),
-      month: sumPnl(inMonth), monthR: sumR(inMonth), monthN: inMonth.length,
+      month: sumPnl(inMonth), monthR: sumR(inMonth), monthN: positions(inMonth),
       year: sumPnl(inFy), yearR: sumR(inFy),
-      all: sumPnl(closed), allR: sumR(closed),
+      /* All-time is every sell there has ever been, which is the same money as
+         summing the positions — and now arrived at the same way as the two
+         above it, so the three cannot drift. */
+      all: sumPnl(events), allR: sumR(events),
     };
   }, [closed]);
 

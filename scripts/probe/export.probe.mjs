@@ -197,10 +197,20 @@ test("a stored date string never becomes a Date just to read its month", () => {
      parsed date — the same fix, at the call site. */
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
   const h = readFileSync(path.join(root, "src/components/journal/Holdings.jsx"), "utf8");
-  ok(/String\(t\.exit_date\)\.slice\(0, 7\) === ym/.test(h),
-     "the month filter is back to parsing exit_date into a Date");
-  ok(!/new Date\(t\.exit_date\)\.getMonth/.test(h),
-     "exit_date is being parsed and read local again — that is the zone bug");
+  /* The property, not one spelling of it: Holdings must not turn a stored date
+     string into a Date to decide which month or year it belongs to. The first
+     version of this checked for a literal line and went off the moment the
+     code around it was rewritten, while the bug it guards was reintroduced in
+     the same edit as fyStartYear(new Date(...)). */
+  ok(!/new Date\([a-zA-Z_.]*(date|exit_date)\)/i.test(h),
+     "a stored date is being parsed into a Date in Holdings — that is the zone bug");
+  /* `new Date()` with NO argument is today, and asking which financial year
+     today falls in is exactly right. Only a date PARSED FROM A VALUE is the
+     bug, so the pattern requires something between the parentheses. */
+  ok(!/fyStartYear\(new Date\([^)]/.test(h),
+     "the financial year is being read off a parsed date rather than the string");
+  ok(/slice\(0, 7\) === ym/.test(h) && /iso\.slice\(5, 7\)/.test(h),
+     "the month and the year should both be read off the YYYY-MM-DD text");
 });
 
 test("the file is named for the user's journal, and that name is free text", () => {

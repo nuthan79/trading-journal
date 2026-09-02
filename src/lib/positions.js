@@ -73,6 +73,55 @@ export const isClosed = (t) => !!t && t.status === "closed";
 /** Sold down but not out — the state that has to be asked for by name. */
 export const isPartial = (t) => !!t && t.status === "partial";
 
+/**
+ * A closed position broken into the moments it actually paid out.
+ *
+ * WHY THIS EXISTS. `exit_date` on a trade is its LAST tranche — migration 007
+ * mirrors it there for convenience — and every period table asked that one
+ * date where the money landed. So a position sold across a financial-year
+ * boundary had its whole result credited to the later year: on one real book,
+ * ₹5.77 lakh net sitting in the wrong FY across 48 tranches. The totals were
+ * never wrong, only the buckets, which is exactly the kind of wrong that
+ * survives a reconciliation.
+ *
+ * THE TRANCHES SUM TO THE POSITION, EXACTLY. Each event carries the gross on
+ * its own shares, less its own charges, less a pro-rata slice of the trade's
+ * position-level `charges` — the entry-side and legacy figure, which belongs
+ * to no single sell. Split by quantity so the parts add back to `realisedPnl`
+ * to the rupee; anything else would make a year's rows stop summing to the
+ * all-time total, and that total is the one thing three screens already agree
+ * on.
+ *
+ * R per tranche is the tranche's P&L over the position's 1R. Risk is fixed at
+ * entry for the whole position, so these sum to `realisedR` with no weighting
+ * to argue about.
+ */
+export function realisationEvents(t) {
+  const exits = t?.exits || [];
+  if (!exits.length) return [];
+  const entry = n(t.entry_price);
+  const dir = t.side === "short" ? -1 : 1;
+  const qtyOut = sum(exits.map((e) => n(e.quantity) || 0));
+  const tradeCharges = n(t.charges) || 0;
+  const risk = n(t.riskAmt);
+
+  return exits
+    .filter((e) => e.exit_date && isFinite(n(e.price)))
+    .map((e) => {
+      const q = n(e.quantity) || 0;
+      const gross = (n(e.price) - entry) * q * dir;
+      const share = qtyOut > 0 ? q / qtyOut : 0;
+      const pnl = gross - (n(e.charges) || 0) - tradeCharges * share;
+      return {
+        date: String(e.exit_date).slice(0, 10),
+        pnl,
+        r: risk > 0 ? pnl / risk : NaN,
+        qty: q,
+        trade: t,
+      };
+    });
+}
+
 export function derivePosition(t, accountSize) {
   const dir = t.side === "short" ? -1 : 1;
   const entry = n(t.entry_price);

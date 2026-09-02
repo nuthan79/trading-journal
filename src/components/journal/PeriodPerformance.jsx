@@ -120,7 +120,15 @@ export default function PeriodPerformance({ closed, openingCapital, flows = [], 
               : "Financial years, April to March."}
             {byEntry
               ? " Grouped by when each trade was entered — how the decisions taken then worked out."
-              : " Grouped by when each trade was closed — when the money was actually realised."}
+              /* This used to say "when each trade was closed — when the money
+                 was actually realised", and those were two different things:
+                 a position sold across a boundary was credited whole to the
+                 period of its LAST sell. Now each sell counts where it
+                 happened, so the second half is finally true — and the first
+                 half had to go, because a position can now appear twice. */
+              : " Grouped by when the money was realised. A position sold across a" +
+                " period boundary counts in each period it paid out in, so it appears" +
+                " in both rows."}
           </div>
         </div>
         <div className="pp-controls">
