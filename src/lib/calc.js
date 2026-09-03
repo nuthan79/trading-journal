@@ -3,7 +3,7 @@
  * also the one worth writing tests against.
  */
 
-import { realisationEvents } from "./positions";
+import { bankedEvents } from "./positions";
 import { MONTHS } from "./format";
 
 const n = (v) => (v === "" || v == null ? NaN : Number(v));
@@ -253,18 +253,20 @@ export function equityCurve(closed, { openingCapital = 0, flows = [] } = {}) {
    * to the position, so the curve ENDS in exactly the same place either way;
    * only the shape between the ends changes, and only towards the truth.
    */
-  const rows = chronological(closed).flatMap((t) => {
-    const evs = realisationEvents(t);
-    if (!evs.length) return [t];
+  const rows = chronological(closed).flatMap((t) =>
     /* `charges`, not `charge`: these rows stand in for trades further down —
        the charges total below reads the trade field off them, and a split
-       position silently contributed zero to it while the fallback below kept
-       its own. The headline read ₹0 on a book that had paid lakhs. */
-    return evs.map((e) => ({
+       position silently contributed zero to it while the fallback kept its
+       own. The headline read ₹0 on a book that had paid lakhs.
+
+       bankedEvents rather than a fallback written out here: a part-sold
+       position's `pnl` carries unrealised money, and the curve must step on
+       what actually arrived. */
+    bankedEvents(t).map((e) => ({
       id: t.id, entry_date: t.entry_date, exit_date: e.date,
       pnl: e.pnl, r: e.r, charges: e.charge,
-    }));
-  }).sort((a, b) => {
+    }))
+  ).sort((a, b) => {
     const x = a.exit_date || a.entry_date, y = b.exit_date || b.entry_date;
     return x < y ? -1 : x > y ? 1 : 0;
   });
@@ -483,16 +485,20 @@ export function byPeriod(
 
   for (const t of rows) {
     if (byEntry) {
-      put(label(t.entry_date), t.entry_date, t, t.pnl, t.r, n(t.charges) || 0);
+      /* Realised, never `pnl`. Grouping by entry date asks what positions
+         opened in this period have made, and on a part-sold one `pnl` folds
+         in the mark on shares still held — which is not something the period
+         produced, and would move every time a quote refreshed. */
+      const p = isFinite(t.realisedPnl) ? t.realisedPnl : t.pnl;
+      const rr = isFinite(t.realisedR) ? t.realisedR : t.r;
+      put(label(t.entry_date), t.entry_date, t, p, rr, n(t.charges) || 0);
       continue;
     }
-    const events = realisationEvents(t);
-    if (!events.length) {
-      /* No tranches to split — a legacy row, or one whose exits never landed.
-         It keeps the old behaviour rather than vanishing from the table. */
-      put(label(realisedOn(t)), realisedOn(t), t, t.pnl, t.r, n(t.charges) || 0);
-      continue;
-    }
+    /* The same helper the equity curve uses, so the two cannot disagree about
+       what a part-sold position has banked. It carries its own fallback for a
+       legacy row whose exits never landed, which keeps that row in the table
+       rather than vanishing. */
+    const events = bankedEvents(t);
     for (const e of events) put(label(e.date), e.date, t, e.pnl, e.r, e.charge);
   }
 
@@ -604,8 +610,25 @@ export function greenCount(closed, grain, opts) {
 /**
  * Everything the dashboard headline block shows, in one pass.
  */
-export function headline(closed, { openingCapital = 0, flows = [] } = {}) {
+export function headline(closed, { openingCapital = 0, flows = [], banking = null } = {}) {
   const rows = closed || [];
+  /**
+   * TWO POPULATIONS, ON PURPOSE.
+   *
+   * `rows` is finished positions and answers what KIND of trader this is —
+   * win rate, expectancy, payoff, hold time. A position sold down but not out
+   * has no verdict yet: the part still running can give it all back, and
+   * counting it now as a win would flatter every one of those figures.
+   *
+   * `money` is every position that has banked something, finished or not, and
+   * answers how much arrived. That question does not wait for the rest of the
+   * position — the cash is in the account either way, and leaving it out made
+   * the Dashboard read lower than the Holdings strip for the same book.
+   *
+   * Only the equity curve reads `money`, which is exactly the figures that
+   * should move: net P&L, charges, return on capital, drawdown.
+   */
+  const money = banking?.length ? banking : rows;
   // Gate on having closed anything at all, not on having a stop for it.
   // Money, win rate by count, hold time and the rest are all knowable
   // without one — dropping them because R is missing hides real facts and
@@ -613,7 +636,7 @@ export function headline(closed, { openingCapital = 0, flows = [] } = {}) {
   if (!rows.length) return { n: 0 };
 
   const s = stats(rows);                       // R figures, over whatever has a stop
-  const eq = equityCurve(rows, { openingCapital, flows });
+  const eq = equityCurve(money, { openingCapital, flows });
   const holds = rows.map((t) => t.heldDays).filter(isFinite);
 
   // Return on the capital that was actually committed, not on today's balance

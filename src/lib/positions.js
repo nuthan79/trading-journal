@@ -89,6 +89,46 @@ export const isFlagged = (t) =>
   !!t?.possible_duplicate_of && !t?.duplicate_ack_at;
 
 /**
+ * Money that has actually arrived out of a position, dated when it arrived.
+ *
+ * `realisationEvents` where the tranches allow it, and one event standing for
+ * the whole position where they do not — every figure that adds up realised
+ * money needs the same fallback, and it needs it to be the same fallback.
+ *
+ * THE TRAP, AND WHY THIS IS A FUNCTION RATHER THAN THREE COPIES OF A LINE.
+ *
+ * On a part-sold position `pnl` is realised PLUS unrealised (see the combined
+ * block below), so the obvious fallback — take `t.pnl` and date it — quietly
+ * books the mark-to-market on shares still held as money banked. Harmless
+ * while only closed positions were ever counted, and a live hazard the moment
+ * partials are, which is the whole point of counting them.
+ *
+ * `placedByEntry` marks the one case where the date is a stand-in: a closed
+ * position with no exit date recorded, placed by its entry because that is the
+ * only date it has. Year-wide buckets accept that; a month must not, or a
+ * purchase is reported as a profit.
+ */
+export function bankedEvents(t) {
+  const evs = realisationEvents(t);
+  if (evs.length) return evs;
+
+  const d = t?.exit_date || t?.entry_date;
+  if (!d) return [];
+
+  const closed = t.status === "closed";
+  const pnl = isFinite(t?.realisedPnl) ? t.realisedPnl : closed ? t?.pnl : NaN;
+  const r = isFinite(t?.realisedR) ? t.realisedR : closed ? t?.r : NaN;
+  if (!isFinite(pnl)) return [];
+
+  return [{
+    date: String(d).slice(0, 10),
+    pnl, r, trade: t,
+    charge: n(t?.charges) || 0,
+    placedByEntry: !t?.exit_date,
+  }];
+}
+
+/**
  * A closed position broken into the moments it actually paid out.
  *
  * WHY THIS EXISTS. `exit_date` on a trade is its LAST tranche — migration 007

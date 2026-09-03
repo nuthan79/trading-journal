@@ -7,7 +7,7 @@ import { rupee, rfmt, pct, signedPct, moneyParts, exportFilename,
 import { downloadCsv } from "@/lib/csv";
 import { SHOW_HOLDINGS_CSV } from "@/lib/flags";
 import { fyStartYear, fyLabel } from "@/lib/calc";
-import { realisationEvents } from "@/lib/positions";
+import { bankedEvents } from "@/lib/positions";
 /* The same thresholds the measurement used, so a badge here and a finding on
    Review can never describe the same trade with two different numbers. */
 import { FREE_AT_R, POWER_R, POWER_DAYS } from "@/lib/path";
@@ -561,17 +561,10 @@ export default function Holdings({
      * events anyway, so the filter is for clarity rather than correctness.
      */
     const banking = [...closed, ...open.filter((t) => Number(t.qtyExited) > 0)];
-    const events = banking.flatMap((t) => {
-      const evs = realisationEvents(t);
-      if (evs.length) return evs;
-      const d = t.exit_date || t.entry_date;
-      if (!d) return [];
-      /* Flagged when the date is the ENTRY, standing in for an exit nobody
-         recorded. A year-wide bucket can take that; a month cannot, and the
-         two filters below differ on exactly this. */
-      return [{ date: String(d).slice(0, 10), pnl: t.pnl, r: t.r, trade: t,
-                placedByEntry: !t.exit_date }];
-    });
+    /* bankedEvents, not a fallback written out here: on a part-sold position
+       `pnl` is realised PLUS unrealised, and the shared helper is where that
+       trap is handled once. */
+    const events = banking.flatMap(bankedEvents);
     /* Read off the STRING, not through Date — `new Date("2025-04-01")` is UTC
        midnight and fyStartYear reads it back local, so west of Greenwich the
        first day of a financial year falls into the previous one. Same rule as

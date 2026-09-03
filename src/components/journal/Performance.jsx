@@ -16,7 +16,7 @@ import CapitalDeployment from "./CapitalDeployment";
  * both here made this the longest screen in the app and buried the argument
  * inside the reference table.
  */
-export default function Performance({ closed, S, accountSize, flows, all = [] }) {
+export default function Performance({ closed, banking = [], S, accountSize, flows, all = [] }) {
   if (!closed.length) {
     return (
       <div className="sec card empty">
@@ -44,7 +44,10 @@ export default function Performance({ closed, S, accountSize, flows, all = [] })
       </div>
 
       <div className="sec">
-        <PeriodPerformance closed={closed} openingCapital={accountSize} flows={flows} all={all} />
+        {/* `banking`, not `closed`: a period reports the money that arrived in
+            it, and a sell out of a position still running arrived. */}
+        <PeriodPerformance closed={banking.length ? banking : closed}
+                           openingCapital={accountSize} flows={flows} all={all} />
       </div>
 
       {/* Sits directly under the period table on purpose: deployment only means

@@ -457,6 +457,22 @@ export default function AppLayout({ children }) {
              .sort((a, b) => new Date(a.exit_date || a.entry_date) - new Date(b.exit_date || b.entry_date)),
     [all]
   );
+  /**
+   * Every position that has banked something — finished or still running.
+   *
+   * The money population. `closed` answers what kind of trader this is and a
+   * part-sold position has no verdict yet; this answers how much arrived, and
+   * that does not wait for the rest of the position to be sold.
+   *
+   * Derived here rather than in each screen so the Dashboard, the period
+   * table and the Holdings strip cannot end up counting different books —
+   * three screens disagreeing about one number is the thing this journal is
+   * least allowed to do.
+   */
+  const banking = useMemo(
+    () => all.filter((t) => t.status === "closed" || Number(t.qtyExited) > 0),
+    [all]
+  );
   // 'partial' counts as open: there is still size on the table, still risk
   // running, and it still wants a mark-to-market.
   const open = useMemo(
@@ -829,7 +845,7 @@ export default function AppLayout({ children }) {
     <JournalContext.Provider
       value={{
         trades, diary: demo ? demo.diary : diary, flows, profile, accountSize,
-        all, closed, open, S,
+        all, closed, open, banking, S,
         say,
         openNewTrade, openEditTrade, openExitTrade,
         removeTrade,

@@ -25,10 +25,10 @@ function Cell({ label, value, tone, hint }) {
 
 const sign = (v) => (!isFinite(v) ? "" : v > 0 ? "pos" : v < 0 ? "neg" : "");
 
-export default function HeadlineNumbers({ closed, openingCapital, flows = [] }) {
+export default function HeadlineNumbers({ closed, banking = [], openingCapital, flows = [] }) {
   const h = useMemo(
-    () => headline(closed, { openingCapital, flows }),
-    [closed, openingCapital, flows]
+    () => headline(closed, { openingCapital, flows, banking }),
+    [closed, banking, openingCapital, flows]
   );
 
   if (!h.n) {
