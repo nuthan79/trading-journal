@@ -293,3 +293,54 @@ test("a period's charges sum to the book's, at every grain", () => {
          bookCharges, 0.01, `${grain} charges`);
   }
 });
+
+test("the headline charges figure survives the split", () => {
+  /*
+    THE FIELD THAT VANISHED AT A RENAME.
+
+    equityCurve now walks realisation events rather than positions, and the
+    synthesized event rows have to keep standing in for trades downstream: the
+    charges total reads `.charges` off them. A split position carried `charge`
+    and contributed zero, so the Dashboard's Charges tile read ₹0 on a book
+    that had paid lakhs — while every other figure on the same screen stayed
+    right, which is what made it survive a build, 128 probes and a review.
+
+    Pinned per-position AND on a mixed book, because the fallback path (an
+    unsplittable position, passed through whole) kept working throughout and
+    would mask this on a book made only of those.
+  */
+  /* Charged BEFORE deriving, never after. realisationEvents works out what a
+     position paid from grossSum − realisedPnl rather than trusting a field, so
+     a fixture that bolts charges on afterwards describes a position whose P&L
+     never paid them — and then passes whatever the code does. That is exactly
+     how an earlier probe here certified a bug. */
+  const paid = (t, c) => {
+    const exits = t.exits.map((e, i) => ({ ...e, charges: i === 0 ? c : 0 }));
+    const raw = { ...t, charges: 0, exits };
+    return { ...raw, ...derivePosition(raw, 5e6), status: "closed", exits };
+  };
+  const split = paid(SPLIT, 4200);   // three sells, charges on the first
+  const whole = paid(WHOLE, 350);    // one sell
+  /* And one the splitter refuses: an undated tranche means no split at all,
+     so this row reaches the sum as the trade itself. */
+  const unsplittable = (() => {
+    const exits = [{ exit_date: null, quantity: 100, price: 130, charges: 0 }];
+    const raw = { ...WHOLE, charges: 900, exits };
+    return { ...raw, ...derivePosition(raw, 5e6), status: "closed", exits };
+  })();
+  eq(realisationEvents(split).length, 3, "the split fixture must actually split");
+  eq(realisationEvents(unsplittable).length, 0, "and this one must not");
+
+  near(headline([split], { openingCapital: 5e6 }).charges, 4200, 0.01, "split alone");
+  near(headline([whole], { openingCapital: 5e6 }).charges, 350, 0.01, "whole alone");
+  near(headline([unsplittable], { openingCapital: 5e6 }).charges, 900, 0.01, "unsplittable alone");
+  near(headline([split, whole, unsplittable], { openingCapital: 5e6 }).charges,
+       4200 + 350 + 900, 0.01, "a book of all three");
+
+  /* And it agrees with the period table, which reaches the same money by a
+     different route — the two disagreeing is how this got noticed. */
+  const rows = byPeriod([split, whole, unsplittable], "fy",
+    { openingCapital: 5e6, basis: "exit" });
+  near(rows.reduce((a, r) => a + (isFinite(r.charges) ? r.charges : 0), 0),
+       4200 + 350 + 900, 0.01, "periods agree with the headline");
+});

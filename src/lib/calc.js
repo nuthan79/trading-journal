@@ -256,9 +256,13 @@ export function equityCurve(closed, { openingCapital = 0, flows = [] } = {}) {
   const rows = chronological(closed).flatMap((t) => {
     const evs = realisationEvents(t);
     if (!evs.length) return [t];
+    /* `charges`, not `charge`: these rows stand in for trades further down —
+       the charges total below reads the trade field off them, and a split
+       position silently contributed zero to it while the fallback below kept
+       its own. The headline read ₹0 on a book that had paid lakhs. */
     return evs.map((e) => ({
       id: t.id, entry_date: t.entry_date, exit_date: e.date,
-      pnl: e.pnl, r: e.r,
+      pnl: e.pnl, r: e.r, charges: e.charge,
     }));
   }).sort((a, b) => {
     const x = a.exit_date || a.entry_date, y = b.exit_date || b.entry_date;
