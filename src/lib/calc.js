@@ -4,6 +4,7 @@
  */
 
 import { realisationEvents } from "./positions";
+import { MONTHS } from "./format";
 
 const n = (v) => (v === "" || v == null ? NaN : Number(v));
 
@@ -309,16 +310,41 @@ export function equityCurve(closed, { openingCapital = 0, flows = [] } = {}) {
 
 /* -------------------- Indian financial year helpers ------------------ */
 
+/**
+ * THE YEAR AND MONTH, READ WITHOUT A TIMEZONE.
+ *
+ * Everything below takes either a Date — callers asking about TODAY — or a
+ * stored "YYYY-MM-DD", which is what every trade carries. The string form must
+ * not go through Date: `new Date("2025-04-01")` is UTC midnight and every
+ * getter reads it back LOCAL, so west of Greenwich the first day of a
+ * financial year lands in the previous one, the first of a month in the month
+ * before, and a trade closed on 1 April is filed under the wrong year for the
+ * life of the journal.
+ *
+ * format.js has carried that warning against `dmy` for a long time and these
+ * helpers did not heed it. India is east of UTC so nothing was visibly wrong
+ * here, which is exactly why it survived: a bug that only appears for somebody
+ * else's timezone is one nobody in the room ever sees.
+ */
+function ymOf(date) {
+  if (typeof date === "string") {
+    const y = Number(date.slice(0, 4)), m = Number(date.slice(5, 7));
+    if (y > 0 && m >= 1 && m <= 12) return { y, m };
+  }
+  const d = new Date(date);
+  return { y: d.getFullYear(), m: d.getMonth() + 1 };
+}
+
 /** FY starts in April. Returns the calendar year the FY began in. */
 export function fyStartYear(date) {
-  const d = new Date(date);
-  return d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1;
+  const { y, m } = ymOf(date);
+  return m >= 4 ? y : y - 1;
 }
 
 /** Q1 = Apr–Jun, Q2 = Jul–Sep, Q3 = Oct–Dec, Q4 = Jan–Mar. */
 export function fyQuarter(date) {
-  const m = new Date(date).getMonth();
-  return Math.floor(((m + 9) % 12) / 3) + 1;
+  const { m } = ymOf(date);
+  return Math.floor(((m - 1 + 9) % 12) / 3) + 1;
 }
 
 export const fyLabel = (date) => {
@@ -328,8 +354,20 @@ export const fyLabel = (date) => {
 
 export const quarterLabel = (date) => `${fyLabel(date)} Q${fyQuarter(date)}`;
 
-export const monthLabel = (date) =>
-  new Date(date).toLocaleDateString("en-IN", { month: "short", year: "2-digit" });
+/**
+ * Not toLocaleDateString, for two reasons at once.
+ *
+ * It reads a parsed date in the local zone, so it carries the same bug as the
+ * helpers above. And its month names are ICU's: "Sept" under some builds and
+ * "Sep" under others, four letters where every date in the tables says three,
+ * and a value that can differ between the server and the browser — which is
+ * one of the causes React lists for a hydration mismatch. This label is also a
+ * BUCKET KEY, so two spellings would split one month into two rows.
+ */
+export const monthLabel = (date) => {
+  const { y, m } = ymOf(date);
+  return `${MONTHS[m - 1]} ${String(y).slice(2)}`;
+};
 
 const realisedOn = (t) => t.exit_date || t.entry_date;
 
@@ -344,11 +382,14 @@ const realisedOn = (t) => t.exit_date || t.entry_date;
  * of three is correct for both.
  */
 function periodStartOf(dateStr, grain) {
-  const d = new Date(dateStr);
-  const y = d.getFullYear(), m = d.getMonth();
-  if (grain === "month") return new Date(y, m, 1);
-  if (grain === "quarter") return new Date(y, Math.floor(m / 3) * 3, 1);
-  return new Date(fyStartYear(d), 3, 1);          // financial year: 1 April
+  /* Read off the text, then built as a LOCAL date — this is compared against
+     capital-flow dates and is not a label, so it has to be a real Date. What
+     it must not do is take its year and month from a UTC-parsed string. */
+  const { y, m } = ymOf(dateStr);
+  const mi = m - 1;
+  if (grain === "month") return new Date(y, mi, 1);
+  if (grain === "quarter") return new Date(y, Math.floor(mi / 3) * 3, 1);
+  return new Date(fyStartYear(dateStr), 3, 1);    // financial year: 1 April
 }
 
 /**
