@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
-import { headline, annualisedReturn } from "@/lib/calc";
-import { rupee, rfmt, pct, days, describeAnnualised } from "@/lib/format";
+import { headline } from "@/lib/calc";
+import { rupee, rfmt, pct, days } from "@/lib/format";
 import { hasRealStop } from "@/lib/stops";
 
 /**
@@ -25,7 +25,7 @@ function Cell({ label, value, tone, hint }) {
 
 const sign = (v) => (!isFinite(v) ? "" : v > 0 ? "pos" : v < 0 ? "neg" : "");
 
-export default function HeadlineNumbers({ closed, banking = [], all = [], openingCapital, flows = [] }) {
+export default function HeadlineNumbers({ closed, banking = [], openingCapital, flows = [] }) {
   const h = useMemo(
     () => headline(closed, { openingCapital, flows, banking }),
     [closed, banking, openingCapital, flows]
@@ -39,11 +39,6 @@ export default function HeadlineNumbers({ closed, banking = [], all = [], openin
    * a position bought last week with no sale in it still holds capital and
    * still carries a mark.
    */
-  const ann = useMemo(
-    () => annualisedReturn(all.length ? all : closed, { openingCapital, flows }),
-    [all, closed, openingCapital, flows]
-  );
-
   if (!h.n) {
     return (
       <div className="hn-empty">
@@ -86,22 +81,21 @@ export default function HeadlineNumbers({ closed, banking = [], all = [], openin
       cells: [
         { label: "Net P&L", value: rupee(h.netPnl), tone: sign(h.netPnl),
           hint: `After ${rupee(h.charges)} of charges` },
-        { label: "Return on capital", value: pct(h.returnOnCapital), tone: sign(h.returnOnCapital),
-          hint: "Cumulative, not annualised — the tile beside this one annualises it" },
-        /**
-         * THE SAME RETURN, PER YEAR — the figure people ask for by name.
-         *
-         * Labelled by the method actually used, never by the more impressive
-         * word. With no deposits or withdrawals recorded the two cash flows
-         * are the opening balance and today's value, XIRR reduces to CAGR
-         * exactly, and calling it XIRR would be a bigger name for the same
-         * arithmetic. Record a deposit and it becomes a real money-weighted
-         * XIRR and relabels itself.
-         *
-         * A short record gets the reason instead of a number: annualising six
-         * weeks says more about the exponent than about the trading.
-         */
-        describeAnnualised(ann),
+        /*
+          NO RETURN PERCENTAGE HERE, DELIBERATELY.
+
+          Two lived here: cumulative return on the Settings account size, and
+          the annual rate on the capital actually at work. Side by side they
+          both began "Return on capital", answered different questions on
+          different denominators, and moved in opposite directions when that
+          Settings field was edited — one swinging with it, one immune. A
+          glance cannot tell those apart, and this block is the glance.
+
+          Both now live on the Performance sheet, where CAGR opens the row and
+          "Return on capital at work" sits in Capital Deployment against the
+          committed figure it divides by. Net P&L below still answers "how
+          much"; "how well" is a question worth a screen rather than a tile.
+        */
         { label: "Win rate", value: pct(h.winRateByCount, 0),
           hint: `${h.n} closed trade${h.n === 1 ? "" : "s"}, counted` },
         { label: "Avg gain", value: pct(h.avgGainPct), tone: "pos",
