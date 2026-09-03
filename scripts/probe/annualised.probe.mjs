@@ -1,5 +1,6 @@
 import { test, eq, ok, near } from "./harness.mjs";
 import { annualisedReturn, xirr, cagr } from "@/lib/calc";
+import { describeAnnualised } from "@/lib/format";
 import { derivePosition } from "@/lib/positions";
 
 /**
@@ -153,4 +154,54 @@ test("a loss annualises as a loss", () => {
   const a = annualisedReturn([halved], { openingCapital: 1e6, flows: [], asOf: AT });
   near(a.closing, 5e5, 0.01);
   near(a.rate, Math.SQRT1_2 - 1, 1e-6, "halving in two years is −29.3% a year");
+});
+
+/* ---------------- the words, which two screens now share ----------------- */
+
+test("both screens describe one book the same way", () => {
+  /*
+    The Dashboard and the Performance sheet show this number side by side in a
+    user's session. Reading "CAGR" on one and "XIRR" on the other for the same
+    record would say the app cannot make up its mind — so the description is
+    one function and this is the check that it stays one.
+  */
+  const a = annualisedReturn([DOUBLED], { openingCapital: 1e6, flows: [], asOf: AT });
+  const d = describeAnnualised(a);
+  eq(d.label, "CAGR");
+  eq(d.value, "+41.4%");
+  eq(d.tone, "pos");
+  ok(/also the XIRR/.test(d.hint), "and says the two agree here");
+});
+
+test("a recorded deposit relabels it, in the same words", () => {
+  const a = annualisedReturn([DOUBLED], { openingCapital: 1e6, asOf: AT,
+    flows: [{ flow_date: "2026-06-03", amount: 500000 }] });
+  const d = describeAnnualised(a);
+  eq(d.label, "XIRR");
+  ok(/Money-weighted/.test(d.hint));
+  ok(/1 deposit or withdrawal\b/.test(d.hint), `singular, got: ${d.hint}`);
+});
+
+test("the refusals carry their reason, not a bare dash", () => {
+  const short = describeAnnualised(annualisedReturn([DOUBLED],
+    { openingCapital: 1e6, flows: [], asOf: new Date("2024-10-03T00:00:00Z") }));
+  eq(short.value, "—");
+  ok(/90 days/.test(short.hint));
+
+  const broke = describeAnnualised(annualisedReturn([DOUBLED],
+    { openingCapital: 0, flows: [], asOf: AT }));
+  eq(broke.value, "—");
+  ok(/account size/i.test(broke.hint), "tells them where to fix it");
+
+  /* And it survives being handed nothing at all, which is what a screen with
+     no trades yet passes in. */
+  eq(describeAnnualised(null).value, "—");
+  eq(describeAnnualised(undefined).label, "CAGR");
+});
+
+test("a loss reads as a loss in the tile too", () => {
+  const d = describeAnnualised({ rate: -0.293, method: "cagr", years: 2, days: 730,
+    flows: 0, marked: false });
+  eq(d.tone, "neg");
+  ok(d.value.startsWith("−") || d.value.startsWith("-"), `got ${d.value}`);
 });

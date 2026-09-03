@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { headline, annualisedReturn } from "@/lib/calc";
-import { rupee, rfmt, pct, signedPct, days } from "@/lib/format";
+import { rupee, rfmt, pct, days, describeAnnualised } from "@/lib/format";
 import { hasRealStop } from "@/lib/stops";
 
 /**
@@ -24,37 +24,6 @@ function Cell({ label, value, tone, hint }) {
 }
 
 const sign = (v) => (!isFinite(v) ? "" : v > 0 ? "pos" : v < 0 ? "neg" : "");
-
-/** The annualised-return tile, which names its own method. */
-function annualisedCell(a) {
-  const label = a.method === "xirr" ? "XIRR" : "CAGR";
-  if (!isFinite(a.rate)) {
-    return {
-      label: a.method === "xirr" ? "XIRR" : "CAGR",
-      value: "—",
-      hint: a.method === "too-short"
-        ? `Needs ${a.minDays} days of history — annualising a shorter record `
-          + "says more about the arithmetic than about the trading"
-        : a.method === "no-capital"
-        ? "Set your account size in Settings and this fills in"
-        : "Not enough history yet",
-    };
-  }
-  const years = a.years >= 1
-    ? `${a.years.toFixed(1)} years`
-    : `${Math.round(a.days)} days`;
-  return {
-    label,
-    value: signedPct(a.rate * 100),
-    tone: sign(a.rate),
-    hint: a.method === "xirr"
-      ? `Money-weighted over ${years}, counting ${a.flows} deposit`
-        + `${a.flows === 1 ? "" : "s"} or withdrawal${a.flows === 1 ? "" : "s"}`
-        + `${a.marked ? ", open positions at market" : ""}`
-      : `Compounded over ${years}${a.marked ? ", open positions at market" : ""}`
-        + ". No deposits or withdrawals recorded, so this is also the XIRR",
-  };
-}
 
 export default function HeadlineNumbers({ closed, banking = [], all = [], openingCapital, flows = [] }) {
   const h = useMemo(
@@ -132,7 +101,7 @@ export default function HeadlineNumbers({ closed, banking = [], all = [], openin
          * A short record gets the reason instead of a number: annualising six
          * weeks says more about the exponent than about the trading.
          */
-        annualisedCell(ann),
+        describeAnnualised(ann),
         { label: "Win rate", value: pct(h.winRateByCount, 0),
           hint: `${h.n} closed trade${h.n === 1 ? "" : "s"}, counted` },
         { label: "Avg gain", value: pct(h.avgGainPct), tone: "pos",

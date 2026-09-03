@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { rfmt } from "@/lib/format";
+import { rfmt, describeAnnualised } from "@/lib/format";
 import Tile from "./Tile";
 import PeriodPerformance from "./PeriodPerformance";
 import CapitalDeployment from "./CapitalDeployment";
+import { annualisedReturn } from "@/lib/calc";
 
 /**
  * The statement: how much, over what period, on what capital.
@@ -30,9 +31,27 @@ export default function Performance({ closed, banking = [], S, accountSize, flow
     );
   }
 
+  /**
+   * FIRST, AND DELIBERATELY.
+   *
+   * The four tiles beside it are all in R, and the people who ask for this
+   * number by name are exactly the ones who do not read R — so a statement
+   * that opens with "Total R" and keeps the annual return in a table footer
+   * is answering everyone except them.
+   *
+   * Every position, open ones included: this asks what the account is worth,
+   * not what the finished trading produced. Same call and same words as the
+   * Dashboard, so the two screens cannot disagree about one book.
+   */
+  const ann = describeAnnualised(
+    annualisedReturn(all.length ? all : closed, { openingCapital: accountSize, flows })
+  );
+
   return (
     <>
-      <div className="sec grid4">
+      <div className="sec grid5">
+        <Tile label={ann.label} value={ann.value} tone={ann.tone} sub={ann.short}
+              hint={ann.hint} />
         <Tile label="Total R" value={rfmt(S.totalR, 1)} tone={S.totalR >= 0 ? "pos" : "neg"}
               sub={`${S.n} trades`} />
         <Tile label="Average win" value={rfmt(S.avgWin)} tone="pos"

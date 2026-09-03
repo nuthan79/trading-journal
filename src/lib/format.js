@@ -194,3 +194,50 @@ export function dmy(iso) {
   if (!y || !m || !d) return "—";
   return `${d} ${MONTHS[m - 1]} ${String(y).slice(2)}`;
 }
+
+/**
+ * The annualised-return tile, in words — label, figure, and the sentence under
+ * the hover.
+ *
+ * Here rather than in the component that first needed it because two screens
+ * show this number and they must not describe it differently. A user who
+ * reads "CAGR" on the Dashboard and "XIRR" on Performance for one book has
+ * been told the app cannot make up its mind.
+ *
+ * Takes what `annualisedReturn()` returns and adds no arithmetic of its own.
+ */
+export function describeAnnualised(a) {
+  if (!a) return { label: "CAGR", value: "—", hint: "Not enough history yet" };
+
+  if (!isFinite(a.rate)) {
+    return {
+      label: "CAGR",
+      value: "—",
+      hint: a.method === "too-short"
+        ? `Needs ${a.minDays} days of history — annualising a shorter record `
+          + "says more about the arithmetic than about the trading"
+        : a.method === "no-capital"
+        ? "Set your account size in Settings and this fills in"
+        : "Not enough history yet",
+      short: a.method === "too-short" ? "needs 90 days" : "not enough history",
+    };
+  }
+
+  const span = a.years >= 1
+    ? `${a.years.toFixed(1)} years`
+    : `${Math.round(a.days)} days`;
+  const marked = a.marked ? ", open positions at market" : "";
+
+  return {
+    label: a.method === "xirr" ? "XIRR" : "CAGR",
+    value: signedPct(a.rate * 100),
+    tone: a.rate > 0 ? "pos" : a.rate < 0 ? "neg" : "",
+    /* The label already says CAGR, which already means a year. */
+    short: `over ${span}`,
+    hint: a.method === "xirr"
+      ? `Money-weighted over ${span}, counting ${a.flows} deposit`
+        + `${a.flows === 1 ? "" : "s"} or withdrawal${a.flows === 1 ? "" : "s"}${marked}`
+      : `Compounded over ${span}${marked}`
+        + ". No deposits or withdrawals recorded, so this is also the XIRR",
+  };
+}
