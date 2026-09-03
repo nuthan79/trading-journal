@@ -1,12 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { rfmt, rupee, pct, signedPct, describeAnnualised } from "@/lib/format";
+import { rfmt, pct, describeAnnualised } from "@/lib/format";
 import Tile from "./Tile";
 import PeriodPerformance from "./PeriodPerformance";
 import CapitalDeployment from "./CapitalDeployment";
 import { annualisedReturn, returnQuality, equityCurve, realisedR } from "@/lib/calc";
-import { deploymentSeries } from "@/lib/deployment";
 
 /**
  * The statement: how much, over what period, on what capital.
@@ -74,18 +73,30 @@ export default function Performance({ closed, banking = [], S, accountSize, flow
    * answer yet.
    */
   const R = realisedR(money);
-  const dep = deploymentSeries(all.length ? all : closed,
-    { openingCapital: accountSize, flows });
-  const q = returnQuality({
-    rate: annual.rate, years: annual.years, netPnl: eq.netPnl,
-    maxDDPct: eq.maxDDPct, avgDeployed: dep?.avgDeployed,
-  });
+  /* Deployment is not needed here any more: the tile that used it moved to
+     the Capital Deployment card, which owns that denominator. */
+  const q = returnQuality({ rate: annual.rate, maxDDPct: eq.maxDDPct });
 
   return (
     <>
-      <div className="sec grid5">
+      <div className="sec grid6">
         <Tile label={ann.label} value={ann.value} tone={ann.tone} sub={ann.short}
               hint={ann.hint} />
+        {/* Between the two figures it divides — the rate above it and the
+            drawdown at the end of the row. "Return on capital employed" used
+            to sit beside this one and has moved to Capital Deployment, where
+            the average committed figure it divides by is two tiles away and
+            the arithmetic can be checked by eye. */}
+        <Tile label="Return per drawdown"
+              value={isFinite(q.perDrawdown) ? q.perDrawdown.toFixed(2) : "—"}
+              tone={q.perDrawdown >= 0.5 ? "pos" : q.perDrawdown < 0 ? "neg" : ""}
+              sub={isFinite(q.perDrawdown)
+                ? `per 1% given back, worst ${pct(q.maxDDPct, 1)}`
+                : "needs a drawdown to measure against"}
+              hint={"How much annual return each 1% of drawdown bought. Around 0.5 is "
+                + "respectable over a full cycle. The drawdown is measured on closed-trade "
+                + "equity, so a position that fell and recovered before you sold it does "
+                + "not appear in it — the real ride was rougher than this."} />
         <Tile label="Total R" value={rfmt(R.totalR, 1)} tone={R.totalR >= 0 ? "pos" : "neg"}
               sub={R.n === S.n ? `${R.n} trades` : `${R.n} trades · ${R.n - S.n} still part-sold`}
               hint={R.n === S.n ? undefined
@@ -102,39 +113,6 @@ export default function Performance({ closed, banking = [], S, accountSize, flow
         <Tile label="Max drawdown" value={`${R.maxDD.toFixed(1)}R`}
               sub={`longest losing run ${S.worstL} day${S.worstL === 1 ? "" : "s"}`} />
       </div>
-
-      {/* Directly under the rate they qualify, and only when there is
-          something to say — a book with no drawdown yet and no deployment
-          history would show two dashes and teach nobody anything. */}
-      {(isFinite(q.perDrawdown) || isFinite(q.employed)) && (
-        <div className="sec grid2">
-          <Tile
-            label="Return per drawdown"
-            value={isFinite(q.perDrawdown) ? q.perDrawdown.toFixed(2) : "—"}
-            tone={q.perDrawdown >= 0.5 ? "pos" : q.perDrawdown < 0 ? "neg" : ""}
-            sub={isFinite(q.perDrawdown)
-              ? `${signedPct(annual.rate * 100)} a year against a ${pct(q.maxDDPct, 1)} worst fall`
-              : "needs a drawdown to measure against"}
-            /* The caveat belongs ON the number, not in a footnote somewhere:
-               this denominator is closed-trade equity, so a position that
-               halved and recovered before it was sold never entered it. */
-            hint={"How much annual return each 1% of drawdown bought. Around 0.5 is "
-              + "respectable over a full cycle. The drawdown is measured on closed-trade "
-              + "equity, so a position that fell and recovered before you sold it does "
-              + "not appear in it — the real ride was rougher than this."} />
-          <Tile
-            label="On capital employed"
-            value={isFinite(q.employed) ? signedPct(q.employed) : "—"}
-            tone={q.employed >= 0 ? "pos" : "neg"}
-            sub={isFinite(q.employed)
-              ? `a year, on ${rupee(q.avgDeployed)} at work on an average day`
-              : "needs deployment history"}
-            hint={"Your return measured against the capital actually committed day by "
-              + "day, rather than the account size in Settings. Simple annual rate, not "
-              + "compounded: average deployed capital is an average across the whole "
-              + "record, not a balance that grew."} />
-        </div>
-      )}
 
       <div className="sec">
         {/* `banking`, not `closed`: a period reports the money that arrived in

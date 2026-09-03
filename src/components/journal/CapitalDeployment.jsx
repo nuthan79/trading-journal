@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { deploymentSeries, DEPLOY_BANDS } from "@/lib/deployment";
-import { rupee, pct, dmy } from "@/lib/format";
+import { rupee, pct, signedPct, dmy } from "@/lib/format";
+import { annualisedReturn, returnQuality } from "@/lib/calc";
 import { apiFetch } from "@/lib/db";
 
 /**
@@ -255,6 +256,14 @@ export default function CapitalDeployment({ all = [], accountSize = 0, flows = [
     [all, accountSize, flows]
   );
 
+  /* Computed here and only here, so the figure and the denominator it uses
+     cannot drift apart on two screens. */
+  const Q = useMemo(() => {
+    const a = annualisedReturn(all, { openingCapital: accountSize, flows });
+    return returnQuality({ netPnl: a.realised, years: a.years,
+                           avgDeployed: S?.avgDeployed });
+  }, [all, accountSize, flows, S]);
+
   const idx = useIndexHistory(index, S?.from, S?.to);
 
   if (!S) {
@@ -418,6 +427,28 @@ export default function CapitalDeployment({ all = [], accountSize = 0, flows = [
               sub={`median — half the days above, half below`} />
         <Stat label="Average cash" value={rupee(S.avgCash)}
               sub={`${pct(100 - S.avgPct, 0)} uncommitted on an average day`} />
+        {/*
+          THE RETURN ON THAT DENOMINATOR, BESIDE IT.
+
+          It lived on the top row with CAGR, where it was a percentage with no
+          visible base. Average committed is the number it divides by and it
+          is two tiles away, so here you can check the arithmetic by eye —
+          which is the difference between a figure somebody trusts and one
+          they can verify.
+
+          Simple annual rate, not compounded: average committed is a mean
+          across every day of the record, not a balance that grew, and raising
+          it to a power would describe a base that never existed.
+        */}
+        {isFinite(Q.employed) && (
+          <Stat label="Return on it" value={signedPct(Q.employed)}
+                tone={Q.employed >= 0 ? "pos" : "neg"}
+                sub={`a year on the money at work · ${signedPct(Q.employedTotal)} in all`}
+                hint={"Your realised profit measured against the capital actually "
+                  + "committed day by day, rather than the account size in Settings. "
+                  + "A simple annual rate — average committed is an average across the "
+                  + "whole record, not a balance that compounded."} />
+        )}
       </div>
 
       <div className="card" ref={box} style={{ padding: "10px 4px 4px" }}>
@@ -752,11 +783,11 @@ export default function CapitalDeployment({ all = [], accountSize = 0, flows = [
   );
 }
 
-function Stat({ label, value, sub }) {
+function Stat({ label, value, sub, tone, hint }) {
   return (
-    <div className={`${CAP_MONEY}-stat`}>
+    <div className={`${CAP_MONEY}-stat`} title={hint || undefined}>
       <div className="l">{label}</div>
-      <div className="v">{value}</div>
+      <div className={`v ${tone || ""}`}>{value}</div>
       <div className="s">{sub}</div>
     </div>
   );
