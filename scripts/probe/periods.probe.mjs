@@ -242,3 +242,54 @@ test("a trade-level charge with nothing on the tranches is still spread", () => 
   near(evs[1].pnl, (140 - 100) * 60 - 300, 0.005);
   near(evs[0].pnl + evs[1].pnl, w.realisedPnl, 0.005);
 });
+
+test("charges land in the period the sell happened in, and sum to the book", () => {
+  /* WABAG again: ₹162 paid in January, ₹97.17 in June, ₹24.86 in July. The
+     first belongs to FY24-25 and the other two to FY25-26 — the same split the
+     money gets, or a year's cost and its P&L would describe different sells. */
+  const t = { symbol: "WABAG", side: "long", status: "closed",
+    entry_date: "2022-12-01", entry_price: 330.93, quantity: 196,
+    stop_loss: null, stop_source: "none", charges: 0,
+    exits: [
+      { exit_date: "2025-01-29", quantity: 117, price: 1339.00, charges: 162 },
+      { exit_date: "2025-06-25", quantity: 63, price: 1484.80, charges: 97.17 },
+      { exit_date: "2025-07-18", quantity: 16, price: 1498.30, charges: 24.86 }] };
+  const w = { ...t, ...derivePosition(t, 5e6), status: "closed", exits: t.exits };
+
+  const evs = realisationEvents(w);
+  t.exits.forEach((e, i) => near(evs[i].charge, e.charges, 0.005,
+    `sell ${i + 1} does not carry its own charge`));
+
+  const rows = byPeriod([w], "fy", { openingCapital: 5e6, basis: "exit" });
+  const earlier = rows.find((r) => r.key === fyLabel("2025-01-29"));
+  const later = rows.find((r) => r.key === fyLabel("2025-06-25"));
+  near(earlier.charges, 162, 0.005, "January's charge belongs to FY24-25");
+  near(later.charges, 97.17 + 24.86, 0.005);
+  near(earlier.charges + later.charges, 284.03, 0.005, "and they sum to the position");
+
+  /* Gross-before-charges must reconstruct, since that is what the tooltip
+     prints beside the net figure. */
+  near((earlier.pnl + earlier.charges) + (later.pnl + later.charges),
+       w.realisedPnl + 284.03, 0.01);
+});
+
+test("a period's charges sum to the book's, at every grain", () => {
+  const book = [
+    derived({ id: "a", charges: 0, exits: [
+      { exit_date: "2025-06-10", quantity: 100, price: 130, charges: 55 }] }),
+    derived({ id: "b", charges: 0, exits: [
+      { exit_date: "2024-11-19", quantity: 40, price: 120, charges: 11 },
+      { exit_date: "2025-06-10", quantity: 60, price: 140, charges: 22 }] }),
+    /* A position-level charge with nothing on the tranches — spread by
+       quantity, and it must not go missing in the spreading. */
+    derived({ id: "c", charges: 300, exits: [
+      { exit_date: "2025-02-01", quantity: 50, price: 130, charges: 0 },
+      { exit_date: "2025-08-01", quantity: 50, price: 140, charges: 0 }] }),
+  ];
+  const bookCharges = 55 + 11 + 22 + 300;
+  for (const grain of ["month", "quarter", "fy"]) {
+    const rows = byPeriod(book, grain, { openingCapital: 5e6, basis: "exit" });
+    near(rows.reduce((a, r) => a + (isFinite(r.charges) ? r.charges : 0), 0),
+         bookCharges, 0.01, `${grain} charges`);
+  }
+});

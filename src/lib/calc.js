@@ -467,29 +467,29 @@ export function byPeriod(
    * would be meaningless.
    */
   const buckets = new Map();
-  const put = (k, when, t, pnl, r) => {
+  const put = (k, when, t, pnl, r, charge) => {
     if (!buckets.has(k)) {
       buckets.set(k, { key: k, first: when, trades: [], seen: new Set(), events: [] });
     }
     const b = buckets.get(k);
     if (when < b.first) b.first = when;
     if (!b.seen.has(t.id)) { b.seen.add(t.id); b.trades.push(t); }
-    b.events.push({ trade: t, when, pnl, r });
+    b.events.push({ trade: t, when, pnl, r, charge });
   };
 
   for (const t of rows) {
     if (byEntry) {
-      put(label(t.entry_date), t.entry_date, t, t.pnl, t.r);
+      put(label(t.entry_date), t.entry_date, t, t.pnl, t.r, n(t.charges) || 0);
       continue;
     }
     const events = realisationEvents(t);
     if (!events.length) {
       /* No tranches to split — a legacy row, or one whose exits never landed.
          It keeps the old behaviour rather than vanishing from the table. */
-      put(label(realisedOn(t)), realisedOn(t), t, t.pnl, t.r);
+      put(label(realisedOn(t)), realisedOn(t), t, t.pnl, t.r, n(t.charges) || 0);
       continue;
     }
-    for (const e of events) put(label(e.date), e.date, t, e.pnl, e.r);
+    for (const e of events) put(label(e.date), e.date, t, e.pnl, e.r, e.charge);
   }
 
   // Walk periods in order, carrying equity forward so each % return is on the
@@ -550,6 +550,10 @@ export function byPeriod(
 
     const s = stats(results);
     const pnl = results.reduce((a, x) => a + (isFinite(x.pnl) ? x.pnl : 0), 0);
+    /* Summed over the EVENTS rather than the rolled-up positions, because a
+       charge belongs to a sell — two sells in one period are two charges, and
+       rolling them up first would have lost that distinction for no reason. */
+    const charges = b.events.reduce((a, e) => a + (isFinite(e.charge) ? e.charge : 0), 0);
     /* Position-level facts, so averaged over the distinct positions in the
        period rather than over the sells — a position sold four times did not
        have four position sizes. */
@@ -572,6 +576,7 @@ export function byPeriod(
       started: byEntry ? startedIn.get(b.key) ?? b.trades.length : null,
       settled: byEntry ? b.trades.length : null,
       pnl,
+      charges,
       opening: accounting ? opening : null,
       capitalIn: accounting ? inflow : null,
       returnPct: accounting && opening > 0 ? (pnl / opening) * 100 : null,

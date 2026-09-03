@@ -157,10 +157,16 @@ export function realisationEvents(t) {
     const extra = last ? spare - allocated
       : spare * (qtyOut > 0 ? q / qtyOut : 1 / exits.length);
     allocated += extra;
-    const pnl = gross[i] - (n(e.charges) || 0) - extra;
+    const charge = (n(e.charges) || 0) + extra;
+    const pnl = gross[i] - charge;
     return {
       date: String(e.exit_date).slice(0, 10),
       pnl,
+      /* What this sell cost, carried alongside what it made — so a period can
+         report its charges the same way it reports its money, split on the
+         same dates, rather than being handed a position-level figure that
+         belongs to no single period. */
+      charge,
       /* Risk is fixed at entry for the whole position, so these sum to
          realisedR with no weighting to argue about. */
       r: risk > 0 ? pnl / risk : NaN,
