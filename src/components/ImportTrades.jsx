@@ -877,6 +877,17 @@ export default function ImportTrades({
             {parsed.completions.slice(0, 40).map((c, i) => (
               <div key={i}>
                 <b>{c.group.symbol}</b> {c.group.entryDate}
+                {/* A date being CORRECTED is not a detail. This position came
+                    from a holdings file with an invented purchase date, and
+                    the file is about to replace it — said before the button,
+                    with both dates, because it is the one thing here that
+                    changes something the trader can already see on screen. */}
+                {c.adopts && (
+                  <span className="im-adopt">
+                    {" "}· dating it {c.adopts.from} → {c.adopts.to}
+                    {c.adopts.buys > 1 && ` (earliest of ${c.adopts.buys} buys)`}
+                  </span>
+                )}
                 <span className="im-dim">
                   {" "}· holding {c.grow ? `${c.holding} → ${c.grow.quantity}` : c.holding}
                   , {c.already} already sold
@@ -1360,6 +1371,9 @@ export default function ImportTrades({
           font-size: 11.5px; color: var(--ink2); line-height: 1.6;
         }
         .im-nearmiss summary { cursor: pointer; color: #8A6420; }
+        /* The one line in the completions list that changes something already
+           on screen, so it does not wear the dim treatment. */
+        .im-adopt { color: var(--brass); font-weight: 500; }
         .im-head {
           display: flex; align-items: flex-end; justify-content: space-between;
           gap: 12px; margin-bottom: 12px; flex-wrap: wrap;

@@ -254,7 +254,7 @@ export function reconcile(groups, targets, { broker = null } = {}) {
     byPosition.get(k).push(t);
   }
 
-  const fresh = [];        // no such position here yet — insert
+  let fresh = [];          // no such position here yet — insert
   const completions = [];  // position is here, these sells are not
   const duplicates = [];   // every sell already recorded
   const conflicts = [];    // needs a human; nothing written
@@ -355,6 +355,117 @@ export function reconcile(groups, targets, { broker = null } = {}) {
       skipped: g.tranches.length - missing.length,
     });
   }
+
+  /**
+   * AN INVENTED DATE IS CORRECTED BY THE FILE THAT KNOWS THE REAL ONE.
+   *
+   * A holdings file creates a complete position and has no purchase date, so
+   * it invents one and flags it `assumed` (036). A tradebook can sometimes say
+   * what the date really was — but only when it accounts for every share, and
+   * a position built over several buys usually has at least one of them before
+   * the file's window, so it stays assumed. That is the honest answer and it
+   * leaves the date wrong.
+   *
+   * The tax P&L that arrives when the position is finally sold DOES carry the
+   * real buy date, per lot. Matching on symbol AND date can never see it — the
+   * date it is matching against is the invented one — so the sells landed on a
+   * brand-new trade and the holding stayed open forever beside them.
+   *
+   * So an assumed date does not participate in matching. Symbol alone is
+   * enough here, and only here: the date being matched is one this app made up,
+   * so there is no fact to overwrite and nothing the trader chose. Adopting it
+   * corrects the date and clears the flag, which is what makes the correction
+   * count everywhere — `calc.js` and `positions.js` both refuse to measure a
+   * holding period from an assumed date.
+   *
+   * ALL the file's groups for that symbol adopt the SAME position, because a
+   * holding bought over N days appears in a tax P&L as N groups keyed by their
+   * own buy dates, and letting the first claim the position would send the
+   * rest back to being new trades — the very duplicate this removes. The
+   * earliest of those dates wins, matching what the tradebook path chose for
+   * the same question and for the same reason: it is the day a trader means by
+   * "I have held this since".
+   *
+   * TWO of them in one symbol and it does nothing. Which position a sell came
+   * out of is then a real question, and guessing it would put a year of
+   * holding on the wrong row. Those fall through to the warning below.
+   */
+  const adoptable = new Map();
+  for (const t of targets || []) {
+    if (t.status === "closed") continue;
+    if (t.entry_date_source !== "assumed") continue;
+    if (claimed.has(t.id)) continue;
+    const k = String(t.symbol || "").toUpperCase();
+    if (!adoptable.has(k)) adoptable.set(k, []);
+    adoptable.get(k).push(t);
+  }
+
+  const bySymbol = new Map();
+  for (const g of fresh) {
+    const k = String(g.symbol || "").toUpperCase();
+    if (!bySymbol.has(k)) bySymbol.set(k, []);
+    bySymbol.get(k).push(g);
+  }
+
+  const adopted = new Set();
+  for (const [symbol, gs] of bySymbol) {
+    const cands = (adoptable.get(symbol) || []).filter((t) => sameBroker(t.broker, broker));
+    if (cands.length !== 1) continue;
+    const target = cands[0];
+
+    const have = new Set((target.exits || []).map((e) => e.exit_date));
+    const tranches = [];
+    let skipped = 0;
+    for (const g of gs) {
+      for (const tr of g.tranches) {
+        if (have.has(tr.exit_date)) { skipped++; continue; }
+        tranches.push(tr);
+      }
+    }
+    if (!tranches.length) continue;
+
+    const already = (target.exits || []).reduce((a, e) => a + Number(e.quantity || 0), 0);
+    const adding = tranches.reduce((a, t) => a + Number(t.quantity || 0), 0);
+    const holdV = Number(target.quantity);
+    /* Same rule as an exact match, and it reaches the same place: a holdings
+       row is `imported`, so a file showing more shares than the holdings
+       snapshot knew about corrects the size rather than stopping. */
+    let grow = null;
+    if (already + adding > holdV + 1e-6) {
+      if (!target.imported) continue;   // hand-typed size — leave it to the warning
+      const fileQty = gs.reduce((a, g) => a + (Number(g.quantity) || 0), 0);
+      const needed = already + adding;
+      grow = fileQty >= holdV && fileQty >= needed
+        /* The price travels with the quantity only when ONE group accounts
+           for the whole position. Across several buys each group has its own
+           price for its own lots, and picking any of them — or averaging
+           them here — would describe different shares than the quantity
+           does. The holdings file's average is a real broker figure for the
+           real position, so it stays. */
+        ? { quantity: fileQty, ...(gs.length === 1 ? { entry_price: gs[0].entryPrice } : {}) }
+        : { quantity: Math.max(holdV, needed) };
+    }
+
+    const to = gs.reduce((a, g) => (!a || g.entryDate < a ? g.entryDate : a), null);
+    claimed.add(target.id);
+    for (const g of gs) adopted.add(g);
+    completions.push({
+      group: gs[0],
+      groups: gs,
+      tradeId: target.id,
+      tranches,
+      claimsBroker: !target.broker && !!broker ? broker : null,
+      grow,
+      /* What the writer acts on: the date to take, and the flag to clear. */
+      adopts: { from: target.entry_date, to, buys: gs.length },
+      already,
+      adding,
+      holding: holdV,
+      status: target.status,
+      skipped,
+    });
+  }
+  if (adopted.size) fresh = fresh.filter((g) => !adopted.has(g));
 
   /**
    * A POSITION YOU STILL HOLD, UNDER A DIFFERENT ENTRY DATE.

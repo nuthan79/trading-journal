@@ -825,6 +825,38 @@ export async function importTrades({ trades, completions = [], meta }) {
     }
   }
 
+  /*
+    The invented purchase date, replaced by the real one.
+
+    A holdings file has no purchase date, so it makes one up and flags it
+    `assumed`. This file knows the true date — it is what the buy leg of every
+    matched lot is keyed on — so the flag comes off with it. Clearing the flag
+    is the point rather than a tidy-up: `positions.js` refuses to count days
+    held from an assumed date and `analysis.js` leaves those trades out, so a
+    date corrected without clearing it changes nothing anybody can see.
+
+    Guarded on the flag in the WHERE clause as well as in reconcile(). Between
+    the preview and this write the user may have typed the date themselves on
+    the /stops queue, and that is a fact where this is a file's reading; if it
+    has already been recorded, this quietly does nothing.
+  */
+  for (const c of completions) {
+    if (!c.adopts?.to) continue;
+    const { error: dateErr } = await supabase
+      .from("trades")
+      .update({ entry_date: c.adopts.to, entry_date_source: "recorded" })
+      .eq("id", c.tradeId)
+      .eq("entry_date_source", "assumed");
+    if (dateErr) {
+      await supabase.from("trades").delete().eq("import_batch", batch.id);
+      await supabase.from("import_batches").delete().eq("id", batch.id);
+      throw new Error(
+        migrationHint(dateErr) ||
+        `Could not date ${c.group.symbol}: ${dateErr.message}. Nothing was saved.`
+      );
+    }
+  }
+
   // A position that had no broker now belongs to the file that completed it.
   // Nothing the trader typed is touched — this is only what stops the next
   // broker's import matching the same trade and stacking its sells on top.

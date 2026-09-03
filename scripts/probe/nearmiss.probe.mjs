@@ -137,3 +137,123 @@ test("a rejected group is never warned about", () => {
   eq(out.trades.length, 0);
   eq(out.nearMisses.length, 0, "and not warned about");
 });
+
+/* ---------------- adopting a holding whose date was invented -------------- */
+
+const holding = (symbol, entry_date, quantity, extra = {}) => ({
+  id: `${symbol}-held`, symbol, entry_date, quantity, status: "open",
+  broker: null, imported: true, entry_date_source: "assumed", exits: [], ...extra,
+});
+
+test("a tax P&L dates the holding it closes, however many buys built it", () => {
+  /*
+    THE CASE THE TRADEBOOK CANNOT REACH.
+
+    500 shares from a holdings file, purchase date invented. Built over three
+    buys, one of them before the tradebook's window, so FIFO refused to date
+    it — correctly. When the position is finally sold, the tax P&L carries the
+    real buy date on every lot, and the sale arrives as one group PER BUY DATE.
+
+    All three must land on the one holding. The old matching saw three dates,
+    none of them the invented one, and made three new trades beside a holding
+    that stayed open forever.
+  */
+  const gs = [
+    { symbol: "XYZ", entryDate: "2025-01-10", quantity: 200,
+      tranches: [{ exit_date: "2026-07-01", quantity: 200, price: 150, charges: 30 }] },
+    { symbol: "XYZ", entryDate: "2025-03-05", quantity: 200,
+      tranches: [{ exit_date: "2026-07-01", quantity: 200, price: 150, charges: 30 }] },
+    { symbol: "XYZ", entryDate: "2025-06-20", quantity: 100,
+      tranches: [{ exit_date: "2026-07-02", quantity: 100, price: 152, charges: 15 }] },
+  ];
+  const out = reconcile(gs, [holding("XYZ", "2026-01-01", 500)], { broker: "zerodha" });
+
+  eq(out.fresh.length, 0, "nothing is left to insert as a new trade");
+  eq(out.completions.length, 1, "all three buys land on the one holding");
+  const c = out.completions[0];
+  eq(c.tranches.length, 3, "every sell comes across");
+  eq(c.adding, 500, "the whole position");
+  eq(c.adopts.to, "2025-01-10", "dated from the EARLIEST buy");
+  eq(c.adopts.from, "2026-01-01", "replacing the invented one");
+  eq(c.adopts.buys, 3);
+  ok(!c.grow, "500 sold against 500 held needs no resizing");
+});
+
+test("one buy, or five, makes no difference", () => {
+  const one = reconcile(
+    [{ symbol: "XYZ", entryDate: "2025-04-02", quantity: 500,
+       tranches: [{ exit_date: "2026-07-01", quantity: 500, price: 150, charges: 60 }] }],
+    [holding("XYZ", "2026-01-01", 500)], { broker: "zerodha" });
+  eq(one.completions[0].adopts.to, "2025-04-02");
+
+  const five = reconcile(
+    [1, 2, 3, 4, 5].map((i) => ({
+      symbol: "XYZ", entryDate: `2025-0${i}-05`, quantity: 100,
+      tranches: [{ exit_date: `2026-07-0${i}`, quantity: 100, price: 150, charges: 12 }],
+    })),
+    [holding("XYZ", "2026-01-01", 500)], { broker: "zerodha" });
+  eq(five.completions.length, 1);
+  eq(five.completions[0].tranches.length, 5);
+  eq(five.completions[0].adopts.to, "2025-01-05", "still the earliest");
+  eq(five.completions[0].adding, 500);
+});
+
+test("a date the trader recorded is never adopted over", () => {
+  /* The whole licence for matching on symbol alone is that the date was
+     invented by this app. A typed date is a fact and falls back to the
+     warning, which is the case that must stay a hand edit. */
+  const gs = [{ symbol: "XYZ", entryDate: "2025-01-10", quantity: 500,
+    tranches: [{ exit_date: "2026-07-01", quantity: 500, price: 150, charges: 60 }] }];
+  const out = reconcile(gs,
+    [holding("XYZ", "2026-01-01", 500, { entry_date_source: "recorded", imported: false })],
+    { broker: "zerodha" });
+  eq(out.completions.length, 0, "no adoption");
+  eq(out.fresh.length, 1, "it imports separately");
+  eq(out.fresh[0].openElsewhere.length, 1, "and is warned about instead");
+});
+
+test("two assumed holdings in one symbol are left alone", () => {
+  /* Which position the sells came out of is a real question now, and putting
+     a year of holding on the wrong row is worse than leaving both flagged. */
+  const gs = [{ symbol: "XYZ", entryDate: "2025-01-10", quantity: 200,
+    tranches: [{ exit_date: "2026-07-01", quantity: 200, price: 150, charges: 30 }] }];
+  const out = reconcile(gs, [
+    { ...holding("XYZ", "2026-01-01", 200), id: "a" },
+    { ...holding("XYZ", "2026-02-01", 300), id: "b" },
+  ], { broker: "zerodha" });
+  eq(out.completions.length, 0, "it refuses to pick");
+  eq(out.fresh.length, 1);
+  eq(out.fresh[0].openElsewhere.length, 2, "both are named in the warning");
+});
+
+test("an exact date match still wins, and is not double-claimed", () => {
+  /* An assumed date that happens to be right must complete by the normal
+     path, once — not complete AND adopt. */
+  const gs = [{ symbol: "XYZ", entryDate: "2026-01-01", quantity: 500,
+    tranches: [{ exit_date: "2026-07-01", quantity: 500, price: 150, charges: 60 }] }];
+  const out = reconcile(gs, [holding("XYZ", "2026-01-01", 500)], { broker: "zerodha" });
+  eq(out.completions.length, 1);
+  ok(!out.completions[0].adopts, "already the right date — nothing to adopt");
+  eq(out.fresh.length, 0);
+});
+
+test("a closed holding is not adopted, and neither is another broker's", () => {
+  const gs = [{ symbol: "XYZ", entryDate: "2025-01-10", quantity: 500,
+    tranches: [{ exit_date: "2026-07-01", quantity: 500, price: 150, charges: 60 }] }];
+  eq(reconcile(gs, [holding("XYZ", "2026-01-01", 500, { status: "closed" })],
+    { broker: "zerodha" }).completions.length, 0, "closed");
+  eq(reconcile(gs, [holding("XYZ", "2026-01-01", 500, { broker: "dhan" })],
+    { broker: "zerodha" }).completions.length, 0, "different account");
+});
+
+test("selling more than the holdings snapshot knew about resizes it", () => {
+  /* A holdings file is a snapshot; shares bought after it was taken are not
+     in it. The file that sells them is the fuller account, and the row is
+     imported, so the same grow rule an exact match uses applies. */
+  const gs = [{ symbol: "XYZ", entryDate: "2025-01-10", quantity: 800,
+    tranches: [{ exit_date: "2026-07-01", quantity: 800, price: 150, charges: 90 }] }];
+  const out = reconcile(gs, [holding("XYZ", "2026-01-01", 500)], { broker: "zerodha" });
+  eq(out.completions.length, 1);
+  eq(out.completions[0].grow.quantity, 800, "the position was bigger than recorded");
+  eq(out.completions[0].adopts.to, "2025-01-10");
+});
