@@ -5,7 +5,7 @@ import { rfmt, rupee, pct, signedPct, describeAnnualised } from "@/lib/format";
 import Tile from "./Tile";
 import PeriodPerformance from "./PeriodPerformance";
 import CapitalDeployment from "./CapitalDeployment";
-import { annualisedReturn, returnQuality, equityCurve } from "@/lib/calc";
+import { annualisedReturn, returnQuality, equityCurve, realisedR } from "@/lib/calc";
 import { deploymentSeries } from "@/lib/deployment";
 
 /**
@@ -62,6 +62,18 @@ export default function Performance({ closed, banking = [], S, accountSize, flow
    */
   const money = banking.length ? banking : closed;
   const eq = equityCurve(money, { openingCapital: accountSize, flows });
+  /**
+   * Cumulative R over every sell, so the tile and the All row below it agree.
+   *
+   * They did not: the tile read finished positions (+354.3R over 81) while
+   * the table read every sell (+357.3R over 85), under the same two words on
+   * one screen. Total R is cumulative realised R — the same family as net
+   * P&L — and the drawdown is the worst fall along that same running total.
+   * Average win and average loss stay on finished positions beside them,
+   * because those ask what a trade turns out like and a part-sold one has no
+   * answer yet.
+   */
+  const R = realisedR(money);
   const dep = deploymentSeries(all.length ? all : closed,
     { openingCapital: accountSize, flows });
   const q = returnQuality({
@@ -74,13 +86,20 @@ export default function Performance({ closed, banking = [], S, accountSize, flow
       <div className="sec grid5">
         <Tile label={ann.label} value={ann.value} tone={ann.tone} sub={ann.short}
               hint={ann.hint} />
-        <Tile label="Total R" value={rfmt(S.totalR, 1)} tone={S.totalR >= 0 ? "pos" : "neg"}
-              sub={`${S.n} trades`} />
+        <Tile label="Total R" value={rfmt(R.totalR, 1)} tone={R.totalR >= 0 ? "pos" : "neg"}
+              sub={R.n === S.n ? `${R.n} trades` : `${R.n} trades · ${R.n - S.n} still part-sold`}
+              hint={R.n === S.n ? undefined
+                : `${S.n} finished and ${R.n - S.n} sold down but still running. Every sell `
+                  + "counts here, which is why this matches the All row below. Average win "
+                  + "and average loss beside it count finished positions only — a position "
+                  + "you are still holding has no verdict yet."} />
         <Tile label="Average win" value={rfmt(S.avgWin)} tone="pos"
               sub={`best ${rfmt(S.best)}`} />
         <Tile label="Average loss" value={rfmt(-S.avgLoss)} tone="neg"
               sub={`worst ${rfmt(S.worst)}`} />
-        <Tile label="Max drawdown" value={`${S.maxDD.toFixed(1)}R`}
+        {/* The worst fall along the SAME running total as the tile above, or
+            the two would describe different curves. */}
+        <Tile label="Max drawdown" value={`${R.maxDD.toFixed(1)}R`}
               sub={`longest losing run ${S.worstL} day${S.worstL === 1 ? "" : "s"}`} />
       </div>
 

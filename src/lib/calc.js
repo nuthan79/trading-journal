@@ -267,6 +267,47 @@ export function annualisedReturn(trades, { openingCapital = 0, flows = [], asOf 
 }
 
 /**
+ * Cumulative R, and the worst hole in it, counting every sell.
+ *
+ * `stats()` walks finished positions and answers per-trade questions — what
+ * an average win looks like, what a typical loss costs — where a part-sold
+ * position genuinely has no answer yet.
+ *
+ * These two are not those questions. Total R is cumulative realised R, the
+ * same family as net P&L, and the drawdown is the worst fall along that same
+ * running total. Both were reading 81 finished positions while the period
+ * table beside them read every sell, so one screen showed +354.3R and
+ * +357.3R under the same words.
+ *
+ * Sorted across positions, not within them: the drawdown is a property of the
+ * ORDER the money arrived in, and events come out of `bankedEvents` grouped
+ * by position. Left ungrouped the curve would walk one position to its end
+ * before starting the next, and report a hole that never happened.
+ */
+export function realisedR(positions) {
+  const evs = (positions || [])
+    .flatMap(bankedEvents)
+    .filter((e) => isFinite(e.r))
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
+  let cum = 0, peak = 0, maxDD = 0;
+  for (const e of evs) {
+    cum += e.r;
+    peak = Math.max(peak, cum);
+    maxDD = Math.max(maxDD, peak - cum);
+  }
+
+  return {
+    totalR: evs.length ? cum : NaN,
+    maxDD,
+    sells: evs.length,
+    /* Positions, not sells: scaling out of one name three times is one
+       position that banked, and the tile says "trades". */
+    n: new Set(evs.map((e) => e.trade?.id ?? e)).size,
+  };
+}
+
+/**
  * The two figures that qualify an annual return.
  *
  * A rate on its own says where you ended up and nothing about what it cost or

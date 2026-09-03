@@ -1,5 +1,5 @@
 import { test, eq, ok, near } from "./harness.mjs";
-import { headline, byPeriod, equityCurve } from "@/lib/calc";
+import { headline, byPeriod, equityCurve, realisedR } from "@/lib/calc";
 import { derivePosition, bankedEvents } from "@/lib/positions";
 
 /**
@@ -128,4 +128,78 @@ test("charges reconcile across the same three routes", () => {
   near(headline([DONE], { openingCapital: 5e6, banking: book }).charges, 275, 0.01);
   near(byPeriod(book, "fy", { openingCapital: 5e6, basis: "exit" })
     .reduce((a, r) => a + (isFinite(r.charges) ? r.charges : 0), 0), 275, 0.01);
+});
+
+test("the Total R tile and the All row are the same number", () => {
+  /*
+    THE DISCREPANCY A USER FOUND ON ONE SCREEN.
+
+    The tile read +354.3R over 81 trades while the period table's All row read
+    +357.3R over 85, under the same two words. The tile was walking finished
+    positions; the table was walking every sell. Four part-sold positions and
+    3R sat between them, and nothing said so.
+  */
+  const book = [DONE, PART];
+  const R = realisedR(book);
+  const rows = byPeriod(book, "fy", { openingCapital: 5e6, basis: "exit" });
+  const tableR = rows.reduce((a, r) => a + (isFinite(r.totalR) ? r.totalR : 0), 0);
+  near(R.totalR, tableR, 1e-9, "tile and table, one figure");
+
+  /* And the part-sold position IS in it — that is the 3R. */
+  const finishedOnly = realisedR([DONE]);
+  ok(R.totalR > finishedOnly.totalR, "the part-sold position contributes");
+  eq(R.n, 2, "two positions banked");
+  eq(finishedOnly.n, 1);
+});
+
+test("only the REALISED part of a part-sold position counts toward R", () => {
+  /* PART banked 2000 on a 40-share sell and carries 6000 unrealised. Its `r`
+     folds both together, so a tile reaching for it would report a position's
+     open profit as realised performance. */
+  const R = realisedR([PART]);
+  near(R.totalR, PART.realisedPnl / PART.riskAmt, 1e-9);
+  ok(R.totalR < PART.r, "pnl-based R would be larger — that is the trap");
+});
+
+test("drawdown is measured on the order money arrived, across positions", () => {
+  /*
+    Events come out of bankedEvents GROUPED BY POSITION. Walked in that order
+    the curve finishes one name before starting the next, and reports a hole
+    that never happened.
+
+    Two small losses on one position, three weeks apart, with a large win on
+    another position landing between them. In real time the win had already
+    lifted the account before the second loss arrived. Grouped, the two losses
+    stack first and the fall reads twice as deep.
+  */
+  const scaled = mk({ id: "s", symbol: "S", side: "long", status: "closed",
+    entry_date: "2026-01-02", entry_price: 100, quantity: 100,
+    stop_loss: 90, stop_source: "recorded", charges: 0,
+    exit_date: "2026-03-20", exit_price: 90,
+    exits: [
+      { exit_date: "2026-01-20", quantity: 50, price: 90, charges: 0 },
+      { exit_date: "2026-03-20", quantity: 50, price: 90, charges: 0 },
+    ] });
+  const between = mk({ id: "b", symbol: "B", side: "long", status: "closed",
+    entry_date: "2026-02-01", entry_price: 100, quantity: 100,
+    stop_loss: 90, stop_source: "recorded", charges: 0,
+    exit_date: "2026-02-10", exit_price: 150,
+    exits: [{ exit_date: "2026-02-10", quantity: 100, price: 150, charges: 0 }] });
+
+  const R = realisedR([scaled, between]);
+  eq(R.sells, 3);
+  near(R.totalR, -0.5 + 5.0 - 0.5, 1e-9, "−0.5, +5.0, −0.5");
+
+  /* Date order: −0.5 (hole 0.5), +4.5, +4.0 (hole 0.5 off the new peak). */
+  near(R.maxDD, 0.5, 1e-9, "the deepest the account was ever below its peak");
+
+  /* What grouping by position would have said, computed the wrong way on
+     purpose so the difference is on the record: −0.5, −1.0, +4.0 → a 1.0R
+     hole that the account never actually sat in. */
+  let cum = 0, peak = 0, grouped = 0;
+  for (const r of [-0.5, -0.5, 5.0]) {
+    cum += r; peak = Math.max(peak, cum); grouped = Math.max(grouped, peak - cum);
+  }
+  near(grouped, 1.0, 1e-9);
+  ok(R.maxDD < grouped, "sorting across positions is what makes it honest");
 });
