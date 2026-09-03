@@ -441,13 +441,29 @@ export default function CapitalDeployment({ all = [], accountSize = 0, flows = [
           it to a power would describe a base that never existed.
         */}
         {isFinite(Q.employed) && (
-          <Stat label="Return on it" value={signedPct(Q.employed)}
+          <Stat label="Return on capital at work" value={signedPct(Q.employed)}
                 tone={Q.employed >= 0 ? "pos" : "neg"}
-                sub={`a year on the money at work · ${signedPct(Q.employedTotal)} in all`}
+                sub={`a year · ${signedPct(Q.employedTotal)} in all`}
+                /*
+                  NOT "return on capital employed", though that is the term a
+                  finance-literate user reaches for and it is named in the
+                  hover for them.
+
+                  Two reasons it is the wrong LABEL. ROCE is a defined
+                  accounting measure — operating profit over capital employed,
+                  about a company's efficiency — so anyone who knows it imports
+                  the wrong formula. And the Dashboard already carries a tile
+                  called "Return on capital", which is a different figure on a
+                  different denominator; at a glance those two labels read as
+                  the same number, which is the exact confusion this tile
+                  exists to escape.
+                */
                 hint={"Your realised profit measured against the capital actually "
-                  + "committed day by day, rather than the account size in Settings. "
-                  + "A simple annual rate — average committed is an average across the "
-                  + "whole record, not a balance that compounded."} />
+                  + "committed day by day, rather than the account size in Settings — "
+                  + "so it does not move when you change that figure. The same idea as "
+                  + "return on capital employed. A simple annual rate: average committed "
+                  + "is an average across the whole record, not a balance that "
+                  + "compounded."} />
         )}
       </div>
 
