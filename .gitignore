@@ -10,3 +10,8 @@ backups/
 # PAN, a client id and somebody's whole trade history — one `git add -A`
 # with one still sitting there put five of them in a pushed commit.
 public/_*
+
+# macOS Finder droppings. Six of these were tracked — they carry window
+# positions and icon layout, change whenever a folder is opened, and had to
+# be shipped inside a backup archive for it to restore clean.
+.DS_Store
