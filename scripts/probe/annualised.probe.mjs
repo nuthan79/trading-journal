@@ -259,3 +259,52 @@ test("a loss on employed capital reads as a loss", () => {
   ok(q.employed < 0);
   near(q.employed, ((-300000 / 2000000) / 3) * 100, 1e-9);
 });
+
+test("return on capital employed does not move when the account size does", () => {
+  /*
+    THE PROPERTY THIS FIGURE EXISTS FOR, AND THE REASON IT IS TRUSTED.
+
+    Every other return on the screen is hostage to one number typed into
+    Settings — a field the app cannot verify, that means "what I started with"
+    to the returns and "what I have now" to the risk sizing, and that a user
+    can change on a whim. Change it and CAGR changes with it, which is correct
+    and is also why it cannot answer "how am I really doing".
+
+    This one divides realised profit by the capital actually committed day by
+    day. Both halves are measured from the trades themselves, so the answer is
+    the same whatever is in Settings. Measured: a fortyfold change in account
+    size moves CAGR from 4.66% to 0.12% and leaves this untouched.
+
+    If someone later folds capital into the deployment average — a plausible
+    "improvement", since the card's other figures are all shares OF capital —
+    this silently stops being true and the one honest number on the screen
+    quietly joins the others.
+  */
+  const rows = [
+    { id: "a", entry_date: "2024-06-10", realisedPnl: 24000, unrealisedPnl: NaN },
+    { id: "b", entry_date: "2024-12-02", realisedPnl: -26000, unrealisedPnl: NaN },
+    { id: "c", entry_date: "2025-05-06", realisedPnl: 32000, unrealisedPnl: NaN },
+  ];
+  const avgDeployed = 76193;      // from the trades, not from the account size
+
+  const at = (openingCapital) => {
+    const a = annualisedReturn(rows, { openingCapital, flows: [], asOf: AT });
+    return {
+      cagr: a.rate,
+      employed: returnQuality({ netPnl: a.realised, years: a.years, avgDeployed }).employed,
+    };
+  };
+
+  const small = at(500000);
+  const large = at(20000000);
+
+  ok(small.cagr > large.cagr * 5,
+    `CAGR must move with the account size (${small.cagr} vs ${large.cagr})`);
+  near(small.employed, large.employed, 1e-9,
+    "and return on capital employed must not move at all");
+
+  /* Across the whole range, not just the ends. */
+  const rates = [5e5, 1e6, 5e6, 2e7].map((c) => at(c).employed);
+  for (const r of rates) near(r, rates[0], 1e-9);
+  ok(isFinite(rates[0]) && rates[0] !== 0, "and it is a real number, not zero");
+});
