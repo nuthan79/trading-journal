@@ -14,14 +14,14 @@ import ProfitConcentration from "./ProfitConcentration";
  * win rate there counted every closed trade, the tile weighted the twelve with
  * a stop, and two different 'win rate's on one screen is worse than one.
  */
-export default function Dashboard({ closed, banking = [], accountSize, diary, flows }) {
+export default function Dashboard({ closed, banking = [], all = [], accountSize, diary, flows }) {
   const lastEntry = diary[0];
 
   return (
     <>
       <div className="sec"><Summary closed={closed} openingCapital={accountSize} flows={flows} /></div>
 
-      <div className="sec"><HeadlineNumbers closed={closed} banking={banking} openingCapital={accountSize} flows={flows} /></div>
+      <div className="sec"><HeadlineNumbers closed={closed} banking={banking} all={all} openingCapital={accountSize} flows={flows} /></div>
 
       <div className="sec"><LedgerPlot rows={closed} /></div>
 

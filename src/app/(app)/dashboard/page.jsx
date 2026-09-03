@@ -4,8 +4,8 @@ import Dashboard from "@/components/journal/Dashboard";
 import { useJournal } from "../JournalContext";
 
 export default function DashboardPage() {
-  const { closed, banking, accountSize, diary, flows } = useJournal();
+  const { closed, banking, all, accountSize, diary, flows } = useJournal();
   return (
-    <Dashboard closed={closed} banking={banking} accountSize={accountSize} diary={diary} flows={flows} />
+    <Dashboard closed={closed} banking={banking} all={all} accountSize={accountSize} diary={diary} flows={flows} />
   );
 }

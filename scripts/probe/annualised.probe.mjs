@@ -1,0 +1,156 @@
+import { test, eq, ok, near } from "./harness.mjs";
+import { annualisedReturn, xirr, cagr } from "@/lib/calc";
+import { derivePosition } from "@/lib/positions";
+
+/**
+ * THE FIGURE PEOPLE TRUST WITHOUT CHECKING.
+ *
+ * "19% a year" is read as a fact about the trader. It is arithmetic over four
+ * inputs — opening balance, closing value, elapsed time, and any money that
+ * moved in between — and getting any of them wrong produces a confident,
+ * plausible, wrong number. So each is pinned separately.
+ */
+
+const mk = (t) => {
+  const d = derivePosition(t, 5e6);
+  return { ...t, ...d, status: t.status, exits: t.exits };
+};
+
+/* Doubled the money in exactly two years: 100% total, 41.42% a year. */
+const DOUBLED = mk({ id: "d", symbol: "X", side: "long", status: "closed",
+  entry_date: "2024-09-03", entry_price: 100, quantity: 10000,
+  stop_loss: 90, stop_source: "recorded", charges: 0,
+  exit_date: "2026-09-03", exit_price: 200,
+  exits: [{ exit_date: "2026-09-03", quantity: 10000, price: 200, charges: 0 }] });
+
+const AT = new Date("2026-09-03T00:00:00Z");
+
+test("no deposits: it is CAGR, and says so", () => {
+  const a = annualisedReturn([DOUBLED], { openingCapital: 1e6, flows: [], asOf: AT });
+  eq(a.method, "cagr");
+  near(a.base, 1e6, 0.01);
+  near(a.closing, 2e6, 0.01, "a million made on a million");
+  near(a.years, 2, 0.01);
+  near(a.rate, Math.SQRT2 - 1, 1e-6, "doubling in two years is 41.42% a year");
+});
+
+test("and that CAGR is exactly what XIRR would return", () => {
+  /* The claim the label rests on: with two cash flows the solver and the
+     closed form are the same number, so running the solver would be theatre
+     and calling it XIRR would be a bigger word for the same arithmetic. */
+  const solved = xirr([
+    { date: "2024-09-03", amount: -1e6 },
+    { date: "2026-09-03", amount: 2e6 },
+  ]);
+  near(solved, cagr(1e6, 2e6, 2), 1e-4);
+  near(solved, annualisedReturn([DOUBLED],
+    { openingCapital: 1e6, flows: [], asOf: AT }).rate, 1e-4);
+});
+
+test("a deposit makes it a real XIRR, money-weighted", () => {
+  /*
+    The same closing value, but half the capital only arrived at the end —
+    so the money-weighted return must be HIGHER than the naive one. This is
+    the whole reason XIRR exists, and the check that the sign convention is
+    the right way round: a deposit is money leaving your pocket, negative.
+  */
+  const a = annualisedReturn([DOUBLED], { openingCapital: 1e6, asOf: AT,
+    flows: [{ flow_date: "2026-06-03", amount: 500000 }] });
+  eq(a.method, "xirr");
+  eq(a.flows, 1);
+  near(a.closing, 2.5e6, 0.01, "the deposit is in the closing balance");
+  const naive = cagr(1.5e6, 2.5e6, 2);
+  ok(a.rate > naive,
+    `late capital must not be charged two years of compounding (${a.rate} vs ${naive})`);
+  ok(a.rate > 0.30 && a.rate < 0.60, `plausible, got ${a.rate}`);
+});
+
+test("money paid in before the first trade is opening balance, not a flow", () => {
+  /* Otherwise the account looks like it started at zero and every rupee of
+     it reads as profit. */
+  const a = annualisedReturn([DOUBLED], { openingCapital: 0, asOf: AT,
+    flows: [{ flow_date: "2024-09-01", amount: 1e6 }] });
+  eq(a.method, "cagr", "nothing moved DURING the record");
+  eq(a.flows, 0);
+  near(a.base, 1e6, 0.01);
+
+  /*
+    AND THE CLOCK STARTS WHEN THE MONEY DID, not when the first trade was
+    taken. The deposit landed two days before it, so this is 732 days and a
+    hair under the 41.42% that doubling in exactly two years gives.
+
+    That is the honest reading and matches what a broker's own XIRR does:
+    cash sitting idle in the account is capital committed and earning
+    nothing, and hiding those two days would flatter every record that
+    funded itself before it started trading.
+  */
+  eq(a.days, 732);
+  near(a.rate, cagr(1e6, 2e6, 732 / 365), 1e-9);
+  ok(a.rate < Math.SQRT2 - 1, "idle days cost a little, they do not pay");
+});
+
+test("open positions are marked to market, not carried at cost", () => {
+  /* The decision this tile turns on: a book of winners still held must show
+     up in the return, or the figure only moves on the day you sell. */
+  const held = mk({ id: "h", symbol: "Y", side: "long", status: "open",
+    entry_date: "2024-09-03", entry_price: 100, quantity: 10000,
+    stop_loss: 90, stop_source: "recorded", charges: 0, last_price: 200,
+    exits: [] });
+  const a = annualisedReturn([held], { openingCapital: 1e6, flows: [], asOf: AT });
+  near(a.unrealised, 1e6, 0.01);
+  near(a.closing, 2e6, 0.01, "marked at 200, not held at 100");
+  near(a.rate, Math.SQRT2 - 1, 1e-6, "same as if it had been sold");
+});
+
+test("a position with no quote is carried at cost, never at zero", () => {
+  /* unrealisedPnl is NaN with no mark — the app degrades to no mark rather
+     than to a loss — and NaN must not poison the sum. */
+  const noMark = mk({ id: "n", symbol: "Z", side: "long", status: "open",
+    entry_date: "2024-09-03", entry_price: 100, quantity: 10000,
+    stop_loss: 90, stop_source: "recorded", charges: 0, exits: [] });
+  const a = annualisedReturn([noMark], { openingCapital: 1e6, flows: [], asOf: AT });
+  ok(!isFinite(noMark.unrealisedPnl), "the fixture really has no mark");
+  near(a.closing, 1e6, 0.01, "carried at cost");
+  ok(isFinite(a.rate) && Math.abs(a.rate) < 1e-9, "flat, not −100%");
+});
+
+test("six weeks of history is refused, not annualised", () => {
+  /*
+    +4% over six weeks compounds to about +38% a year, which is a statement
+    about the exponent rather than about the trader. The tile says so instead.
+  */
+  const quick = mk({ id: "q", symbol: "Q", side: "long", status: "closed",
+    entry_date: "2026-07-24", entry_price: 100, quantity: 400,
+    stop_loss: 90, stop_source: "recorded", charges: 0,
+    exit_date: "2026-08-20", exit_price: 110,
+    exits: [{ exit_date: "2026-08-20", quantity: 400, price: 110, charges: 0 }] });
+  const a = annualisedReturn([quick], { openingCapital: 1e5, flows: [], asOf: AT });
+  eq(a.method, "too-short");
+  ok(!isFinite(a.rate), "no number at all, rather than a flattering one");
+  eq(a.minDays, 90);
+});
+
+test("no capital recorded means no percentage to give", () => {
+  const a = annualisedReturn([DOUBLED], { openingCapital: 0, flows: [], asOf: AT });
+  eq(a.method, "no-capital");
+  ok(!isFinite(a.rate));
+});
+
+test("the elapsed time is read without a timezone", () => {
+  /* `new Date("2024-09-03")` is UTC midnight read back local, which west of
+     Greenwich lands on 2 September and shortens the record by a day —
+     small, but it moves the exponent on every book. */
+  const a = annualisedReturn([DOUBLED], { openingCapital: 1e6, flows: [], asOf: AT });
+  eq(a.days, 730, "two years to the day, in any zone");
+});
+
+test("a loss annualises as a loss", () => {
+  const halved = mk({ id: "l", symbol: "L", side: "long", status: "closed",
+    entry_date: "2024-09-03", entry_price: 100, quantity: 10000,
+    stop_loss: 90, stop_source: "recorded", charges: 0,
+    exit_date: "2026-09-03", exit_price: 50,
+    exits: [{ exit_date: "2026-09-03", quantity: 10000, price: 50, charges: 0 }] });
+  const a = annualisedReturn([halved], { openingCapital: 1e6, flows: [], asOf: AT });
+  near(a.closing, 5e5, 0.01);
+  near(a.rate, Math.SQRT1_2 - 1, 1e-6, "halving in two years is −29.3% a year");
+});

@@ -172,6 +172,100 @@ export function cagr(begin, end, years) {
   return Math.pow(end / begin, 1 / years) - 1;
 }
 
+/** A calendar day count that never parses a date string through a timezone. */
+const dayNum = (iso) => {
+  if (iso instanceof Date) return Math.floor(iso.getTime() / 86400000);
+  const s = String(iso).slice(0, 10);
+  const [y, m, d] = s.split("-").map(Number);
+  return y > 0 ? Math.floor(Date.UTC(y, m - 1, d) / 86400000) : NaN;
+};
+
+/** Below this the annualising exponent does the talking, not the trading. */
+const MIN_DAYS = 90;
+
+/**
+ * The annual return, measured — the figure people mean by XIRR or CAGR.
+ *
+ * WHY THIS EXISTS BESIDE "RETURN ON CAPITAL". That one is cumulative: 19% is
+ * 19% whether it took nine months or four years, which is the one thing
+ * anybody actually wants to know. Its own hint has said "Cumulative, not
+ * annualised" since it was written.
+ *
+ * MARKED TO MARKET, which is the decision that matters most here. The closing
+ * value counts open positions at the last price, not at cost, because every
+ * broker and mutual fund statement does — and because a trader holding a book
+ * of winners would otherwise see those winners simply absent from their
+ * return until the day they sold.
+ *
+ * ONE NUMBER, TWO METHODS, AND IT SAYS WHICH.
+ *
+ * XIRR is CAGR generalised to money arriving and leaving at arbitrary dates.
+ * With no deposits or withdrawals in the record the two cash flows are the
+ * opening balance and today's value, and XIRR reduces to CAGR exactly — so
+ * running the solver would be arithmetic theatre. `cagr()` is used there and
+ * the label says CAGR, which is also the honest word for it. Record a
+ * deposit and it becomes a genuine XIRR, money-weighted, and says so.
+ *
+ * REFUSES A SHORT RECORD. Annualising six weeks raises the period return to
+ * the power of eight and prints a number governed by the exponent rather than
+ * the trading: +4% in six weeks reads as +38% a year. Under MIN_DAYS it
+ * returns the reason instead of the figure.
+ */
+export function annualisedReturn(trades, { openingCapital = 0, flows = [], asOf = new Date() } = {}) {
+  const rows = trades || [];
+  const fl = (flows || [])
+    .map((f) => ({ day: dayNum(f.flow_date), date: f.flow_date, amount: n(f.amount) }))
+    .filter((f) => isFinite(f.day) && isFinite(f.amount) && f.amount !== 0)
+    .sort((a, b) => a.day - b.day);
+
+  /* When the money went to work: the first position taken, or the first
+     deposit if that came earlier. Entry dates, not exits — capital is
+     committed when a trade is opened, and measuring from the first SALE
+     would skip however long the first position was held. */
+  const entryDays = rows.map((t) => dayNum(t.entry_date)).filter(isFinite);
+  const startDay = Math.min(
+    ...(entryDays.length ? entryDays : [Infinity]),
+    ...(fl.length ? [fl[0].day] : [Infinity])
+  );
+  const endDay = dayNum(asOf);
+  if (!isFinite(startDay) || !isFinite(endDay)) return { rate: NaN, method: "none" };
+
+  const days = endDay - startDay;
+  const years = days / 365;
+
+  /* Opening balance: the account size plus anything paid in on or before the
+     day the record starts. Those are not intermediate flows — they are what
+     the account began with. */
+  const opening = fl.filter((f) => f.day <= startDay).reduce((a, f) => a + f.amount, 0);
+  const base = n(openingCapital) + opening;
+
+  const realised = rows.reduce((a, t) => a + (isFinite(t.realisedPnl) ? t.realisedPnl : 0), 0);
+  /* The mark, on whatever is still held. Unrealised is NaN on a position with
+     no quote — the app degrades to no mark rather than to zero — and such a
+     position is then carried at cost, which is the conservative reading. */
+  const unrealised = rows.reduce((a, t) => a + (isFinite(t.unrealisedPnl) ? t.unrealisedPnl : 0), 0);
+  const later = fl.filter((f) => f.day > startDay);
+  const closing = base + later.reduce((a, f) => a + f.amount, 0) + realised + unrealised;
+
+  const shape = {
+    years, days, base, closing, realised, unrealised,
+    flows: later.length,
+    marked: rows.some((t) => isFinite(t.unrealisedPnl)),
+  };
+
+  if (!(base > 0)) return { ...shape, rate: NaN, method: "no-capital" };
+  if (days < MIN_DAYS) return { ...shape, rate: NaN, method: "too-short", minDays: MIN_DAYS };
+
+  if (!later.length) return { ...shape, rate: cagr(base, closing, years), method: "cagr" };
+
+  const cf = [
+    { date: new Date(startDay * 86400000), amount: -base },
+    ...later.map((f) => ({ date: f.date, amount: -f.amount })),
+    { date: asOf, amount: closing },
+  ];
+  return { ...shape, rate: xirr(cf), method: "xirr" };
+}
+
 /**
  * Forward expected annual return implied by the system, rather than measured
  * from one realised year: compounding `expectancy × risk%` over N trades.

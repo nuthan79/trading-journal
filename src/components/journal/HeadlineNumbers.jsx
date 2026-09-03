@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
-import { headline } from "@/lib/calc";
-import { rupee, rfmt, pct, days } from "@/lib/format";
+import { headline, annualisedReturn } from "@/lib/calc";
+import { rupee, rfmt, pct, signedPct, days } from "@/lib/format";
 import { hasRealStop } from "@/lib/stops";
 
 /**
@@ -25,10 +25,54 @@ function Cell({ label, value, tone, hint }) {
 
 const sign = (v) => (!isFinite(v) ? "" : v > 0 ? "pos" : v < 0 ? "neg" : "");
 
-export default function HeadlineNumbers({ closed, banking = [], openingCapital, flows = [] }) {
+/** The annualised-return tile, which names its own method. */
+function annualisedCell(a) {
+  const label = a.method === "xirr" ? "XIRR" : "CAGR";
+  if (!isFinite(a.rate)) {
+    return {
+      label: a.method === "xirr" ? "XIRR" : "CAGR",
+      value: "—",
+      hint: a.method === "too-short"
+        ? `Needs ${a.minDays} days of history — annualising a shorter record `
+          + "says more about the arithmetic than about the trading"
+        : a.method === "no-capital"
+        ? "Set your account size in Settings and this fills in"
+        : "Not enough history yet",
+    };
+  }
+  const years = a.years >= 1
+    ? `${a.years.toFixed(1)} years`
+    : `${Math.round(a.days)} days`;
+  return {
+    label,
+    value: signedPct(a.rate * 100),
+    tone: sign(a.rate),
+    hint: a.method === "xirr"
+      ? `Money-weighted over ${years}, counting ${a.flows} deposit`
+        + `${a.flows === 1 ? "" : "s"} or withdrawal${a.flows === 1 ? "" : "s"}`
+        + `${a.marked ? ", open positions at market" : ""}`
+      : `Compounded over ${years}${a.marked ? ", open positions at market" : ""}`
+        + ". No deposits or withdrawals recorded, so this is also the XIRR",
+  };
+}
+
+export default function HeadlineNumbers({ closed, banking = [], all = [], openingCapital, flows = [] }) {
   const h = useMemo(
     () => headline(closed, { openingCapital, flows, banking }),
     [closed, banking, openingCapital, flows]
+  );
+
+  /**
+   * Measured over EVERY position, open ones included.
+   *
+   * Not `closed` and not `banking`: this is the only figure on the block that
+   * asks what the account is worth rather than what the trading produced, and
+   * a position bought last week with no sale in it still holds capital and
+   * still carries a mark.
+   */
+  const ann = useMemo(
+    () => annualisedReturn(all.length ? all : closed, { openingCapital, flows }),
+    [all, closed, openingCapital, flows]
   );
 
   if (!h.n) {
@@ -74,7 +118,21 @@ export default function HeadlineNumbers({ closed, banking = [], openingCapital, 
         { label: "Net P&L", value: rupee(h.netPnl), tone: sign(h.netPnl),
           hint: `After ${rupee(h.charges)} of charges` },
         { label: "Return on capital", value: pct(h.returnOnCapital), tone: sign(h.returnOnCapital),
-          hint: "Cumulative, not annualised" },
+          hint: "Cumulative, not annualised — the tile beside this one annualises it" },
+        /**
+         * THE SAME RETURN, PER YEAR — the figure people ask for by name.
+         *
+         * Labelled by the method actually used, never by the more impressive
+         * word. With no deposits or withdrawals recorded the two cash flows
+         * are the opening balance and today's value, XIRR reduces to CAGR
+         * exactly, and calling it XIRR would be a bigger name for the same
+         * arithmetic. Record a deposit and it becomes a real money-weighted
+         * XIRR and relabels itself.
+         *
+         * A short record gets the reason instead of a number: annualising six
+         * weeks says more about the exponent than about the trading.
+         */
+        annualisedCell(ann),
         { label: "Win rate", value: pct(h.winRateByCount, 0),
           hint: `${h.n} closed trade${h.n === 1 ? "" : "s"}, counted` },
         { label: "Avg gain", value: pct(h.avgGainPct), tone: "pos",
