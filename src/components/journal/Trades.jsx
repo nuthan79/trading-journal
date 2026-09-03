@@ -762,10 +762,17 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
               <tr className="tr-tot">
                 <td colSpan={11}>
                   <b>{totals.n}</b> {totals.n === 1 ? "trade" : "trades"} shown
-                  {/* Only when it differs. On a book with no position straddling
-                      the window the two are the same number, and printing it
-                      twice would be noise. */}
-                  {isFinite(realisedHere) && Math.abs(realisedHere - totals.pnl) > 1 && (
+                  {/* Only when it differs ON SCREEN — the same string as the
+                      total cell renders, not the raw value.
+
+                      Testing the numbers instead was wrong by three orders of
+                      magnitude: a book whose positions barely straddle 1 April
+                      differed by a few hundred rupees, cleared a ₹1 threshold,
+                      and then printed "₹15.26 L of it was realised inside this
+                      window" beside a total of ₹15.26 L. A sentence drawing a
+                      distinction the reader cannot see reads as a bug, and
+                      there is no figure here it could usefully add. */}
+                  {isFinite(realisedHere) && rupee(realisedHere) !== rupee(totals.pnl) && (
                     <span className="tr-tot-win">
                       {rupee(realisedHere)} of it was realised inside this window
                     </span>
