@@ -108,6 +108,9 @@ function holdingsPreview(raw, { brokerId, targets, stopPct }) {
     // no sells. The key is present so the render can stay one component
     // rather than two that drift apart.
     completions: [],
+    // Same reason. A holdings file has its own conflict path for a position
+    // you already hold, which reports the two quantities instead.
+    nearMisses: [],
     summary: {
       positions: out.rows.length,
       symbols: new Set(out.rows.map((r) => r.symbol)).size,
@@ -348,7 +351,7 @@ export default function ImportTrades({
           absent: out.absent,
           // Present and empty so the shared chrome renders. Nothing about a
           // tradebook creates, completes or duplicates a trade.
-          trades: [], completions: [], duplicates: [], conflicts: [],
+          trades: [], completions: [], duplicates: [], conflicts: [], nearMisses: [],
           skippedSections: [], missingColumns: [],
           summary: {
             positions: positions.length,
@@ -890,6 +893,60 @@ export default function ImportTrades({
         </details>
       )}
 
+      {/**
+        * THE DUPLICATE THAT LOOKS LIKE A CLEAN IMPORT.
+        *
+        * These will import — the numbers are fine and nothing here is held
+        * back. What they sit beside is a position of the same name the
+        * journal still has OPEN, under a different entry date, which is what
+        * a buy date typed as the 12th when the note says the 11th looks like
+        * from here. Import it and you own two rows for one position: a closed
+        * one that is right, and an open one that never closes.
+        *
+        * Above the held-back list rather than inside it, because everything
+        * there is waiting on a decision and this is not — say nothing and it
+        * still imports. It is the last thing worth reading before the button.
+        *
+        * No merge button, deliberately. Symbol alone is not identity — buying
+        * the same stock twice is ordinary — so the app cannot know, and a
+        * one-click "yes, same position" would rewrite a date the trader typed
+        * on the strength of a guess. Correcting it by hand IS the check.
+        */}
+      {parsed.nearMisses?.length > 0 && (
+        <details className="im-nearmiss" open>
+          <summary>
+            <AlertTriangle size={11} />{" "}
+            {/* Written out twice rather than assembled from four ternaries —
+                the plural runs through every clause, and the singular built
+                that way read "it will import as separate trades". */}
+            {parsed.nearMisses.length === 1
+              ? "1 position looks like one you already hold open — it will import as a separate trade"
+              : `${parsed.nearMisses.length} positions look like ones you already hold open`
+                + " — they will import as separate trades"}
+          </summary>
+          <div className="im-rejlist">
+            {parsed.nearMisses.slice(0, 40).map((g, i) => (
+              <div key={i}>
+                <b>{g.symbol}</b> bought {g.entryDate} in this file
+                <span className="im-dim">
+                  {" "}· you hold {g.openElsewhere.map((t) => (
+                    `${t.quantity} from ${t.entry_date}`
+                  )).join(", ")}
+                </span>
+              </div>
+            ))}
+            {parsed.nearMisses.length > 40 && (
+              <div className="im-dim">…and {parsed.nearMisses.length - 40} more</div>
+            )}
+            <div className="im-dim" style={{ marginTop: 6 }}>
+              If it&apos;s the same position, fix the entry date on the trade you already
+              have and import this file again — the sells will attach to it instead, keeping
+              its stop and notes. If you really did buy twice, nothing needs doing.
+            </div>
+          </div>
+        </details>
+      )}
+
       {(parsed.skippedSections.length > 0 || parsed.duplicates.length > 0 ||
         parsed.conflicts?.length > 0 || parsed.rejected?.length > 0 ||
         parsed.short?.length > 0 || parsed.absent?.length > 0 ||
@@ -1294,6 +1351,15 @@ export default function ImportTrades({
           font-size: 11.5px; color: var(--ink2); line-height: 1.6;
         }
         .im-completes summary { cursor: pointer; color: #0B6B58; }
+        /* Brass, not red. Nothing is broken and nothing is held back — this is
+           the same "look at this before you commit" the assumed-stop marker
+           uses, and colouring it like the rejected rows would overstate it. */
+        .im-nearmiss {
+          border: 1px solid var(--brass); border-radius: 3px;
+          background: #FBF6EC; padding: 9px 12px; margin-bottom: 12px;
+          font-size: 11.5px; color: var(--ink2); line-height: 1.6;
+        }
+        .im-nearmiss summary { cursor: pointer; color: #8A6420; }
         .im-head {
           display: flex; align-items: flex-end; justify-content: space-between;
           gap: 12px; margin-bottom: 12px; flex-wrap: wrap;

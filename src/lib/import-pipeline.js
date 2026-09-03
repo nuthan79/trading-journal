@@ -356,7 +356,52 @@ export function reconcile(groups, targets, { broker = null } = {}) {
     });
   }
 
-  return { fresh, completions, duplicates, conflicts };
+  /**
+   * A POSITION YOU STILL HOLD, UNDER A DIFFERENT ENTRY DATE.
+   *
+   * Matching is exact on symbol AND entry date, so a buy date typed as the
+   * 12th when the contract note says the 11th does not match — and the group
+   * is inserted as a new trade beside the one already there. The trader is
+   * left with two rows for one position: a closed one that is right, and an
+   * open one that stays open forever, holding stock they no longer own.
+   *
+   * Nothing here changes what gets written. Merging on symbol alone would be
+   * wrong — buying the same stock twice on different days is ordinary — and
+   * silently rewriting a date the trader typed is not the import's decision to
+   * make. So this only says what it sees, and the correction stays a hand
+   * edit: fix the entry date, import again, and the sells attach.
+   *
+   * Only OPEN and part-sold positions qualify. A closed trade with a different
+   * entry date is far more likely to be a genuinely earlier round-trip in the
+   * same name, and flagging those would bury the real finding in noise.
+   *
+   * Computed after the loop so `claimed` is final — a target another group in
+   * this same file legitimately completed is not a near miss.
+   */
+  const stillOpen = new Map();
+  for (const t of targets || []) {
+    if (t.status === "closed") continue;
+    if (!stillOpen.has(t.symbol)) stillOpen.set(t.symbol, []);
+    stillOpen.get(t.symbol).push(t);
+  }
+
+  const flagged = fresh.map((g) => {
+    const open = (stillOpen.get(g.symbol) || [])
+      .filter((t) => !claimed.has(t.id))
+      // The same broker test the matching uses. Two accounts holding the same
+      // stock is not a near miss, it is two positions.
+      .filter((t) => sameBroker(t.broker, broker))
+      .filter((t) => t.entry_date !== g.entryDate);
+    if (!open.length) return g;
+    return {
+      ...g,
+      openElsewhere: open.map((t) => ({
+        id: t.id, entry_date: t.entry_date, quantity: t.quantity, status: t.status,
+      })),
+    };
+  });
+
+  return { fresh: flagged, completions, duplicates, conflicts };
 }
 
 /**
@@ -435,6 +480,11 @@ export function assembleImport(parsed, { targets, batchId, exchange, assumeStopP
     duplicates,
     rejected,
     conflicts,
+    /* Groups that WILL be inserted, next to a position of the same name the
+       journal still has open. Drawn from `fresh` rather than reconcile's, so a
+       group held back as rejected is not warned about — nothing is written for
+       it, so it cannot duplicate anything. */
+    nearMisses: fresh.filter((g) => g.openElsewhere?.length),
     // Counted so the preview can say what it did rather than leaving a
     // stopless, R-less trade to be discovered later.
     freeShares: fresh.filter(isFreeShares).length,
