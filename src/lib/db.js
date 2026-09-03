@@ -244,6 +244,8 @@ const isMissingTable = (error) =>
 const MIGRATION_FOR_COLUMN = {
   broker: "019_trade_broker.sql",
   breakeven_ack_at: "017_breakeven_ack.sql",
+  possible_duplicate_of: "046_duplicate_flag.sql",
+  duplicate_ack_at: "046_duplicate_flag.sql",
   acquisition: "013_zero_cost_shares.sql",
   stop_source: "011_stop_source.sql",
   initial_stop_loss: "007_partial_exits.sql",
@@ -933,6 +935,32 @@ export async function acknowledgeBreakeven(id) {
     throw new Error("That position isn't open any more — reload and try again.");
   }
   track("breakeven_acknowledged");
+  return data[0];
+}
+
+/**
+ * "I checked these two — they are different positions."
+ *
+ * The only thing that clears the duplicate flag by choice. The other way it
+ * clears is deleting the position it points at, which nulls the pointer on
+ * its own; both are the trader having dealt with it, and neither is the app
+ * deciding.
+ *
+ * Not guarded to open trades, unlike the breakeven acknowledgement. The row
+ * carrying this flag is usually the CLOSED one — the import that arrived
+ * beside a holding — so refusing on closed would refuse the whole case.
+ */
+export async function acknowledgeDuplicate(id) {
+  const { data, error } = await supabase
+    .from("trades")
+    .update({ duplicate_ack_at: new Date().toISOString() })
+    .eq("id", id)
+    .select("id");
+  if (error) throw new Error(migrationHint(error) || error.message);
+  if (!data?.length) {
+    throw new Error("That trade is no longer here — reload and try again.");
+  }
+  track("duplicate_acknowledged");
   return data[0];
 }
 

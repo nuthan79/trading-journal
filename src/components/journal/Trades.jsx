@@ -2,13 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { matchesEdgeFilter, describeEdgeFilter } from "@/lib/edge";
-import { Plus, Pencil, Trash2, Download, Image as ImageIcon, X, Check } from "lucide-react";
+import { Plus, Pencil, Trash2, Download, Image as ImageIcon, X, Check, Flag } from "lucide-react";
 import { rupee, rfmt, pct, signedPct, exportFilename } from "@/lib/format";
 import { downloadCsv } from "@/lib/csv";
 import PositionDetail from "./PositionDetail";
 import { SETUP_FIELDS } from "@/lib/gaps";
 import { noStopOnRecord, hasRealStop, canHaveStop } from "@/lib/stops";
-import { isOpen, isClosed, isPartial, realisationEvents } from "@/lib/positions";
+import { isOpen, isClosed, isPartial, isFlagged, realisationEvents } from "@/lib/positions";
 import { matches, describeFilter, seedFromTab, sortForFilter,
          realisedWindow } from "@/lib/filters";
 import SavedViews from "./SavedViews";
@@ -46,7 +46,8 @@ const exportCsv = (rows, label, journalName) =>
 export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNew,
                                  onAttachChart, onRemoveChart, onSaveStop,
                                  filters = [], onSaveView, onDeleteView, journalName = "",
-                                 mistake = "", missing = "", edge = null, onClearFilter }) {
+                                 mistake = "", missing = "", edge = null, onClearFilter,
+                                 onAcknowledgeDuplicate }) {
   const [filter, setFilter] = useState("all");
   const [q, setQ] = useState("");
   const [sort, setSort] = useState({ k: "entry_date", dir: -1 });
@@ -335,6 +336,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
     if (filter === "winners") r = r.filter((t) => isFinite(t.pnl) && t.pnl > 0);
     if (filter === "losers") r = r.filter((t) => isFinite(t.pnl) && t.pnl <= 0);
     if (filter === "nostop") r = r.filter(noStopOnRecord);
+    if (filter === "flagged") r = r.filter(isFlagged);
     /* Applied to the same derived rows the table draws, which is what makes a
        rule on pnl, r, slPct or heldDays possible at all — none of those are
        columns, they come out of derivePosition. */
@@ -405,6 +407,26 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
    * produce, and it matches Performance by period to the rupee because it is
    * built from the same realisation events.
    */
+  /**
+   * The duplicate flag, and what it points at.
+   *
+   * Looked up out of `all` rather than joined in the query: the pair is two
+   * rows of the same table and both are already here, so a join would be a
+   * second trip for something the screen is holding.
+   */
+  const byId = useMemo(() => new Map(all.map((t) => [t.id, t])), [all]);
+  const flaggedCount = useMemo(() => all.filter(isFlagged).length, [all]);
+  const dupeNote = (t) => {
+    const other = byId.get(t.possible_duplicate_of);
+    if (!other) {
+      return "This may be a second copy of a position you already had. "
+        + "Open it to check, then clear the flag.";
+    }
+    return `Possibly the same position as your ${isOpen(other) ? "open " : ""}`
+      + `${other.symbol} bought ${other.entry_date} (${other.quantity} shares). `
+      + "Open this trade to compare them and clear the flag.";
+  };
+
   const dateWindow = useMemo(() => (view ? realisedWindow(view) : null), [view]);
   const realisedHere = useMemo(() => {
     if (!dateWindow) return NaN;
@@ -526,6 +548,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
             * other filters over trades.
             */}
           {[["all","All"],["open","Open"],["closed","Closed"],["winners","Winners"],["losers","Losers"],
+            ...(flaggedCount > 0 ? [["flagged", `Flagged · ${flaggedCount}`]] : []),
             ...(noStopCount > 0 ? [["nostop", `No stop · ${noStopCount}`]] : [])].map(([id,l]) => (
             <button key={id} data-on={view ? 0 : filter === id ? 1 : 0}
                     onClick={() => chooseFilter(id)}>{l}</button>
@@ -640,6 +663,15 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                     {(t.mistakes || []).length > 0 && (
                       <span title={t.mistakes.join(", ")}
                             style={{ color: "var(--brass)", fontSize: 11, marginLeft: 4 }}>▲</span>)}
+                    {/* Red, and next to the name rather than in a column of its
+                        own: this is a question about which row you are looking
+                        at, so it belongs on the row's identity. Clicking the
+                        symbol opens the panel that can settle it. */}
+                    {isFlagged(t) && (
+                      <span title={dupeNote(t)} style={{ color: "var(--short)", fontSize: 11,
+                                                         marginLeft: 4, cursor: "help" }}>
+                        <Flag size={10} strokeWidth={2.5} style={{ verticalAlign: "-1px" }} />
+                      </span>)}
                   </td>
                   <td className="mono" style={{ fontSize: 12 }}>{t.entry_date}</td>
                   <td className="mono" style={{ fontSize: 12, color: t.exit_date ? "inherit" : "var(--ink3)" }}>
@@ -826,6 +858,10 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
         <PositionDetail
           row={rows[detailAt]}
           diary={diary}
+          /* The position the flag points at, which may well be filtered out of
+             `rows` — it is looked up in `all` for exactly that reason. */
+          twin={byId.get(rows[detailAt]?.possible_duplicate_of) || null}
+          onAcknowledgeDuplicate={onAcknowledgeDuplicate}
           onAttachChart={onAttachChart}
           onRemoveChart={onRemoveChart}
           onClose={() => setDetailId(null)}

@@ -3,7 +3,7 @@
 import { Suspense, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Trades from "@/components/journal/Trades";
-import { saveStops } from "@/lib/db";
+import { saveStops, acknowledgeDuplicate } from "@/lib/db";
 import { useJournal } from "../JournalContext";
 
 /**
@@ -51,6 +51,23 @@ function TradesInner() {
           openEditTrade, openExitTrade, removeTrade, openNewTrade,
           reloadTrades, say, filters, saveView, removeView, profile } = useJournal();
 
+  /*
+    Recording that the pair was looked at, and nothing else. Neither row is
+    touched — no date, no quantity, no P&L — because whichever of them was
+    wrong is a correction only the trader can make, and this is the note
+    saying they made it or decided none was needed.
+  */
+  const ackDuplicate = async (id) => {
+    try {
+      await acknowledgeDuplicate(id);
+      await reloadTrades();
+      say("Flag cleared.");
+    } catch (e) {
+      say(e.message || "Could not clear the flag.");
+      throw e;
+    }
+  };
+
   return (
     <Trades
       all={all}
@@ -63,6 +80,7 @@ function TradesInner() {
       missing={missing}
       edge={edge}
       onClearFilter={() => router.push("/trades")}
+      onAcknowledgeDuplicate={ackDuplicate}
       onAttachChart={saveDiaryEntry}
       onRemoveChart={removeChartFromEntry}
       /**

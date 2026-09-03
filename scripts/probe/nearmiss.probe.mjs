@@ -1,5 +1,6 @@
 import { test, eq, ok } from "./harness.mjs";
-import { reconcile, assembleImport } from "@/lib/import-pipeline";
+import { reconcile, assembleImport, toTradeRows } from "@/lib/import-pipeline";
+import { isFlagged } from "@/lib/positions";
 
 /**
  * THE ONE-DAY TYPO THAT LEAVES A POSITION OPEN FOREVER.
@@ -256,4 +257,39 @@ test("selling more than the holdings snapshot knew about resizes it", () => {
   eq(out.completions.length, 1);
   eq(out.completions[0].grow.quantity, 800, "the position was bigger than recorded");
   eq(out.completions[0].adopts.to, "2025-01-10");
+});
+
+/* ------------- the flag that outlives the preview ------------------------ */
+
+test("the finding is written onto the trade, not just announced", () => {
+  const gs = [{ symbol: "ABC", entryDate: "2026-03-11", quantity: 100, entryPrice: 100,
+    exitDate: "2026-06-10", exitPrice: 130, profit: 3000, charges: 100, lots: 1,
+    tranches: [{ exit_date: "2026-06-10", quantity: 100, price: 130, charges: 100 }] }];
+  const out = reconcile(gs, [held("ABC", "2026-03-12")]);
+  const rows = toTradeRows(out.fresh, { batchId: "b1" });
+  eq(rows[0].possible_duplicate_of, "ABC-2026-03-12",
+    "the row carries which position it may be a copy of");
+
+  /* And a clean import carries nothing, so the column stays meaningful. */
+  const clean = toTradeRows(reconcile(gs, []).fresh, { batchId: "b1" });
+  eq(clean[0].possible_duplicate_of, null);
+});
+
+test("acknowledging is what clears the flag, not the pointer going away", () => {
+  /*
+    Both halves matter. The pointer is kept as the record of what was noticed;
+    only the acknowledgement hides it. Testing the pointer alone would relight
+    every flag the trader has ever dismissed, on every reload.
+  */
+  const flagged = { possible_duplicate_of: "x", duplicate_ack_at: null };
+  const acked = { possible_duplicate_of: "x", duplicate_ack_at: "2026-09-03T10:00:00Z" };
+  const clean = { possible_duplicate_of: null, duplicate_ack_at: null };
+  /* The third way it ends: 046 nulls the pointer when the position it names is
+     deleted, which is the trader resolving it by removing the copy. */
+  const deleted = { possible_duplicate_of: null, duplicate_ack_at: null };
+  ok(isFlagged(flagged), "flagged");
+  ok(!isFlagged(acked), "acknowledged");
+  ok(!isFlagged(clean), "never flagged");
+  ok(!isFlagged(deleted), "the twin was deleted");
+  ok(!isFlagged(null) && !isFlagged(undefined), "and no row is not a flag");
 });

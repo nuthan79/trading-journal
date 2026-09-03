@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Pencil, Trash2, X, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, LogOut, ImagePlus } from "lucide-react";
+import { Pencil, Trash2, X, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, LogOut, ImagePlus, Flag, Check } from "lucide-react";
 import { rupee, rfmt, pct, signedPct } from "@/lib/format";
 import { chartUrl } from "@/lib/db";
 import ChartViewer from "./ChartViewer";
 import { resolveTradingViewChart } from "@/lib/charts";
+import { isFlagged, isOpen } from "@/lib/positions";
 
 /**
  * One position, opened up.
@@ -31,7 +32,8 @@ const daysBetween = (a, b) => {
   return isFinite(x) && isFinite(y) ? Math.round((y - x) / 86400000) : NaN;
 };
 
-export default function PositionDetail({ row, diary = [], onAttachChart, onRemoveChart, onClose, onEdit, onExit, onDelete, onPrev, onNext }) {
+export default function PositionDetail({ row, diary = [], twin = null, onAcknowledgeDuplicate,
+  onAttachChart, onRemoveChart, onClose, onEdit, onExit, onDelete, onPrev, onNext }) {
   /**
    * The diary entries written against this trade, newest first.
    *
@@ -261,6 +263,43 @@ export default function PositionDetail({ row, diary = [], onAttachChart, onRemov
         </div>
 
         <div className="pd-body">
+          {/*
+            THE FLAG, WHERE THERE IS ROOM TO SETTLE IT.
+
+            The table can only carry a marker and a tooltip. This is the one
+            place both positions can be described side by side, which is what
+            the question actually needs: same stock, two entry dates, and only
+            the trader knows whether that was one buy mistyped or two real
+            purchases.
+
+            Deliberately not a merge button. The app cannot tell these apart,
+            and a one-click "same position" would rewrite an entry date on a
+            guess — the same reason the /stops queue makes you retype a date
+            rather than offering to accept the one it invented.
+          */}
+          {isFlagged(row) && (
+            <div className="pd-dupe">
+              <div className="pd-dupe-h">
+                <Flag size={12} strokeWidth={2.5} /> Check this against a position you already had
+              </div>
+              <p>
+                This came in from a broker file. {twin
+                  ? <>You also have <b>{twin.symbol}</b> bought <b>{day(twin.entry_date)}</b>
+                    {" "}({twin.quantity} shares{isOpen(twin) ? ", still open" : ""}), which the
+                    import could not match to it because the entry dates differ.</>
+                  : <>A position of the same name was already here under a different entry date.</>}
+                {" "}If those are one position, the buy date on the older row is wrong — correct
+                it there and delete whichever row is the copy. If you really did buy twice,
+                nothing needs doing.
+              </p>
+              {onAcknowledgeDuplicate && (
+                <button className="btn ghost sm" onClick={() => onAcknowledgeDuplicate(row.id)}>
+                  <Check size={12} />I&apos;ve checked — these are two positions
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Who, how long, and what it has come to */}
           <div className="pd-card">
             <div className="pd-name">
@@ -549,6 +588,21 @@ export default function PositionDetail({ row, diary = [], onAttachChart, onRemov
           .pd-nav { display: flex; gap: 2px; align-items: center; }
           .pd-nav .x:disabled { opacity: 0.25; cursor: default; }
           .pd-body { padding: 18px 20px 20px; display: flex; flex-direction: column; gap: 14px; }
+
+          /* Red, because it asks a question about whether this row should
+             exist at all — a different register from the brass advisories
+             elsewhere, which qualify a number rather than the row. */
+          .pd-dupe {
+            border: 1px solid var(--short); border-radius: 3px;
+            background: #FBF0ED; padding: 11px 13px;
+            display: flex; flex-direction: column; gap: 8px; align-items: flex-start;
+          }
+          .pd-dupe-h {
+            display: flex; align-items: center; gap: 6px;
+            font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+            text-transform: uppercase; color: #7A2E1C;
+          }
+          .pd-dupe p { margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--ink2); }
 
           .pd-card {
             border: 1px solid var(--rule); border-radius: 3px;

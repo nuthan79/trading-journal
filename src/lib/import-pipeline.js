@@ -161,6 +161,21 @@ export function toTradeRows(groups, { batchId, exchange = "NSE", assumeStopPct =
     imported: true,
     import_batch: batchId,
 
+    /*
+      THE FINDING, WRITTEN DOWN RATHER THAN ONLY ANNOUNCED.
+
+      Set when this group matched nothing while a position of the same name
+      sits open in the journal under a different entry date — the shape of a
+      buy date typed one day out. The preview says so before the button; this
+      is what makes it survive the button, because a clean-looking import is
+      exactly when nobody re-reads the preview.
+
+      Advisory. It changes no quantity, date or P&L, and the app never merges
+      on it: buying the same stock twice is ordinary and only the trader can
+      tell these apart.
+    */
+    possible_duplicate_of: g.openElsewhere?.[0]?.id || null,
+
     // Written to trade_exits, not to the trade row. The database trigger
     // recomputes status, exit_date and exit_price from these, so the flat
     // columns above are a starting value rather than the final word.

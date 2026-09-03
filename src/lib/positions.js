@@ -74,6 +74,21 @@ export const isClosed = (t) => !!t && t.status === "closed";
 export const isPartial = (t) => !!t && t.status === "partial";
 
 /**
+ * An import the app noticed might be a second copy of a position already here.
+ *
+ * Two conditions, and both have to be read together — which is exactly why
+ * this is one function rather than the test written out wherever it is needed.
+ * A trade keeps `possible_duplicate_of` forever as a record of what was
+ * noticed; the flag stops showing once it is acknowledged. Testing only the
+ * pointer would relight every flag anybody has ever dismissed.
+ *
+ * The pointer also nulls itself when the position it names is deleted (046),
+ * which is the other way this resolves: the trader removed the duplicate.
+ */
+export const isFlagged = (t) =>
+  !!t?.possible_duplicate_of && !t?.duplicate_ack_at;
+
+/**
  * A closed position broken into the moments it actually paid out.
  *
  * WHY THIS EXISTS. `exit_date` on a trade is its LAST tranche — migration 007
