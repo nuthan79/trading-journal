@@ -560,6 +560,46 @@ export function seedFromTab(tab) {
   }
 }
 
+/**
+ * The date window a view asks about, if it asks about one at all.
+ *
+ * A trade filter selects whole positions, so a window on the dates cannot make
+ * the ROWS partial — the table would stop being a table of trades. But it can
+ * tell the footer how much of the money on screen actually landed inside the
+ * window, which is the number somebody is looking for when they filter by a
+ * financial year and then read the total.
+ *
+ * ONLY THE SELL DATES. A window on `entry_date` bounds when positions were
+ * OPENED and says nothing about when money arrived, so asking it for a
+ * realised figure would produce a number that looks like an answer and is not.
+ *
+ * Returns null unless exactly one such rule defines the window: two of them,
+ * or an OR, and "inside the window" stops having one meaning.
+ */
+export function realisedWindow(filter) {
+  if (!filter || filter.conjunction === "or") return null;
+  const dates = (filter.rules || [])
+    .filter(isComplete)
+    .filter((r) => r.field === "exit_date" || r.field === "soldOn");
+  if (dates.length !== 1) return null;
+
+  const r = dates[0];
+  if (r.op === "within") {
+    const w = windowFor(r.value);
+    return w ? { from: w[0], to: w[1] } : null;
+  }
+  if (r.op === "between") {
+    const a = dayIso(r.value), b = dayIso(r.value2);
+    if (!a || !b) return null;
+    return a <= b ? { from: a, to: b } : { from: b, to: a };
+  }
+  /* Open-ended is still a window; the sentinels sort correctly as text, which
+     is how every date comparison in this file works. */
+  if (r.op === "after") return { from: dayIso(r.value), to: "9999-12-31" };
+  if (r.op === "before") return { from: "0000-01-01", to: dayIso(r.value) };
+  return null;
+}
+
 export const emptyRule = () => ({ field: "", op: "", value: "", value2: "" });
 
 export const emptyFilter = () => ({ name: "", conjunction: "and", rules: [emptyRule()] });

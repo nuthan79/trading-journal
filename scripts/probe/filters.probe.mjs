@@ -5,7 +5,7 @@ import { test, eq, ok } from "./harness.mjs";
 import {
   FIELDS, fieldOf, opsFor, arityOf, matchesRule, matches, isComplete,
   windowFor, describeFilter, suggestName, seedFromTab, withField, withOp,
-  sortForFilter,
+  sortForFilter, realisedWindow,
 } from "@/lib/filters";
 
 const T = (o = {}) => ({
@@ -383,4 +383,41 @@ test("'sold on' asks about every sell; 'exit date' asks about the last one", () 
      match everything and look correct. */
   eq(matchesRule(split, { ...fy2425("soldOn"), op: "after", value: "2030-01-01" }), false,
      "soldOn is matching everything — it is falling through to the unknown-field path");
+});
+
+test("a view's date window is read only from the SELL dates", () => {
+  /* The footer uses this to say how much of the money on screen landed inside
+     the window. A window on entry_date bounds when positions were OPENED and
+     says nothing about when money arrived — asking it for a realised figure
+     would produce a number that looks like an answer and is not. */
+  const V = (rules, conjunction = "and") => ({ rules, conjunction });
+  const between = (field) => ({ field, op: "between",
+    value: "2025-04-01", value2: "2026-03-31" });
+
+  eq(JSON.stringify(realisedWindow(V([between("exit_date")]))),
+     '{"from":"2025-04-01","to":"2026-03-31"}');
+  eq(JSON.stringify(realisedWindow(V([between("soldOn")]))),
+     '{"from":"2025-04-01","to":"2026-03-31"}');
+  eq(realisedWindow(V([between("entry_date")])), null, "entry dates bound nothing here");
+  eq(realisedWindow(V([{ field: "r", op: "gt", value: 3 }])), null);
+
+  /* A reversed range still reads as one, the same as the matcher. */
+  eq(JSON.stringify(realisedWindow(V([{ field: "exit_date", op: "between",
+      value: "2026-03-31", value2: "2025-04-01" }]))),
+     '{"from":"2025-04-01","to":"2026-03-31"}');
+
+  /* Open-ended is still a window. */
+  ok(realisedWindow(V([{ field: "exit_date", op: "after", value: "2025-04-01" }])).to > "2100");
+  ok(realisedWindow(V([{ field: "exit_date", op: "before", value: "2026-03-31" }])).from < "1900");
+
+  /* Ambiguous cases give nothing rather than a guess: two windows, or an OR
+     where "inside the window" stops having one meaning. */
+  eq(realisedWindow(V([between("exit_date"), between("soldOn")])), null, "two windows");
+  eq(realisedWindow(V([between("exit_date")], "or")), null, "an OR");
+  eq(realisedWindow(V([{ field: "exit_date", op: "between", value: "", value2: "" }])), null,
+     "an unfinished rule is not a window");
+  eq(realisedWindow(null), null);
+
+  /* And it must not fire on a rule that has no window at all. */
+  eq(realisedWindow(V([{ field: "exit_date", op: "empty" }])), null);
 });

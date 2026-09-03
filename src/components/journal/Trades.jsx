@@ -8,8 +8,9 @@ import { downloadCsv } from "@/lib/csv";
 import PositionDetail from "./PositionDetail";
 import { SETUP_FIELDS } from "@/lib/gaps";
 import { noStopOnRecord, hasRealStop, canHaveStop } from "@/lib/stops";
-import { isOpen, isClosed, isPartial } from "@/lib/positions";
-import { matches, describeFilter, seedFromTab, sortForFilter } from "@/lib/filters";
+import { isOpen, isClosed, isPartial, realisationEvents } from "@/lib/positions";
+import { matches, describeFilter, seedFromTab, sortForFilter,
+         realisedWindow } from "@/lib/filters";
 import SavedViews from "./SavedViews";
 import { SHOW_CHART_WALL } from "@/lib/flags";
 import ChartWall from "./ChartWall";
@@ -386,6 +387,44 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
     return parts.join(" ") || "all trades";
   }, [view, mistake, missingField, edgeDesc, filter, q]);
 
+  /**
+   * HOW MUCH OF WHAT IS ON SCREEN ACTUALLY LANDED IN THE WINDOW.
+   *
+   * A row is a POSITION and a position has one P&L, so filtering by a date
+   * range cannot make the rows partial — PGEL sold across two financial years
+   * still shows its whole result, because that is what the position made. The
+   * footer therefore totals more than the window contains: on one book,
+   * ₹15.67 L against the ₹10.50 L the period table reports for the same year.
+   *
+   * Neither figure is wrong. They answer different questions — "what did the
+   * positions I closed in this window make, over their whole lives" versus
+   * "how much money arrived in this window" — and only the second is what
+   * somebody filtering by a financial year is usually after.
+   *
+   * So the number they wanted sits under the one the table can honestly
+   * produce, and it matches Performance by period to the rupee because it is
+   * built from the same realisation events.
+   */
+  const dateWindow = useMemo(() => (view ? realisedWindow(view) : null), [view]);
+  const realisedHere = useMemo(() => {
+    if (!dateWindow) return NaN;
+    let sum = 0;
+    for (const t of rows) {
+      const evs = realisationEvents(t);
+      if (evs.length) {
+        for (const e of evs) {
+          if (e.date >= dateWindow.from && e.date <= dateWindow.to) sum += e.pnl;
+        }
+      } else if (isFinite(t.pnl)) {
+        /* No tranches to split — it counts whole, on its own exit date, which
+           is where it would have counted before any of this. */
+        const d = String(t.exit_date || "").slice(0, 10);
+        if (d && d >= dateWindow.from && d <= dateWindow.to) sum += t.pnl;
+      }
+    }
+    return sum;
+  }, [rows, dateWindow]);
+
   const totals = useMemo(() => {
     const pnl = rows.map((t) => t.pnl).filter(isFinite);
     const rs = rows.map((t) => t.r).filter(isFinite);
@@ -723,6 +762,14 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
               <tr className="tr-tot">
                 <td colSpan={11}>
                   <b>{totals.n}</b> {totals.n === 1 ? "trade" : "trades"} shown
+                  {/* Only when it differs. On a book with no position straddling
+                      the window the two are the same number, and printing it
+                      twice would be noise. */}
+                  {isFinite(realisedHere) && Math.abs(realisedHere - totals.pnl) > 1 && (
+                    <span className="tr-tot-win">
+                      {rupee(realisedHere)} of it was realised inside this window
+                    </span>
+                  )}
                 </td>
                 <td className={`num ${totals.withPnl === 0 ? "" : totals.pnl >= 0 ? "pos" : "neg"}`}
                     title={totals.withPnl < totals.n
@@ -818,6 +865,11 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
           font-size: 12px; padding-top: 8px;
         }
         .tr-tot b { font-weight: 500; }
+        /* Beside the count rather than under the money: the cell it explains
+           is right-aligned and narrow, and the count's cell is eleven columns
+           of empty space that already carries the sentence about what is on
+           screen. */
+        .tr-tot-win { margin-left: 10px; color: var(--ink3); font-size: 11px; }
         /* Under the figure, not beside it — inline, it pushed a right-aligned
            column out of true with the R values above it. */
         .tr-tot-sub {
