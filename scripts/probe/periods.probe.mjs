@@ -194,3 +194,51 @@ test("periods sum to the book even with awkward positions in it", () => {
   near(headline(book, { openingCapital: 5e6, flows: [] }).netPnl, bookPnl, 0.01,
        "headline and the period rows disagree");
 });
+
+test("a sell pays its own charge, not an averaged one", () => {
+  /* WABAG, from the real book: three sells carrying ₹162, ₹97.17 and ₹24.86.
+     Spreading the ₹284.03 total by quantity sums correctly and moves ₹7.55 off
+     the first sell onto the other two — so the period tables and the trade
+     detail panel would report different money for the same tranche, quietly,
+     for ever. Summing to the whole is necessary and not sufficient. */
+  const t = { symbol: "WABAG", side: "long", status: "closed",
+    entry_date: "2022-12-01", entry_price: 330.93, quantity: 196,
+    stop_loss: null, stop_source: "none", charges: 0,
+    exits: [
+      { exit_date: "2025-01-29", quantity: 117, price: 1339.00, charges: 162 },
+      { exit_date: "2025-06-25", quantity: 63, price: 1484.80, charges: 97.17 },
+      { exit_date: "2025-07-18", quantity: 16, price: 1498.30, charges: 24.86 }] };
+  const w = { ...t, ...derivePosition(t, 5e6), status: "closed", exits: t.exits };
+  const evs = realisationEvents(w);
+
+  /* Each sell, exactly as the detail panel computes it: gross less its own. */
+  t.exits.forEach((e, i) => {
+    near(evs[i].pnl, (e.price - 330.93) * e.quantity - e.charges, 0.005,
+         `sell ${i + 1} does not match its own charge`);
+  });
+  near(evs.reduce((a, e) => a + e.pnl, 0), w.realisedPnl, 0.005, "and they still sum");
+
+  /* The FY split this produces — the reason any of it matters. */
+  const fy2425 = evs.filter((e) => e.date < "2025-04-01")
+                    .reduce((a, e) => a + e.pnl, 0);
+  const fy2526 = evs.filter((e) => e.date >= "2025-04-01")
+                    .reduce((a, e) => a + e.pnl, 0);
+  near(fy2425, 117782.19, 1, "the January sell belongs to FY24-25");
+  near(fy2526, 91249.70, 1, "only June and July land in FY25-26");
+  near(fy2425 + fy2526, w.realisedPnl, 0.005);
+});
+
+test("a trade-level charge with nothing on the tranches is still spread", () => {
+  /* The other half: an entry-side or legacy charge belongs to no single sell,
+     so it goes by quantity — and the parts still sum. */
+  const t = { symbol: "X", side: "long", status: "closed", entry_date: "2024-05-01",
+    entry_price: 100, quantity: 100, stop_loss: 93, stop_source: "recorded",
+    charges: 500,
+    exits: [{ exit_date: "2025-06-10", quantity: 40, price: 130, charges: 0 },
+            { exit_date: "2025-07-10", quantity: 60, price: 140, charges: 0 }] };
+  const w = { ...t, ...derivePosition(t, 5e6), status: "closed", exits: t.exits };
+  const evs = realisationEvents(w);
+  near(evs[0].pnl, (130 - 100) * 40 - 200, 0.005, "40% of the position, 40% of the charge");
+  near(evs[1].pnl, (140 - 100) * 60 - 300, 0.005);
+  near(evs[0].pnl + evs[1].pnl, w.realisedPnl, 0.005);
+});

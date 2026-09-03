@@ -84,13 +84,13 @@ export const isPartial = (t) => !!t && t.status === "partial";
  * never wrong, only the buckets, which is exactly the kind of wrong that
  * survives a reconciliation.
  *
- * THE TRANCHES SUM TO THE POSITION, EXACTLY. Each event carries the gross on
- * its own shares, less its own charges, less a pro-rata slice of the trade's
- * position-level `charges` — the entry-side and legacy figure, which belongs
- * to no single sell. Split by quantity so the parts add back to `realisedPnl`
- * to the rupee; anything else would make a year's rows stop summing to the
- * all-time total, and that total is the one thing three screens already agree
- * on.
+ * THE TRANCHES SUM TO THE POSITION, EXACTLY, AND EACH ONE IS RIGHT ON ITS OWN.
+ * Two different requirements, and the second is easy to lose while satisfying
+ * the first — see the note on the charge below. The parts must add back to
+ * `realisedPnl` to the rupee, or a year's rows stop summing to the all-time
+ * total, which is the one figure three screens already agree on. And each part
+ * must match what the trade detail panel shows for that same sell, or the
+ * periods and the drill-down disagree with no way to tell which is right.
  *
  * R per tranche is the tranche's P&L over the position's 1R. Risk is fixed at
  * entry for the whole position, so these sum to `realisedR` with no weighting
@@ -122,19 +122,31 @@ export function realisationEvents(t) {
   const grossSum = sum(gross);
 
   /**
-   * THE CHARGE IS DERIVED FROM THE POSITION, NOT READ OFF IT.
+   * EACH SELL PAYS ITS OWN CHARGE. ONLY WHAT IS LEFT OVER IS SPREAD.
    *
-   * The first version read `t.charges` and subtracted each tranche's own —
-   * which double-counted, because on a DERIVED trade `charges` has already
-   * been replaced by the total of both. Thirty rupees went missing from a
-   * fixture and would have gone missing from every real book.
+   * The total is derived rather than read — grossSum − realisedPnl is what the
+   * position actually paid, whatever `charges` means on the object handed in,
+   * which on a DERIVED trade is the sum of both kinds. Reading that field
+   * directly is what made the first version subtract exit charges twice.
    *
-   * grossSum − realisedPnl is what the position actually paid in charges,
-   * whatever any field says, so the parts add back to the whole by
-   * construction rather than by agreement. The last tranche takes the
-   * remainder so the sum is exact to the paisa instead of nearly.
+   * But deriving the total is not a licence to forget the parts. The second
+   * version spread the whole thing pro-rata by quantity, which sums correctly
+   * and is WRONG per sell: WABAG's three tranches carry ₹162, ₹97.17 and
+   * ₹24.86 of their own, and spreading ₹284.03 by quantity moved ₹7.55 off the
+   * first sell onto the other two. The trade detail panel shows each sell's
+   * real charge, so the periods and the drill-down would have disagreed about
+   * the same tranche by a few rupees, for ever, with no way to tell which was
+   * right.
+   *
+   * So a tranche pays its own charge, and only the REMAINDER — the entry-side
+   * and legacy figure on the trade row, which belongs to no single sell — is
+   * spread by quantity. The last tranche takes what is left of it, so the sum
+   * is exact to the paisa. When every charge is already on the tranches, as it
+   * is on an imported book, the remainder is zero and each sell is untouched.
    */
   const chargeTotal = grossSum - total;
+  const ownSum = sum(exits.map((e) => n(e.charges) || 0));
+  const spare = chargeTotal - ownSum;
   const qtyOut = sum(exits.map((e) => n(e.quantity) || 0));
   const risk = n(t.riskAmt);
 
@@ -142,10 +154,10 @@ export function realisationEvents(t) {
   return exits.map((e, i) => {
     const q = n(e.quantity) || 0;
     const last = i === exits.length - 1;
-    const chg = last ? chargeTotal - allocated
-      : chargeTotal * (qtyOut > 0 ? q / qtyOut : 1 / exits.length);
-    allocated += chg;
-    const pnl = gross[i] - chg;
+    const extra = last ? spare - allocated
+      : spare * (qtyOut > 0 ? q / qtyOut : 1 / exits.length);
+    allocated += extra;
+    const pnl = gross[i] - (n(e.charges) || 0) - extra;
     return {
       date: String(e.exit_date).slice(0, 10),
       pnl,
