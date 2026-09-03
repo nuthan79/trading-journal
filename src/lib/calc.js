@@ -267,6 +267,47 @@ export function annualisedReturn(trades, { openingCapital = 0, flows = [], asOf 
 }
 
 /**
+ * The two figures that qualify an annual return.
+ *
+ * A rate on its own says where you ended up and nothing about what it cost or
+ * what it was earned on. These are the two questions people actually mean by
+ * "is that realistic".
+ *
+ * PER UNIT OF DRAWDOWN — the MAR ratio. "For every 1% the account gave back,
+ * it earned this much a year." Around 0.5 is respectable over a full cycle and
+ * anything much past 1 deserves suspicion, which makes it the fastest way to
+ * see that a big return was bought with a big hole.
+ *
+ * Its denominator is honest about its own limits and the caller must say so:
+ * `equityCurve` steps on realisations, so the drawdown it measures is of
+ * CLOSED-TRADE equity. A position that halved and recovered before it was
+ * sold never appears in it. That understates the pain and therefore flatters
+ * this ratio — the fix is a daily mark-to-market equity curve, which needs
+ * historical prices the journal does not keep for every position.
+ *
+ * ON CAPITAL EMPLOYED — against the money actually at work rather than the
+ * figure typed into Settings. A trader running at 126% of their nominal
+ * capital on an average day is not earning that return on the nominal figure,
+ * and this is the denominator they recognise.
+ *
+ * Simple annualisation, not compounding, and deliberately: average deployed
+ * capital is an average across the whole span rather than a balance that
+ * grew, so raising it to a power would describe a base that never existed.
+ */
+export function returnQuality({ rate, years, netPnl, maxDDPct, avgDeployed } = {}) {
+  const perDrawdown = isFinite(rate) && isFinite(maxDDPct) && maxDDPct > 0
+    ? (rate * 100) / maxDDPct
+    : NaN;
+
+  const employedTotal = isFinite(netPnl) && avgDeployed > 0 ? netPnl / avgDeployed : NaN;
+  const employed = isFinite(employedTotal) && years > 0
+    ? (employedTotal / years) * 100
+    : NaN;
+
+  return { perDrawdown, employed, employedTotal: employedTotal * 100, avgDeployed, maxDDPct };
+}
+
+/**
  * Forward expected annual return implied by the system, rather than measured
  * from one realised year: compounding `expectancy × risk%` over N trades.
  */

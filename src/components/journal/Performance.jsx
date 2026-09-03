@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { rfmt, describeAnnualised } from "@/lib/format";
+import { rfmt, rupee, pct, signedPct, describeAnnualised } from "@/lib/format";
 import Tile from "./Tile";
 import PeriodPerformance from "./PeriodPerformance";
 import CapitalDeployment from "./CapitalDeployment";
-import { annualisedReturn } from "@/lib/calc";
+import { annualisedReturn, returnQuality, equityCurve } from "@/lib/calc";
+import { deploymentSeries } from "@/lib/deployment";
 
 /**
  * The statement: how much, over what period, on what capital.
@@ -43,9 +44,30 @@ export default function Performance({ closed, banking = [], S, accountSize, flow
    * not what the finished trading produced. Same call and same words as the
    * Dashboard, so the two screens cannot disagree about one book.
    */
-  const ann = describeAnnualised(
-    annualisedReturn(all.length ? all : closed, { openingCapital: accountSize, flows })
-  );
+  const annual = annualisedReturn(all.length ? all : closed,
+    { openingCapital: accountSize, flows });
+  const ann = describeAnnualised(annual);
+
+  /**
+   * WHAT THE RATE COST, AND WHAT IT WAS EARNED ON.
+   *
+   * A rate alone says where the account ended up. These two say whether it
+   * was bought with a big hole, and whether the denominator under it is the
+   * money that was actually at work — which for anyone running above their
+   * nominal capital it is not.
+   *
+   * `banking` for the curve, matching every other money figure on the screen;
+   * `all` for deployment, since an open position is committing capital right
+   * now.
+   */
+  const money = banking.length ? banking : closed;
+  const eq = equityCurve(money, { openingCapital: accountSize, flows });
+  const dep = deploymentSeries(all.length ? all : closed,
+    { openingCapital: accountSize, flows });
+  const q = returnQuality({
+    rate: annual.rate, years: annual.years, netPnl: eq.netPnl,
+    maxDDPct: eq.maxDDPct, avgDeployed: dep?.avgDeployed,
+  });
 
   return (
     <>
@@ -61,6 +83,39 @@ export default function Performance({ closed, banking = [], S, accountSize, flow
         <Tile label="Max drawdown" value={`${S.maxDD.toFixed(1)}R`}
               sub={`longest losing run ${S.worstL} day${S.worstL === 1 ? "" : "s"}`} />
       </div>
+
+      {/* Directly under the rate they qualify, and only when there is
+          something to say — a book with no drawdown yet and no deployment
+          history would show two dashes and teach nobody anything. */}
+      {(isFinite(q.perDrawdown) || isFinite(q.employed)) && (
+        <div className="sec grid2">
+          <Tile
+            label="Return per drawdown"
+            value={isFinite(q.perDrawdown) ? q.perDrawdown.toFixed(2) : "—"}
+            tone={q.perDrawdown >= 0.5 ? "pos" : q.perDrawdown < 0 ? "neg" : ""}
+            sub={isFinite(q.perDrawdown)
+              ? `${signedPct(annual.rate * 100)} a year against a ${pct(q.maxDDPct, 1)} worst fall`
+              : "needs a drawdown to measure against"}
+            /* The caveat belongs ON the number, not in a footnote somewhere:
+               this denominator is closed-trade equity, so a position that
+               halved and recovered before it was sold never entered it. */
+            hint={"How much annual return each 1% of drawdown bought. Around 0.5 is "
+              + "respectable over a full cycle. The drawdown is measured on closed-trade "
+              + "equity, so a position that fell and recovered before you sold it does "
+              + "not appear in it — the real ride was rougher than this."} />
+          <Tile
+            label="On capital employed"
+            value={isFinite(q.employed) ? signedPct(q.employed) : "—"}
+            tone={q.employed >= 0 ? "pos" : "neg"}
+            sub={isFinite(q.employed)
+              ? `a year, on ${rupee(q.avgDeployed)} at work on an average day`
+              : "needs deployment history"}
+            hint={"Your return measured against the capital actually committed day by "
+              + "day, rather than the account size in Settings. Simple annual rate, not "
+              + "compounded: average deployed capital is an average across the whole "
+              + "record, not a balance that grew."} />
+        </div>
+      )}
 
       <div className="sec">
         {/* `banking`, not `closed`: a period reports the money that arrived in

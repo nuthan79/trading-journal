@@ -1,5 +1,5 @@
 import { test, eq, ok, near } from "./harness.mjs";
-import { annualisedReturn, xirr, cagr } from "@/lib/calc";
+import { annualisedReturn, xirr, cagr, returnQuality } from "@/lib/calc";
 import { describeAnnualised } from "@/lib/format";
 import { derivePosition } from "@/lib/positions";
 
@@ -204,4 +204,58 @@ test("a loss reads as a loss in the tile too", () => {
     flows: 0, marked: false });
   eq(d.tone, "neg");
   ok(d.value.startsWith("−") || d.value.startsWith("-"), `got ${d.value}`);
+});
+
+/* ------------- qualifying the rate: pain, and the real denominator ------- */
+
+test("return per unit of drawdown is the rate divided by the hole", () => {
+  const q = returnQuality({ rate: 0.183, maxDDPct: 24.1 });
+  near(q.perDrawdown, 18.3 / 24.1, 1e-9, "0.76% a year per 1% drawn down");
+  ok(q.perDrawdown < 1, "a return smaller than its drawdown reads under 1");
+
+  /* The shape that should make anyone look twice. */
+  ok(returnQuality({ rate: 0.60, maxDDPct: 5 }).perDrawdown > 1);
+});
+
+test("no drawdown recorded is not an infinite ratio", () => {
+  /* A book that has never given anything back divides by zero, and Infinity
+     rendered as a return quality would be the single most flattering wrong
+     number this app could print. */
+  for (const dd of [0, -1, NaN, undefined, null]) {
+    ok(!isFinite(returnQuality({ rate: 0.18, maxDDPct: dd }).perDrawdown),
+      `maxDDPct ${dd} must not produce a number`);
+  }
+  ok(!isFinite(returnQuality({ rate: NaN, maxDDPct: 10 }).perDrawdown),
+    "and no rate means no ratio");
+});
+
+test("a losing record keeps its sign", () => {
+  ok(returnQuality({ rate: -0.12, maxDDPct: 30 }).perDrawdown < 0);
+});
+
+test("return on capital employed uses the money at work, not the settings figure", () => {
+  /*
+    ₹42.82 L earned over 7 years while ₹64.47 L was committed on an average
+    day. That is 66.4% on the money at work, or 9.5% a year — and it is a
+    different number from the same profit measured against whatever was typed
+    into Settings, which is the whole point of showing it.
+  */
+  const q = returnQuality({ netPnl: 4282000, avgDeployed: 6447000, years: 7 });
+  near(q.employedTotal, (4282000 / 6447000) * 100, 1e-9);
+  near(q.employed, ((4282000 / 6447000) / 7) * 100, 1e-9);
+  ok(q.employed > 9 && q.employed < 10, `about 9.5% a year, got ${q.employed}`);
+});
+
+test("employed return refuses the cases that would divide by nothing", () => {
+  for (const bad of [{ avgDeployed: 0 }, { avgDeployed: -5 }, { avgDeployed: NaN }]) {
+    ok(!isFinite(returnQuality({ netPnl: 1e5, years: 2, ...bad }).employed));
+  }
+  ok(!isFinite(returnQuality({ netPnl: 1e5, avgDeployed: 1e6, years: 0 }).employed),
+    "and a zero span is not a rate");
+});
+
+test("a loss on employed capital reads as a loss", () => {
+  const q = returnQuality({ netPnl: -300000, avgDeployed: 2000000, years: 3 });
+  ok(q.employed < 0);
+  near(q.employed, ((-300000 / 2000000) / 3) * 100, 1e-9);
 });
