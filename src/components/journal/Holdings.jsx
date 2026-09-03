@@ -539,7 +539,12 @@ export default function Holdings({
       const evs = realisationEvents(t);
       if (evs.length) return evs;
       const d = t.exit_date || t.entry_date;
-      return d ? [{ date: String(d).slice(0, 10), pnl: t.pnl, r: t.r, trade: t }] : [];
+      if (!d) return [];
+      /* Flagged when the date is the ENTRY, standing in for an exit nobody
+         recorded. A year-wide bucket can take that; a month cannot, and the
+         two filters below differ on exactly this. */
+      return [{ date: String(d).slice(0, 10), pnl: t.pnl, r: t.r, trade: t,
+                placedByEntry: !t.exit_date }];
     });
     /* Read off the STRING, not through Date — `new Date("2025-04-01")` is UTC
        midnight and fyStartYear reads it back local, so west of Greenwich the
@@ -578,7 +583,12 @@ export default function Holdings({
      * local clock, which is right: "this month" means the user's month.
      */
     const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-    const inMonth = events.filter((e) => e.date.slice(0, 7) === ym);
+    /* `placedByEntry` excluded — this is the rule the comment above states,
+       and the filter that was missing it. Both buckets read the same events
+       array, so the year kept its fallback while the month silently inherited
+       it, and a trade closed without an exit date landed in the month it was
+       BOUGHT — the one thing this figure must never do. */
+    const inMonth = events.filter((e) => !e.placedByEntry && e.date.slice(0, 7) === ym);
     const sumPnl = (list) => list.reduce((a, x) => a + (isFinite(x.pnl) ? x.pnl : 0), 0);
     const sumR = (list) => list.reduce((a, x) => a + (isFinite(x.r) ? x.r : 0), 0);
     /* Distinct POSITIONS, not sells — "6 trades" must not become "9" because
