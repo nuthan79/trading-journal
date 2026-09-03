@@ -103,3 +103,71 @@ test("the month boundary is read as text, not parsed", () => {
   near(monthOf([t], "2026-09").pnl, 3000, 0.01, "the first of the month is September");
   eq(monthOf([t], "2026-08").pnl, 0);
 });
+
+/* The strip's rule as it now stands: every sell, closed position or not. */
+const bankedIn = (closed, open, ym) => {
+  const banking = [...closed, ...open.filter((t) => Number(t.qtyExited) > 0)];
+  const events = banking.flatMap((t) => {
+    const evs = realisationEvents(t);
+    if (evs.length) return evs;
+    const d = t.exit_date || t.entry_date;
+    if (!d) return [];
+    return [{ date: String(d).slice(0, 10), pnl: t.pnl, r: t.r, trade: t,
+              placedByEntry: !t.exit_date }];
+  });
+  const inMonth = events.filter((e) => !e.placedByEntry && e.date.slice(0, 7) === ym);
+  return {
+    pnl: inMonth.reduce((a, x) => a + (isFinite(x.pnl) ? x.pnl : 0), 0),
+    n: new Set(inMonth.map((e) => e.trade?.id ?? e)).size,
+    all: events.reduce((a, x) => a + (isFinite(x.pnl) ? x.pnl : 0), 0),
+  };
+};
+
+test("selling out of a position you still hold is money banked this month", () => {
+  /*
+    KMEW, from the real book. 349 bought in June, sold down across June and
+    July, 13 more sold on 3 September at 3103 for +₹13.6k, 126 still held.
+
+    The position is `partial`, and the strip counted `closed` alone — so this
+    sell, and every rupee ever banked out of a position still running, was
+    missing from Realised Sep, Realised FY and Realised all-time. It sat in
+    the row's Banked column, which is why it looked like it was counted.
+  */
+  const kmew = mk({ id: "kmew", symbol: "KMEW", side: "long", status: "partial",
+    entry_date: "2026-06-17", entry_price: 2052.70, quantity: 349,
+    stop_loss: 1993, stop_source: "recorded", charges: 0,
+    exits: [
+      { exit_date: "2026-06-22", quantity: 72, price: 2284.00, charges: 205 },
+      { exit_date: "2026-07-13", quantity: 36, price: 2428.00, charges: 102 },
+      { exit_date: "2026-07-23", quantity: 66, price: 2367.70, charges: 188 },
+      { exit_date: "2026-07-24", quantity: 36, price: 2410.00, charges: 102 },
+      { exit_date: "2026-09-03", quantity: 13, price: 3103.00, charges: 36.98 },
+    ] });
+  kmew.status = "partial";
+
+  const sep = bankedIn([], [kmew], "2026-09");
+  near(sep.pnl, 13 * (3103.00 - 2052.70) - 36.98, 1,
+    "the September sell, to the rupee the detail panel shows");
+  eq(sep.n, 1, "and it is one position banked from");
+
+  /* The other months are its own too, and June's sell is not September's. */
+  near(bankedIn([], [kmew], "2026-06").pnl, 72 * (2284.00 - 2052.70) - 205, 1);
+  near(bankedIn([], [kmew], "2026-07").pnl,
+    36 * (2428 - 2052.70) + 66 * (2367.70 - 2052.70) + 36 * (2410 - 2052.70)
+    - (102 + 188 + 102), 1);
+
+  /* Nothing unrealised leaks in: 126 shares are still held and marked at a
+     profit, and none of that is realised money. */
+  const soldOnly = 72 + 36 + 66 + 36 + 13;
+  ok(soldOnly === 223 && kmew.qtyOpen === 126, "the fixture really is part-sold");
+  near(sep.all, kmew.realisedPnl, 1, "all-time equals what the position banked");
+});
+
+test("a position with nothing sold yet contributes nothing", () => {
+  const held = mk({ id: "h", symbol: "ABC", side: "long", status: "open",
+    entry_date: "2026-09-01", entry_price: 100, quantity: 100,
+    stop_loss: 93, stop_source: "recorded", charges: 0, exits: [] });
+  held.status = "open";
+  eq(bankedIn([], [held], "2026-09").pnl, 0, "an unsold holding banks nothing");
+  eq(bankedIn([], [held], "2026-09").n, 0);
+});

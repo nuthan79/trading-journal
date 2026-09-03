@@ -501,8 +501,16 @@ export default function Holdings({
        * modest unrealised figure on a position that had already paid for
        * itself twice over, with nothing to say so.
        *
-       * NOT the same as Realised FY / all-time, which count trades that are
-       * finished. Nothing here is finished.
+       * A SUBSET of the Realised tiles, not a separate pot. Those count every
+       * sell there has ever been, this counts the ones out of positions still
+       * running — so this money appears in both, said twice on purpose. Here
+       * it qualifies the unrealised figure beside it ("that ₹6.5 L is on a
+       * book that has already banked ₹1.4 L"); there it is simply money
+       * realised in the period.
+       *
+       * It used to be the only place a part-sold position's banked money
+       * appeared at all, because the Realised tiles walked closed trades
+       * alone. That was the bug, not this figure.
        */
       banked: rows
         .filter((r) => r.qtyExited > 0 && isFinite(r.realisedPnl))
@@ -535,7 +543,25 @@ export default function Holdings({
      * A position with no tranches recorded falls back to its own dates, so a
      * legacy row still counts somewhere rather than disappearing.
      */
-    const events = closed.flatMap((t) => {
+    /**
+     * EVERY SELL, INCLUDING THE ONES OUT OF POSITIONS STILL HELD.
+     *
+     * This walked `closed` alone, so a position sold down but not out
+     * contributed nothing — sell 13 of 139 shares today at a profit and
+     * "Realised Sep" did not move, because the position is `partial` and
+     * partial is not closed. The money was real, was in the row's own Banked
+     * column, and was missing from the only figure that answers "what did I
+     * bank this month".
+     *
+     * Realised means the money came off the table. Whether the REST of the
+     * position is still running is a different question, and the one the
+     * Unrealised tile beside this answers.
+     *
+     * `open` carries both open and part-sold; those with nothing sold yield no
+     * events anyway, so the filter is for clarity rather than correctness.
+     */
+    const banking = [...closed, ...open.filter((t) => Number(t.qtyExited) > 0)];
+    const events = banking.flatMap((t) => {
       const evs = realisationEvents(t);
       if (evs.length) return evs;
       const d = t.exit_date || t.entry_date;
@@ -604,7 +630,7 @@ export default function Holdings({
          above it, so the three cannot drift. */
       all: sumPnl(events), allR: sumR(events),
     };
-  }, [closed]);
+  }, [closed, open]);
 
   /**
    * Up past 1.5R with a stop still under entry. Measured on price, not on the
