@@ -1,5 +1,5 @@
 import { test, eq, ok, near } from "./harness.mjs";
-import { kellyFromR, growthAt, KELLY_MIN_TRADES } from "@/lib/kelly";
+import { kellyFromR, growthAt, nextRiskStep, KELLY_MIN_TRADES } from "@/lib/kelly";
 
 /**
  * ADVICE THAT CAN LOSE REAL MONEY.
@@ -189,4 +189,47 @@ test("an assumed stop never drives sizing advice", () => {
   const rs = assumed.filter((t) => t.stop_source === "recorded").map((t) => t.r);
   eq(rs.length, 0, "the fixture really has no recorded stops");
   eq(kellyFromR(rs).method, "thin", "and nothing can be computed from it");
+});
+
+/* ------------------- the step somebody can actually take ----------------- */
+
+test("the suggested step is an increment, never the ceiling", () => {
+  /*
+    THE ADVICE THE CARD GIVES.
+
+    Quarter-Kelly on a good record can sit eighteen times above where a
+    careful trader is. Printing that as the recommendation is not advice — it
+    is a dare. The step is what changes hands.
+  */
+  const step = nextRiskStep(0.0025, 0.045);
+  near(step, 0.0035, 1e-9, "0.25% becomes 0.35%, not 4.5%");
+  ok(step < 0.045, "and stays far inside the ceiling");
+});
+
+test("it lands on a number somebody would type", () => {
+  for (const cur of [0.0025, 0.004, 0.0071, 0.012]) {
+    const s = nextRiskStep(cur, 0.05);
+    const asPct = s * 100;
+    near(asPct * 20, Math.round(asPct * 20), 1e-9,
+      `${asPct}% should be a multiple of 0.05`);
+  }
+});
+
+test("it never steps past the ceiling, even when rounding would", () => {
+  /* Rounding down rather than to nearest, so the clamp cannot be undone by
+     the tidying that comes after it. */
+  const s = nextRiskStep(0.0028, 0.003);
+  ok(!isFinite(s) || s <= 0.003, `got ${s}`);
+  const t = nextRiskStep(0.01, 0.0104);
+  ok(!isFinite(t) || t <= 0.0104, `got ${t}`);
+});
+
+test("no step is suggested when there is no room for one", () => {
+  ok(!isFinite(nextRiskStep(0.05, 0.05)), "already at the ceiling");
+  ok(!isFinite(nextRiskStep(0.06, 0.05)), "already past it");
+  ok(!isFinite(nextRiskStep(0.0025, 0.0026)), "the gap is smaller than a step");
+  for (const bad of [0, -1, NaN, undefined]) {
+    ok(!isFinite(nextRiskStep(bad, 0.05)), "no current risk, no advice");
+    ok(!isFinite(nextRiskStep(0.0025, bad)), "no ceiling, no advice");
+  }
 });

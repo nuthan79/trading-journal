@@ -112,3 +112,32 @@ export function growthAt(rs, f) {
   }
   return s / xs.length;
 }
+
+/**
+ * The next step, not the destination.
+ *
+ * The quarter-Kelly figure is a CEILING. Handed to somebody risking 0.25% it
+ * often reads as "raise your bet eighteenfold", which is not advice anyone can
+ * act on and not advice anyone should: the edge is an estimate, and the
+ * drawdowns at a larger size have to be lived through before they are
+ * survivable. Sizing gets changed in increments or it does not get changed.
+ *
+ * So: no more than about 40% up from where the trader already is, never past
+ * the ceiling, and rounded to a figure somebody would actually type into a
+ * position-size box. 0.25% becomes 0.35%, not 0.3499%.
+ */
+export function nextRiskStep(current, ceiling, { grow = 1.4, step = 0.0005 } = {}) {
+  if (!(current > 0) || !(ceiling > 0) || ceiling <= current) return NaN;
+  const target = Math.min(current * grow, ceiling);
+  /* Rounded DOWN to the step, so rounding can never nudge the suggestion past
+     the ceiling it was clamped to.
+
+     The epsilon is not decoration. 0.0035 / 0.0005 is 6.999999999999999 in
+     binary floating point, so a bare floor turned 0.25% -> 0.35% into 0.30%
+     — a recommendation a tenth of a point light, from arithmetic that looks
+     exact on paper. */
+  const rounded = Math.floor(target / step + 1e-9) * step;
+  /* If a whole step does not fit between here and the ceiling, there is no
+     move worth naming — say nothing rather than suggest standing still. */
+  return rounded > current + step / 2 ? rounded : NaN;
+}

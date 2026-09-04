@@ -7,7 +7,7 @@ import { FREE_AT_R, POWER_R, POWER_DAYS } from "./path";
    else here returns numbers and lets the component format them, which is not
    available inside a prose string — see the house rule in CLAUDE.md. */
 import { rupee } from "./format";
-import { kellyFromR, KELLY_MIN_TRADES } from "./kelly";
+import { kellyFromR, nextRiskStep, KELLY_MIN_TRADES } from "./kelly";
 import { hasRealStop } from "./stops";
 
 /**
@@ -701,22 +701,50 @@ function riskSizing(closed) {
   }
 
   if (ratio < 0.4) {
+    /*
+      DIRECT ADVICE, ONE STEP, AND NO CEILING ON SCREEN.
+
+      Two decisions here, and the second matters more.
+
+      The recommendation is an INCREMENT, not the quarter-Kelly figure — see
+      nextRiskStep. Handed to somebody at 0.25%, the ceiling often reads as
+      "bet eighteen times more", which is a dare rather than advice.
+
+      And the ceiling is not printed at all. On a good record it computes to
+      numbers like "peaks at 34%, a quarter of that is 8.6%", which sat beside
+      "raise to 0.35%" does one of two things: it destroys the credibility of
+      the advice, or somebody believes it and bets 8% of their account on one
+      trade. Neither is worth the precision. The figure the reader gets
+      instead is the one they can act on safely — what their own worst trade
+      would have cost at the new size.
+
+      The market caveat rides on the instruction rather than sitting in a
+      footnote: every number here comes from trades already taken, so it
+      describes an edge in the conditions those trades happened in, and that
+      is exactly what changes underneath someone who sizes up at the wrong
+      moment.
+    */
+    const step = nextRiskStep(current, k.suggested);
+    if (!isFinite(step)) return null;
+    const worstAtStep = Math.abs(k.worst) * step * 100;
+
     return F("good", "risk-below-edge",
-      "You are betting well below what your record supports",
-      `A typical trade risks ${pctOf(current)} of the account. Maximising growth on your own ` +
-      `${k.n} trades peaks at ${pctOf(k.full)}, and a quarter of that — ${pctOf(k.suggested)} — is ` +
-      `the size that keeps most of the growth while surviving an edge weaker than it looks. ` +
-      `This is why a strong expectancy can still produce a modest annual return: the edge is ` +
-      `real, the stake is small. Sizing up is a decision about what you can hold through, not ` +
-      `just arithmetic — at ${pctOf(k.suggested)} your worst trade so far ` +
-      `(${k.worst.toFixed(1)}R) would have cost ${(Math.abs(k.worst) * k.suggested * 100).toFixed(1)}% ` +
-      `of the account in one go.`,
+      "Your edge is good and your risk is small — there is room to size up",
+      `You could comfortably raise risk per trade from ${pctOf(current)} to ${pctOf(step)}. ` +
+      `Always check the market stance before raising it — every figure here comes from trades ` +
+      `you have already taken, so it describes your edge in the conditions those trades ` +
+      `happened in, and a size increase lands hardest when those change. ` +
+      `Across ${k.n} trades your edge supports meaningfully more than you are using, which is ` +
+      `why a strong expectancy can still produce a modest annual return: the edge is real, the ` +
+      `stake is small. Move in steps and let each one prove itself — at ${pctOf(step)} your ` +
+      `worst trade so far (${k.worst.toFixed(1)}R) would have cost ${worstAtStep.toFixed(1)}% ` +
+      `of the account in one go, and that is the number to be comfortable with before the next step.`,
       [], {
         magnitude: Math.min(100, (1 - ratio) * 60),
         figures: [
           { value: pctOf(current), label: "risked on a typical trade" },
-          { value: pctOf(k.suggested), label: "what the record supports" },
-          { value: `${k.n}`, label: "trades behind the estimate" },
+          { value: pctOf(step), label: "a comfortable next step" },
+          { value: `${worstAtStep.toFixed(1)}%`, label: "what your worst trade would cost there" },
         ],
       });
   }
