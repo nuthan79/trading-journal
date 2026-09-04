@@ -530,10 +530,14 @@ export default function CapitalDeployment({ all = [], accountSize = 0, flows = [
               {vsIndex.lead >= 0 ? "Ahead of" : "Behind"} {vsIndex.label} by{" "}
               {Math.abs(vsIndex.lead).toFixed(1)}% a year
             </b>
+            {/* No "held stock on N% of an average day" here: Average
+                committed says exactly that, as a tile in this same card a few
+                inches above. The cash drag is still the reason the comparison
+                is fair, so it stays in the hover — where it explains rather
+                than repeats. */}
             <span className={`${CAP_MONEY}-dim`}>
               {" "}· you {signedPct(vsIndex.mine.rate * 100)} · {vsIndex.label}{" "}
-              {signedPct(vsIndex.bench.rate * 100)} · you held stock on{" "}
-              {pct(S.avgPct, 0)} of an average day
+              {signedPct(vsIndex.bench.rate * 100)}
             </span>
           </div>
         )}
