@@ -308,3 +308,49 @@ test("return on capital employed does not move when the account size does", () =
   for (const r of rates) near(r, rates[0], 1e-9);
   ok(isFinite(rates[0]) && rates[0] !== 0, "and it is a real number, not zero");
 });
+
+test("the two returns on one screen never disagree about open positions", () => {
+  /*
+    A REAL RECORD, AND THE SHAPE THAT EXPOSED IT.
+
+    47 trades, banked money slightly NEGATIVE after charges, open positions
+    well up. CAGR marks to market and read +9.8%; return on capital at work
+    counted realised profit alone and read −1.6%. Two return figures on one
+    screen with opposite signs, on the same book, both correct by their own
+    definition and together saying nothing anybody could use.
+
+    Both mark to market now. This pins the direction rather than a figure:
+    with the account genuinely up, neither may report a loss.
+  */
+  const held = mk({ id: "open", symbol: "H", side: "long", status: "open",
+    entry_date: "2026-03-16", entry_price: 100, quantity: 2000,
+    stop_loss: 93, stop_source: "recorded", charges: 0, last_price: 137,
+    exits: [] });
+  const banked = mk({ id: "done", symbol: "D", side: "long", status: "closed",
+    entry_date: "2026-03-16", entry_price: 100, quantity: 500,
+    stop_loss: 93, stop_source: "recorded", charges: 4800,
+    exit_date: "2026-06-01", exit_price: 100,
+    exits: [{ exit_date: "2026-06-01", quantity: 500, price: 100, charges: 4800 }] });
+
+  const book = [held, banked];
+  const a = annualisedReturn(book, { openingCapital: 1533000, flows: [], asOf: AT });
+
+  ok(a.realised < 0, "banked money really is negative after charges");
+  ok(a.unrealised > 0, "and the open position really is up");
+  ok(a.rate > 0, "so CAGR is positive");
+
+  const marked = a.realised + a.unrealised;
+  const q = returnQuality({ netPnl: marked, years: a.years, avgDeployed: 661000 });
+  ok(q.employed > 0,
+    `return on capital at work must not read a loss on an account that is up (got ${q.employed})`);
+  ok(Math.sign(q.employed) === Math.sign(a.rate),
+    "and the two must agree on the sign, whatever their denominators");
+
+  /* The invariant survives the change: neither half reads the Settings
+     figure, so a different account size moves CAGR and leaves this alone. */
+  const other = annualisedReturn(book, { openingCapital: 9e6, flows: [], asOf: AT });
+  const q2 = returnQuality({ netPnl: other.realised + other.unrealised,
+                             years: other.years, avgDeployed: 661000 });
+  ok(other.rate < a.rate, "CAGR moves with the account size");
+  near(q2.employed, q.employed, 1e-9, "return on capital at work does not");
+});

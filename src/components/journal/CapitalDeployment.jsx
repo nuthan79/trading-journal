@@ -256,11 +256,33 @@ export default function CapitalDeployment({ all = [], accountSize = 0, flows = [
     [all, accountSize, flows]
   );
 
-  /* Computed here and only here, so the figure and the denominator it uses
-     cannot drift apart on two screens. */
+  /*
+    Computed here and only here, so the figure and the denominator it uses
+    cannot drift apart on two screens.
+
+    MARKED TO MARKET, like CAGR — realised PLUS the open mark.
+
+    It counted realised profit alone, and on a book holding unrealised
+    winners that produced the one thing this app must never do: two return
+    figures on one screen with opposite signs. A real record showed CAGR
+    +9.8% beside "return on capital at work −1.6%", because the open
+    positions were up about ₹74k and only one of the two was looking at them.
+
+    The open gain was produced BY the capital at work; leaving it out asks
+    the denominator to carry money the numerator refuses to count. Marking
+    both to market is also what was decided for CAGR, and for the same reason
+    every broker and mutual fund statement does it.
+
+    The property that matters is untouched: unrealised comes from (mark −
+    entry) × quantity and average committed comes from the trades, so neither
+    half knows what is in Settings and the figure still does not move when
+    that field is edited.
+  */
   const Q = useMemo(() => {
     const a = annualisedReturn(all, { openingCapital: accountSize, flows });
-    return returnQuality({ netPnl: a.realised, years: a.years,
+    const marked = (isFinite(a.realised) ? a.realised : 0)
+      + (isFinite(a.unrealised) ? a.unrealised : 0);
+    return returnQuality({ netPnl: marked, years: a.years,
                            avgDeployed: S?.avgDeployed });
   }, [all, accountSize, flows, S]);
 
@@ -483,12 +505,12 @@ export default function CapitalDeployment({ all = [], accountSize = 0, flows = [
                   the same number, which is the exact confusion this tile
                   exists to escape.
                 */
-                hint={"Your realised profit measured against the capital actually "
-                  + "committed day by day, rather than the account size in Settings — "
-                  + "so it does not move when you change that figure. The same idea as "
-                  + "return on capital employed. A simple annual rate: average committed "
-                  + "is an average across the whole record, not a balance that "
-                  + "compounded."} />
+                hint={"Your profit — banked and open positions at market — measured "
+                  + "against the capital actually committed day by day, rather than the "
+                  + "account size in Settings, so it does not move when you change that "
+                  + "figure. The same idea as return on capital employed. A simple annual "
+                  + "rate: average committed is an average across the whole record, not a "
+                  + "balance that compounded."} />
         )}
       </div>
 
