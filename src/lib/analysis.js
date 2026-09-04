@@ -676,8 +676,9 @@ function riskSizing(closed) {
         magnitude: Math.min(100, (ratio - 1) * 20),
         figures: [
           { value: pctOf(current), label: "risked on a typical trade" },
-          { value: pctOf(k.suggested), label: "what the record supports" },
-          { value: `${worstCost.toFixed(1)}%`, label: "cost of your worst trade, at this size" },
+          { value: pctOf(k.suggested), label: "what the record supports", lead: true },
+          { value: `${worstCost.toFixed(1)}%`, tone: "neg",
+            label: "of the account, on your worst trade at this size" },
         ],
       });
   }
@@ -694,8 +695,8 @@ function riskSizing(closed) {
         magnitude: Math.min(100, (ratio - 1) * 30),
         figures: [
           { value: pctOf(current), label: "risked on a typical trade" },
-          { value: pctOf(k.suggested), label: "what the record supports" },
-          { value: `${k.worst.toFixed(1)}R`, label: "worst trade in the book" },
+          { value: pctOf(k.suggested), label: "what the record supports", lead: true },
+          { value: `${k.worst.toFixed(1)}R`, tone: "neg", label: "worst trade in the book" },
         ],
       });
   }
@@ -744,12 +745,15 @@ function riskSizing(closed) {
         magnitude: Math.min(100, (1 - ratio) * 60),
         figures: [
           { value: pctOf(current), label: "risked on a typical trade" },
-          { value: pctOf(step), label: "a comfortable next step" },
+          /* The number the card exists to recommend. */
+          { value: pctOf(step), label: "a comfortable next step", lead: true },
           /* Reads as one sentence with its own value — "1.5% of the account,
              on your worst trade at 0.35%". The old label said "there", which
              made the reader carry the 0.35% across from the figure beside it
              before the number meant anything. */
-          { value: `${worstAtStep.toFixed(1)}%`,
+          /* Red on a green card, deliberately: this one is what a bad trade
+             costs, and in the card's own green it reads as more good news. */
+          { value: `${worstAtStep.toFixed(1)}%`, tone: "neg",
             label: `of the account, on your worst trade at ${pctOf(step)}` },
         ],
       });

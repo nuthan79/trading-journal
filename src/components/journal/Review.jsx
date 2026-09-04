@@ -762,7 +762,23 @@ function FindingCard({ f, n }) {
             <p className="rv-cap">
               {f.figures.map((g, i) => (
                 <span key={i}>
-                  <b style={{ color: sev.color }}>{g.value}</b> {g.label}
+                  {/*
+                    A figure can overrule the card's severity colour and its
+                    size, because a card is not always one register throughout.
+                    The sizing advice is the case that forced it: on a card
+                    coloured GOOD, one of the three figures is what a bad trade
+                    would cost, and printing a loss in the same green as the
+                    encouragement reads as though the loss were the good news.
+
+                    `lead` is for the figure the card is actually recommending,
+                    so the eye lands on the number to act on rather than on the
+                    one it should move away from.
+                  */}
+                  <b className={g.lead ? "rv-fig-lead" : undefined}
+                     style={{ color: g.tone === "neg" ? "var(--short)"
+                       : g.tone === "dim" ? "var(--ink3)" : sev.color }}>
+                    {g.value}
+                  </b> {g.label}
                 </span>
               ))}
             </p>
@@ -1706,6 +1722,13 @@ export default function Review({ closed, stats, all, diary, onMeasured }) {
         .rv-cap b {
           font-size: 13px; font-variant-numeric: tabular-nums;
           letter-spacing: -0.01em;
+        }
+        /* The one the card is recommending. Enough to win the row, with the
+           line box pinned to the height the 13px figures already set — 16px
+           digits carry no descenders, and without the pin this line measured
+           24px against its neighbours' 20px. */
+        .rv-cap b.rv-fig-lead {
+          font-size: 16px; font-weight: 600; line-height: 20px;
         }
 
         /*
