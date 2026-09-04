@@ -736,15 +736,21 @@ function riskSizing(closed) {
       `happened in, and a size increase lands hardest when those change. ` +
       `Across ${k.n} trades your edge supports meaningfully more than you are using, which is ` +
       `why a strong expectancy can still produce a modest annual return: the edge is real, the ` +
-      `stake is small. Move in steps and let each one prove itself — at ${pctOf(step)} your ` +
-      `worst trade so far (${k.worst.toFixed(1)}R) would have cost ${worstAtStep.toFixed(1)}% ` +
-      `of the account in one go, and that is the number to be comfortable with before the next step.`,
+      `stake is small. Move in steps and let each one prove itself — at ${pctOf(step)}, a trade ` +
+      `like your worst so far (${k.worst.toFixed(1)}R) takes ${worstAtStep.toFixed(1)}% off the ` +
+      `account in one go. That is the figure to be comfortable losing before you think about ` +
+      `the step after this one.`,
       [], {
         magnitude: Math.min(100, (1 - ratio) * 60),
         figures: [
           { value: pctOf(current), label: "risked on a typical trade" },
           { value: pctOf(step), label: "a comfortable next step" },
-          { value: `${worstAtStep.toFixed(1)}%`, label: "what your worst trade would cost there" },
+          /* Reads as one sentence with its own value — "1.5% of the account,
+             on your worst trade at 0.35%". The old label said "there", which
+             made the reader carry the 0.35% across from the figure beside it
+             before the number meant anything. */
+          { value: `${worstAtStep.toFixed(1)}%`,
+            label: `of the account, on your worst trade at ${pctOf(step)}` },
         ],
       });
   }
