@@ -7,6 +7,7 @@ import { FREE_AT_R, POWER_R, POWER_DAYS } from "./path";
    else here returns numbers and lets the component format them, which is not
    available inside a prose string — see the house rule in CLAUDE.md. */
 import { rupee } from "./format";
+import { kellyFromR, KELLY_MIN_TRADES } from "./kelly";
 import { hasRealStop } from "./stops";
 
 /**
@@ -617,6 +618,111 @@ function riskConsistency(closed) {
 /* ==================================================================== */
 /*  3. Sizing after a loss — revenge, and conviction inversion          */
 /* ==================================================================== */
+
+/**
+ * IS THE BET SIZE MATCHED TO THE EDGE?
+ *
+ * `riskConsistency` asks whether risk per trade is steady and `sizingReflexes`
+ * asks whether it lurches after a loss. Neither asks the question underneath
+ * both: whether the LEVEL is right at all. A trader can be perfectly
+ * consistent at a size their record does not support in either direction.
+ *
+ * The prescription comes from maximising log growth over the actual R
+ * multiples rather than from win rate and payoff — see kelly.js for why the
+ * two-outcome formula is the wrong instrument on a book with a fat tail.
+ *
+ * Reported at a QUARTER of the optimum, and the wording never calls it a
+ * target. Kelly assumes the edge is known; this one is estimated off a finite
+ * sample of trades whose R depends on stops that were sometimes assumed. The
+ * penalty is asymmetric — a quarter of the optimum keeps most of the growth,
+ * double it loses money — so the safe side is the small one, and the card
+ * says which side it is erring on.
+ *
+ * Recorded stops only. An assumed stop makes R a rescaling of percentage
+ * return, and a prescription built on that is sizing advice derived from
+ * position size.
+ */
+function riskSizing(closed) {
+  const rows = chron(closed)
+    .filter(hasRealStop)
+    .filter((t) => isFinite(t.r) && isFinite(t.riskPct) && t.riskPct > 0);
+  if (rows.length < KELLY_MIN_TRADES) return null;
+
+  const k = kellyFromR(rows.map((t) => t.r));
+  if (k.method !== "ok") return null;
+
+  /* Median, not mean: one oversized trade should not decide what the trader
+     is described as doing habitually. */
+  const risks = rows.map((t) => t.riskPct).sort((a, b) => a - b);
+  const current = risks[Math.floor(risks.length / 2)] / 100;
+  if (!(current > 0)) return null;
+
+  const ratio = current / k.suggested;
+  const worstCost = Math.abs(k.worst) * current * 100;      // % of account
+  const pctOf = (f) => `${(f * 100).toFixed(2)}%`;
+
+  /* Four readings, and only the middle one is silence. Over the full optimum
+     is the dangerous end and says so; well under it is an opportunity, not a
+     fault, and must not be dressed as one. */
+  if (current > k.full) {
+    return F("critical", "risk-oversized",
+      "You are risking more per trade than the record can carry",
+      `Your typical trade puts ${pctOf(current)} of the account at risk. Maximising growth on ` +
+      `your own ${k.n} trades peaks at ${pctOf(k.full)} and falls away past it — so this size is ` +
+      `not merely aggressive, it is expected to compound SLOWER than a smaller one, while ` +
+      `losing far more on the way. Your worst trade was ${k.worst.toFixed(1)}R; at this size ` +
+      `that single trade costs ${worstCost.toFixed(1)}% of the account.`,
+      [], {
+        magnitude: Math.min(100, (ratio - 1) * 20),
+        figures: [
+          { value: pctOf(current), label: "risked on a typical trade" },
+          { value: pctOf(k.suggested), label: "what the record supports" },
+          { value: `${worstCost.toFixed(1)}%`, label: "cost of your worst trade, at this size" },
+        ],
+      });
+  }
+
+  if (ratio > 1.5) {
+    return F("watch", "risk-above-edge",
+      "Your bet size is ahead of your measured edge",
+      `A typical trade risks ${pctOf(current)}; your ${k.n} trades support about ` +
+      `${pctOf(k.suggested)} — a quarter of the growth-maximising ${pctOf(k.full)}, which is the ` +
+      `margin worth keeping when the edge is an estimate rather than a fact. Nothing here is ` +
+      `reckless: it is inside the point where size starts working against you. But the room for ` +
+      `the edge to be weaker than it looks is smaller than it should be.`,
+      [], {
+        magnitude: Math.min(100, (ratio - 1) * 30),
+        figures: [
+          { value: pctOf(current), label: "risked on a typical trade" },
+          { value: pctOf(k.suggested), label: "what the record supports" },
+          { value: `${k.worst.toFixed(1)}R`, label: "worst trade in the book" },
+        ],
+      });
+  }
+
+  if (ratio < 0.4) {
+    return F("good", "risk-below-edge",
+      "You are betting well below what your record supports",
+      `A typical trade risks ${pctOf(current)} of the account. Maximising growth on your own ` +
+      `${k.n} trades peaks at ${pctOf(k.full)}, and a quarter of that — ${pctOf(k.suggested)} — is ` +
+      `the size that keeps most of the growth while surviving an edge weaker than it looks. ` +
+      `This is why a strong expectancy can still produce a modest annual return: the edge is ` +
+      `real, the stake is small. Sizing up is a decision about what you can hold through, not ` +
+      `just arithmetic — at ${pctOf(k.suggested)} your worst trade so far ` +
+      `(${k.worst.toFixed(1)}R) would have cost ${(Math.abs(k.worst) * k.suggested * 100).toFixed(1)}% ` +
+      `of the account in one go.`,
+      [], {
+        magnitude: Math.min(100, (1 - ratio) * 60),
+        figures: [
+          { value: pctOf(current), label: "risked on a typical trade" },
+          { value: pctOf(k.suggested), label: "what the record supports" },
+          { value: `${k.n}`, label: "trades behind the estimate" },
+        ],
+      });
+  }
+
+  return null;
+}
 
 function sizingReflexes(closed) {
   const rows = chron(closed).filter((t) => isFinite(t.riskPct) && isFinite(t.r));
@@ -2613,6 +2719,9 @@ export function reviewThesis(closed, findings, stats) {
     "market-misaligned": "when you choose to trade",
     "thin-volume": "the entries you are taking",
     "return-concentration": "how few trades carry it",
+    "risk-oversized": "how much you are betting",
+    "risk-above-edge": "how much you are betting",
+    "risk-below-edge": "how much you are betting",
     "charges-missing": "what these trades actually cost you",
     "round-trips": "what happens once a trade is in front",
     "power-trades": "what you do with the ones that run",
@@ -2656,6 +2765,7 @@ export function reviewFindings(
   push(stopDiscipline(closed));
   both((c) => riskConsistency(c));
   both((c) => sizingReflexes(c));
+  both((c) => riskSizing(c));
   both((c) => entryQuality(c));
   both((c) => exitBehaviour(c));
   both((c) => marketAlignment(c, regimes));
