@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { deploymentSeries, DEPLOY_BANDS } from "@/lib/deployment";
 import { rupee, pct, signedPct, dmy } from "@/lib/format";
-import { annualisedReturn, returnQuality } from "@/lib/calc";
+import { annualisedReturn, returnQuality, indexReturn } from "@/lib/calc";
 import { apiFetch } from "@/lib/db";
 
 /**
@@ -266,6 +266,31 @@ export default function CapitalDeployment({ all = [], accountSize = 0, flows = [
 
   const idx = useIndexHistory(index, S?.from, S?.to);
 
+  /**
+   * YOU AGAINST THE INDEX, SAID OUT LOUD.
+   *
+   * The index has been drawn under this chart for a while without ever
+   * saying what it returned, which leaves the one question a swing trader
+   * cannot avoid — was any of this better than buying the index and doing
+   * nothing — as a shape to be eyeballed.
+   *
+   * Compared on the ACCOUNT's rate, not on return on capital at work. An
+   * index return is what a fully invested rupee did; the fair thing to set
+   * against it is what the whole account did, cash drag and charges
+   * included, because that is the alternative actually on offer. Return on
+   * capital at work answers a different question and would win this
+   * comparison for the wrong reason — by quietly excluding the idle money.
+   */
+  const vsIndex = useMemo(() => {
+    if (!S || !idx.points.length) return null;
+    const inSpan = idx.points.filter((p) => p.d >= S.from && p.d <= S.to);
+    const bench = indexReturn(inSpan);
+    const mine = annualisedReturn(all, { openingCapital: accountSize, flows });
+    if (!isFinite(bench.rate) || !isFinite(mine.rate)) return null;
+    return { bench, mine, lead: (mine.rate - bench.rate) * 100,
+             label: INDEX_CHOICES.find((c) => c.id === index)?.label || "the index" };
+  }, [S, idx.points, all, accountSize, flows, index]);
+
   if (!S) {
     return (
       <div className="card empty">
@@ -479,6 +504,27 @@ export default function CapitalDeployment({ all = [], accountSize = 0, flows = [
           {idx.loading && <span className={`${CAP_MONEY}-dim`}>loading index…</span>}
           {idx.error && <span className={`${CAP_MONEY}-dim`}>index unavailable</span>}
         </div>
+
+        {/* Under the legend that names the line, so the figure and the series
+            it came from are read together. */}
+        {vsIndex && (
+          <div className={`${CAP_MONEY}-vs`}
+               title={`Your whole account against a fully invested rupee in ${vsIndex.label} `
+                 + `over the same ${vsIndex.bench.years.toFixed(1)} years. The index figure is `
+                 + `buy-and-hold with no charges; yours carries both its costs and the days `
+                 + `your money sat in cash — which is the comparison that matters, because `
+                 + `holding the index is the alternative actually on offer.`}>
+            <b className={vsIndex.lead >= 0 ? "pos" : "neg"}>
+              {vsIndex.lead >= 0 ? "Ahead of" : "Behind"} {vsIndex.label} by{" "}
+              {Math.abs(vsIndex.lead).toFixed(1)} points a year
+            </b>
+            <span className={`${CAP_MONEY}-dim`}>
+              {" "}· you {signedPct(vsIndex.mine.rate * 100)} · {vsIndex.label}{" "}
+              {signedPct(vsIndex.bench.rate * 100)} · you held stock on{" "}
+              {pct(S.avgPct, 0)} of an average day
+            </span>
+          </div>
+        )}
 
         <svg width="100%" height={H} onMouseMove={onMove} onMouseLeave={() => setHov(null)}
              style={{ display: "block", touchAction: "none" }}>
@@ -752,6 +798,13 @@ export default function CapitalDeployment({ all = [], accountSize = 0, flows = [
           color: var(--ink2); padding: 0 10px 6px;
         }
         .${CAP_MONEY}-legend span { display: inline-flex; align-items: center; gap: 5px; }
+        /* Sits with the legend rather than as its own card: it is a reading
+           of the line above it, not a separate finding. */
+        .${CAP_MONEY}-vs {
+          padding: 0 10px 8px; font-size: 11.5px; line-height: 1.5;
+          color: var(--ink2); cursor: help;
+        }
+        .${CAP_MONEY}-vs b { font-weight: 600; }
         .${CAP_MONEY}-sw { width: 12px; height: 2px; display: inline-block; border-radius: 1px; }
         .${CAP_MONEY}-dep  { background: var(--long); }
         .${CAP_MONEY}-risk { background: var(--short); }

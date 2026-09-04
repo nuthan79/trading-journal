@@ -267,6 +267,46 @@ export function annualisedReturn(trades, { openingCapital = 0, flows = [], asOf 
 }
 
 /**
+ * What the index did over the same stretch — the comparison nobody escapes.
+ *
+ * The journal has drawn a broad index under the deployment chart for a while
+ * and never said what it RETURNED. That leaves the one question a swing
+ * trader eventually has to answer out loud — was any of this better than
+ * buying a Smallcap 250 fund and doing nothing — as a shape to be eyeballed.
+ *
+ * Measured over the index's OWN first and last point rather than the record's
+ * nominal span. Those differ: a record starting on a Saturday has no index
+ * close that day, and dividing a real price move by a span the prices do not
+ * cover quietly overstates or understates the rate.
+ *
+ * Buy-and-hold, fully invested, no charges — which is the honest thing to
+ * compare against, because that is the alternative on offer. The caller must
+ * say so, since the trader's own figure carries cash drag and costs that this
+ * one does not.
+ */
+export function indexReturn(points) {
+  const pts = (points || [])
+    .filter((p) => p && p.d && isFinite(Number(p.c)) && Number(p.c) > 0)
+    .sort((a, b) => (a.d < b.d ? -1 : a.d > b.d ? 1 : 0));
+  if (pts.length < 2) return { rate: NaN, total: NaN, days: 0 };
+
+  const first = pts[0], last = pts[pts.length - 1];
+  const days = dayNum(last.d) - dayNum(first.d);
+  const years = days / 365;
+  const total = Number(last.c) / Number(first.c) - 1;
+
+  return {
+    total,
+    /* Under the same floor the trader's own rate uses: annualising a short
+       stretch reports the exponent, whichever series it is applied to. */
+    rate: days >= MIN_DAYS && years > 0
+      ? cagr(Number(first.c), Number(last.c), years)
+      : NaN,
+    days, years, from: first.d, to: last.d,
+  };
+}
+
+/**
  * Cumulative R, and the worst hole in it, counting every sell.
  *
  * `stats()` walks finished positions and answers per-trade questions — what
