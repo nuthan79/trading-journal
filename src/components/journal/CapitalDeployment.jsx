@@ -509,14 +509,26 @@ export default function CapitalDeployment({ all = [], accountSize = 0, flows = [
             it came from are read together. */}
         {vsIndex && (
           <div className={`${CAP_MONEY}-vs`}
-               title={`Your whole account against a fully invested rupee in ${vsIndex.label} `
-                 + `over the same ${vsIndex.bench.years.toFixed(1)} years. The index figure is `
-                 + `buy-and-hold with no charges; yours carries both its costs and the days `
-                 + `your money sat in cash — which is the comparison that matters, because `
-                 + `holding the index is the alternative actually on offer.`}>
+               title={`${Math.abs(vsIndex.lead).toFixed(1)} percentage points a year, `
+                 + `${signedPct(vsIndex.mine.rate * 100)} against `
+                 + `${signedPct(vsIndex.bench.rate * 100)}. Your whole account against a fully `
+                 + `invested rupee in ${vsIndex.label} over the same `
+                 + `${vsIndex.bench.years.toFixed(1)} years. The index figure is buy-and-hold `
+                 + `with no charges; yours carries both its costs and the days your money sat `
+                 + `in cash — which is the comparison that matters, because holding the index `
+                 + `is the alternative actually on offer.`}>
+            {/*
+              "%" rather than "percentage points", which is what the gap
+              between two rates strictly is. A deliberate trade: almost
+              everyone reads a % instantly and almost nobody reads "points"
+              at all, and this line only earns its place if it lands at a
+              glance. The hover says "percentage points" for anyone who
+              wants the exact word, and both rates are printed beside it so
+              the arithmetic is never hidden behind the phrasing.
+            */}
             <b className={vsIndex.lead >= 0 ? "pos" : "neg"}>
               {vsIndex.lead >= 0 ? "Ahead of" : "Behind"} {vsIndex.label} by{" "}
-              {Math.abs(vsIndex.lead).toFixed(1)} points a year
+              {Math.abs(vsIndex.lead).toFixed(1)}% a year
             </b>
             <span className={`${CAP_MONEY}-dim`}>
               {" "}· you {signedPct(vsIndex.mine.rate * 100)} · {vsIndex.label}{" "}
