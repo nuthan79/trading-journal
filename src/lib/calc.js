@@ -267,6 +267,79 @@ export function annualisedReturn(trades, { openingCapital = 0, flows = [], asOf 
 }
 
 /**
+ * How long the account spent below its own high-water mark.
+ *
+ * Drawdown depth is measured everywhere in this app and duration is measured
+ * nowhere, and duration is the half people actually experience. A 7% fall is a
+ * number; seven months below your previous best is what makes somebody
+ * abandon a system that was working. "Longest losing run" is not this — that
+ * counts consecutive losing days, and an account can be under water for months
+ * while winning more days than it loses.
+ *
+ * An episode runs from the day a high-water mark was set to the day it was
+ * beaten, so a stretch that never recovered is still open and is measured to
+ * today. That is deliberate: the one people most need to see is the one they
+ * are in.
+ *
+ * SAME CAVEAT AS THE DEPTH, and the caller must carry it. `equityCurve` steps
+ * on realisations, so this is the underwater time of CLOSED-TRADE equity. A
+ * position that halved and recovered before it was sold never put the curve
+ * under water at all, and a trader who lived through that would rightly say
+ * the real stretch was longer.
+ */
+export function underwater(trades, { openingCapital = 0, flows = [], asOf = new Date() } = {}) {
+  const eq = equityCurve(trades, { openingCapital, flows });
+  const pts = eq.points || [];
+  if (!pts.length) return { episodes: [], longest: null, current: null };
+
+  /* The first point's day, not the record's start: before anything was
+     realised the curve has no history to be under. */
+  let peak = eq.base;
+  let peakDay = dayNum(pts[0].date);
+  let open = null;
+  const episodes = [];
+
+  const close = (toDay, recovered) => {
+    episodes.push({
+      fromDay: open.fromDay, toDay, days: toDay - open.fromDay,
+      peak: open.peak, trough: open.trough,
+      depth: open.peak - open.trough,
+      depthPct: open.peak > 0 ? ((open.peak - open.trough) / open.peak) * 100 : NaN,
+      recovered,
+    });
+    open = null;
+  };
+
+  for (const p of pts) {
+    const day = dayNum(p.date);
+    if (p.equity >= peak) {
+      if (open) close(day, true);
+      peak = p.equity;
+      peakDay = day;
+    } else if (!open) {
+      open = { fromDay: peakDay, peak, trough: p.equity };
+    } else if (p.equity < open.trough) {
+      open.trough = p.equity;
+    }
+  }
+  if (open) close(Math.max(dayNum(asOf), open.fromDay), false);
+
+  const longest = episodes.reduce((a, e) => (!a || e.days > a.days ? e : a), null);
+  const current = episodes.find((e) => !e.recovered) || null;
+  const recovered = episodes.filter((e) => e.recovered);
+
+  return {
+    episodes, longest, current,
+    /* How long it has typically taken to get back, which is the figure that
+       turns "I am 40 days down" into something with a scale beside it. */
+    typicalRecovery: recovered.length
+      ? recovered.map((e) => e.days).sort((a, b) => a - b)[Math.floor(recovered.length / 2)]
+      : NaN,
+    atHigh: !current,
+  };
+}
+
+/**
  * What the index did over the same stretch — the comparison nobody escapes.
  *
  * The journal has drawn a broad index under the deployment chart for a while

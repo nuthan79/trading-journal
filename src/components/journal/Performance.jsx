@@ -5,7 +5,7 @@ import { rfmt, pct, describeAnnualised } from "@/lib/format";
 import Tile from "./Tile";
 import PeriodPerformance from "./PeriodPerformance";
 import CapitalDeployment from "./CapitalDeployment";
-import { annualisedReturn, returnQuality, equityCurve, realisedR } from "@/lib/calc";
+import { annualisedReturn, returnQuality, equityCurve, realisedR, underwater } from "@/lib/calc";
 
 /**
  * The statement: how much, over what period, on what capital.
@@ -73,6 +73,9 @@ export default function Performance({ closed, banking = [], S, accountSize, flow
    * answer yet.
    */
   const R = realisedR(money);
+  /* Duration, to sit under the depth. Same curve, so the two describe one
+     drawdown rather than two. */
+  const uw = underwater(money, { openingCapital: accountSize, flows });
   /* Deployment is not needed here any more: the tile that used it moved to
      the Capital Deployment card, which owns that denominator. */
   const q = returnQuality({ rate: annual.rate, maxDDPct: eq.maxDDPct });
@@ -108,10 +111,47 @@ export default function Performance({ closed, banking = [], S, accountSize, flow
               sub={`best ${rfmt(S.best)}`} />
         <Tile label="Average loss" value={rfmt(-S.avgLoss)} tone="neg"
               sub={`worst ${rfmt(S.worst)}`} />
-        {/* The worst fall along the SAME running total as the tile above, or
-            the two would describe different curves. */}
+        {/*
+          DEPTH AND DURATION IN ONE TILE.
+
+          The fall is along the SAME running total as Total R, or the two
+          would describe different curves. The subtitle is now how LONG the
+          account spent below its high-water mark, which is the half of a
+          drawdown people actually live through — a 7R fall is a number,
+          four months below your best is what makes somebody stop.
+
+          The current stretch wins the subtitle when there is one, because
+          the drawdown a trader needs to see is the one they are in. The
+          longest survived moves to the hover beside it, which is what gives
+          the current one a scale.
+
+          "Longest losing run" was here and is not the same thing at all: it
+          counts consecutive losing days, and an account can sit under water
+          for months while winning more days than it loses. It keeps its place
+          in the hover rather than being dropped.
+        */}
         <Tile label="Max drawdown" value={`${R.maxDD.toFixed(1)}R`}
-              sub={`longest losing run ${S.worstL} day${S.worstL === 1 ? "" : "s"}`} />
+              sub={uw.current
+                ? `${uw.current.days}d under water now`
+                : uw.longest
+                ? `worst spell ${uw.longest.days}d under water`
+                : `longest losing run ${S.worstL} day${S.worstL === 1 ? "" : "s"}`}
+              hint={[
+                uw.current
+                  ? `Below your high-water mark for ${uw.current.days} days, ${pct(uw.current.depthPct, 1)} down from it.`
+                  : uw.longest ? "Back at your high-water mark." : null,
+                uw.longest && uw.current && uw.longest !== uw.current
+                  ? `The longest spell you have come back from was ${uw.longest.days} days.`
+                  : uw.longest && !uw.current
+                  ? `Measured on ${uw.episodes.length} spell${uw.episodes.length === 1 ? "" : "s"} below a previous high.`
+                  : null,
+                isFinite(uw.typicalRecovery)
+                  ? `Typical recovery: ${uw.typicalRecovery} days.` : null,
+                `Longest run of consecutive losing days: ${S.worstL}.`,
+                "Measured on closed-trade equity, so a position that fell and recovered "
+                  + "before you sold it never put the curve under water — the real spell "
+                  + "was longer than this.",
+              ].filter(Boolean).join(" ")} />
       </div>
 
       <div className="sec">
