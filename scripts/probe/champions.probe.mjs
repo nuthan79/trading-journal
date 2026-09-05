@@ -144,6 +144,20 @@ test("charges are split entry-side and per-exit, never doubled", () => {
   const { rows } = toJournalRows(positions, { batchId: "b" });
   near(rows[0].charges, 93.09, 1e-9, "the entry leg only");
   near(rows[0].exits[0].charges, 93.87, 1e-9, "and the exit carries its own");
+
+  /*
+    AND THEY ARE THE FILE'S, NOT THE APP'S.
+
+    charges.js could compute these, and measured across the real export it
+    lands within 0.6% in aggregate — which is exactly what would stop anyone
+    noticing that individual positions are out by 85%. The gaps are the MTF
+    trades: margin funding costs the calculator has no way to know about.
+
+    charges_auto false is what keeps them. Set true, the app would maintain
+    these figures itself and quietly replace what was actually paid with what
+    a delivery trade would have cost.
+  */
+  eq(rows[0].charges_auto, false, "the file's charges are not the app's to recompute");
 });
 
 test("a position already in the journal is not written again", () => {
