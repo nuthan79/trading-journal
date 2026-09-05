@@ -217,3 +217,84 @@ test("the summary counts what the preview promises", () => {
   eq(S.tranches, 1);
   eq(S.from, "2025-02-19");
 });
+
+/* ------------------- dates, which is where this can go wrong quietly ----- */
+
+const dated = (v) => champions.parseRows([HEAD,
+  entry({ date: v, symbol: "X", qty: 1, entry: 100, sl: 90 })]).positions[0]?.entryDate;
+
+test("a Date from the sheet is read in LOCAL time, not through UTC", () => {
+  /*
+    THE MISTAKE THIS CODEBASE MAKES MOST.
+
+    SheetJS with cellDates builds a Date at LOCAL midnight, so 19 February
+    2025 arrives as 2025-02-18T18:30:00Z in IST. Read with toISOString() —
+    the obvious thing — every date east of Greenwich lands a day early, and
+    the whole book imports shifted by one day while looking perfectly normal.
+
+    Constructed here the same way SheetJS constructs it, so this holds in any
+    zone the suite runs in.
+  */
+  eq(dated(new Date(2025, 1, 19)), "2025-02-19");
+  eq(dated(new Date(2026, 0, 1)), "2026-01-01", "and on a year boundary");
+  eq(dated(new Date(2025, 11, 31)), "2025-12-31");
+});
+
+test("an Excel serial is exact arithmetic, not a parse", () => {
+  eq(dated(45707), "2025-02-19");
+  eq(dated(45292), "2024-01-01");
+  ok(!dated(59), "and the 1900 leap-year fiction is refused, not shifted");
+});
+
+test("a formatted date is read the way the FILE says, not the way we guess", () => {
+  /*
+    "2/19/25" is unambiguous — there is no nineteenth month — and it proves
+    the whole column is month-first. That decision is then applied to
+    "2/3/25", which on its own could be either.
+  */
+  const { positions } = champions.parseRows([HEAD,
+    entry({ date: "2/19/25", symbol: "A", qty: 1, entry: 100, sl: 90 }),
+    entry({ date: "2/3/25", symbol: "B", qty: 1, entry: 100, sl: 90 }),
+  ]);
+  eq(positions[0].entryDate, "2025-02-19");
+  eq(positions[1].entryDate, "2025-02-03", "March 2nd would be the other reading");
+});
+
+test("and the other way round, when the file says so", () => {
+  const { positions } = champions.parseRows([HEAD,
+    entry({ date: "19/2/25", symbol: "A", qty: 1, entry: 100, sl: 90 }),
+    entry({ date: "3/2/25", symbol: "B", qty: 1, entry: 100, sl: 90 }),
+  ]);
+  eq(positions[0].entryDate, "2025-02-19");
+  eq(positions[1].entryDate, "2025-02-03", "day-first, proved by the row above");
+});
+
+test("a file that cannot prove its orientation imports nothing", () => {
+  /*
+    Every date under the 13th, so both readings are possible. Guessing would
+    put a whole book out by up to eleven months and look entirely ordinary —
+    so it refuses, loudly, one warning per row.
+  */
+  const { positions, warnings } = champions.parseRows([HEAD,
+    entry({ date: "2/3/25", symbol: "A", qty: 1, entry: 100, sl: 90 }),
+    entry({ date: "5/6/25", symbol: "B", qty: 1, entry: 100, sl: 90 }),
+  ]);
+  eq(positions.length, 0, "nothing is imported on a guess");
+  eq(warnings.length, 2, "and each row says so");
+  ok(/no entry date/.test(warnings[0]));
+});
+
+test("ISO strings need no interpretation at all", () => {
+  eq(dated("2025-02-19"), "2025-02-19");
+  eq(dated("2025-02-19T00:00:00.000Z"), "2025-02-19");
+});
+
+test("exit dates go through the same rule as entry dates", () => {
+  /* They are read from a different column and were a separate code path once;
+     an orientation decided from entries alone would not reach them. */
+  const { positions } = champions.parseRows([HEAD,
+    entry({ date: "2/19/25", symbol: "A", qty: 10, entry: 100, sl: 90 }),
+    exitRow({ date: "2/27/25", price: 120, qty: 10 }),
+  ]);
+  eq(positions[0].exits[0].exit_date, "2025-02-27");
+});

@@ -238,6 +238,10 @@ export default function ImportTrades({
       // that format.
       let broker = zerodha;
 
+      /* Held for the kinds that need the sheet's underlying values rather
+         than its formatted text — see the journal branch below. */
+      let workbook = null, sheetName = null, XLSXmod = null;
+
       if (/\.(xlsx|xls)$/i.test(f.name)) {
         // Loaded on demand — no reason to ship a spreadsheet parser to
         // everyone who never imports anything
@@ -273,6 +277,7 @@ export default function ImportTrades({
           );
         }
         rows = XLSX.utils.sheet_to_json(wb.Sheets[sheet], { header: 1, raw: false, defval: null });
+        workbook = wb; sheetName = sheet; XLSXmod = XLSX;
       } else if (/\.csv$/i.test(f.name)) {
         const { parseCsv } = await import("@/lib/import");
         rows = parseCsv(await f.text());
@@ -383,7 +388,27 @@ export default function ImportTrades({
        * preview.
        */
       if (kindOf(broker) === "journal") {
-        const raw = broker.parseRows(rows);
+        /**
+         * READ RAW, NOT FORMATTED — the one place in this screen that does.
+         *
+         * Every other adapter wants `raw: false`, because a broker sheet's
+         * numbers arrive with currency symbols and thousands separators that
+         * are easier to strip from text than to chase through cell types.
+         *
+         * A journal's dates cannot survive that trip. Formatted, 19 February
+         * 2025 becomes "2/19/25", and "2/3/25" is then genuinely ambiguous
+         * between two dates eleven months apart — a whole book could import
+         * plausibly and wrongly, with nothing to notice. Raw, the same cell is
+         * a Date or an Excel serial, which says what it is.
+         *
+         * The formatted read above still happens, and is still what detection
+         * ran on; this only re-reads the sheet the adapter already chose.
+         */
+        const rawRows = workbook && XLSXmod
+          ? XLSXmod.utils.sheet_to_json(workbook.Sheets[sheetName],
+              { header: 1, raw: true, defval: null })
+          : rows;
+        const raw = broker.parseRows(rawRows);
         if (!raw.positions.length) {
           throw new Error(
             raw.warnings[0] ||

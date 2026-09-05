@@ -37,26 +37,83 @@ const num = (v) => {
 };
 
 /**
- * Excel's day zero is 30 December 1899, and the serial is a whole number of
- * days — so this is exact arithmetic, not a parse. Built in UTC and read back
- * with the UTC getters, because a date that is only ever a calendar day must
- * not acquire a timezone on the way in.
+ * A calendar day, from whatever the reader handed over.
+ *
+ * FOUR SHAPES, AND ONLY ONE OF THEM IS SAFE ON ITS OWN.
+ *
+ * A Date, when the sheet was read with cellDates. SheetJS builds these at
+ * LOCAL midnight — 19 February 2025 arrives as 2025-02-18T18:30:00Z in IST —
+ * so they must be read with the local getters. Through `toISOString()` every
+ * date east of Greenwich lands a day early, which is the single most common
+ * way this codebase has been wrong about a date.
+ *
+ * A serial, when it was read raw without cellDates. Exact arithmetic off
+ * Excel's 30 December 1899 epoch.
+ *
+ * An ISO string, which needs no interpretation.
+ *
+ * And a slash format — "2/19/25" — which is what a formatted read produces
+ * and is genuinely ambiguous: only the file as a whole can say whether that
+ * is 19 February or 2 March. `orientation` carries that decision in from
+ * parseRows, which looks at every date before trusting any of them.
  */
-function fromSerial(v) {
-  if (typeof v === "string") {
-    const m = v.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
-    const d = v.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);   // dd/mm/yyyy
-    if (d) return `${d[3]}-${String(d[2]).padStart(2, "0")}-${String(d[1]).padStart(2, "0")}`;
-    return null;
+function toDay(v, orientation) {
+  if (v instanceof Date) {
+    if (!Number.isFinite(v.getTime())) return null;
+    /* Local, not UTC. See above. */
+    return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, "0")}-${String(v.getDate()).padStart(2, "0")}`;
   }
-  if (typeof v !== "number" || !Number.isFinite(v)) return null;
-  /* Serial 1 is 1 Jan 1900 and 60 is Excel's mythical 29 Feb 1900; anything
-     below 61 is not a trade date and is refused rather than shifted. */
-  if (v < 61 || v > 80000) return null;
-  const ms = Math.round((v - 25569) * 86400000);
-  const d = new Date(ms);
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+
+  if (typeof v === "number" && Number.isFinite(v)) {
+    /* Serial 1 is 1 Jan 1900 and 60 is Excel's mythical 29 Feb 1900; anything
+       below 61 is not a trade date and is refused rather than shifted. */
+    if (v < 61 || v > 80000) return null;
+    const d = new Date(Math.round((v - 25569) * 86400000));
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+  }
+
+  const str = String(v ?? "").trim();
+  if (!str) return null;
+
+  const iso = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+
+  const slash = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2}|\d{4})$/);
+  if (!slash) return null;
+  let [, a, b, y] = slash;
+  a = Number(a); b = Number(b); y = Number(y);
+  if (y < 100) y += 2000;
+  /* Without a decision from the file, refuse. Guessing here would import a
+     whole book off by up to eleven months and look entirely plausible. */
+  if (orientation !== "mdy" && orientation !== "dmy") return null;
+  const month = orientation === "mdy" ? a : b;
+  const day = orientation === "mdy" ? b : a;
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  return `${y}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+/**
+ * Which way round the slash dates are, decided from the whole column.
+ *
+ * A single "2/19/25" proves month-first, because there is no nineteenth
+ * month. One "19/2/25" proves the opposite. A file where every date could be
+ * read either way gets no answer, and every one of its rows is then skipped
+ * with a warning — which is the right outcome, because a book imported at the
+ * wrong orientation is wrong by up to eleven months on every trade and looks
+ * completely ordinary.
+ */
+function orientationOf(values) {
+  let mdy = false, dmy = false;
+  for (const v of values) {
+    if (v instanceof Date || typeof v === "number") continue;
+    const m = String(v ?? "").trim().match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2}|\d{4})$/);
+    if (!m) continue;
+    if (Number(m[1]) > 12) dmy = true;
+    if (Number(m[2]) > 12) mdy = true;
+  }
+  if (mdy && !dmy) return "mdy";
+  if (dmy && !mdy) return "dmy";
+  return null;
 }
 
 export const id = "champions";
@@ -127,6 +184,13 @@ export function parseRows(rows) {
   const positions = [];
   let cur = null;
 
+  /* Decided once, from every date in the sheet, before a single one is read.
+     Only matters when the reader handed over formatted strings; a raw read
+     gives Dates or serials, which say what they are. */
+  const orient = orientationOf(
+    (rows || []).slice(1).flatMap((r) => [r?.[COL.date], r?.[COL.xDate]])
+  );
+
   const close = () => { if (cur) positions.push(cur); cur = null; };
 
   for (let i = 1; i < (rows?.length || 0); i++) {
@@ -135,7 +199,7 @@ export function parseRows(rows) {
 
     if (symbol) {
       close();
-      const entryDate = fromSerial(r[COL.date]);
+      const entryDate = toDay(r[COL.date], orient);
       const quantity = num(r[COL.quantity]);
       const entryPrice = num(r[COL.entry]);
       const stop = num(r[COL.sl]);
@@ -174,7 +238,7 @@ export function parseRows(rows) {
     }
 
     /* A continuation row: an exit belonging to the position above it. */
-    const xDate = fromSerial(r[COL.xDate]);
+    const xDate = toDay(r[COL.xDate], orient);
     if (!xDate) continue;
     if (!cur) { warnings.push(`Row ${i + 1}: an exit with no position above it — skipped`); continue; }
 
