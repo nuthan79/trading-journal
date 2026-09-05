@@ -8,7 +8,7 @@ import { downloadCsv } from "@/lib/csv";
 import PositionDetail from "./PositionDetail";
 import { SETUP_FIELDS } from "@/lib/gaps";
 import { noStopOnRecord, hasRealStop, canHaveStop } from "@/lib/stops";
-import { isOpen, isClosed, isPartial, isFlagged, realisationEvents } from "@/lib/positions";
+import { isOpen, isClosed, isPartial, isFlagged, bankedEvents } from "@/lib/positions";
 import { matches, describeFilter, seedFromTab, sortForFilter,
          realisedWindow } from "@/lib/filters";
 import SavedViews from "./SavedViews";
@@ -430,22 +430,35 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
   const dateWindow = useMemo(() => (view ? realisedWindow(view) : null), [view]);
   const realisedHere = useMemo(() => {
     if (!dateWindow) return NaN;
+    /**
+     * THE WHOLE BOOK, NOT THE ROWS ON SCREEN.
+     *
+     * This walked `rows`, and `rows` is filtered on exit_date — a position's
+     * LAST sell. So a position that sold half inside the window and finished
+     * after it is not in the table at all, and the money it paid out inside
+     * the window went uncounted. Measured on a real book, the financial year
+     * came out ₹4.8 L short of what Performance reported for the same year.
+     *
+     * The figure answers "how much money arrived in this window", which does
+     * not depend on which rows a filter happened to show. It now matches the
+     * period table to the rupee, because both walk every sell of every
+     * position.
+     *
+     * And bankedEvents rather than a local fallback: on a part-sold position
+     * `pnl` is realised PLUS the open mark, so a position whose tranches
+     * could not be split was contributing its unrealised profit here as
+     * money realised. One partial marked well up turned ₹2,000 banked into
+     * ₹32,000.
+     */
     let sum = 0;
-    for (const t of rows) {
-      const evs = realisationEvents(t);
-      if (evs.length) {
-        for (const e of evs) {
-          if (e.date >= dateWindow.from && e.date <= dateWindow.to) sum += e.pnl;
-        }
-      } else if (isFinite(t.pnl)) {
-        /* No tranches to split — it counts whole, on its own exit date, which
-           is where it would have counted before any of this. */
-        const d = String(t.exit_date || "").slice(0, 10);
-        if (d && d >= dateWindow.from && d <= dateWindow.to) sum += t.pnl;
+    for (const t of all) {
+      for (const e of bankedEvents(t)) {
+        if (e.placedByEntry) continue;      // a stand-in date, not a sell
+        if (e.date >= dateWindow.from && e.date <= dateWindow.to) sum += e.pnl;
       }
     }
     return sum;
-  }, [rows, dateWindow]);
+  }, [all, dateWindow]);
 
   const totals = useMemo(() => {
     const pnl = rows.map((t) => t.pnl).filter(isFinite);
@@ -804,9 +817,19 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                       window" beside a total of ₹15.26 L. A sentence drawing a
                       distinction the reader cannot see reads as a bug, and
                       there is no figure here it could usefully add. */}
+                  {/* Not "of it" any more: it is no longer a share of the total
+                      beside it. It counts every sell in the window across the
+                      whole book, including positions this filter does not show
+                      because their last exit falls outside it. */}
                   {isFinite(realisedHere) && rupee(realisedHere) !== rupee(totals.pnl) && (
-                    <span className="tr-tot-win">
-                      {rupee(realisedHere)} of it was realised inside this window
+                    <span className="tr-tot-win"
+                          title={"Money that actually arrived between these dates, counting "
+                            + "every sell of every position — including positions not listed "
+                            + "here, whose last exit falls outside the window. The total "
+                            + "beside it sums whole positions instead, so it carries money "
+                            + "realised before or after. This figure matches Performance by "
+                            + "period for the same dates."}>
+                      {rupee(realisedHere)} realised between these dates
                     </span>
                   )}
                 </td>

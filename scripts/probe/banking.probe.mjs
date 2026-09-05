@@ -203,3 +203,65 @@ test("drawdown is measured on the order money arrived, across positions", () => 
   near(grouped, 1.0, 1e-9);
   ok(R.maxDD < grouped, "sorting across positions is what makes it honest");
 });
+
+test("the Trades window figure equals the period table, to the rupee", () => {
+  /*
+    TWO SCREENS, ONE FINANCIAL YEAR, AND THEY DISAGREED BY LAKHS.
+
+    The footer walked the FILTERED rows, and the filter is on exit_date — a
+    position's LAST sell. A position that sold half inside the year and
+    finished after it is not in the table at all, so the money it paid out
+    inside the year went uncounted: on a real book, ₹19.35 L against the
+    ₹24.15 L Performance reported for the same year.
+
+    And its fallback reached for `pnl`, which on a part-sold position folds in
+    the open mark, pushing the other year the other way.
+
+    The rule is that the question — how much money arrived between these dates
+    — cannot depend on which rows a filter happened to show.
+  */
+  const FROM = "2025-04-01", TO = "2026-03-31";
+  const inWindow = (d) => d >= FROM && d <= TO;
+
+  /* Sold inside the year, finished after it — invisible to the filter. */
+  const straddler = mk({ id: "str", symbol: "STR", side: "long", status: "closed",
+    entry_date: "2025-06-01", entry_price: 100, quantity: 200,
+    stop_loss: 90, stop_source: "recorded", charges: 0,
+    exit_date: "2026-06-10", exit_price: 130,
+    exits: [
+      { exit_date: "2026-01-15", quantity: 100, price: 150, charges: 0 },
+      { exit_date: "2026-06-10", quantity: 100, price: 110, charges: 0 },
+    ] });
+  /* Part-sold, tranche the splitter refuses, carrying a large open mark. */
+  const partial = mk({ id: "prt", symbol: "PRT", side: "long", status: "partial",
+    entry_date: "2025-05-01", entry_price: 100, quantity: 200,
+    stop_loss: 90, stop_source: "recorded", charges: 0, last_price: 400,
+    exit_date: "2026-02-01", exit_price: 120,
+    exits: [{ exit_date: null, quantity: 100, price: 120, charges: 0 }] });
+  /* And an ordinary one that lands squarely inside. */
+  const plain = mk({ id: "pln", symbol: "PLN", side: "long", status: "closed",
+    entry_date: "2025-09-01", entry_price: 100, quantity: 100,
+    stop_loss: 90, stop_source: "recorded", charges: 0,
+    exit_date: "2025-11-01", exit_price: 130,
+    exits: [{ exit_date: "2025-11-01", quantity: 100, price: 130, charges: 0 }] });
+
+  const book = [straddler, partial, plain];
+
+  const footer = book.flatMap(bankedEvents)
+    .filter((e) => !e.placedByEntry && inWindow(e.date))
+    .reduce((a, e) => a + e.pnl, 0);
+
+  const periods = byPeriod(book, "fy", { openingCapital: 5e6, basis: "exit" })
+    .filter((r) => r.key === "FY26")
+    .reduce((a, r) => a + r.pnl, 0);
+
+  near(footer, periods, 0.01, "footer and period table are one number");
+
+  /* And each defect is pinned by name, so a regression says which came back. */
+  ok(!book.filter((t) => inWindow(String(t.exit_date).slice(0, 10)))
+        .some((t) => t.id === "str"),
+    "the straddler really is invisible to the exit-date filter");
+  near(footer - periods, 0, 0.01);
+  ok(footer < partial.pnl + plain.realisedPnl,
+    "and the open mark on the partial is not in it");
+});
