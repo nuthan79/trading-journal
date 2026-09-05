@@ -224,13 +224,8 @@ export function parseRows(rows) {
            recording slip, and importing it would produce a negative 1R that
            every R in the app then divides by. */
         stop: stop > 0 ? stop : null,
-        /* What the trader says they risked, in rupees. Kept for the preview to
-           show against what the app computes from the stop — the two
-           disagreeing means the stop was moved after entry. */
-        rpt: num(r[COL.rpt]),
         charges: Math.abs(num(r[COL.charges])) || 0,
         netProfit: num(r[COL.netProfit]),
-        tags: String(r[COL.tags] ?? "").split(",").map((t) => t.trim()).filter(Boolean),
         exits: [],
         row: i + 1,
       };
@@ -253,7 +248,6 @@ export function parseRows(rows) {
       quantity: q,
       price: p,
       charges: Math.abs(num(r[COL.xCharges])) || 0,
-      profit: num(r[COL.xProfit]),
     });
   }
   close();

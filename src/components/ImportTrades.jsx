@@ -1352,12 +1352,41 @@ export default function ImportTrades({
                   {t._preview.intraday && <span className="im-tag">intraday</span>}
                 </td>
                 <td className="num mono im-dim">{t.entry_date}</td>
-                <td className="num mono im-dim">{t.exit_date}</td>
+                {/* A row on this table used to be a closed trade by
+                    definition — a tax P&L cannot contain anything else — so
+                    the exit cells read the values straight. A journal export
+                    brings positions still running, where both are null, and
+                    `null.toFixed(2)` took the whole screen down.
+
+                    Dashed rather than blank: an open position has no exit,
+                    and that is a fact worth showing, not a gap. */}
+                {/* A part-sold position HAS an exit date — the last tranche —
+                    and printing it bare made four of six running positions
+                    read as finished. The date is still worth showing; what it
+                    means is not "closed". */}
+                <td className={`num mono ${t.status === "closed" ? "im-dim" : ""}`}>
+                  {t.status !== "closed"
+                    ? (t.exit_date
+                        ? <>{t.exit_date}<i className="im-assumed">part sold</i></>
+                        : <span className="im-dim">still open</span>)
+                    : t.exit_date}
+                </td>
                 <td className="num">{t.quantity}</td>
-                <td className="num">{t.entry_price.toFixed(2)}</td>
-                <td className="num">{t.exit_price.toFixed(2)}</td>
-                <td className={`num ${t._preview.netProfit >= 0 ? "pos" : "neg"}`}>
-                  {rupee(t._preview.netProfit)}
+                <td className="num">{Number(t.entry_price).toFixed(2)}</td>
+                <td className={`num ${t.exit_price == null ? "im-dim" : ""}`}>
+                  {t.exit_price == null ? "—" : Number(t.exit_price).toFixed(2)}
+                </td>
+                {/* Net profit is unknown until a position is closed, and
+                    `rupee(undefined)` renders an em dash rather than a zero —
+                    but the tone class would still have coloured it red. */}
+                {/* Nothing sold, nothing realised. The journal's own Net
+                    Profit column carries the entry charge on an unsold
+                    position, which is true and reads under this header as a
+                    losing trade — so a position with no exits shows a dash. */}
+                <td className={`num ${!isFinite(t._preview.netProfit) || !t.exits?.length ? "im-dim"
+                  : t._preview.netProfit >= 0 ? "pos" : "neg"}`}>
+                  {isFinite(t._preview.netProfit) && t.exits?.length
+                    ? rupee(t._preview.netProfit) : "—"}
                 </td>
                 {/* Hardcoded to a dash back when a tax report could only ever
                     produce a stopless trade. Left that way it now contradicts
@@ -1373,7 +1402,7 @@ export default function ImportTrades({
                 }>
                   {t._preview.tranches > 1
                     ? <b className="im-scaled">{t._preview.tranches}</b>
-                    : <span className="im-dim">1</span>}
+                    : <span className="im-dim">{t._preview.tranches ?? 1}</span>}
                 </td>
               </tr>
             ))}

@@ -158,19 +158,33 @@ test("a position already in the journal is not written again", () => {
   eq(duplicates.length, 1, "re-importing the same export doubles nothing");
 });
 
-test("tags go to the note, never to pattern", () => {
+test("nothing beyond the essentials is written", () => {
   /*
-    "A Trade", "Power Trade" and "MTF" are conviction and funding. `pattern`
-    means a VCP, a flat base, a cup — writing one into the other would put a
-    funding method where a chart pattern belongs and corrupt every breakdown
-    that groups by it.
+    The file carries tags, a recorded risk-per-trade, position size, holding
+    days and an R:R ratio. None is imported: each is either something the app
+    computes for itself from what IS imported, or something it has no honest
+    place for.
+
+    Two versions of one number that can disagree is the failure this avoids,
+    and the imported one is always the copy nobody recomputes.
   */
   const { positions } = champions.parseRows([HEAD,
     entry({ date: 45707, symbol: "ERIS", qty: 61, entry: 1283.2, sl: 1217.5,
-            tags: "A Trade, MTF" })]);
+            rpt: 4007.7, size: 78275.2, tags: "A Trade, MTF" })]);
   const { rows } = toJournalRows(positions, { batchId: "b" });
-  eq(rows[0].pattern, undefined, "pattern is left for the trader");
-  ok(/A Trade/.test(rows[0].notes) && /MTF/.test(rows[0].notes));
+  const r = rows[0];
+
+  eq(r.pattern, undefined, "pattern is the trader's, not a funding method");
+  eq(r.notes, undefined, "and the tags stay in the file");
+  for (const derived of ["position_size", "held_days", "rr", "r", "pnl", "risk_amt"]) {
+    eq(r[derived], undefined, `${derived} is computed, never imported`);
+  }
+
+  /* What DOES come across is exactly what the app cannot work out alone. */
+  for (const need of ["symbol", "entry_date", "entry_price", "quantity",
+                      "stop_loss", "side", "charges", "exits"]) {
+    ok(r[need] !== undefined, `${need} must be imported`);
+  }
 });
 
 test("a part-sold position is open, and says how much is left", () => {

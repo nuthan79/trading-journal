@@ -22,20 +22,27 @@
 const round2 = (v) => Math.round(v * 100) / 100;
 
 /**
- * Tags the file carries, mapped to nothing.
+ * WHAT IS DELIBERATELY NOT IMPORTED.
  *
- * "A Trade", "Power Trade" and "MTF" are this trader's own vocabulary for
- * conviction and funding, and the journal's `pattern` field means something
- * else entirely — a VCP, a flat base, a cup. Writing one into the other would
- * put a funding method where a chart pattern belongs and quietly corrupt every
- * breakdown that groups by it. They go into the note, where they are readable
- * and claim nothing.
+ * The file carries more than this: the trader's tags ("A Trade", "Power
+ * Trade", "MTF"), the risk-per-trade they recorded, a per-tranche profit
+ * figure, position size, holding days, an R:R ratio.
+ *
+ * None of it is taken. Every one is either something the app computes for
+ * itself from the fields below — position size, holding days, R, profit — or
+ * something it has no honest place for. Importing a figure the app also
+ * derives creates two versions of one number that can disagree, and the
+ * imported one is the one nobody recomputes.
+ *
+ * Tags are the clearest case. "A Trade" is conviction and "MTF" is funding;
+ * the journal's `pattern` means a VCP, a flat base, a cup. Writing one into
+ * the other puts a funding method where a chart pattern belongs and corrupts
+ * every breakdown that groups by it — so they are left in the file, where
+ * they are still true.
+ *
+ * What comes across is what the app cannot work out on its own: what was
+ * bought, when, at what price, what was risked, and what was sold.
  */
-const noteFrom = (p) => {
-  const bits = [];
-  if (p.tags?.length) bits.push(p.tags.join(", "));
-  return bits.join(" · ") || null;
-};
 
 /**
  * `targets` are the journal's existing rows. A position already here on the
@@ -108,8 +115,6 @@ export function toJournalRows(positions, {
       charges: round2(p.charges || 0),
       charges_auto: false,
 
-      notes: noteFrom(p),
-
       imported: true,
       import_batch: batchId,
 
@@ -120,18 +125,13 @@ export function toJournalRows(positions, {
         charges: round2(e.charges || 0),
       })),
 
+      /* Preview only — never written. Just enough for the table to describe
+         the row before it is confirmed. */
       _preview: {
         tranches: p.exits.length,
         sold,
         stillOpen: round2(p.quantity - sold),
         netProfit: round2(p.netProfit),
-        /* What the trader said they risked, beside what the stop implies. The
-           two disagreeing is not an error — it is a stop that moved after
-           entry — but it is worth showing before anything is written. */
-        rpt: round2(p.rpt),
-        impliedRisk: usable ? round2(Math.abs(p.entryPrice - p.stop) * p.quantity) : NaN,
-        tags: p.tags,
-        stopDropped: !usable && !!p.stop,
       },
     });
   }
