@@ -830,6 +830,20 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                             + "realised before or after. This figure matches Performance by "
                             + "period for the same dates."}>
                       {rupee(realisedHere)} realised between these dates
+                      {/*
+                        THE REASON THEY DIFFER, ON SCREEN.
+
+                        Two totals a quarter apart with nothing between them
+                        reads as a broken report, however correct both are.
+                        One sums the rows shown over their whole lives; the
+                        other is the money that arrived in the window. Saying
+                        so costs a line and removes the only reading a user
+                        can otherwise reach — that the page is wrong.
+                      */}
+                      <i className="tr-tot-why">
+                        the P&amp;L column totals these positions over their whole lives,
+                        so it counts money made outside these dates too
+                      </i>
                     </span>
                   )}
                 </td>
@@ -936,6 +950,13 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
            of empty space that already carries the sentence about what is on
            screen. */
         .tr-tot-win { margin-left: 10px; color: var(--ink3); font-size: 11px; }
+        /* Its own line under the figure it explains, not a parenthesis after
+           it — the sentence is longer than the figure and would otherwise
+           push the row's height around as the filter changes. */
+        .tr-tot-why {
+          display: block; font-style: normal; font-size: 10px;
+          color: var(--ink3); opacity: 0.85; margin-top: 2px;
+        }
         /* Under the figure, not beside it — inline, it pushed a right-aligned
            column out of true with the R values above it. */
         .tr-tot-sub {
