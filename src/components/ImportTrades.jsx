@@ -8,6 +8,7 @@ import * as zerodha from "@/lib/brokers/zerodha";
 import * as zerodhaHoldings from "@/lib/brokers/zerodha-holdings";
 import * as icicidirect from "@/lib/brokers/icicidirect";
 import { toHoldingRows, dateCaveat } from "@/lib/holdings";
+import { toJournalRows, journalSummary } from "@/lib/journalImport";
 import { matchFifo, openPositions, datesForHeldPositions } from "@/lib/tradebook";
 import { buildReport } from "@/lib/importReport";
 import { rupee, pct } from "@/lib/format";
@@ -365,6 +366,63 @@ export default function ImportTrades({
       }
 
       /**
+       * A JOURNAL IS A WHOLE BOOK, AND THE ONLY FILE THAT KNOWS THE STOP.
+       *
+       * Every broker report says what a trade made. None of them can say what
+       * was risked to make it, because the stop was never sent to the broker —
+       * which is why an imported book arrives with `stop_source: "assumed"`
+       * and every R figure downstream sits behind a caveat.
+       *
+       * A journal export was written by the trader, so the stop on each row is
+       * the one they set. It also carries closed positions, part-sold ones and
+       * open ones in a single sheet, where the broker formats need a tax P&L
+       * and a holdings file to cover the same ground.
+       *
+       * So it goes through neither pipeline: nothing to match, nothing to
+       * reassemble, and no assumed stop to offer. It rejoins at the same
+       * preview.
+       */
+      if (kindOf(broker) === "journal") {
+        const raw = broker.parseRows(rows);
+        if (!raw.positions.length) {
+          throw new Error(
+            raw.warnings[0] ||
+            "No positions found in this journal export. Check the Trades sheet " +
+            "downloaded fully."
+          );
+        }
+
+        const { rows: made, duplicates, noStop } =
+          toJournalRows(raw.positions, { broker: broker.id, targets });
+
+        if (!made.length) {
+          throw new Error(
+            `All ${duplicates.length} position${duplicates.length === 1 ? " is" : "s are"} ` +
+            "already in your journal — nothing here is new."
+          );
+        }
+
+        setFile(f);
+        setBroker(broker);
+        setParsedFile(raw);
+        setParsed({
+          kind: "journal",
+          trades: made,
+          duplicates,
+          noStop,
+          /* Present and empty so the shared chrome renders. A journal export
+             completes nothing and conflicts with nothing: a position is either
+             already here by symbol and entry date, or it is new. */
+          completions: [], conflicts: [], nearMisses: [],
+          skippedSections: [], missingColumns: [],
+          summary: journalSummary(made),
+          warnings: raw.warnings || [],
+          notes: [],
+        });
+        return;
+      }
+
+      /**
        * A holdings file is a different KIND of file, not a different broker.
        *
        * It yields open positions rather than matched lots, so it cannot go
@@ -545,6 +603,11 @@ export default function ImportTrades({
     setBusy(true); setError("");
     try {
       const isHoldings = parsed.kind === "holdings";
+      /* A journal writes trades like a tax P&L, so it needs no special
+         handling here beyond saying so in the batch record — but its counts
+         live under different names, and reading `summary.lots` off it would
+         file the whole import as having read nothing. */
+      const isJournal = parsed.kind === "journal";
 
       /**
        * Dates typed in the preview replace the assumed one, and — this is the
@@ -571,9 +634,13 @@ export default function ImportTrades({
           // which file it actually read, not which one it used to be.
           source: isHoldings
             ? `${(broker || zerodha).id}-holdings`
+            : isJournal
+            ? `${(broker || zerodha).id}-journal`
             : `${(broker || zerodha).id}-taxpnl`,
           trades_count: trades.length,
-          lots_count: isHoldings ? trades.length : parsed.summary.lots,
+          lots_count: isHoldings ? trades.length
+            : isJournal ? parsed.summary.tranches
+            : parsed.summary.lots,
           // A holdings statement covers one instant, not a span. Both ends are
           // that instant rather than null, so the import history has something
           // to show instead of an empty range.
@@ -736,6 +803,7 @@ export default function ImportTrades({
   const s = parsed.summary;
   const holdings = parsed.kind === "holdings";
   const tradebook = parsed.kind === "tradebook";
+  const journal = parsed.kind === "journal";
 
   return (
     <section>
@@ -749,7 +817,47 @@ export default function ImportTrades({
         </button>
       </div>
 
-      {tradebook ? (
+      {journal ? (
+        <>
+          <div className="im-stats">
+            <div><b>{s.positions}</b><span>positions</span></div>
+            <div><b>{s.closed}</b><span>closed</span></div>
+            <div><b>{s.open}</b><span>still running</span></div>
+            {/* The figure that makes this file worth preferring, so it is on
+                the board rather than in the prose below it. */}
+            <div><b>{s.withStop}</b><span>with a real stop</span></div>
+            <div><b>{s.tranches}</b><span>exits</span></div>
+          </div>
+
+          <p className="im-note">
+            {/* What a broker file cannot give, said before the button. Somebody
+                who has already imported a tax P&L needs to know why they would
+                import this too. */}
+            <b>These carry the stop you set.</b> A broker report knows what a trade
+            made and never what you risked to make it, so those import with an assumed
+            stop and every R behind a caveat. Here the stop is yours —
+            {s.withStop === s.positions
+              ? " on every position in the file"
+              : ` on ${s.withStop} of ${s.positions}`}
+            {" "}— so R is measured rather than inferred, and the <b>Stops</b> queue has
+            nothing to ask you for.
+            {s.open > 0 && (
+              <> Both halves of the book come across: {s.closed} closed with their exit
+                tranches, and {s.open} still running.</>
+            )}
+            {s.from && <> Entries from {s.from} to {s.to}.</>}
+          </p>
+
+          {parsed.duplicates.length > 0 && (
+            <p className="im-note">
+              {parsed.duplicates.length} position{parsed.duplicates.length === 1 ? " is" : "s are"}
+              {" "}already in your journal on the same symbol and entry date, and
+              {parsed.duplicates.length === 1 ? " is" : " are"} left alone — re-importing
+              this export will not double anything.
+            </p>
+          )}
+        </>
+      ) : tradebook ? (
         <>
           <div className="im-stats">
             <div><b>{parsed.changing.length}</b><span>dates found</span></div>

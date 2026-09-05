@@ -28,6 +28,7 @@ import * as dhan from "./dhan";
 import * as icicidirect from "./icicidirect";
 import * as zerodhaHoldings from "./zerodha-holdings";
 import * as zerodhaTradebook from "./zerodha-tradebook";
+import * as champions from "./champions";
 
 export { assembleImport } from "../import-pipeline";
 
@@ -48,7 +49,17 @@ export { assembleImport } from "../import-pipeline";
  * entry dates for positions a holdings file has already created, which is why
  * its kind is handled separately from the two that do write trades.
  */
-export const BROKERS = [zerodha, groww, dhan, icicidirect, zerodhaHoldings, zerodhaTradebook];
+/*
+  Champions before the broker adapters, and deliberately.
+
+  Its sheet is called "Trades" and carries Symbol and Quantity columns, which
+  is enough shape for a looser broker matcher to claim it. Detection here is
+  by every one of its own header marks together — RPT beside a per-tranche
+  Exit Quantity — so putting it first costs nothing and stops a journal export
+  being read as a tax P&L, which would silently throw away the stops that are
+  the only reason to prefer it.
+*/
+export const BROKERS = [champions, zerodha, groww, dhan, icicidirect, zerodhaHoldings, zerodhaTradebook];
 
 /** What a file yields. Absent means matched lots — the original assumption. */
 export const kindOf = (broker) => broker?.kind || "taxpnl";
