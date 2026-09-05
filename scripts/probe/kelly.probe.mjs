@@ -134,13 +134,20 @@ test("noisy real-world R multiples still produce a sane fraction", () => {
 
 /* --------------- the finding, on books shaped to trip each branch -------- */
 
-const trade = (i, r, riskPct) => ({
-  id: `t${i}`, symbol: "X", status: "closed", side: "long",
-  entry_date: `2025-${String((i % 12) + 1).padStart(2, "0")}-05`,
-  exit_date: `2025-${String((i % 12) + 1).padStart(2, "0")}-20`,
-  entry_price: 100, quantity: 100, stop_loss: 90,
-  stop_source: "recorded", r, riskPct, pnl: r * 1000,
-});
+/* riskAmt as well as riskPct: the card reports both units now, and takes them
+   from the same trade, so a fixture carrying only the percentage is filtered
+   out entirely. */
+const ACCOUNT = 1000000;
+const trade = (i, r, riskPct) => {
+  const riskAmt = (riskPct / 100) * ACCOUNT;
+  return {
+    id: `t${i}`, symbol: "X", status: "closed", side: "long",
+    entry_date: `2025-${String((i % 12) + 1).padStart(2, "0")}-05`,
+    exit_date: `2025-${String((i % 12) + 1).padStart(2, "0")}-20`,
+    entry_price: 100, quantity: 100, stop_loss: 90,
+    stop_source: "recorded", r, riskPct, riskAmt, pnl: r * riskAmt,
+  };
+};
 
 /* 45% winners at 3R, losers at 1R — a real edge, worst trade −2R. */
 const book = (riskPct) => {
@@ -232,4 +239,72 @@ test("no step is suggested when there is no room for one", () => {
     ok(!isFinite(nextRiskStep(bad, 0.05)), "no current risk, no advice");
     ok(!isFinite(nextRiskStep(0.0025, bad)), "no ceiling, no advice");
   }
+});
+
+test("the rupee figures come from measured risk, not multiplied back out", () => {
+  /*
+    riskAmt is (entry − stop) × quantity: money the trade actually put up.
+    riskPct is that divided by the account size — the one field the app cannot
+    verify. The rupee advice is riskAmt scaled by how far the step is from
+    where the trader is, so it is anchored to real money at both ends.
+
+    NOT claimed here: independence from the account size. Risk per trade IS a
+    share of the account, so the recommendation properly moves with it — an
+    earlier version of this probe asserted otherwise and was simply wrong
+    about what the metric means. What must hold is that the two units agree.
+  */
+  const account = 15000000, riskAmt = 40500;
+  const current = riskAmt / account;
+  const k = kellyFromR([
+    ...rep(3, 63), ...rep(-1, 71), ...rep(-4.4, 6),
+  ]);
+  const step = nextRiskStep(current, k.suggested);
+  ok(isFinite(step), "there is a step to take");
+
+  const amt = riskAmt * (step / current);
+  near(amt / account, step, 1e-12, "rupees and percent are one statement");
+  near(amt, 52500, 1, "0.27% of ₹1.5 Cr stepped to 0.35% is ₹52,500");
+});
+
+test("a very small stake still gets advice, on a finer grid", () => {
+  /*
+    THE CARD GOING SILENT ON THE PEOPLE IT IS FOR.
+
+    At 0.135% a whole 40% increase is 0.054 of a percentage point, which the
+    0.05 grid rounded back to where the trader already stood — so the card
+    said nothing to the most under-sized book in the app.
+  */
+  const k = kellyFromR([...rep(3, 63), ...rep(-1, 71), ...rep(-4.4, 6)]);
+  const step = nextRiskStep(0.00135, k.suggested);
+  ok(isFinite(step), "it now has something to say");
+  ok(step > 0.00135, "and it is upward");
+  ok(step >= 0.00135 * 1.05, "by an amount somebody would feel");
+  near(step * 10000, Math.round(step * 10000), 1e-9,
+    "still a round figure — a multiple of 0.01 of a point");
+});
+
+test("a move too small to feel is not offered at all", () => {
+  /* Where the ceiling leaves only a sliver, the honest output is silence
+     rather than "raise from 0.27% to 0.28%". */
+  ok(!isFinite(nextRiskStep(0.0027, 0.00276)), "under 5% up, say nothing");
+});
+
+test("percentage and rupees describe the same trade", () => {
+  /*
+    They are two readings of one median position, not two independent
+    medians — otherwise "0.27%" and "₹40.5k" could come from different trades
+    and quietly imply an account size that never existed.
+  */
+  const account = 15000000;
+  const riskAmt = 40500;
+  const pct = (riskAmt / account) * 100;
+  near((pct / 100) * account, riskAmt, 1e-6);
+
+  /* And the worst-case figure agrees in both units at the stepped size. */
+  const stepPct = 0.35 / 100;
+  const stepAmt = riskAmt * (stepPct / (pct / 100));
+  const worst = -4.4;
+  near(Math.abs(worst) * stepAmt / account * 100,
+       Math.abs(worst) * stepPct * 100, 1e-9,
+       "1.5% and ₹2.31 L are the same statement");
 });

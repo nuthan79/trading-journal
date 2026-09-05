@@ -645,17 +645,34 @@ function riskConsistency(closed) {
 function riskSizing(closed) {
   const rows = chron(closed)
     .filter(hasRealStop)
-    .filter((t) => isFinite(t.r) && isFinite(t.riskPct) && t.riskPct > 0);
+    .filter((t) => isFinite(t.r) && isFinite(t.riskPct) && t.riskPct > 0
+                && isFinite(t.riskAmt) && t.riskAmt > 0);
   if (rows.length < KELLY_MIN_TRADES) return null;
 
   const k = kellyFromR(rows.map((t) => t.r));
   if (k.method !== "ok") return null;
 
-  /* Median, not mean: one oversized trade should not decide what the trader
-     is described as doing habitually. */
-  const risks = rows.map((t) => t.riskPct).sort((a, b) => a - b);
-  const current = risks[Math.floor(risks.length / 2)] / 100;
-  if (!(current > 0)) return null;
+  /*
+    Median, not mean: one oversized trade should not decide what the trader is
+    described as doing habitually.
+    
+    The percentage and the rupee figure come from the SAME trade rather than
+    being two independent medians, so "0.27%" and "₹41.3k" are two readings of
+    one position and cannot describe different ones.
+
+    Rupees derived from riskAmt, which is money the trades carry, rather than
+    by multiplying a percentage back out by the Settings account size. Every
+    figure on this card then stands on measured money — and the one field the
+    app cannot verify stays out of advice about how much to bet.
+  */
+  const byRisk = [...rows].sort((a, b) => a.riskPct - b.riskPct);
+  const mid = byRisk[Math.floor(byRisk.length / 2)];
+  const current = mid.riskPct / 100;
+  const currentAmt = mid.riskAmt;
+  if (!(current > 0) || !(currentAmt > 0)) return null;
+  /* 1R at any size, in rupees: the median trade's own risk scaled by how far
+     the suggested size is from the size it was taken at. */
+  const amtAt = (f) => currentAmt * (f / current);
 
   const ratio = current / k.suggested;
   const worstCost = Math.abs(k.worst) * current * 100;      // % of account
@@ -675,10 +692,11 @@ function riskSizing(closed) {
       [], {
         magnitude: Math.min(100, (ratio - 1) * 20),
         figures: [
-          { value: pctOf(current), label: "risked on a typical trade" },
-          { value: pctOf(k.suggested), label: "what the record supports", lead: true },
-          { value: `${worstCost.toFixed(1)}%`, tone: "neg",
-            label: "of the account, on your worst trade at this size" },
+          { value: `${pctOf(current)} · ${rupee(currentAmt)}`, label: "risked on a typical trade" },
+          { value: `${pctOf(k.suggested)} · ${rupee(amtAt(k.suggested))}`,
+            label: "what the record supports", lead: true },
+          { value: `${worstCost.toFixed(1)}% · ${rupee(Math.abs(k.worst) * currentAmt)}`,
+            tone: "neg", label: "of the account, on your worst trade at this size" },
         ],
       });
   }
@@ -694,9 +712,11 @@ function riskSizing(closed) {
       [], {
         magnitude: Math.min(100, (ratio - 1) * 30),
         figures: [
-          { value: pctOf(current), label: "risked on a typical trade" },
-          { value: pctOf(k.suggested), label: "what the record supports", lead: true },
-          { value: `${k.worst.toFixed(1)}R`, tone: "neg", label: "worst trade in the book" },
+          { value: `${pctOf(current)} · ${rupee(currentAmt)}`, label: "risked on a typical trade" },
+          { value: `${pctOf(k.suggested)} · ${rupee(amtAt(k.suggested))}`,
+            label: "what the record supports", lead: true },
+          { value: `${k.worst.toFixed(1)}R · ${rupee(Math.abs(k.worst) * currentAmt)}`,
+            tone: "neg", label: "worst trade in the book, at today's size" },
         ],
       });
   }
@@ -731,29 +751,32 @@ function riskSizing(closed) {
 
     return F("good", "risk-below-edge",
       "Your edge is good and your risk is small — there is room to size up",
-      `You could comfortably raise risk per trade from ${pctOf(current)} to ${pctOf(step)}. ` +
+      `You could comfortably raise risk per trade from ${pctOf(current)} (${rupee(currentAmt)}) ` +
+      `to ${pctOf(step)} (${rupee(amtAt(step))}). ` +
       `Always check the market stance before raising it — every figure here comes from trades ` +
       `you have already taken, so it describes your edge in the conditions those trades ` +
       `happened in, and a size increase lands hardest when those change. ` +
       `Across ${k.n} trades your edge supports meaningfully more than you are using, which is ` +
       `why a strong expectancy can still produce a modest annual return: the edge is real, the ` +
       `stake is small. Move in steps and let each one prove itself — at ${pctOf(step)}, a trade ` +
-      `like your worst so far (${k.worst.toFixed(1)}R) takes ${worstAtStep.toFixed(1)}% off the ` +
-      `account in one go. That is the figure to be comfortable losing before you think about ` +
+      `like your worst so far (${k.worst.toFixed(1)}R) takes ${worstAtStep.toFixed(1)}% — ` +
+      `${rupee(Math.abs(k.worst) * amtAt(step))} — off the account in one go. That is the figure to be comfortable losing before you think about ` +
       `the step after this one.`,
       [], {
         magnitude: Math.min(100, (1 - ratio) * 60),
         figures: [
-          { value: pctOf(current), label: "risked on a typical trade" },
+          { value: `${pctOf(current)} · ${rupee(currentAmt)}`, label: "risked on a typical trade" },
           /* The number the card exists to recommend. */
-          { value: pctOf(step), label: "a comfortable next step", lead: true },
+          { value: `${pctOf(step)} · ${rupee(amtAt(step))}`,
+            label: "a comfortable next step", lead: true },
           /* Reads as one sentence with its own value — "1.5% of the account,
              on your worst trade at 0.35%". The old label said "there", which
              made the reader carry the 0.35% across from the figure beside it
              before the number meant anything. */
           /* Red on a green card, deliberately: this one is what a bad trade
              costs, and in the card's own green it reads as more good news. */
-          { value: `${worstAtStep.toFixed(1)}%`, tone: "neg",
+          { value: `${worstAtStep.toFixed(1)}% · ${rupee(Math.abs(k.worst) * amtAt(step))}`,
+            tone: "neg",
             label: `of the account, on your worst trade at ${pctOf(step)}` },
         ],
       });

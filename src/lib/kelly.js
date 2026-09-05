@@ -126,9 +126,20 @@ export function growthAt(rs, f) {
  * the ceiling, and rounded to a figure somebody would actually type into a
  * position-size box. 0.25% becomes 0.35%, not 0.3499%.
  */
-export function nextRiskStep(current, ceiling, { grow = 1.4, step = 0.0005 } = {}) {
+export function nextRiskStep(current, ceiling, { grow = 1.4, step } = {}) {
   if (!(current > 0) || !(ceiling > 0) || ceiling <= current) return NaN;
   const target = Math.min(current * grow, ceiling);
+  /*
+    The granularity follows the size being advised on.
+
+    0.05 of a percentage point reads well at 0.25% -> 0.35%, and swallows the
+    advice entirely at 0.135%, where a whole 40% increase is 0.054 points and
+    rounds back to where the trader already was. That silenced the card for
+    the smallest-risk traders — precisely the ones it exists for. Below 0.3%
+    the grid is five times finer, which still lands on a figure somebody would
+    type.
+  */
+  if (step == null) step = target >= 0.003 ? 0.0005 : 0.0001;
   /* Rounded DOWN to the step, so rounding can never nudge the suggestion past
      the ceiling it was clamped to.
 
@@ -137,7 +148,8 @@ export function nextRiskStep(current, ceiling, { grow = 1.4, step = 0.0005 } = {
      — a recommendation a tenth of a point light, from arithmetic that looks
      exact on paper. */
   const rounded = Math.floor(target / step + 1e-9) * step;
-  /* If a whole step does not fit between here and the ceiling, there is no
-     move worth naming — say nothing rather than suggest standing still. */
-  return rounded > current + step / 2 ? rounded : NaN;
+  /* A move worth naming, or nothing. Not "raise from 0.27% to 0.28%": that is
+     noise dressed as advice, and it spends the card's credibility on a change
+     no one would feel. Five per cent up is the floor. */
+  return rounded > current && rounded >= current * 1.05 ? rounded : NaN;
 }
