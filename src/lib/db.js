@@ -1481,6 +1481,96 @@ export async function saveDrillSession(answers, prior = {}) {
   if (error) throw error;
 }
 
+/* ------------------------------ screens ----------------------------- */
+
+/**
+ * The screens a user can see, and what each last found.
+ *
+ * READS ONLY. Runs are written server-side by the scheduled job with the
+ * service role — a browser must never be able to record one, which is why
+ * screen_runs has a select policy and no other.
+ *
+ * `clause` is deliberately not selected. It is the scan definition, it is
+ * what a paying customer is paying for, and the browser has no use for it —
+ * selecting it would put every screen's definition in the network tab of
+ * anybody with an account.
+ */
+export async function listScreens() {
+  const { data, error } = await supabase
+    .from("screens")
+    .select("slug,name,description,cadence,active,sort")
+    .eq("active", true)
+    .order("sort")
+    .order("slug");
+  if (error) {
+    /* Before 047 there is no table, and that is not a fault — the section
+       simply has nothing to show. Same treatment listExitsByTrade gives a
+       journal from before 007. `migrationHint` cannot help here: it reads
+       missing-COLUMN errors, and a missing table is a different code. */
+    if (isMissingTable(error)) return [];
+    throw new Error(error.message);
+  }
+  return data || [];
+}
+
+/**
+ * The most recent run of one screen, whatever its outcome.
+ *
+ * NOT filtered to successful runs, and that is the point. A screen that
+ * failed at 16:15 must be able to say so; asking only for runs with results
+ * would return the last GOOD one instead, and yesterday's list would sit
+ * under today's date looking current.
+ *
+ * Results come back only when there are any, so an empty or failed run costs
+ * one round trip rather than two.
+ */
+export async function latestScreenRun(slug) {
+  const { data: runs, error } = await supabase
+    .from("screen_runs")
+    .select("*")
+    .eq("slug", slug)
+    .order("as_of", { ascending: false })
+    .order("ran_at", { ascending: false })
+    .limit(1);
+  if (error) {
+    if (isMissingTable(error)) return { run: null, results: [] };
+    throw new Error(error.message);
+  }
+
+  const run = runs?.[0];
+  if (!run || run.status !== "ok") return { run: run || null, results: [] };
+
+  const results = await fetchAllPages(() =>
+    supabase
+      .from("screen_results")
+      .select("*")
+      .eq("run_id", run.id)
+      .order("rank")
+  );
+  return { run, results };
+}
+
+/**
+ * Every active screen with its latest run, for the section's index.
+ *
+ * Sequential rather than parallel: three screens is three quick queries, and
+ * firing them together against the same connection buys nothing worth the
+ * error handling it costs.
+ */
+export async function listScreensWithRuns() {
+  const screens = await listScreens();
+  const out = [];
+  for (const s of screens) {
+    try {
+      out.push({ ...s, ...(await latestScreenRun(s.slug)) });
+    } catch (e) {
+      /* One screen failing to load is not the section failing to load. */
+      out.push({ ...s, run: null, results: [], error: e.message });
+    }
+  }
+  return out;
+}
+
 /* ------------------------------ settings --------------------------- */
 
 export async function getProfile() {
