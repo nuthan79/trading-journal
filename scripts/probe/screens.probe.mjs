@@ -284,3 +284,62 @@ test("parsed rows go straight into a run, in the scan's order", () => {
   eq(results[1].rank, 2);
   eq(results[0].extra.name, "Bosch Limited", "the company name survives to storage");
 });
+
+test("the same three columns are read under EITHER name Chartink uses", () => {
+  /*
+    A saved screen with configured columns returns
+    `scan-column-default-close`; the identical clause posted plainly returns
+    `close`. Both were measured against live responses. A reader that knows
+    only the first reports every price, volume and change as null on the
+    second — while still returning the right symbols, so it looks like it
+    worked.
+  */
+  const plain = { sr: 1, nsecode: "MRF", name: "Mrf Limited", bsecode: "500290",
+                  close: 129945, per_chg: -0.43, volume: 4656 };
+  const { rows } = parseScanResponse(body([plain]));
+  eq(rows[0].symbol, "MRF");
+  eq(rows[0].close, 129945);
+  eq(rows[0].chgPct, -0.43);
+  eq(rows[0].volume, 4656);
+});
+
+test("a raw column can never overwrite the parsed one", () => {
+  /*
+    THE BUG THAT PASSED BY ACCIDENT.
+
+    Extras used to be spread AFTER the named fields, so on the plain response
+    the raw `close` overwrote the parsed `close`. It read correctly only
+    because the raw value happened to already be a number — and would have
+    broken the day a scan returned "1,234.50" as text, or a screen added a
+    column of its own called `close`.
+  */
+  const { rows } = parseScanResponse(body([
+    { sr: 1, nsecode: "X", close: "1,234.50", per_chg: "-2.5%", volume: "1,20,000" },
+  ]));
+  eq(rows[0].close, 1234.5, "text with separators is parsed, not passed through");
+  eq(rows[0].chgPct, -2.5);
+  eq(rows[0].volume, 120000);
+
+  /* And the source keys do not survive into extra to fight with them. */
+  const { results } = buildRun({ slug: "s", as_of: "2026-09-03", rows });
+  eq(results[0].extra?.close, undefined);
+  eq(results[0].extra?.per_chg, undefined);
+  eq(results[0].extra?.volume, undefined);
+  eq(results[0].close, 1234.5);
+});
+
+test("both namings survive the trip into storage", () => {
+  const hashed = parseScanResponse(body([row({})]));
+  const plain = parseScanResponse(body([
+    { sr: 1, nsecode: "BOSCHLTD", name: "Bosch Limited", bsecode: "500530",
+      close: 46820, per_chg: -0.38, volume: 16913 },
+  ]));
+  const a = buildRun({ slug: "s", as_of: "2026-09-03", rows: hashed.rows }).results[0];
+  const b = buildRun({ slug: "s", as_of: "2026-09-03", rows: plain.rows }).results[0];
+
+  for (const k of ["symbol", "exchange", "close", "chg_pct", "volume"]) {
+    eq(a[k], b[k], `${k} must not depend on which naming the scan used`);
+  }
+  ok(a.extra["scan-column-_397c4"], "the hashed response keeps its custom columns");
+  eq(b.extra["scan-column-_397c4"], undefined, "the plain one simply has none");
+});

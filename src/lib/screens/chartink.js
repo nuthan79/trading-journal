@@ -36,13 +36,33 @@
  * factor of a hundred while still looking like money.
  */
 
-/** Columns whose meaning is fixed, and which therefore get real names. */
-const CLOSE = "scan-column-default-close";
-const CHANGE = "scan-column-default-percent-change";
-const VOLUME = "scan-column-default-volume";
+/**
+ * The same three columns, under either of the two names Chartink uses.
+ *
+ * A saved screen with configured columns returns
+ * `scan-column-default-close`; the same clause posted plainly returns
+ * `close`. Both are real — measured against two live responses — and a
+ * reader that knows only the first reports every price and volume as null on
+ * the second while still looking like it worked.
+ */
+const CLOSE_KEYS  = ["scan-column-default-close", "close"];
+const CHANGE_KEYS = ["scan-column-default-percent-change", "per_chg"];
+const VOLUME_KEYS = ["scan-column-default-volume", "volume"];
 
 /* Chartink's own UI colouring for the change cell. Not data. */
 const NOISE = new Set(["sr", "default-percent-change-conditional-filters-color"]);
+
+/* Everything read into a named field, so none of it is also copied into
+   `extra` — where it would then overwrite the parsed value. */
+const CONSUMED = new Set([
+  ...CLOSE_KEYS, ...CHANGE_KEYS, ...VOLUME_KEYS, ...NOISE,
+  "nsecode", "bsecode", "name",
+]);
+
+const pick = (row, keys) => {
+  for (const k of keys) if (row[k] !== undefined && row[k] !== null) return row[k];
+  return undefined;
+};
 
 const num = (v) => {
   if (v === null || v === undefined || v === "") return null;
@@ -93,23 +113,29 @@ export function parseScanResponse(json) {
 
     const extra = {};
     for (const [k, v] of Object.entries(r)) {
-      if (NOISE.has(k)) continue;
-      if (k === "nsecode" || k === "bsecode" || k === "name") continue;
-      if (k === CLOSE || k === CHANGE || k === VOLUME) continue;
-      extra[k] = v;
+      if (!CONSUMED.has(k)) extra[k] = v;
     }
 
+    /*
+      EXTRAS FIRST, NAMED FIELDS LAST.
+
+      Spread the other way round and a raw column silently overwrites the
+      parsed one — which is exactly what happened: on the plain response
+      `close` was both a raw key and a named field, and the unparsed value
+      won. It read correctly by accident, and would have stopped the day a
+      scan returned "1,234.50" as text.
+    */
     rows.push({
-      symbol,
-      exchange: "NSE",
-      close: num(r[CLOSE]),
-      chgPct: num(r[CHANGE]),
-      volume: num(r[VOLUME]),
-      /* Kept because it is free and useful: the journal shows a symbol, and
-         "Bosch Limited" is what a person recognises. */
+      ...extra,
+      /* Free and worth having: the journal shows a symbol, and "Bosch
+         Limited" is what a person recognises. */
       name: String(r.name ?? "").trim() || undefined,
       bsecode: r.bsecode ? String(r.bsecode).trim() : undefined,
-      ...extra,
+      symbol,
+      exchange: "NSE",
+      close: num(pick(r, CLOSE_KEYS)),
+      chgPct: num(pick(r, CHANGE_KEYS)),
+      volume: num(pick(r, VOLUME_KEYS)),
     });
   }
 
