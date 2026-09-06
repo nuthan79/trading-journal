@@ -169,3 +169,118 @@ test("the screen describes its own freshness differently by cadence", () => {
   eq(describeRun({ status: "empty", as_of: "2026-09-08" }).tone, "empty");
   eq(describeRun({ status: "failed", as_of: "2026-09-08", error: "timeout" }).tone, "failed");
 });
+
+/* ---------------- reading what the scan source actually returns ---------- */
+
+import { parseScanResponse } from "@/lib/screens/chartink.js";
+
+/**
+ * Fixtures mirror a real 162-row response verified row by row: rupee closes
+ * with paise, hashed per-scan columns, an occasional row with no BSE code.
+ * The response itself is not committed — it carries the scan clause in its
+ * metadata, and that is the product.
+ */
+const row = (o) => ({
+  sr: o.sr ?? 1,
+  nsecode: o.nse ?? "BOSCHLTD",
+  name: o.name ?? "Bosch Limited",
+  bsecode: o.bse ?? "500530",
+  "scan-column-default-close": o.close ?? 46820,
+  "scan-column-default-percent-change": o.chg ?? -0.38,
+  "default-percent-change-conditional-filters-color": 2,
+  "scan-column-default-volume": o.vol ?? 16913,
+  "scan-column-_397c4": o.sector ?? "auto",
+  "scan-column-_21f5d": o.industry ?? "auto ancillaries",
+  "scan-column-_dbc53": o.custom ?? 38.56,
+});
+const body = (rows) => ({ draw: 1, recordsTotal: rows.length, recordsFiltered: rows.length,
+                          data: rows, link: "scanlink:abc" });
+
+test("the three named columns are read, and close is rupees", () => {
+  /*
+    Every close at the top of a real response is a whole number, so reading
+    them as paise would look entirely plausible and put every price out by a
+    hundred. The bottom of the list is where it shows: ₹38.02, not 3802.
+  */
+  const { rows } = parseScanResponse(body([row({}), row({ nse: "VOGL", close: 38.02, vol: 30917507 })]));
+  eq(rows[0].close, 46820);
+  eq(rows[1].close, 38.02, "paise would make this 3802");
+  eq(rows[0].chgPct, -0.38);
+  eq(rows[0].volume, 16913);
+});
+
+test("hashed columns are carried through, never named", () => {
+  /*
+    `_397c4` is not "sector" — it is whatever the fourth column of THIS scan
+    happens to be, and the next scan hashes it differently. Naming one would
+    put an industry under a sector heading the first time a screen changed.
+  */
+  const { rows } = parseScanResponse(body([row({})]));
+  eq(rows["scan-column-_397c4"], undefined);
+  eq(rows[0]["scan-column-_397c4"], "auto", "kept under its own key");
+  eq(rows[0]["scan-column-_dbc53"], 38.56);
+
+  /* A screen that grows a column keeps it, with no migration. */
+  const grown = parseScanResponse(body([{ ...row({}), "scan-column-_ffff9": 91 }]));
+  eq(grown.rows[0]["scan-column-_ffff9"], 91);
+});
+
+test("Chartink's own cell colouring is not data", () => {
+  const { rows } = parseScanResponse(body([row({})]));
+  eq(rows[0]["default-percent-change-conditional-filters-color"], undefined);
+  eq(rows[0].sr, undefined, "and its row number is not either — rank comes from order");
+});
+
+test("a row with no NSE code is skipped, not invented", () => {
+  /*
+    bsecode is a numeric scrip code and never a ticker — the journal already
+    refuses to price from one. A row with no nsecode has no symbol this app
+    can act on, and deriving one would create a position nothing can quote.
+  */
+  const { rows, warnings } = parseScanResponse(body([
+    row({}), { ...row({ nse: "X" }), nsecode: "", bsecode: "500123", name: "Some Ltd" },
+  ]));
+  eq(rows.length, 1);
+  eq(rows[0].symbol, "BOSCHLTD");
+  eq(warnings.length, 1);
+  ok(/Some Ltd/.test(warnings[0]), "and names what it dropped");
+});
+
+test("one unreadable row does not cost the whole scan", () => {
+  const { rows, total } = parseScanResponse(body([
+    row({ nse: "A" }), { sr: 2 }, row({ nse: "C" }),
+  ]));
+  eq(rows.length, 2, "the other two still land");
+  eq(total, 3, "and the count Chartink reported is kept, so the gap is visible");
+});
+
+test("a response that is not a scan says what it was instead", () => {
+  /*
+    A login redirect, a Laravel error, or a changed contract all arrive here.
+    "The scan returned nothing" would be indistinguishable from a genuinely
+    empty scan — which is the one thing this whole design refuses to allow.
+  */
+  const login = parseScanResponse({ error: "Unauthenticated", redirect: "/login" });
+  eq(login.rows.length, 0);
+  ok(/no .?data.? array/.test(login.warnings[0]), login.warnings[0]);
+  ok(/error, redirect/.test(login.warnings[0]), "and lists the keys it did get");
+
+  for (const junk of [null, undefined, "", 42, []]) {
+    const r = parseScanResponse(junk);
+    eq(r.rows.length, 0);
+    ok(r.warnings.length > 0, `${JSON.stringify(junk)} must warn`);
+  }
+});
+
+test("parsed rows go straight into a run, in the scan's order", () => {
+  const { rows } = parseScanResponse(body([
+    row({ sr: 1, nse: "BOSCHLTD" }), row({ sr: 2, nse: "NEULANDLAB", close: 22660 }),
+  ]));
+  const { run, results } = buildRun({ slug: "volume-dryup", as_of: "2026-09-03", rows });
+  eq(run.status, "ok");
+  eq(run.count, 2);
+  eq(results[0].symbol, "BOSCHLTD");
+  eq(results[0].rank, 1);
+  eq(results[1].rank, 2);
+  eq(results[0].extra.name, "Bosch Limited", "the company name survives to storage");
+});
