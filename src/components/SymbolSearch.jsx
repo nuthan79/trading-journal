@@ -172,11 +172,36 @@ export default function SymbolSearch({ value, exchange, onPick, autoFocus }) {
             results.map((item, i) => (
               <button
                 key={`${item.e}:${item.s}`}
+                type="button"
                 role="option"
                 aria-selected={i === hi}
                 className="ss-row"
                 data-hi={i === hi ? 1 : 0}
                 onMouseEnter={() => setHi(i)}
+                /*
+                  CHOSEN ON MOUSEDOWN, NOT ON CLICK.
+
+                  In Safari a click on this row closed the list and left the
+                  typed text behind, picking nothing — the user had to click
+                  outside instead. WebKit does not focus a button when it is
+                  clicked, so the focus and blur sequence around mousedown
+                  differs from every other browser, and the row can be gone
+                  before `click` ever arrives. It works in Chrome and Firefox,
+                  which is what made it look like a Safari quirk rather than a
+                  handler on the wrong event.
+
+                  mousedown fires before any of that, so the choice is made
+                  while the row is certainly still there. preventDefault stops
+                  the browser moving focus onto the button, which keeps the
+                  caret in the field — better anyway, since the next thing
+                  anybody does is tab to the price.
+
+                  onClick stays for keyboard and assistive activation, which
+                  raise click with no mousedown at all. When both fire, the
+                  second is harmless: `choose` sets the same three values and
+                  calls onPick with the same item.
+                */
+                onMouseDown={(e) => { e.preventDefault(); choose(item); }}
                 onClick={() => choose(item)}
               >
                 <span className="ss-sym">{item.s}</span>
