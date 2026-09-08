@@ -56,6 +56,7 @@ export const EXIT_REASONS = [
 export const MISTAKES = [
   // outcome, not error
   "Setup failed",
+  "False breakout",
   // execution errors
   "Chased extended",
   "No volume confirmation",
@@ -72,8 +73,21 @@ export const MISTAKES = [
   "Early entry",
 ];
 
-/** Tags that describe what the market did, not what you did wrong. */
-export const NEUTRAL_TAGS = new Set(["Setup failed"]);
+/**
+ * Tags that describe what the market did, not what you did wrong.
+ *
+ * "False breakout" sits here rather than among the execution errors, and for
+ * a breakout trader the placement matters more than the tag. A level breaks,
+ * you take it on the rules you follow, and it fails — that is the cost of
+ * doing this at all, not a lapse. Counted as an error it would put a large
+ * share of an ordinary year's losses under "what your mistakes cost", which
+ * is the figure meant to isolate the losses that were avoidable.
+ *
+ * The tag is still worth having: `outcomeTagCounts` reads exactly these, so a
+ * breakout method whose failures are climbing shows up as a trend without
+ * being scored as indiscipline.
+ */
+export const NEUTRAL_TAGS = new Set(["Setup failed", "False breakout"]);
 
 export const isExecutionError = (tag) => !NEUTRAL_TAGS.has(tag);
 
