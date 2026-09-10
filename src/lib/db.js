@@ -528,6 +528,27 @@ export async function markOpenPositions(openTrades) {
      * a wrong number rather than a missing one, and it would appear in
      * rupees beside correct figures with nothing marking it as doubtful.
      */
+    /*
+      THE HIGH WATER MARK, KEPT RATHER THAN OVERWRITTEN.
+
+      day_high is today's and is replaced tomorrow; this is the best the
+      position has ever been seen at. The breakeven flag needs it: asked of
+      the live mark alone, the prompt vanished the moment a trade that had run
+      past 1.5R slipped back — see 048.
+
+      The session extreme is included, not just the last price, so a spike
+      that faded before anyone refreshed still counts. And it takes the
+      trade's own side: highest for a long, lowest for a short.
+    */
+    const dir = t.side === "short" ? -1 : 1;
+    const extreme = dir > 0 ? hit.dayHigh : hit.dayLow;
+    const seen = [hit.price, extreme]
+      .map(Number)
+      .filter((v) => Number.isFinite(v) && v > 0);
+    const prevPeak = Number(t.peak_mark);
+    if (Number.isFinite(prevPeak) && prevPeak > 0) seen.push(prevPeak);
+    const peak = seen.length ? (dir > 0 ? Math.max(...seen) : Math.min(...seen)) : null;
+
     const patch = {
       last_price: hit.price,
       last_price_at: hit.at,
@@ -537,12 +558,15 @@ export async function markOpenPositions(openTrades) {
       // some other day's range.
       day_high: hit.dayHigh ?? null,
       day_low: hit.dayLow ?? null,
+      /* Never nulled once set — a peak that could be erased by one quote
+         without a session high is not a peak. */
+      ...(peak != null ? { peak_mark: peak } : {}),
     };
     const { data, error } = await supabase
       .from("trades")
       .update(patch)
       .eq("id", t.id)
-      .select("id,last_price,last_price_at,prev_close,day_high,day_low")
+      .select("id,last_price,last_price_at,prev_close,day_high,day_low,peak_mark")
       .single();
 
     if (!error && data) marked.push(data);

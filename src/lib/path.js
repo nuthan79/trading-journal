@@ -82,13 +82,42 @@ export function breakevenPrompt(t) {
   const releasesR = Math.max(0, Number.isFinite(t.netRiskR) ? t.netRiskR : 0);
   if (!(releasesR > 0)) return null;
 
-  const everFree = !!t.became_free_on || gainR >= FREE_AT_R;
+  /*
+    FOUR WAYS TO KNOW IT WAS EARNED, AND EACH COVERS THE OTHERS' GAP.
+
+    peak_mark is the best price the app has watched this position reach (048),
+    kept across refreshes and including the session high, so a spike that
+    faded before anyone looked still counts. It is a price, so it is measured
+    against whatever stop the trade holds NOW.
+
+    mfe_r and became_free_on come from bars via the measure pass. They reach
+    back before peak_mark existed and before the app was ever open — and they
+    are optional, weekly, and null on a journal that has never measured, which
+    is why they cannot be the only source.
+
+    The live mark catches the position crossing while you are looking at it.
+  */
+  const peakMark = Number(t.peak_mark);
+  const peakR = Number.isFinite(peakMark) && peakMark > 0
+    ? ((peakMark - entry) * dir) / perShare
+    : NaN;
+  const mfeR = Number(t.mfe_r);
+
+  const everFree = peakR >= FREE_AT_R
+    || mfeR >= FREE_AT_R
+    || !!t.became_free_on
+    || gainR >= FREE_AT_R;
   const stillActionable = Number.isFinite(gainR) && gainR > 0;
   if (!everFree || !stillActionable) return null;
 
   return {
     entry, gainR, releasesR,
     freeOn: t.became_free_on || null,
+    /* The best it reached, in R, when anything knows — so the flag can say
+       how far it ran rather than only that it did. */
+    peakR: Number.isFinite(peakR) || Number.isFinite(mfeR)
+      ? Math.max(...[peakR, mfeR, gainR].filter(Number.isFinite))
+      : gainR,
     /* Reached it earlier and has since faded. The flag looks the same; the
        wording must not, or it claims the trade is up past 1.5R while the R
        column two cells away says otherwise. */

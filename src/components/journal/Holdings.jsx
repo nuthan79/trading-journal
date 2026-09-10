@@ -239,7 +239,9 @@ function BreakevenFlag({ c, busy, onAck }) {
          both. */
       title={
         (c.faded
-          ? `${c.symbol} reached ${FREE_AT_R}R${c.freeOn ? ` on ${c.freeOn}` : ""} and is now up ` +
+          ? `${c.symbol} reached ${
+              Number.isFinite(c.peakR) ? `${c.peakR.toFixed(2)}R` : `${FREE_AT_R}R`
+            }${c.freeOn ? ` on ${c.freeOn}` : ""} and is now up ` +
             `${c.gainR.toFixed(2)}R.\n\n` +
             `Still above what you paid, so the stop can still go to ` +
             `${c.entry.toFixed(2)} — breakeven — at your broker.\n\n`

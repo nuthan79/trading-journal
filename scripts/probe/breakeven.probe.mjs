@@ -91,3 +91,67 @@ test("missing inputs produce no prompt rather than a wrong one", () => {
   eq(breakevenPrompt(null), null);
   eq(breakevenPrompt(undefined), null);
 });
+
+/* ------------- the peak the app keeps, which is what closed the hole ----- */
+
+test("a watched peak earns the flag even with no measurement at all", () => {
+  /*
+    THE CASE THE FIRST FIX MISSED.
+
+    Reading `became_free_on` was correct and inert: it comes from the measure
+    pass, which is optional and weekly, and on a journal that has never
+    measured it is null everywhere. The flag stayed dark on exactly the trade
+    that prompted the fix — DATAPATTNS at 1.05R, entry 4612, stop 4455, having
+    run well past 1.5R days earlier.
+
+    peak_mark is what the app itself watched, so nothing external has to have
+    run for the reminder to survive.
+  */
+  const p = breakevenPrompt(pos({
+    entry_price: 4612, stop: 4455, mark: 4777,
+    peak_mark: 4880,                    // ~1.85R, seen on an earlier refresh
+    became_free_on: null, mfe_r: null,
+  }));
+  ok(p, "watched peak alone must earn it");
+  eq(p.faded, true);
+  near(p.gainR, (4777 - 4612) / 157, 1e-9);
+  ok(p.peakR >= FREE_AT_R, `and the flag can say how far it ran: ${p.peakR}`);
+});
+
+test("a measured peak works too, for history the app never watched", () => {
+  /* mfe_r reaches back before peak_mark existed and before the app was open
+     that day — the two together are what make this complete. */
+  const p = breakevenPrompt(pos({ mark: 4777, peak_mark: null, mfe_r: 2.1 }));
+  ok(p);
+  near(p.peakR, 2.1, 1e-9);
+});
+
+test("a peak is measured against the stop in force NOW", () => {
+  /*
+    Stored as R it would freeze the stop that was in place when it was
+    written. As a price, widening the stop correctly makes the same peak worth
+    less — the trader is running more risk, so the same move is fewer R.
+  */
+  const tight = breakevenPrompt(pos({ entry_price: 100, stop: 90, mark: 112, peak_mark: 116 }));
+  ok(tight, "1.6R against a 10-point stop");
+
+  const wide = breakevenPrompt(pos({ entry_price: 100, stop: 80, mark: 112, peak_mark: 116 }));
+  eq(wide, null, "0.8R against a 20-point stop — never earned it");
+});
+
+test("a short keeps its peak downward", () => {
+  const p = breakevenPrompt({
+    id: "s", symbol: "X", side: "short", entry_price: 100, stop: 110,
+    mark: 95, peak_mark: 82, netRiskR: 1, became_free_on: null, breakeven_ack_at: null,
+  });
+  ok(p, "fell to 1.8R in profit, now back at 0.5R");
+  eq(p.faded, true);
+  near(p.peakR, 1.8, 1e-9);
+});
+
+test("a nonsense peak cannot manufacture a flag", () => {
+  for (const bad of [0, -5, NaN, null, undefined, "x"]) {
+    eq(breakevenPrompt(pos({ mark: 4650, peak_mark: bad, became_free_on: null, mfe_r: null })),
+      null, `peak_mark ${JSON.stringify(bad)} must not earn it`);
+  }
+});
