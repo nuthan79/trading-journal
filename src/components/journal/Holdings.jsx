@@ -10,7 +10,7 @@ import { fyStartYear, fyLabel } from "@/lib/calc";
 import { bankedEvents } from "@/lib/positions";
 /* The same thresholds the measurement used, so a badge here and a finding on
    Review can never describe the same trade with two different numbers. */
-import { FREE_AT_R, POWER_R, POWER_DAYS } from "@/lib/path";
+import { FREE_AT_R, POWER_R, POWER_DAYS, breakevenPrompt } from "@/lib/path";
 import PositionDetail from "./PositionDetail";
 
 /**
@@ -230,10 +230,21 @@ function BreakevenFlag({ c, busy, onAck }) {
       className="ps-flag"
       disabled={busy}
       onClick={() => onAck(c)}
-      aria-label={`${c.symbol} is up ${c.gainR.toFixed(2)}R — dismiss the breakeven reminder`}
+      aria-label={c.faded
+        ? `${c.symbol} reached ${FREE_AT_R}R and is now up ${c.gainR.toFixed(2)}R — dismiss the breakeven reminder`
+        : `${c.symbol} is up ${c.gainR.toFixed(2)}R — dismiss the breakeven reminder`}
+      /* The wording follows the fact. Once the flag is sticky, "is up past
+         1.5R" is not always true any more — and a tooltip contradicting the R
+         column two cells away is the fastest way to lose a reader's trust in
+         both. */
       title={
-        `${c.symbol} is up ${c.gainR.toFixed(2)}R.\n\n` +
-        `Its stop can go to ${c.entry.toFixed(2)} — breakeven — at your broker.\n\n` +
+        (c.faded
+          ? `${c.symbol} reached ${FREE_AT_R}R${c.freeOn ? ` on ${c.freeOn}` : ""} and is now up ` +
+            `${c.gainR.toFixed(2)}R.\n\n` +
+            `Still above what you paid, so the stop can still go to ` +
+            `${c.entry.toFixed(2)} — breakeven — at your broker.\n\n`
+          : `${c.symbol} is up ${c.gainR.toFixed(2)}R.\n\n` +
+            `Its stop can go to ${c.entry.toFixed(2)} — breakeven — at your broker.\n\n`) +
         `Click to dismiss this reminder. Nothing else changes: no stop moves, ` +
         `no R changes, and the open-risk dial goes on counting the stop you ` +
         `recorded here.`
@@ -626,29 +637,38 @@ export default function Holdings({
   }, [closed, open]);
 
   /**
-   * Up past 1.5R with a stop still under entry. Measured on price, not on the
-   * open quantity: "this trade has run 1.5R" is a fact about where the mark
-   * is, and stays true whether a third of the position is left or all of it.
+   * HAS BEEN up past 1.5R, with a stop still under entry.
+   *
+   * This read the live mark, so the reminder vanished the moment a position
+   * slipped back under 1.5R — unacknowledged, unrecorded, and with nothing
+   * left to say it had ever been earned. The comment here used to argue that
+   * "this trade has run 1.5R" is a fact about where the mark IS. It is a fact
+   * about where the mark has BEEN, and that one word was the bug.
+   *
+   * It mattered more than it looked. A position back at 1.05R is still above
+   * entry, so the stop can still go to breakeven and still take the risk off
+   * the dial — the prompt disappeared while the thing it prompts for was
+   * still available.
+   *
+   * `became_free_on` is the durable half: measurement covers open positions
+   * too, running them to today and refreshing weekly, so the first close at
+   * or past 1.5R is already recorded. The live check stays for the position
+   * that crossed TODAY, before that week's measurement has run. Neither is
+   * complete alone.
+   *
+   * Still measured on price rather than on open quantity, which was always
+   * right: a third of the position left or all of it, the trade has run.
    */
   const flagged = useMemo(() => {
     const m = new Map();
     for (const r of rows) {
       // Dismissed once, dismissed for good. It does not come back if the
       // trade dips under 1.5R and climbs again — the stop was moved, and
-      // asking twice is what makes a reminder noise.
-      if (r.breakeven_ack_at || acked.includes(r.id)) continue;
-      const entry = Number(r.entry_price);
-      const dir = r.side === "short" ? -1 : 1;
-      const perShare = Math.abs(entry - r.stop);
-      const gainR = isFinite(r.mark) && perShare > 0
-        ? ((r.mark - entry) * dir) / perShare
-        : NaN;
-      // What comes off the dial once this position can no longer lose.
-      const releasesR = Math.max(0, isFinite(r.netRiskR) ? r.netRiskR : 0);
-      if (gainR >= FREE_AT_R && releasesR > 0
-          && isFinite(r.stop)) {
-        m.set(r.id, { id: r.id, symbol: r.symbol, entry, gainR, releasesR });
-      }
+      // asking twice is what makes a reminder noise. `acked` is this
+      // session's optimistic half, before the reload carries the timestamp.
+      if (acked.includes(r.id)) continue;
+      const p = breakevenPrompt(r);
+      if (p) m.set(r.id, { id: r.id, symbol: r.symbol, ...p });
     }
     return m;
   }, [rows, acked]);

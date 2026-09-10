@@ -41,6 +41,61 @@ const iso = (d) => String(d || "").slice(0, 10);
  *  "risk free" is how a badge and a finding come to disagree on screen. */
 export const FREE_AT_R = 1.5;
 
+/**
+ * Should this open position be prompted to move its stop to breakeven?
+ *
+ * Here rather than inside a `useMemo` in Holdings, because the rule has four
+ * conditions and a silent failure: it read the LIVE mark, so the reminder
+ * vanished the moment a position slipped back under 1.5R — unacknowledged,
+ * unrecorded, and with nothing left to say it had ever been earned. Nothing
+ * could test that, because there was nothing importable to test.
+ *
+ * Returns null when there is nothing to prompt, or the numbers the flag needs.
+ *
+ * EARNED ONCE, NOT CONTINUOUSLY. `became_free_on` is the durable half —
+ * measurement covers open positions, running them to today and refreshing
+ * weekly, so the first close at or past 1.5R is already on the trade. The live
+ * check stays for a position that crossed TODAY, before that week's
+ * measurement has run. Neither is complete alone.
+ *
+ * AND STILL ABOVE ENTRY. Below it a breakeven stop would fire the moment it
+ * was placed, so prompting would be advising the impossible — that case is
+ * the "gave it back" badge, which says the opposite thing: too late, not act
+ * now.
+ */
+export function breakevenPrompt(t) {
+  if (!t || t.breakeven_ack_at) return null;
+
+  const entry = Number(t.entry_price);
+  const stop = Number(t.stop);
+  if (!Number.isFinite(entry) || !Number.isFinite(stop)) return null;
+
+  const perShare = Math.abs(entry - stop);
+  if (!(perShare > 0)) return null;
+
+  const dir = t.side === "short" ? -1 : 1;
+  const mark = Number(t.mark);
+  const gainR = Number.isFinite(mark) ? ((mark - entry) * dir) / perShare : NaN;
+
+  /* What comes off the dial once this position can no longer lose. A trade
+     with nothing left to release has nothing to prompt about. */
+  const releasesR = Math.max(0, Number.isFinite(t.netRiskR) ? t.netRiskR : 0);
+  if (!(releasesR > 0)) return null;
+
+  const everFree = !!t.became_free_on || gainR >= FREE_AT_R;
+  const stillActionable = Number.isFinite(gainR) && gainR > 0;
+  if (!everFree || !stillActionable) return null;
+
+  return {
+    entry, gainR, releasesR,
+    freeOn: t.became_free_on || null,
+    /* Reached it earlier and has since faded. The flag looks the same; the
+       wording must not, or it claims the trade is up past 1.5R while the R
+       column two cells away says otherwise. */
+    faded: gainR < FREE_AT_R,
+  };
+}
+
 /** A move this big, this fast, is a different animal from a grind — the
  *  breakout that works immediately. Minervini's shape, and the reason the
  *  window is in TRADING days rather than calendar ones: five sessions is a
