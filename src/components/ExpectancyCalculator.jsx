@@ -6,6 +6,7 @@ import {
   OPTIMISTIC_EXPECTANCY,
 } from "@/lib/expectancy";
 import { rupee, rfmt, pct, signedPct } from "@/lib/format";
+import Money from "@/components/Money";
 
 /**
  * The edge calculator, given away.
@@ -251,7 +252,7 @@ export default function ExpectancyCalculator({ prefill = null, sampleSize = 0 })
                  hint="Percentage of the account lost if the stop is hit. Most swing traders sit between 0.5% and 2%." />
 
           <label className="ec-f">
-            <span className="ec-lab">Starting capital<b>{rupee(v.capital)}</b></span>
+            <span className="ec-lab">Starting capital<b><Money v={v.capital} /></b></span>
             <input
               className="ec-cap" inputMode="numeric" value={v.capital}
               onChange={(ev) =>
@@ -354,7 +355,7 @@ export default function ExpectancyCalculator({ prefill = null, sampleSize = 0 })
       {/* ---- the projection ------------------------------------------- */}
       <h2 className="ec-h2">What that compounds to</h2>
       <p className="ec-sub">
-        {rupee(v.capital)} at {n1(v.riskPct)}% risk per trade,{" "}
+        <Money v={v.capital} /> at {n1(v.riskPct)}% risk per trade,{" "}
         {Math.round(proj.tradesPerYear)} trades a year, for {YEARS} years — assuming
         the edge above holds the entire time.
       </p>
@@ -398,7 +399,7 @@ export default function ExpectancyCalculator({ prefill = null, sampleSize = 0 })
           <p>
             <b>Past here the number stops meaning anything.</b> These inputs compound
             at {Math.round(proj.cagr).toLocaleString("en-IN")}% a year, which turns{" "}
-            {rupee(v.capital)} into a figure no account has reached. It is
+            <Money v={v.capital} /> into a figure no account has reached. It is
             arithmetically correct and it would tell you nothing, so it is not shown.
           </p>
           <p>
@@ -419,7 +420,7 @@ export default function ExpectancyCalculator({ prefill = null, sampleSize = 0 })
       ) : (
         <>
           <div className="ec-top">
-            <Stat label={`After ${YEARS} years`} value={rupee(proj.final)}
+            <Stat label={`After ${YEARS} years`} value={<Money v={proj.final} />}
                   note={`from ${rupee(v.capital)}`}
                   tone={proj.final >= v.capital ? "ok" : "bad"} />
             <Stat label="CAGR" value={pct(proj.cagr, 1)} note="compound annual growth"
@@ -439,7 +440,7 @@ export default function ExpectancyCalculator({ prefill = null, sampleSize = 0 })
                 <span className={`ec-dot ec-dot-${s.key}`} />
                 <b>{s.label}</b>
                 <i>{s.note}</i>
-                <em>{rupee(s.final)}</em>
+                <em><Money v={s.final} /></em>
                 <small>{pct(s.cagr, 1)} a year</small>
               </div>
             ))}
@@ -451,7 +452,7 @@ export default function ExpectancyCalculator({ prefill = null, sampleSize = 0 })
               return (
                 <div key={yr}>
                   <span>Year {yr}</span>
-                  <b>{rupee(p.value)}</b>
+                  <b><Money v={p.value} /></b>
                   <small>{p.trades} trades</small>
                 </div>
               );
@@ -462,8 +463,8 @@ export default function ExpectancyCalculator({ prefill = null, sampleSize = 0 })
               caveat — it is the reason to trust the rest of the page. */}
           <p className="ec-drag">
             Compounded arithmetically — expectancy × trades, the way most projections
-            do it — the same inputs would show <b>{rupee(arith)}</b>. The{" "}
-            <b>{rupee(Math.abs(arith - proj.final))}</b> difference is volatility drag:
+            do it — the same inputs would show <b><Money v={arith} /></b>. The{" "}
+            <b><Money v={Math.abs(arith - proj.final)} /></b> difference is volatility drag:
             a +1R and a −1R do not cancel, because the loss is taken on a smaller
             account than the win that preceded it. The figure above is the one an
             account actually follows.

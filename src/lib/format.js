@@ -88,6 +88,53 @@ export function moneyParts(v) {
   };
 }
 
+/**
+ * Every digit of a figure, grouped the Indian way: 5,88,000 rather than 5.88 L.
+ *
+ * The compact tiers are what make a table scannable, and they are staying —
+ * but they round, and rounding is exactly what somebody checking a number
+ * against their broker cannot have. "₹5.88 L" is anywhere in a ₹500 band.
+ * So the full figure lives in the hover instead of on the page.
+ *
+ * PAISE ONLY WHEN THERE ARE ANY. A P&L total lands on whole rupees far more
+ * often than not, and "₹5,88,000.00" spends two characters saying nothing.
+ * A price does carry them, and there they are the point.
+ */
+export function exact(v) {
+  if (v == null || !isFinite(v)) return "—";
+  const a = Math.abs(v);
+  const s = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 }).format(a);
+  /* SIGN INSIDE THE RUPEE, matching `rupee()` — "₹−23,800" under a cell
+     reading "₹−23.8k". `moneyParts` writes it the other way round, and a
+     tooltip that reorders the two characters of the figure it is expanding
+     reads for a moment like a different number. */
+  return `₹${v < 0 ? "−" : ""}${s}`;
+}
+
+/**
+ * The hover text for a money figure — the exact rupees, plus whatever else
+ * that particular number wanted to say.
+ *
+ * RETURNS undefined WHEN THE PAGE ALREADY SHOWS EVERY DIGIT. Below a thousand
+ * `rupee()` is not abbreviating anything, so "₹450" would open a tooltip
+ * reading "₹450" — a hover that teaches the user their hovers are worthless,
+ * on the majority of the small figures in the app. Compared as strings rather
+ * than by a size threshold, because the tiers are the formatter's business and
+ * this must not hold a second opinion about where they start.
+ *
+ * `note` is for a cell that already had a title of its own. It gets folded in
+ * here rather than left on the parent element, because two nested titles means
+ * the browser shows whichever one the pointer happens to be over, and the
+ * charges hover on Net P&L is not something to lose to a stray pixel.
+ */
+export function moneyTitle(v, note) {
+  if (v == null || !isFinite(v)) return note || undefined;
+  const full = exact(v);
+  const hidden = full !== rupee(v);
+  if (!hidden) return note || undefined;
+  return note ? `${full} · ${note}` : full;
+}
+
 export function rfmt(v, dp = 2) {
   if (!isFinite(v)) return "—";
   return `${v >= 0 ? "+" : ""}${v.toFixed(dp)}R`;

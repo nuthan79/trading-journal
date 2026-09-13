@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { deploymentSeries, DEPLOY_BANDS } from "@/lib/deployment";
 import { rupee, pct, signedPct, dmy } from "@/lib/format";
+import Money from "@/components/Money";
 import { annualisedReturn, returnQuality, indexReturn } from "@/lib/calc";
 import { apiFetch } from "@/lib/db";
 
@@ -462,17 +463,17 @@ export default function CapitalDeployment({ all = [], accountSize = 0, flows = [
       </div>
 
       <div className={`${CAP_MONEY}-tiles`}>
-        <Stat label="Most committed" value={rupee(S.peak.deployed)}
+        <Stat label="Most committed" value={<Money v={S.peak.deployed} />}
               sub={`${pct(S.peak.pct, 0)} of capital · ${dmy(S.peak.d)} · ${S.peak.count} position${S.peak.count === 1 ? "" : "s"}`} />
         {/* "on an average day" rather than "of capital", because these are
             means of the daily SHARE, not the shown rupee figure divided by
             anything. Capital moves underneath, so the two do not reconcile by
             division and the wording must not invite it. */}
-        <Stat label="Average committed" value={rupee(S.avgDeployed)}
+        <Stat label="Average committed" value={<Money v={S.avgDeployed} />}
               sub={`${pct(S.avgPct, 0)} of capital on an average day · ${S.dayCount} days`} />
-        <Stat label="Typical day" value={rupee(S.medianDeployed)}
+        <Stat label="Typical day" value={<Money v={S.medianDeployed} />}
               sub={`median — half the days above, half below`} />
-        <Stat label="Average cash" value={rupee(S.avgCash)}
+        <Stat label="Average cash" value={<Money v={S.avgCash} />}
               sub={`${pct(100 - S.avgPct, 0)} uncommitted on an average day`} />
         {/*
           THE RETURN ON THAT DENOMINATOR, BESIDE IT.
@@ -648,9 +649,9 @@ export default function CapitalDeployment({ all = [], accountSize = 0, flows = [
               sub={`first on ${dmy(S.busiest.d)}`} />
         <Stat label="Typical open book" value={S.avgCount.toFixed(1)}
               sub="positions on an average day" />
-        <Stat label="Average position" value={rupee(S.avgPositionSize)}
+        <Stat label="Average position" value={<Money v={S.avgPositionSize} />}
               sub={`at entry, across ${S.positionsCounted} positions`} />
-        <Stat label="Today" value={rupee(S.current.deployed)}
+        <Stat label="Today" value={<Money v={S.current.deployed} />}
               sub={`${pct(S.current.pct, 0)} of capital · ${S.current.count} position${S.current.count === 1 ? "" : "s"}`} />
       </div>
 

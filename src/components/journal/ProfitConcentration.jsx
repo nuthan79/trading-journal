@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { profitConcentration, bestWorst } from "@/lib/dashboard";
 import { rfmt, rupee, pct } from "@/lib/format";
+import Money from "@/components/Money";
 
 /**
  * Where the profit actually came from, and the trades at each extreme.
@@ -57,7 +58,7 @@ function TradeTable({ title, rows, tone }) {
                 <td className={`num mono ${tone}`} style={{ fontWeight: 500 }}>
                   {rfmt(t.r)}
                 </td>
-                <td className={`num mono ${tone}`}>{rupee(t.pnl)}</td>
+                <td className={`num mono ${tone}`}><Money v={t.pnl} /></td>
               </tr>
             ))}
           </tbody>

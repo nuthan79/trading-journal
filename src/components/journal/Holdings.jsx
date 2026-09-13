@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { RefreshCw, Flag, Rocket, CornerDownRight, Download } from "lucide-react";
 import { rupee, rfmt, pct, signedPct, moneyParts, exportFilename,
          monthShort } from "@/lib/format";
+import Money from "@/components/Money";
 import { downloadCsv } from "@/lib/csv";
 import { SHOW_HOLDINGS_CSV } from "@/lib/flags";
 import { fyStartYear, fyLabel } from "@/lib/calc";
@@ -93,7 +94,10 @@ const RISK_WARN_R = 5;
  * the eye stop on the wrong group of digits; the rupees are what is being read
  * and the decimals only need to be there, not to compete.
  */
-function Money({ v }) {
+/* NOT the shared <Money>, which shows a compact figure and hides the digits in
+   a hover. This is the opposite: every digit on the page, no hover at all,
+   for the one tile that exists to be reconciled. */
+function ToTheRupee({ v }) {
   const p = moneyParts(v);
   if (!p) return "—";
   return (
@@ -799,7 +803,7 @@ export default function Holdings({
               <div className="ps-riskfig-note ps-riskfig-gap">
                 <b>{totals.unknownCount} of these {rows.length} {totals.unknownCount === 1 ? "has" : "have"} no stop</b>,
                 so {totals.unknownCount === 1 ? "it is" : "they are"} not in that figure —
-                {" "}{rupee(totals.unknownExposure)} of exposure with nothing recorded to get out at.
+                {" "}<Money v={totals.unknownExposure} /> of exposure with nothing recorded to get out at.
                 {" "}<a href="/stops">Set them</a> and this starts counting.
               </div>
             ) : (
@@ -825,7 +829,7 @@ export default function Holdings({
               has to scroll sideways to find. */}
           <Summary
             label="Today"
-            value={<Money v={totals.today} />}
+            value={<ToTheRupee v={totals.today} />}
             sub={!totals.todayN
               ? "no previous close yet — hit Refresh prices"
               : `${signedPct(totals.todayPct)}${totals.todayN < rows.length
@@ -845,7 +849,7 @@ export default function Holdings({
               running on has nothing to push out of line. */}
           <Summary
             label="Unrealised"
-            value={rupee(totals.unrealised)}
+            value={<Money v={totals.unrealised} />}
             sub={isFinite(totals.unrealisedR) ? rfmt(totals.unrealisedR) : "—"}
             hint={`Money still on the table across every holding, and what it comes to in R. This
                   one IS weighted by size, so it will not match the Now at column added up —
@@ -864,9 +868,9 @@ export default function Holdings({
           />
           <Summary
             label="Exposure"
-            value={rupee(totals.exposure)}
+            value={<Money v={totals.exposure} />}
             sub="at CMP"
-            foot={rupee(totals.invested)}
+            foot={<Money v={totals.invested} />}
             footLabel="invested"
             hint="What the open book is worth at the last price fetched, and under it what those
                   same shares cost you. The difference between the two is the Unrealised figure
@@ -878,7 +882,7 @@ export default function Holdings({
               open book, what it is worth, this month, this year, all of it. */}
           <Summary
             label={`Realised ${realised.monthLabel}`}
-            value={rupee(realised.month)}
+            value={<Money v={realised.month} />}
             sub={realised.monthN === 0
               ? "nothing closed yet"
               : `${isFinite(realised.monthR) ? rfmt(realised.monthR) : "—"} · ${
@@ -891,13 +895,13 @@ export default function Holdings({
           />
           <Summary
             label={`Realised ${realised.fyLabel}`}
-            value={rupee(realised.year)}
+            value={<Money v={realised.year} />}
             sub={isFinite(realised.yearR) ? rfmt(realised.yearR) : "—"}
             tone={realised.year >= 0 ? "pos" : "neg"}
           />
           <Summary
             label="Realised all-time"
-            value={rupee(realised.all)}
+            value={<Money v={realised.all} />}
             sub={isFinite(realised.allR)
               ? `${rfmt(realised.allR)}${curve.n > 0 ? ` · ${curve.n} trades` : ""}`
               : "—"}
@@ -1058,8 +1062,9 @@ export default function Holdings({
                       : r.stopAboveEntry ? `locked ${pct(Math.abs(r.toStop))}`
                       : pct(Math.abs(r.toStop))}
                   </td>
-                  <td className="num" title="What the shares still held cost — entry price × open quantity">
-                    {rupee(r.buyValue)}</td>
+                  <td className="num">
+                    <Money v={r.buyValue}
+                           note="What the shares still held cost — entry price × open quantity" /></td>
                   {/* A dash, not a zero, when no stop was ever recorded. "0"
                       here is a measurement saying there is nothing to lose;
                       the dash says nobody has told us. The column already uses

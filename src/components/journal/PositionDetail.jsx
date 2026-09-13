@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Pencil, Trash2, X, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, LogOut, ImagePlus, Flag, Check } from "lucide-react";
 import { rupee, rfmt, pct, signedPct } from "@/lib/format";
+import Money from "@/components/Money";
 import { chartUrl } from "@/lib/db";
 import ChartViewer from "./ChartViewer";
 import { resolveTradingViewChart } from "@/lib/charts";
@@ -392,7 +393,7 @@ export default function PositionDetail({ row, diary = [], twin = null, onAcknowl
                   </td>
                   <td className="num">{entry.toFixed(2)}</td>
                   <td className="num">{qty}</td>
-                  <td className="num pd-dim">{rupee(entryCharges)}</td>
+                  <td className="num pd-dim"><Money v={entryCharges} /></td>
                   <td className="num pd-dim">—</td>
                 </tr>
 
@@ -417,9 +418,9 @@ export default function PositionDetail({ row, diary = [], twin = null, onAcknowl
                         −{e.quantity}
                         <i className="pd-dim">{qty > 0 ? `${pct((e.quantity / qty) * 100, 0)} of it` : ""}</i>
                       </td>
-                      <td className="num pd-dim">{rupee(Number(e.charges) || 0)}</td>
+                      <td className="num pd-dim"><Money v={Number(e.charges) || 0} /></td>
                       <td className={`num ${net >= 0 ? "pos" : "neg"}`}>
-                        {rupee(net)}
+                        <Money v={net} />
                         <i className="pd-dim">at {rfmt(atR(Number(e.price)))}</i>
                       </td>
                     </tr>

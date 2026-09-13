@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { RotateCcw, ChevronDown } from "lucide-react";
 import { tradeCharges, entryCharges, CHARGE_LABELS } from "@/lib/charges";
 import { rupee } from "@/lib/format";
+import Money from "@/components/Money";
 
 /**
  * The charges box.
@@ -132,7 +133,7 @@ export default function ChargesField({
         <>
           <button type="button" className="cf-toggle" onClick={() => setOpen((o) => !o)}>
             <ChevronDown size={11} style={{ transform: open ? "rotate(0deg)" : "rotate(-90deg)" }} />
-            {computed.entryOnly ? "Entry side only" : "Both legs"} — {rupee(computed.total)}
+            {computed.entryOnly ? "Entry side only" : "Both legs"} — <Money v={computed.total} />
             {isFinite(computed.pctOfTurnover) && (
               <span className="cf-dim"> · {computed.pctOfTurnover.toFixed(3)}% of turnover</span>
             )}

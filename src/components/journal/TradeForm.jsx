@@ -6,6 +6,7 @@ import SymbolSearch from "@/components/SymbolSearch";
 import ChargesField from "./ChargesField";
 import { derivePosition } from "@/lib/positions";
 import { rupee, pct } from "@/lib/format";
+import Money from "@/components/Money";
 import {
   PATTERNS, EXIT_REASONS, MISTAKES, STAGES, slBand,
   ENTRY_EMOTIONS, EXIT_EMOTIONS,
@@ -712,11 +713,11 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                     that's the whole point of pinning it. Say which, or the two
                     numbers look like they disagree. */}
               </span>
-              <b>{rupee(d.riskAmt)}</b></div>
+              <b><Money v={d.riskAmt} /></b></div>
             <div className="row"><span>Risk as % of account</span>
               <b style={{ color: overRisk ? "var(--short)" : "inherit" }}>{pct(d.riskPct, 2)}</b></div>
             <div className="row"><span>Position value / exposure</span>
-              <b>{rupee(d.exposure)}</b></div>
+              <b><Money v={d.exposure} /></b></div>
             {overRisk && (
               <div className="warn" style={{ marginTop: 9 }}>
                 This position risks more than 2% of the account. Reduce the quantity or tighten the stop.
@@ -970,7 +971,7 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                     {derivedStatus === "partial" ? (
                       <>
                         <div className="row"><span>Banked so far (net of charges)</span>
-                          <b className={d.realisedPnl >= 0 ? "pos" : "neg"}>{rupee(d.realisedPnl)}</b></div>
+                          <b className={d.realisedPnl >= 0 ? "pos" : "neg"}><Money v={d.realisedPnl} /></b></div>
                         <div className="row"><span>Banked in R</span>
                           <b className={d.realisedR >= 0 ? "pos" : "neg"}>
                             {isFinite(d.realisedR) ? `${d.realisedR >= 0 ? "+" : ""}${d.realisedR.toFixed(2)}R` : "—"}</b></div>
@@ -985,7 +986,7 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                     ) : (
                       <>
                         <div className="row"><span>Realised P&amp;L (net of charges)</span>
-                          <b className={d.pnl >= 0 ? "pos" : "neg"}>{rupee(d.pnl)}</b></div>
+                          <b className={d.pnl >= 0 ? "pos" : "neg"}><Money v={d.pnl} /></b></div>
                         <div className="row"><span>Outcome in R</span>
                           <b className={d.r >= 0 ? "pos" : "neg"} style={{ fontSize: 15 }}>
                             {isFinite(d.r) ? `${d.r >= 0 ? "+" : ""}${d.r.toFixed(2)}R` : "—"}</b></div>

@@ -5,6 +5,7 @@ import { apiFetch, track } from "@/lib/db";
 import { reviewFindings, reviewThesis, recentBook } from "@/lib/analysis";
 import { classifyRegime, regimeIndex, REGIME_LABEL } from "@/lib/market";
 import { signedPct, rupee } from "@/lib/format";
+import Money from "@/components/Money";
 import Link from "next/link";
 import { setupGaps } from "@/lib/gaps";
 import { processStages, recentCompliance } from "@/lib/bottleneck";
@@ -861,7 +862,7 @@ function ProcessMap({ data, week }) {
                 screen the headline broke the line between the number and its
                 tier. */}
             {bottleneck.costRupees
-              ? <> — <span style={{ whiteSpace: "nowrap" }}>{rupee(Math.abs(bottleneck.costRupees))}</span></>
+              ? <> — <span style={{ whiteSpace: "nowrap" }}><Money v={Math.abs(bottleneck.costRupees)} /></span></>
               : null}
             {" "}against your own plan.
           </>
@@ -1002,7 +1003,7 @@ function ProcessMap({ data, week }) {
                           {s.costR === 0 ? "" : good ? "+" : "−"}{Math.abs(s.costR)}R
                         </b>
                         {s.costRupees ? (
-                          <span className="rv-dim">{rupee(Math.abs(s.costRupees))}</span>
+                          <span className="rv-dim"><Money v={Math.abs(s.costRupees)} /></span>
                         ) : null}
                       </span>
                       {/* The lifetime figure sits under the recent one rather

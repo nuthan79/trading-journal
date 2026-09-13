@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { summaryParts } from "@/lib/dashboard";
 import { rfmt, pct, rupee } from "@/lib/format";
+import Money from "@/components/Money";
 
 /**
  * The whole record in one paragraph.
@@ -68,7 +69,7 @@ export default function Summary({ closed, openingCapital, flows = [] }) {
         // honest R to quote. What the money did is still worth stating plainly.
         <p className="sum-body">
           {s.trades} closed trades over {s.monthsSpan} months, for{" "}
-          <Fig tone={s.netPnl >= 0 ? "up" : "down"}>{rupee(s.netPnl)}</Fig>{" "}
+          <Fig tone={s.netPnl >= 0 ? "up" : "down"}><Money v={s.netPnl} /></Fig>{" "}
           at a {pct(s.winRateByCount, 0)} win rate.
           {" "}{s.greenMonths} of {s.totalMonths} months and {s.greenQuarters} of{" "}
           {s.totalQuarters} quarters finished green.

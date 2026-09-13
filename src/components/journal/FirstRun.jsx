@@ -6,6 +6,7 @@ import { pageEvent } from "@/lib/pageEvents";
 import AvatarChoice from "./AvatarChoice";
 import { Check } from "lucide-react";
 import { rupee, pct } from "@/lib/format";
+import Money from "@/components/Money";
 import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
 
 /**
@@ -92,7 +93,7 @@ export default function FirstRun({ onComplete, initialName = "", profile, avatar
             than your buying power — otherwise risk percentages are measured against
             borrowed money and read lower than they are.
             {capitalNum > 0 && (
-              <div className="fr-echo mono">{rupee(capitalNum, { compact: true })}</div>
+              <div className="fr-echo mono"><Money v={capitalNum} compact /></div>
             )}
           </div>
         </label>
@@ -124,7 +125,7 @@ export default function FirstRun({ onComplete, initialName = "", profile, avatar
             single trade.
             {isFinite(perTrade) && (
               <div className="fr-echo mono">
-                {pct(riskNum, 2)} of {rupee(capitalNum)} = {rupee(perTrade)} at risk per trade
+                {pct(riskNum, 2)} of <Money v={capitalNum} /> = <Money v={perTrade} /> at risk per trade
               </div>
             )}
           </div>

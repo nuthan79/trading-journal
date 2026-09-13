@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { headline } from "@/lib/calc";
 import { rupee, rfmt, pct, days } from "@/lib/format";
+import Money from "@/components/Money";
 import { hasRealStop } from "@/lib/stops";
 
 /**
@@ -75,12 +76,21 @@ export default function HeadlineNumbers({ closed, banking = [], openingCapital, 
    * It also settles "Avg loss" appearing twice: once as a share of position
    * size and once in R. Same word, different question, and now visibly so.
    */
+  /* Named because it is now said twice — on the tile and on the figure. */
+  const chargeShare = isFinite(h.netPnl) && h.netPnl + h.charges > 0
+    ? `${pct((h.charges / (h.netPnl + h.charges)) * 100, 1)} of gross profit`
+    : "Brokerage, STT, exchange, SEBI, stamp, GST, DP";
+
   const bands = [
     {
       label: "In money and percent",
       cells: [
-        { label: "Net P&L", value: rupee(h.netPnl), tone: sign(h.netPnl),
-          hint: `After ${rupee(h.charges)} of charges` },
+        /* The charges hint rides on the FIGURE, not just the tile, because the
+           figure now has a hover of its own and a nested title wins whichever
+           one the pointer happens to be over. Folded, both facts survive. */
+        { label: "Net P&L",
+          value: <Money v={h.netPnl} note={`After ${rupee(h.charges)} of charges`} />,
+          tone: sign(h.netPnl), hint: `After ${rupee(h.charges)} of charges` },
         /*
           NO RETURN PERCENTAGE HERE, DELIBERATELY.
 
@@ -138,7 +148,7 @@ export default function HeadlineNumbers({ closed, banking = [], openingCapital, 
         */
         rCell("Risk per trade", (
           <>
-            {rupee(h.avgRisk)}
+            <Money v={h.avgRisk} />
             {isFinite(h.avgRiskPct) && (
               <span className="hn-sub"> · {pct(h.avgRiskPct, 2)}</span>
             )}
@@ -182,10 +192,8 @@ export default function HeadlineNumbers({ closed, banking = [], openingCapital, 
     {
       label: "What it cost, and how steady",
       cells: [
-        { label: "Charges", value: rupee(h.charges), tone: "neg",
-          hint: isFinite(h.netPnl) && h.netPnl + h.charges > 0
-            ? `${pct((h.charges / (h.netPnl + h.charges)) * 100, 1)} of gross profit`
-            : "Brokerage, STT, exchange, SEBI, stamp, GST, DP" },
+        { label: "Charges", value: <Money v={h.charges} note={chargeShare} />, tone: "neg",
+          hint: chargeShare },
         { label: "Green months", value: `${h.months.green}/${h.months.total}` },
         { label: "Green quarters", value: `${h.quarters.green}/${h.quarters.total}` },
         rCell("Best run", h.bestW ? `${h.bestW}d` : "—", {

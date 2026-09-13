@@ -6,6 +6,7 @@ import { dimensionRows, DIMENSIONS, maxAbsTotalR, isThin, NOT_RECORDED, edgeHref
 import { mistakeCost, outcomeTagCounts } from "@/lib/analysis";
 import { isExecutionError } from "@/lib/constants";
 import { rupee, rfmt, pct } from "@/lib/format";
+import Money from "@/components/Money";
 
 /**
  * Where the edge is — the same trades, cut ten ways.
@@ -109,10 +110,10 @@ export default function Edge({ closed = [], accountSize }) {
                         paid, and they part company whenever risk per trade
                         was not constant. */}
                     <td className={`num ${g.netPnl >= 0 ? "pos" : "neg"}`} style={{ fontWeight: 500 }}>
-                      {rupee(g.netPnl)}
+                      <Money v={g.netPnl} />
                     </td>
-                    <td className="num">{rupee(g.avgValue)}</td>
-                    <td className="num" title={`${pct(g.avgRiskPct, 2)} of capital`}>{rupee(g.avgRisk)}</td>
+                    <td className="num"><Money v={g.avgValue} /></td>
+                    <td className="num"><Money v={g.avgRisk} note={`${pct(g.avgRiskPct, 2)} of capital`} /></td>
                     <td className="num">{isFinite(g.returnOnRisk) ? `${g.returnOnRisk.toFixed(2)}×` : "—"}</td>
                     <td>
                       <div style={{ display: "flex", justifyContent: g.totalR >= 0 ? "flex-start" : "flex-end" }}>
@@ -182,7 +183,7 @@ export default function Edge({ closed = [], accountSize }) {
                     <td className={`num ${m.avgR >= 0 ? "pos" : "neg"}`}>{rfmt(m.avgR)}</td>
                     <td className={`num ${m.totalR >= 0 ? "pos" : "neg"}`}>{rfmt(m.totalR, 1)}</td>
                     <td className={`num ${m.netPnl >= 0 ? "pos" : "neg"}`} style={{ fontWeight: 500 }}>
-                      {rupee(m.netPnl)}
+                      <Money v={m.netPnl} />
                     </td>
                   </tr>
                 ))}

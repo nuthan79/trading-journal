@@ -12,6 +12,7 @@ import { toJournalRows, journalSummary } from "@/lib/journalImport";
 import { matchFifo, openPositions, datesForHeldPositions } from "@/lib/tradebook";
 import { buildReport } from "@/lib/importReport";
 import { rupee, pct } from "@/lib/format";
+import Money from "@/components/Money";
 
 /**
  * Import from a broker's tax P&L export — Zerodha, Groww or Dhan, decided
@@ -909,7 +910,7 @@ export default function ImportTrades({
           <div className="im-stats">
             <div><b>{s.positions}</b><span>open positions</span></div>
             <div><b>{s.symbols}</b><span>symbols</span></div>
-            <div><b>{rupee(s.invested)}</b><span>invested</span></div>
+            <div><b><Money v={s.invested} /></b><span>invested</span></div>
             {s.longTerm > 0 && <div><b>{s.longTerm}</b><span>held over a year</span></div>}
           </div>
 
@@ -951,8 +952,8 @@ export default function ImportTrades({
         <div><b>{s.lots}</b><span>rows in file</span></div>
         <div><b>{s.symbols}</b><span>symbols</span></div>
         <div><b>{pct(s.winRate, 0)}</b><span>win rate</span></div>
-        <div><b className={s.netPnl >= 0 ? "pos" : "neg"}>{rupee(s.netPnl)}</b><span>net P&amp;L</span></div>
-        <div><b>{rupee(s.charges)}</b><span>charges</span></div>
+        <div><b className={s.netPnl >= 0 ? "pos" : "neg"}><Money v={s.netPnl} /></b><span>net P&amp;L</span></div>
+        <div><b><Money v={s.charges} /></b><span>charges</span></div>
       </div>
 
       <p className="im-note">
@@ -1342,7 +1343,7 @@ export default function ImportTrades({
                     {t.stop_loss == null ? "—" : t.stop_loss.toFixed(2)}
                     {t.stop_source === "assumed" && <i className="im-assumed">assumed</i>}
                   </td>
-                  <td className="num">{rupee(t._preview.buyValue)}</td>
+                  <td className="num"><Money v={t._preview.buyValue} /></td>
                 </tr>
               );
             }) : parsed.trades.map((t, i) => (

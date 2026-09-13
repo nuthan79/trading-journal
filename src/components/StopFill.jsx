@@ -3,6 +3,7 @@
 import { useState, useMemo, useCallback, useRef } from "react";
 import { Check, ChevronRight } from "lucide-react";
 import { rupee, rfmt, pct } from "@/lib/format";
+import Money from "@/components/Money";
 import Link from "next/link";
 import { STOP_NONE } from "@/lib/stops";
 
@@ -614,7 +615,7 @@ export default function StopFill({ trades, onSave, onDone, realStopCount = 0, no
                   <td className="num">{t.quantity}</td>
                   <td className="num">{Number(t.entry_price).toFixed(2)}</td>
                   <td className="num">{Number(t.exit_price).toFixed(2)}</td>
-                  <td className={`num ${pnl >= 0 ? "pos" : "neg"}`}>{rupee(pnl)}</td>
+                  <td className={`num ${pnl >= 0 ? "pos" : "neg"}`}><Money v={pnl} /></td>
                   <td className="num">
                     <input
                       ref={(el) => (inputs.current[t.id] = el)}

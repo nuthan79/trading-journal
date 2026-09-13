@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { matchesEdgeFilter, describeEdgeFilter } from "@/lib/edge";
 import { Plus, Pencil, Trash2, Download, Image as ImageIcon, X, Check, Flag } from "lucide-react";
 import { rupee, rfmt, pct, signedPct, exportFilename } from "@/lib/format";
+import Money from "@/components/Money";
 import { downloadCsv } from "@/lib/csv";
 import PositionDetail from "./PositionDetail";
 import { SETUP_FIELDS } from "@/lib/gaps";
@@ -42,6 +43,13 @@ const TRADE_COLS = ["symbol", "exchange", "side", "entry_date", "entry_price", "
    that would tell them apart is the one thing the file does not say. */
 const exportCsv = (rows, label, journalName) =>
   downloadCsv(rows, TRADE_COLS, exportFilename(label, { prefix: journalName }));
+
+const REALISED_HERE_NOTE =
+  "Money that actually arrived between these dates, counting every sell of "
+  + "every position — including positions not listed here, whose last exit "
+  + "falls outside the window. The total beside it sums whole positions "
+  + "instead, so it carries money realised before or after. This figure "
+  + "matches Performance by period for the same dates.";
 
 export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNew,
                                  onAttachChart, onRemoveChart, onSaveStop,
@@ -483,6 +491,12 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
     };
   }, [rows]);
 
+  /* Said in three places now — on the cell, and on each of the two figures in
+     it, which carry hovers of their own. One name so they cannot drift. */
+  const unmarkedNote = totals.withPnl < totals.n
+    ? `${totals.n - totals.withPnl} of these have no P&L yet — an open position with no mark`
+    : undefined;
+
   const detailAt = detailId == null ? -1 : rows.findIndex((t) => t.id === detailId);
 
   const th = (k, label, cls) => {
@@ -822,14 +836,11 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                       whole book, including positions this filter does not show
                       because their last exit falls outside it. */}
                   {isFinite(realisedHere) && rupee(realisedHere) !== rupee(totals.pnl) && (
-                    <span className="tr-tot-win"
-                          title={"Money that actually arrived between these dates, counting "
-                            + "every sell of every position — including positions not listed "
-                            + "here, whose last exit falls outside the window. The total "
-                            + "beside it sums whole positions instead, so it carries money "
-                            + "realised before or after. This figure matches Performance by "
-                            + "period for the same dates."}>
-                      {rupee(realisedHere)} realised between these dates
+                    <span className="tr-tot-win" title={REALISED_HERE_NOTE}>
+                      {/* The note is on the figure as well as the phrase: the
+                          figure carries its own hover now, and the inner title
+                          is the one the pointer lands on over the digits. */}
+                      <Money v={realisedHere} note={REALISED_HERE_NOTE} /> realised between these dates
                       {/*
                         THE REASON THEY DIFFER, ON SCREEN.
 
@@ -847,17 +858,19 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                     </span>
                   )}
                 </td>
+                {/* The cell's caveat rides on the two figures as well as the
+                    cell, because each figure carries a hover of its own now
+                    and the inner title is the one the pointer finds over the
+                    digits. The "—" case still needs it on the td. */}
                 <td className={`num ${totals.withPnl === 0 ? "" : totals.pnl >= 0 ? "pos" : "neg"}`}
-                    title={totals.withPnl < totals.n
-                      ? `${totals.n - totals.withPnl} of these have no P&L yet — an open position with no mark`
-                      : undefined}>
+                    title={unmarkedNote}>
                   {/* A dash, not ₹0, when nothing in view has a P&L. Summing an
                       empty list gives zero, and zero here reads as "you made
                       nothing" rather than "there is nothing to add up" — which
                       is what the Open tab shows before any price is fetched.
                       The R column beside it has always said "—" for exactly
                       this, and the two disagreeing was the tell. */}
-                  {totals.withPnl ? rupee(totals.pnl) : "—"}
+                  {totals.withPnl ? <Money v={totals.pnl} note={unmarkedNote} /> : "—"}
                   {/* The average under the total, in the same place the R
                       column puts its own caveat, so the footer reads as two
                       columns each explaining itself rather than as a row of
@@ -865,7 +878,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                       because this table has repeat symbols in it, and an
                       unlabelled average invites reading it per stock. */}
                   {isFinite(totals.avg) && totals.withPnl > 1 && (
-                    <i className="tr-tot-sub">{rupee(totals.avg)} per trade</i>
+                    <i className="tr-tot-sub"><Money v={totals.avg} note={unmarkedNote} /> per trade</i>
                   )}
                 </td>
                 <td className={`num ${totals.r >= 0 ? "pos" : "neg"}`}

@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { byPeriod } from "@/lib/calc";
 import { rupee, rfmt, pct, signedPct } from "@/lib/format";
+import Money from "@/components/Money";
 
 /**
  * Performance by period — month, financial-year quarter, financial year.
@@ -122,7 +123,7 @@ export default function PeriodPerformance({ closed, openingCapital, flows = [], 
               : grain === "quarter"
               ? "Financial-year quarters — Q1 is April to June."
               : "Financial years, April to March."}
-            {" Hover a Net P&L figure for what that period cost in charges."}
+            {" Hover any rupee figure for its exact amount, and a Net P&L one for what that period cost in charges."}
             {byEntry
               ? " Grouped by when each trade was entered — how the decisions taken then worked out."
               /* This used to say "when each trade was closed — when the money
@@ -212,12 +213,11 @@ export default function PeriodPerformance({ closed, openingCapital, flows = [], 
                   * column; it is the wrong answer to "what did I pay", which
                   * is the only question anyone opens this tooltip to ask.
                   */}
-                <td className={`num ${r.pnl >= 0 ? "pos" : "neg"}`} style={{ fontWeight: 500 }}
-                    title={isFinite(r.charges) && r.charges > 0
-                      ? `After ${full(r.charges)} of charges${
-                          isFinite(r.pnl) ? ` — ${full(r.pnl + r.charges)} before them` : ""}`
-                      : undefined}>
-                  {rupee(r.pnl)}
+                <td className={`num ${r.pnl >= 0 ? "pos" : "neg"}`} style={{ fontWeight: 500 }}>
+                  <Money v={r.pnl} note={isFinite(r.charges) && r.charges > 0
+                    ? `After ${full(r.charges)} of charges${
+                        isFinite(r.pnl) ? ` — ${full(r.pnl + r.charges)} before them` : ""}`
+                    : undefined} />
                 </td>
                 <td className={`num ${r.returnPct >= 0 ? "pos" : "neg"}`}>
                   {r.returnPct == null ? <span className="pp-dim">—</span> : signedPct(r.returnPct)}
@@ -225,9 +225,10 @@ export default function PeriodPerformance({ closed, openingCapital, flows = [], 
                 <td className={`num ${r.totalR >= 0 ? "pos" : "neg"}`}>{rfmt(r.totalR, 1)}</td>
                 <td className={`num ${r.expectancy >= 0 ? "pos" : "neg"}`}>{rfmt(r.expectancy)}</td>
                 <td className="num">{pct(r.winRate, 0)}</td>
-                <td className="num">{rupee(r.avgValue)}</td>
-                <td className="num" title={r.avgRiskPct != null ? `${pct(r.avgRiskPct, 2)} of capital` : undefined}>
-                  {rupee(r.avgRisk)}
+                <td className="num"><Money v={r.avgValue} /></td>
+                <td className="num">
+                  <Money v={r.avgRisk} note={r.avgRiskPct != null
+                    ? `${pct(r.avgRiskPct, 2)} of capital` : undefined} />
                   {r.avgRiskPct != null && <span className="pp-dim"> · {pct(r.avgRiskPct, 2)}</span>}
                 </td>
                 <td className="num">
@@ -250,12 +251,11 @@ export default function PeriodPerformance({ closed, openingCapital, flows = [], 
               <tr>
                 <td><b>All</b></td>
                 <td className="num">{totals.trades}</td>
-                <td className={`num ${totals.pnl >= 0 ? "pos" : "neg"}`} style={{ fontWeight: 500 }}
-                    title={totals.charges > 0
-                      ? `After ${full(totals.charges)} of charges — ${
-                          full(totals.pnl + totals.charges)} before them`
-                      : undefined}>
-                  {rupee(totals.pnl)}
+                <td className={`num ${totals.pnl >= 0 ? "pos" : "neg"}`} style={{ fontWeight: 500 }}>
+                  <Money v={totals.pnl} note={totals.charges > 0
+                    ? `After ${full(totals.charges)} of charges — ${
+                        full(totals.pnl + totals.charges)} before them`
+                    : undefined} />
                 </td>
                 <td className="num pp-dim">—</td>
                 <td className={`num ${totals.totalR >= 0 ? "pos" : "neg"}`}>
@@ -274,7 +274,7 @@ export default function PeriodPerformance({ closed, openingCapital, flows = [], 
                   <td><b>Per {grainWord}</b></td>
                   <td className="num pp-dim">{(totals.trades / rows.length).toFixed(1)}</td>
                   <td className={`num ${totals.pnl >= 0 ? "pos" : "neg"}`}>
-                    {rupee(totals.pnl / rows.length)}
+                    <Money v={totals.pnl / rows.length} />
                   </td>
                   <td className="num pp-dim">—</td>
                   <td className={`num ${totals.totalR >= 0 ? "pos" : "neg"}`}>
