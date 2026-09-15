@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback, useRef } from "react";
 import { Check, ChevronRight } from "lucide-react";
-import { rupee, rfmt, pct } from "@/lib/format";
+import { rupee, rfmt, pct, today } from "@/lib/format";
 import Money from "@/components/Money";
 import Link from "next/link";
 import { STOP_NONE } from "@/lib/stops";
@@ -118,7 +118,7 @@ export default function StopFill({ trades, onSave, onDone, realStopCount = 0, no
     if (!dateTouched(t)) return false;
     const v = dates[t.id];
     if (!/^\d{4}-\d{2}-\d{2}$/.test(v || "")) return false;
-    if (v > new Date().toISOString().slice(0, 10)) return false;
+    if (v > today()) return false;
     return true;
   }, [dates, dateTouched]);
 
@@ -598,7 +598,7 @@ export default function StopFill({ trades, onSave, onDone, realStopCount = 0, no
                         <input
                           className="in sf-in sf-date"
                           type="date"
-                          max={new Date().toISOString().slice(0, 10)}
+                          max={today()}
                           value={dateShown(t)}
                           onChange={(e) =>
                             setDates((d) => ({ ...d, [t.id]: e.target.value }))

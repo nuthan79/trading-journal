@@ -7,7 +7,7 @@ import {
   exportEverything, signOutEverywhere, deleteMyAccount,
   saveNominee, setAnalyticsOptOut, setDemoPinned,
 } from "@/lib/db";
-import { rupee } from "@/lib/format";
+import { rupee, today } from "@/lib/format";
 import { MIN_PASSWORD } from "@/lib/password";
 import { RevealToggle, pwType } from "@/components/PasswordEye";
 import AvatarChoice from "./AvatarChoice";
@@ -497,7 +497,7 @@ function ExportEverything() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `journal-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `journal-export-${today()}.json`;
       document.body.appendChild(a);
       a.click();
       a.remove();

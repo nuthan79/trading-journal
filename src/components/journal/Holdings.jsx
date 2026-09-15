@@ -280,7 +280,6 @@ export default function Holdings({
   const [sort, setSort] = useState({ k: "entry_date", dir: -1 });
 
   const rows = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
     return open
       .map((t) => {
         const qtyOpen = isFinite(t.qtyOpen) ? t.qtyOpen : Number(t.quantity);

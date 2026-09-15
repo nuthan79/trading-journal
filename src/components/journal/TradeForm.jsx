@@ -5,7 +5,7 @@ import { X, Check, Plus } from "lucide-react";
 import SymbolSearch from "@/components/SymbolSearch";
 import ChargesField from "./ChargesField";
 import { derivePosition } from "@/lib/positions";
-import { rupee, pct } from "@/lib/format";
+import { rupee, pct, today } from "@/lib/format";
 import Money from "@/components/Money";
 import {
   PATTERNS, EXIT_REASONS, MISTAKES, STAGES, slBand,
@@ -174,7 +174,7 @@ function splitCharges(t, exits, config) {
 }
 
 const blankExit = (date) => ({
-  exit_date: date || new Date().toISOString().slice(0, 10),
+  exit_date: date || today(),
   quantity: "", price: "", reason: "",
 });
 
@@ -189,7 +189,7 @@ function statusFromExits(exits, quantity) {
 
 const blank = () => ({
   status: "open", symbol: "", company: "", exchange: "NSE", side: "long",
-  entry_date: new Date().toISOString().slice(0, 10),
+  entry_date: today(),
   // Blank on a new trade: toPayload() pins it to the opening stop on first save.
   entry_price: "", quantity: "", stop_loss: "", initial_stop_loss: "", stop_source: "",
   pattern: "", pivot_price: "", vol_pct_avg: "", weinstein_stage: "", rs_rank: "",

@@ -5,7 +5,7 @@ import { Plus, X, Trash2, Link2, Check, Pencil } from "lucide-react";
 import { chartUrl } from "@/lib/db";
 import ChartViewer from "./ChartViewer";
 import { resolveTradingViewChart } from "@/lib/charts";
-import { rfmt, dmy } from "@/lib/format";
+import { rfmt, dmy, today } from "@/lib/format";
 import { EMOTIONS } from "@/lib/constants";
 import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
 
@@ -32,7 +32,7 @@ import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
 function newDraft() {
   return {
     id: null,
-    entry_date: new Date().toISOString().slice(0, 10),
+    entry_date: today(),
     emotions: [], body: "", trade_id: "",
     imagePath: null,
     linkOpen: false, linkInput: "", linkError: "",
@@ -83,7 +83,7 @@ function hasContent(payload) {
 function hydrateDraft(p) {
   return {
     id: p.id || null,
-    entry_date: p.entry_date || new Date().toISOString().slice(0, 10),
+    entry_date: p.entry_date || today(),
     emotions: Array.isArray(p.emotions) ? p.emotions : [],
     body: p.body || "",
     trade_id: p.trade_id || "",

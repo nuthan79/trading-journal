@@ -223,6 +223,19 @@ export async function getIndexHistory({ index = "nifty500", from, to } = {}) {
    * makes it the same request the working callers send.
    */
   const start = String(from || "2000-01-01").slice(0, 10);
+  /*
+   * THE ONE `toISOString` DAY THAT IS LEFT, AND IT IS RIGHT HERE.
+   *
+   * This module is imported only by the API routes, so it runs on the server,
+   * where "local" is UTC and a local-calendar helper would return exactly this
+   * string while implying it had asked somebody's browser.
+   *
+   * It is also harmless. `end` only trims the tail of a history response, and
+   * the UTC day differs from the IST one solely between midnight and 05:30
+   * IST — hours in which the exchange is shut and there is no newer bar to
+   * lose. Eastward of here the UTC day runs ahead rather than behind, and
+   * asking for a day that has no data yet costs nothing.
+   */
   const end = String(to || new Date().toISOString().slice(0, 10)).slice(0, 10);
   const range = rangeCovering(start);
 

@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, ok, eq } from "./harness.mjs";
@@ -65,4 +65,46 @@ test("both ways of creating a diary entry agree on what day it is", () => {
   const diary = read("components/journal/Diary.jsx");
   ok(/entry_date: [^\n]*(today\(\)|toISOString)/.test(diary),
     "the compose box still dates a new entry to the day it is written");
+});
+
+/**
+ * THE WHOLE CLASS, NOT JUST THE ONE THAT WAS REPORTED.
+ *
+ * Eleven places computed "today" as `new Date().toISOString().slice(0, 10)`.
+ * That is the UTC day, and IST is always +5:30, so every one of them named
+ * YESTERDAY between midnight and half past five in the morning: a trade
+ * entered at 1am dated to the previous day, a diary note filed under it, and
+ * a date input that refused today as "the future".
+ *
+ * One is allowed to remain. `quotes.js` is imported only by the API routes,
+ * so it runs on the server where local IS UTC, and a browser-calendar helper
+ * there would return the same string while implying it had asked somebody's
+ * browser. It is listed by name so a second one cannot quietly join it.
+ */
+test("nothing computes today from the UTC day except the one server module", () => {
+  const ALLOWED = new Set(["lib/quotes.js"]);
+  const offenders = [];
+  const walk = (dir) => {
+    for (const e of readdirSync(path.join(SRC, dir), { withFileTypes: true })) {
+      const rel = path.join(dir, e.name);
+      if (e.isDirectory()) { walk(rel); continue; }
+      if (!/\.(js|jsx)$/.test(e.name)) continue;
+      /* Comments discuss this expression on purpose — format.js documents why
+         it is wrong. Strip them or the probe fails on its own explanation. */
+      const src = read(rel).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+      if (/new Date\(\)\.toISOString\(\)\.slice\(0, ?10\)/.test(src) && !ALLOWED.has(rel)) {
+        offenders.push(rel);
+      }
+    }
+  };
+  walk("");
+  eq(offenders.length, 0,
+    `these must use today() from format.js: ${offenders.join(", ")}`);
+});
+
+test("the one allowed exception is still the server module it claims to be", () => {
+  const q = read("lib/quotes.js");
+  ok(!q.startsWith('"use client"'), "quotes.js must not become a client module");
+  ok(/only by the API routes|runs on the server/.test(q),
+    "and must keep saying why it is exempt");
 });

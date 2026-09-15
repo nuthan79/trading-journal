@@ -1,6 +1,7 @@
 "use client";
 
 import { apiFetch, savePaths } from "./db";
+import { today } from "./format";
 import { tradePath } from "./path";
 /* The same test the route applies, imported rather than restated — this
    screen counting a trade as measurable while the route refuses it is how a
@@ -43,7 +44,9 @@ const SYMBOLS_PER_CALL = BARS_PER_REQUEST;
 const DAY = 86400000;
 const iso = (d) => String(d || "").slice(0, 10);
 const shift = (d, n) => new Date(new Date(d).getTime() + n * DAY).toISOString().slice(0, 10);
-const today = () => new Date().toISOString().slice(0, 10);
+/* `shift` above stays on toISOString deliberately: it is arithmetic on a
+   stored YYYY-MM-DD, which parses as UTC midnight, so reading the UTC date
+   back is the consistent thing to do. Only "now" needed the local calendar. */
 
 /** The last session a measurement should reach: the exit if there is one,
  *  otherwise now. */
