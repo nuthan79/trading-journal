@@ -278,11 +278,33 @@ export default function Diary({ diary, trades, onSave, onDelete, onRemoveChart, 
 
       {draft && (
         <div className="card" style={{ marginBottom: 18 }}>
-          {draft.id && (
-            <div className="eyebrow" style={{ marginBottom: 12 }}>
-              Editing the entry from {dmy(draft.entry_date)}
+          {/*
+            * SAVE AND CANCEL AT THE TOP, not under the form.
+            *
+            * A diary entry with a chart on it is about fifteen hundred pixels
+            * tall, nearly all of it the chart. Buttons after that are a long
+            * scroll past the thing being read from the thing being written —
+            * the note is typed in a box near the top and the save sat off the
+            * bottom of the screen.
+            *
+            * The card gets a proper header to hold them, which a new entry
+            * never had: the eyebrow only appeared when editing, so a fresh
+            * draft opened with no heading at all.
+            */}
+          <div style={{ display: "flex", justifyContent: "space-between",
+                        alignItems: "center", gap: 12, flexWrap: "wrap",
+                        marginBottom: 14 }}>
+            <div className="eyebrow">
+              {draft.id ? `Editing the entry from ${dmy(draft.entry_date)}` : "New entry"}
             </div>
-          )}
+            <div style={{ display: "flex", gap: 10, flex: "none" }}>
+              <button className="btn ghost" onClick={discard}>{draft.id ? "Cancel" : "Discard"}</button>
+              <button className="btn" disabled={saving} onClick={commit}>
+                <Check size={14} />
+                {saving ? "Saving…" : draft.id ? "Save changes" : "Save entry"}
+              </button>
+            </div>
+          </div>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
             <label className="f"><span>Date</span>
               <input className="in" type="date" value={draft.entry_date}
@@ -341,25 +363,19 @@ export default function Diary({ diary, trades, onSave, onDelete, onRemoveChart, 
             </div>
           )}
 
-          <div style={{ display: "flex", gap: 10, justifyContent: "space-between", marginTop: 16, flexWrap: "wrap" }}>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {/* Links only. An uploaded PNG of a 4000px chart is around 800KB
-                  in Storage and comes out of your egress every time anyone
-                  looks at it; the same chart as a TradingView snapshot link is
-                  51 bytes of text and is served by TradingView. Entries that
-                  already hold an uploaded file still render — chartUrl signs a
-                  Storage path and passes a URL straight through. */}
-              <button className="btn ghost" onClick={openLink}>
-                <Link2 size={13} />{draft.imagePath ? "Replace chart link" : "Paste chart link"}
-              </button>
-            </div>
-            <div style={{ display: "flex", gap: 10 }}>
-              <button className="btn ghost" onClick={discard}>{draft.id ? "Cancel" : "Discard"}</button>
-              <button className="btn" disabled={saving} onClick={commit}>
-                <Check size={14} />
-                {saving ? "Saving…" : draft.id ? "Save changes" : "Save entry"}
-              </button>
-            </div>
+          {/* Only the chart action is left down here, and it stays because it
+              is the one button that acts on what it sits beside. Save and
+              cancel act on the whole entry and live in the header. */}
+          <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
+            {/* Links only. An uploaded PNG of a 4000px chart is around 800KB
+                in Storage and comes out of your egress every time anyone
+                looks at it; the same chart as a TradingView snapshot link is
+                51 bytes of text and is served by TradingView. Entries that
+                already hold an uploaded file still render — chartUrl signs a
+                Storage path and passes a URL straight through. */}
+            <button className="btn ghost" onClick={openLink}>
+              <Link2 size={13} />{draft.imagePath ? "Replace chart link" : "Paste chart link"}
+            </button>
           </div>
         </div>
       )}
