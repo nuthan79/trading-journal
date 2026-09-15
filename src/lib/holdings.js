@@ -1,3 +1,4 @@
+import { today } from "@/lib/format";
 /**
  * Turning a holdings statement into open positions.
  *
@@ -38,12 +39,10 @@
 
 const round2 = (v) => Math.round(v * 100) / 100;
 
-/** YYYY-MM-DD for today, in the browser's own timezone. */
-export function today() {
-  const d = new Date();
-  const p = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
+/* Defined in format.js now, next to the other date helpers that exist because
+   a bare toISOString() is the UTC day and not this one. Re-exported because
+   the import adapters below read better calling it by name. */
+export { today };
 
 /**
  * The date to write when the file has none — which is always.

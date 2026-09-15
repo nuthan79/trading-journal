@@ -228,6 +228,24 @@ export const monthShort = (d) => {
 };
 
 /**
+ * YYYY-MM-DD for today, in the browser's own timezone.
+ *
+ * NOT `new Date().toISOString().slice(0, 10)`, which is the UTC day. India is
+ * UTC+5:30 and therefore always ahead, so between midnight and half past five
+ * in the morning that expression returns YESTERDAY — a chart attached at one
+ * in the morning filed under the previous day, on the one screen that lists
+ * by date. West of Greenwich it fails in the other direction, at night.
+ *
+ * Takes `now` so a probe can put the clock somewhere the two disagree, the
+ * same way `exportFilename` does. There is no other way to test this: the bug
+ * only exists during a few hours of the day.
+ */
+export function today(now = new Date()) {
+  const p = (n) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`;
+}
+
+/**
  * A date to read rather than to sort by. Tables keep ISO because a column of
  * them lines up and sorts as text; a date sitting alone in a sentence or under
  * a chart does neither, and "2025-05-21" is slower to take in than "21 May 25".

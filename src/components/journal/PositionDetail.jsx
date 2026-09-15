@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Pencil, Trash2, X, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, LogOut, ImagePlus, Flag, Check } from "lucide-react";
-import { rupee, rfmt, pct, signedPct } from "@/lib/format";
+import { rupee, rfmt, pct, signedPct, today } from "@/lib/format";
 import Money from "@/components/Money";
 import { chartUrl } from "@/lib/db";
 import ChartViewer from "./ChartViewer";
@@ -95,10 +95,23 @@ export default function PositionDetail({ row, diary = [], twin = null, onAcknowl
     try {
       await onAttachChart({
         trade_id: row.id,
-        // Dated to the trade's entry, not to today: a chart attached during a
-        // weekend review belongs beside the decision it illustrates, and the
-        // diary lists by date.
-        entry_date: row.entry_date || new Date().toISOString().slice(0, 10),
+        // DATED TO TODAY, the day the chart was attached — not to the trade's
+        // entry, which is what this did first and was wrong twice over.
+        //
+        // A chart is almost always drawn after the fact: the snapshot in the
+        // report that prompted this was taken on the day of the EXIT, six
+        // weeks after entry, and the diary filed it under the entry. What a
+        // chart records is the observation, and the observation happened
+        // today. `trade_id` is what ties it to the trade; the date was never
+        // carrying that and only made the diary lie about when it was written.
+        //
+        // The second fault was that every chart on one trade got the SAME
+        // date, so a sequence of them — entry, mid-trade, post-mortem — had no
+        // order at all. Now they read in the order they were taken.
+        //
+        // This is also how the diary's own compose box has always dated a new
+        // entry. Attaching was the one path that did something else.
+        entry_date: today(),
         image_path: resolved.url,
         emotions: [],
         body: "",
