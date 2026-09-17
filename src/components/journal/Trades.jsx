@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { matchesEdgeFilter, describeEdgeFilter } from "@/lib/edge";
 import { Plus, Pencil, Trash2, Download, Image as ImageIcon, X, Check, Flag } from "lucide-react";
-import { rupee, rfmt, pct, signedPct, exportFilename } from "@/lib/format";
+import { rupee, rfmt, pct, signedPct, exportFilename, dmy } from "@/lib/format";
+import { excursion } from "@/lib/path";
 import Money from "@/components/Money";
 import { downloadCsv } from "@/lib/csv";
 import PositionDetail from "./PositionDetail";
@@ -43,6 +44,14 @@ const TRADE_COLS = ["symbol", "exchange", "side", "entry_date", "entry_price", "
    that would tell them apart is the one thing the file does not say. */
 const exportCsv = (rows, label, journalName) =>
   downloadCsv(rows, TRADE_COLS, exportFilename(label, { prefix: journalName }));
+
+/* MFE and MAE are not columns on the row under those names — they are read
+   through excursion(), which also decides when there is no figure. Sorting
+   through the same function keeps a dash from sorting as a number. */
+const sortValue = (t, k) =>
+  k === "mfe" ? excursion(t).mfe : k === "mae" ? excursion(t).mae : t[k];
+
+const EXCURSION_NOTE = "on closing prices while the position was held, in R";
 
 const REALISED_HERE_NOTE =
   "Money that actually arrived between these dates, counting every sell of "
@@ -355,7 +364,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
         (t.pattern || "").toLowerCase().includes(s) || (t.notes || "").toLowerCase().includes(s));
     }
     return [...r].sort((a, b) => {
-      const av = a[sort.k], bv = b[sort.k];
+      const av = sortValue(a, sort.k), bv = sortValue(b, sort.k);
       if (typeof av === "number" || typeof bv === "number")
         return ((isFinite(av) ? av : -1e12) - (isFinite(bv) ? bv : -1e12)) * sort.dir;
       return String(av || "").localeCompare(String(bv || "")) * sort.dir;
@@ -499,10 +508,10 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
 
   const detailAt = detailId == null ? -1 : rows.findIndex((t) => t.id === detailId);
 
-  const th = (k, label, cls) => {
+  const th = (k, label, cls, title) => {
     const active = sort.k === k;
     return (
-      <th className={cls} data-sortable
+      <th className={cls} data-sortable title={title}
           onClick={() => setSort((s) => ({ k, dir: s.k === k ? -s.dir : -1 }))}>
         {label}
         <span className="arrow">{active ? (sort.dir === 1 ? "↑" : "↓") : ""}</span>
@@ -675,6 +684,12 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
               {th("vol_pct_avg", "Vol %", "num")}
               {th("weinstein_stage", "Stg", "num")}
               {th("rs_rank", "RS", "num")}
+              {/* After RS, at the end of the setup block, as asked. They are
+                  outcomes rather than setup, but they describe the PATH, and
+                  sit better beside the chart column's cousins than wedged
+                  between P&L and R, which already say where it ended. */}
+              {th("mfe", "MFE", "num", `Best R reached — ${EXCURSION_NOTE}`)}
+              {th("mae", "MAE", "num", `Worst R reached — ${EXCURSION_NOTE}`)}
               <th></th>
             </tr></thead>
             <tbody>
@@ -807,6 +822,26 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                     {t.vol_pct_avg ? `${t.vol_pct_avg}%` : "—"}</td>
                   <td className="num" style={{ fontSize: 12 }}>{t.weinstein_stage || "—"}</td>
                   <td className="num" style={{ fontSize: 12 }}>{t.rs_rank || "—"}</td>
+                  {(() => {
+                    const x = excursion(t);
+                    const cell = (v, label) => {
+                      if (x.state !== "measured" || !Number.isFinite(v)) {
+                        return (
+                          <td className="num" style={{ fontSize: 12, color: "var(--ink3)" }}
+                              title={x.why || `No ${label} recorded`}>—</td>
+                        );
+                      }
+                      return (
+                        <td className={`num ${v > 0 ? "pos" : v < 0 ? "neg" : ""}`}
+                            style={{ fontSize: 12 }}
+                            title={`${label} ${rfmt(v)} — ${EXCURSION_NOTE}, through ${dmy(x.through)}`
+                              + (x.stale ? ". Measured before this trade closed, so the end is missing" : "")}>
+                          {rfmt(v)}{x.stale && <span style={{ color: "var(--ink3)" }}>*</span>}
+                        </td>
+                      );
+                    };
+                    return <>{cell(x.mfe, "Best")}{cell(x.mae, "Worst")}</>;
+                  })()}
                   <td style={{ whiteSpace: "nowrap" }}>
                     <button className="x" onClick={() => onEdit(t)} aria-label="Edit"><Pencil size={13} /></button>
                     <button className="x" onClick={() => onDelete(t.id)} aria-label="Delete"><Trash2 size={13} /></button>
@@ -814,7 +849,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                 </tr>
               ))}
             </tbody>
-            {/* 21 columns: 11 spanned here, P&L, R, then 8 spanned to the end.
+            {/* 23 columns: 11 spanned here, P&L, R, then 10 spanned to the end.
                 Get that sum wrong and the whole row slides out of line under
                 the headers without anything erroring. */}
             <tfoot className="stick">
@@ -890,7 +925,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                     <i className="tr-tot-sub">of {totals.withR}</i>
                   )}
                 </td>
-                <td colSpan={8}></td>
+                <td colSpan={10}></td>
               </tr>
             </tfoot>
           </table>

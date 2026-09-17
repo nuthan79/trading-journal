@@ -318,3 +318,50 @@ export function pathOutcomes(t, path) {
     capture: path.mfeR > 0.1 ? +(path.finalR / path.mfeR).toFixed(2) : null,
   };
 }
+
+/**
+ * MFE and MAE for a table cell: the best and worst R a position reached while
+ * it was held, plus why there is no figure when there is none.
+ *
+ * READ, NEVER COMPUTED HERE. The measure pass already walks the bars and
+ * stores `mfe_r` / `mae_r`; a table that re-derived them would need every
+ * trade's price history on every render, and would sooner or later disagree
+ * with the breakeven flag that reads the same columns.
+ *
+ * ON CLOSING PRICES, which is what is stored. An intraday spike you could not
+ * have sold into is not a gain you had, and a wick through the stop that
+ * closed back above it did not stop you out. The header says so.
+ *
+ * THREE REASONS FOR A DASH, AND THEY ARE NOT THE SAME DASH. No real stop means
+ * there is no 1R to count in, and never will be until one is recorded. Not
+ * measured means the figure is one button away. Both used to be indistinct
+ * blanks, and a blank next to a filled cell reads as zero.
+ *
+ * A trade measured while open and closed since is SHOWN, not hidden: the part
+ * of the trade that happened by then did happen. `stale` lets the cell say
+ * where the reading stops.
+ */
+export function excursion(t) {
+  const none = (state, why) => ({ mfe: NaN, mae: NaN, state, why, through: null, stale: false });
+  if (!t) return none("none", "");
+  if (!hasRealStop(t)) {
+    return none("no-stop", "No real stop on record, so there is no 1R to measure in");
+  }
+  if (!t.path_to) {
+    return none("unmeasured", t.status === "closed"
+      ? "Not measured yet — Analysis has a button that measures closed trades"
+      : "Not measured yet — refreshing Holdings measures open positions");
+  }
+  const mfe = t.mfe_r == null ? NaN : Number(t.mfe_r);
+  const mae = t.mae_r == null ? NaN : Number(t.mae_r);
+  if (!Number.isFinite(mfe) && !Number.isFinite(mae)) {
+    return none("no-bars", "No price history came back for the dates this was held");
+  }
+  const through = String(t.path_to).slice(0, 10);
+  const exit = t.status === "closed" ? String(t.exit_date || "").slice(0, 10) : "";
+  /* Three days of slack, the same tolerance needsMeasuring allows for a final
+     session that left no bar. */
+  const stale = !!exit && through < exit
+    && (new Date(exit) - new Date(through)) / 86400000 > 3;
+  return { mfe, mae, state: "measured", why: "", through, stale };
+}
