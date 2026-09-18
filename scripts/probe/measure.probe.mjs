@@ -3,9 +3,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, eq, ok } from "./harness.mjs";
 import { needsMeasuring, measureTo, measurePaths } from "@/lib/measure";
+import { today } from "@/lib/format";
 
 const DAY = 86400000;
-const d = (n) => new Date(Date.now() + n * DAY).toISOString().slice(0, 10);
+/* The LOCAL day, through the app's own today(). This built dates with
+   toISOString — the UTC day — while measureTo uses the browser's, so between
+   midnight and 05:30 IST the two named different days and "an open position
+   runs to today" failed for five and a half hours every night. */
+const d = (n) => today(new Date(Date.now() + n * DAY));
 /* stop_loss included, because a trade recording a stop has one. Leaving it
    out described a trade that cannot exist, and the looser predicate let it
    pass — three cases here were green on a fixture that was wrong. */

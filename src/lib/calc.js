@@ -9,49 +9,6 @@ import { MONTHS } from "./format";
 const n = (v) => (v === "" || v == null ? NaN : Number(v));
 
 /* ------------------------------------------------------------------ */
-/*  Per-trade                                                          */
-/* ------------------------------------------------------------------ */
-
-export function derive(t, accountSize) {
-  const entry = n(t.entry_price), stop = n(t.stop_loss), qty = n(t.quantity);
-  const exit = n(t.exit_price), pivot = n(t.pivot_price), charges = n(t.charges) || 0;
-  const dir = t.side === "short" ? -1 : 1;
-
-  const riskPerShare = Math.abs(entry - stop);
-  const riskAmt = riskPerShare * qty;                       // 1R
-  const riskPct = accountSize > 0 ? (riskAmt / accountSize) * 100 : NaN;
-  const exposure = entry * qty;
-
-  const distPivot = pivot > 0 ? ((entry - pivot) / pivot) * 100 * dir : NaN;
-
-  // Mark open positions to the last known price so equity is honest today
-  const mark = t.status === "closed" ? exit : n(t.last_price);
-  const hasMark = isFinite(mark);
-
-  const grossPnl = hasMark ? (mark - entry) * qty * dir : NaN;
-  const pnl = hasMark ? grossPnl - charges : NaN;           // net of costs
-  const r = riskAmt > 0 && isFinite(pnl) ? pnl / riskAmt : NaN;
-
-  // An assumed entry date is not a date. A holdings file states what you own
-  // and never when you bought it, so the importer has to put something in a
-  // NOT NULL column; counting days from that guess would report a two-year
-  // hold as a zero-day trade. NaN is already how "no entry date" travels here
-  // and every consumer filters on isFinite, so the guess simply does not
-  // become a measurement. See migration 036.
-  let heldDays = NaN;
-  if (t.entry_date && t.entry_date_source !== "assumed") {
-    const end = t.status === "closed" && t.exit_date ? new Date(t.exit_date) : new Date();
-    heldDays = Math.round((end - new Date(t.entry_date)) / 86400000);
-  }
-
-  return {
-    riskPerShare, riskAmt, riskPct, exposure, distPivot,
-    grossPnl, pnl, r, heldDays, mark, hasMark,
-    unrealised: t.status === "open" ? pnl : NaN,
-  };
-}
-
-/* ------------------------------------------------------------------ */
 /*  Aggregate                                                          */
 /* ------------------------------------------------------------------ */
 

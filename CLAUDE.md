@@ -19,16 +19,37 @@ npm run symbols   # rebuild public/symbols.json — NSE and BSE both download
                    # the existing one; pass --force only if it really shrank.
 ```
 
-There is no test suite and no lint script configured.
+```bash
+npm run probe          # every check in scripts/probe/*.probe.mjs
+npm run probe -- mtf   # only files whose name contains "mtf"
+npm run probe:tz       # the same, under TZ=America/New_York
+```
+
+**Probes are the test suite.** Plain Node, no framework: `harness.mjs` gives
+`test`/`ok`/`eq`/`near`, `register.mjs` resolves `@/` and swaps `src/lib/db.js`
+for `scripts/probe/stubs/db.js`. There is no JSX compiler, so components are
+checked by reading their source (order, wiring, what is and is not rendered);
+logic in `src/lib` is imported and called. Run both commands before committing
+— `probe:tz` exists because a date bug that is invisible in IST surfaces west
+of Greenwich. **A new probe is not done until it has been seen to fail**:
+break the code it guards, watch it go red, restore. Several first drafts here
+passed against the very bug they were written for. No lint script.
 
 ## Architecture
 
 **Storage layer is the seam.** `src/lib/db.js` is the *only* file that talks to
 Supabase. It exports same-shaped `list*`/`save*`/`delete*` functions per table
 (trades, diary_entries, capital_flows, profiles) using `.select("*")` reads and
-pass-through `upsert`/`update` writes — no column allowlists, so the schema
-(`supabase/schema.sql`) is the source of truth for what fields exist. UI
-components never call Supabase directly.
+pass-through `upsert`/`update` writes — no column allowlists, so the migrations
+(`supabase/NNN_*.sql`) are the source of truth for what fields exist.
+`schema.sql` is the original base and is NOT kept in step with them. UI
+components never call Supabase directly. Every write builds its own field list
+(`toPayload`, `patchFor`); nothing sends a derived row back, which is what makes
+it safe to hang derived and underscored fields on trades in memory.
+
+**A new column must not break saves before its migration runs.** Send it only
+when the user set it (see the MTF fields in `toPayload` and Setup), and read it
+with a fallback. There is then no wrong order to deploy and migrate in.
 
 **Quote source is also a single seam.** `src/lib/quotes.js` exports one
 function with a fixed shape; `src/app/api/quotes/route.js` proxies it
@@ -57,6 +78,7 @@ dispatches on an adapter's `kind`, and `ImportTrades.jsx` branches on it:
 | `taxpnl` (default) | closed trades — real charges | yes |
 | `holdings` | open positions — complete, no purchase date | yes |
 | `tradebook` | entry dates for positions already held | **no** |
+| `journal` | another journal's export (Champions) — trades with their stops | yes |
 
 A tradebook deliberately imports nothing: its closed lots would duplicate the
 tax P&L's while being worse (no charges, mis-pairs pre-file buys). Anything
@@ -72,16 +94,38 @@ or the correction never counts. **A missing stop is not zero risk**: Holdings
 distinguishes `unknownRisk` from `riskFree`, since treating them alike showed
 ₹42L of exposure as an all-clear.
 
-**Position derivation pipeline.** The DB schema stores one exit per trade
-(`exit_price`/`exit_date`/`quantity` columns — not a tranche list), but
-`src/lib/positions.js`'s `derivePosition(t, accountSize)` was written against a
-tranched-exits model and expects `t.exits[]`. Every caller (`Journal.jsx`,
-`TradeForm.jsx`) wraps trades through a local `withExits(t)` adapter that
-synthesizes a single-exit array from the legacy columns before calling
-`derivePosition()`, then re-overrides `status` from the DB afterward since
-`derivePosition` recomputes (incorrectly, for this schema) status from
-`exits`. Any new code that touches trade P&L/R needs to go through this same
-adapter pattern, not call `derivePosition` on a raw DB row.
+**Position derivation pipeline.** Sells live in `trade_exits` (migration 007),
+one row per tranche; `trades.exit_date`/`exit_price` mirror the LAST tranche
+for convenience. `src/app/(app)/layout.jsx` loads both, and its
+`withExits(t, exitsByTrade)` attaches the real tranches — or, for a legacy row
+with none, synthesizes one from the flat columns — before `derivePosition(t,
+accountSize)` in `src/lib/positions.js`. `status` is re-applied from the DB
+afterwards, because a trigger keeps it in step with the tranches. New code that
+needs P&L or R reads the derived rows from `useJournal()`; it never calls
+`derivePosition` on a raw DB row. `TradeForm.jsx` derives its own live copy.
+
+**Money counts every sell; the verdict counts finished positions.** A
+part-sold position has banked money but no result yet. So net P&L, the equity
+curve, the period table and the Holdings realised figures read `banking` —
+every position that has sold something — through `bankedEvents()`/
+`realisationEvents()`, which split a position into the sells that produced its
+money, each carrying its OWN charge and dated when it happened. Win rate,
+expectancy and payoff stay on `closed`. **Never use `t.pnl` for banked money**:
+on an open or part-sold position it includes the unrealised mark. The sells of
+a position always sum to its `realisedPnl` to the paisa; probes pin it.
+
+**MTF (margin) cost is one model, kept apart from charges.** `src/lib/mtf.js`
+`interestModel(t)` is the only place interest and pledge fees are worked out
+(interest per sell, calendar days, on the funded part; a pledge fee per buy and
+an unpledge fee per sell). `derivePosition` and `realisationEvents` both read
+it. "MTF" means interest and fees together, and no screen shows them apart.
+It is never folded into `charges`: the per-sell split finds each sell's charge
+as what lies between gross and realised P&L, so it subtracts MTF there only
+when MTF was subtracted from P&L — get that wrong in either direction and MTF
+silently becomes "charges". The user's fees and whether to deduct MTF at all
+(migrations 049, 050) reach the calculation as underscored fields laid onto
+each trade by `mtfPrefs(profile)` in the layout; `marginInPnl`/
+`marginCounted` on the results let every screen word it truthfully.
 
 **Charges are computed, not entered — except when they're not.**
 `src/lib/charges.js` computes Indian equity transaction charges (STT, exchange
@@ -114,19 +158,39 @@ don't re-sort the result. Slices under `THIN_SLICE` (15 trades) get an
 `isThin` flag consumed by the UI to show a low-confidence hint.
 
 **Mistake/outcome tags are split on purpose.** `src/lib/constants.js`'s
-`MISTAKES` list contains one neutral/outcome tag ("Setup failed") mixed in
-with true execution errors; `isExecutionError()` distinguishes them and
+`MISTAKES` list mixes true execution errors with outcome tags — the ones in
+`NEUTRAL_TAGS` ("Setup failed", "False breakout"); `isExecutionError()` distinguishes them and
 `src/lib/analysis.js`'s `mistakeCost()`/`outcomeTagCounts()` both filter on it
 so that "the setup just didn't work" isn't counted as a discipline failure
 alongside things like moving a stop.
 
-**Screens are tabs inside one client component.** `Journal.jsx` is the
-top-level container (loads trades/diary/profile/capital_flows once, derives
-positions, computes `stats()`), rendering `Dashboard` / `Trades` / `Performance`
-/ `Diary` / `Review` by tab state — there's no routing per screen. `page.jsx`
-gates on Supabase auth session, then on `profile.onboarded_at`: unonboarded
-users see `FirstRun.jsx` (collects account size + default risk %) before ever
-reaching `Journal`.
+**Screens are routes under one client layout.** `src/app/(app)/layout.jsx` is
+a client component: it gates on the Supabase session, then on
+`profile.onboarded_at` (unonboarded users get `FirstRun.jsx`), loads trades,
+exits, diary, flows and profile once, derives `all`/`closed`/`open`/`banking`,
+and provides them through `JournalContext` — each `page.jsx` (dashboard,
+holdings, trades, import, performance, analysis/*, diary, stops) reads
+`useJournal()`. Because the layout renders nothing server-side until the
+session resolves, reading `localStorage` in a `useState` initializer is safe
+here. Features built but held back sit behind `src/lib/flags.js`; unhide, never
+rebuild. An empty journal is filled with sample data (`lib/demo.js`) until the
+first real trade — count the user's own rows (`trades`, `ownDiaryCount`), never
+`all`, for anything about their progress.
+
+**"Today" is the browser's day, never the UTC one.** Use `today()` from
+`format.js`. `new Date().toISOString().slice(0, 10)` names yesterday between
+midnight and 05:30 IST; a probe fails on it anywhere except `lib/quotes.js`,
+which runs on the server. A stored `YYYY-MM-DD` is parsed by hand, never with
+`new Date(str)`, which reads it as UTC midnight.
+
+**Rupee figures and column headers explain themselves.** Render money through
+`<Money v={…}>` (compact on screen, every digit in the hover), not bare
+`rupee()` — which stays right inside strings. Table headers take their hover
+from `COLUMN_HINTS` in `src/lib/columns.js`, one map for Trades and Holdings;
+each line was checked against the arithmetic, so change both together. Column
+choices persist via `useColumnPrefs`, stored as what is HIDDEN so new columns
+appear. When a figure is hidden, its header, every cell and any footer span
+must hide with it — the Trades footer spans are computed, not typed.
 
 **styled-jsx scoping gotcha.** `<style jsx>` (non-global) only applies to
 elements rendered by the *same* component function that declares it — not to
