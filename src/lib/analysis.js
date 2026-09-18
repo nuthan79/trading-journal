@@ -1,3 +1,4 @@
+import { brokerFamily } from "./brokerFamily";
 import { scaleOutFinding } from "./positions";
 /* The thresholds the path is measured against, imported rather than repeated:
    two definitions of "risk free" is how a badge on Holdings and a finding here
@@ -2116,9 +2117,11 @@ function duplicatePositions(all) {
     if (g.length < 2) return [];
     if (g.some((t) => !t.broker)) return [g];
     const known = new Map();
+    /* By broker family, exactly as reconcile() compares them. */
     for (const t of g) {
-      if (!known.has(t.broker)) known.set(t.broker, []);
-      known.get(t.broker).push(t);
+      const b = brokerFamily(t.broker);
+      if (!known.has(b)) known.set(b, []);
+      known.get(b).push(t);
     }
     return [...known.values()].filter((s) => s.length > 1);
   };

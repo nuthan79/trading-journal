@@ -85,6 +85,21 @@ tax P&L's while being worse (no charges, mis-pairs pre-file buys). Anything
 re-deriving a preview must test `kindOf(b) !== "taxpnl"` rather than naming
 kinds to skip — naming them is what crashed the screen when the third arrived.
 
+**Brokers compare by family; a holdings row is a dated snapshot.** `trades.broker`
+holds the importing ADAPTER's id (`zerodha`, `zerodha_holdings`,
+`zerodha_tradebook`), so "never merge across brokers" goes through
+`sameBroker()` in `src/lib/brokerFamily.js`, which compares families —
+comparing raw ids once left six sold holdings open beside their closed copies.
+The raw `_holdings` id stays on the row because it marks a SNAPSHOT: what was
+held on the day it was imported (`snapshotDay`, from `created_at`). Sells dated
+on or after that day came out of it; earlier sells of the same purchase add to
+its size (`snapshotFit`) — the file-sized rule every other import uses would
+resize a current snapshot to the shares sold and drop the ones still held.
+`lib/snapshots.js` finds snapshots already sold in a live book; Holdings offers
+the fix, never applies it silently. **Trades carry no account**, so two
+accounts at one broker are one family: auto-merging only happens with a single
+candidate, and the snapshot fix waits for a click.
+
 **An assumed value must be a flag the calculations consult, not a tint.**
 `stop_source` and `entry_date_source` (036) both mean "the importer invented
 this". `calc.js`/`positions.js` refuse to count days from an assumed date, and

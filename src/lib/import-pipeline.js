@@ -1,3 +1,4 @@
+import { sameBroker, isHoldingsSnapshot, snapshotDay } from "./brokerFamily";
 /**
  * The half of importing that no broker owns.
  *
@@ -244,6 +245,50 @@ export function importSummary(groups, { skipped = 0 } = {}) {
  *   duplicates   it's here and every sell is already recorded
  *   conflicts    the file and the journal disagree; a human decides
  */
+/**
+ * Sizing a holdings SNAPSHOT against the sells a file reports.
+ *
+ * A holdings row is what was held on the day it was imported. A sell dated ON
+ * OR AFTER that day came out of those shares; a sell before it was already gone
+ * from the snapshot, so it is more of the same purchase and adds to the size.
+ * On a real book this reconciled to the share: KMEW held 139 on 3 September,
+ * 13 sold that day and 126 after.
+ *
+ * The file-based rule used for every other import — "the file knows the fuller
+ * position, take its quantity" — is wrong here, because the file only knows
+ * what was SOLD. A snapshot taken after the sells, carrying 405 still held,
+ * was resized to the 907 sold and closed, and the 405 disappeared.
+ *
+ * Returns the new { quantity, entry_price }, or null when the file shows more
+ * sold after the snapshot than the snapshot held — a re-buy the file cannot
+ * see, which is the trader's to sort out, not this function's to guess.
+ * `adds` are the tranches being added, each with its group's buy price.
+ */
+export function snapshotFit(target, adds) {
+  const day = snapshotDay(target);
+  if (!day) return undefined;             // not a snapshot we can date — caller's usual rule
+  const exits = target.exits || [];
+  const qty = Number(target.quantity) || 0;
+  const before = (xs) => xs.filter((x) => String(x.exit_date).slice(0, 10) < day);
+  const after = (xs) => xs.filter((x) => String(x.exit_date).slice(0, 10) >= day);
+  const sum = (xs) => xs.reduce((a, x) => a + (Number(x.quantity) || 0), 0);
+
+  const heldAtSnapshot = qty - sum(before(exits));
+  const soldSince = sum(after(exits)) + sum(after(adds));
+  if (soldSince > heldAtSnapshot + 1e-6) return null;
+
+  const addBefore = before(adds);
+  const extra = sum(addBefore);
+  if (!(extra > 0)) return { quantity: qty };
+  const price = Number(target.entry_price);
+  const cost = (Number.isFinite(price) ? price * qty : 0)
+    + addBefore.reduce((a, x) => a + (Number(x.quantity) || 0) * (Number(x.buyPrice) || 0), 0);
+  const quantity = qty + extra;
+  return Number.isFinite(price) && quantity > 0
+    ? { quantity, entry_price: Math.round((cost / quantity) * 10000) / 10000 }
+    : { quantity };
+}
+
 export function reconcile(groups, targets, { broker = null } = {}) {
   /**
    * Two known and different brokers are never the same position.
@@ -260,7 +305,8 @@ export function reconcile(groups, targets, { broker = null } = {}) {
    * importing afterwards is to complete it, and a null that refused to match
    * would duplicate it instead.
    */
-  const sameBroker = (a, b) => !a || !b || a === b;
+  /* By broker FAMILY — `zerodha_holdings` and `zerodha` are one broker. See
+     brokerFamily.js for the six copies comparing raw ids produced. */
 
   const byPosition = new Map();
   for (const t of targets || []) {
@@ -304,6 +350,24 @@ export function reconcile(groups, targets, { broker = null } = {}) {
     const adding = missing.reduce((a, t) => a + Number(t.quantity || 0), 0);
     const held = Number(target.quantity);
     let grow = null;
+    if (isHoldingsSnapshot(target)) {
+      const fit = snapshotFit(target, missing.map((t) => ({ ...t, buyPrice: g.entryPrice })));
+      if (fit === null) {
+        conflicts.push({ ...g, reason: `file shows more sold since your holdings snapshot than it held — check for a re-buy` });
+        continue;
+      }
+      if (fit) {
+        claimed.add(target.id);
+        completions.push({
+          group: g, tradeId: target.id, tranches: missing,
+          claimsBroker: !target.broker && !!broker ? broker : null,
+          grow: fit.quantity !== held || fit.entry_price != null ? fit : null,
+          already, adding, holding: held, status: target.status,
+          skipped: g.tranches.length - missing.length,
+        });
+        continue;
+      }
+    }
 
     // More sold than the journal thinks was ever held. For an imported row
     // that is normal rather than wrong: a Tax P&L file reports only the lots
@@ -423,18 +487,32 @@ export function reconcile(groups, targets, { broker = null } = {}) {
   }
 
   const adopted = new Set();
-  for (const [symbol, gs] of bySymbol) {
+  for (const [symbol, all] of bySymbol) {
     const cands = (adoptable.get(symbol) || []).filter((t) => sameBroker(t.broker, broker));
     if (cands.length !== 1) continue;
     const target = cands[0];
 
+    /*
+     * ONLY PURCHASES THAT WERE STILL HELD ON THE SNAPSHOT DAY. A group is one
+     * buy date; if any of its sells is on or after the day the holdings file
+     * was imported, those shares were in it, so the whole purchase is this
+     * position. A group whose every sell came before is an earlier trade the
+     * snapshot never saw, and joining it on would put two trades' R under one
+     * entry date — it stays a trade of its own.
+     */
+    const day = snapshotDay(target);
+    const gs = day ? all.filter((g) => g.tranches.some((t) => String(t.exit_date).slice(0, 10) >= day)) : all;
+    if (!gs.length) continue;
+
     const have = new Set((target.exits || []).map((e) => e.exit_date));
     const tranches = [];
+    const adds = [];
     let skipped = 0;
     for (const g of gs) {
       for (const tr of g.tranches) {
         if (have.has(tr.exit_date)) { skipped++; continue; }
         tranches.push(tr);
+        adds.push({ ...tr, buyPrice: g.entryPrice });
       }
     }
     if (!tranches.length) continue;
@@ -442,21 +520,20 @@ export function reconcile(groups, targets, { broker = null } = {}) {
     const already = (target.exits || []).reduce((a, e) => a + Number(e.quantity || 0), 0);
     const adding = tranches.reduce((a, t) => a + Number(t.quantity || 0), 0);
     const holdV = Number(target.quantity);
-    /* Same rule as an exact match, and it reaches the same place: a holdings
-       row is `imported`, so a file showing more shares than the holdings
-       snapshot knew about corrects the size rather than stopping. */
     let grow = null;
-    if (already + adding > holdV + 1e-6) {
+    if (isHoldingsSnapshot(target)) {
+      /* The snapshot rule: sells since the snapshot came out of what it held,
+         earlier sells of the same purchase add to it. A file showing more sold
+         since than was held is a re-buy it cannot see — left to the warning. */
+      const fit = snapshotFit(target, adds);
+      if (fit === null) continue;
+      if (fit && (fit.quantity !== holdV || fit.entry_price != null)) grow = fit;
+    } else if (already + adding > holdV + 1e-6) {
+      /* Not a snapshot — the file's picture of the position is the fuller one. */
       if (!target.imported) continue;   // hand-typed size — leave it to the warning
       const fileQty = gs.reduce((a, g) => a + (Number(g.quantity) || 0), 0);
       const needed = already + adding;
       grow = fileQty >= holdV && fileQty >= needed
-        /* The price travels with the quantity only when ONE group accounts
-           for the whole position. Across several buys each group has its own
-           price for its own lots, and picking any of them — or averaging
-           them here — would describe different shares than the quantity
-           does. The holdings file's average is a real broker figure for the
-           real position, so it stays. */
         ? { quantity: fileQty, ...(gs.length === 1 ? { entry_price: gs[0].entryPrice } : {}) }
         : { quantity: Math.max(holdV, needed) };
     }

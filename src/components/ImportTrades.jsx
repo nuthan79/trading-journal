@@ -7,6 +7,7 @@ import { BROKER_STEPS } from "@/lib/brokerSteps";
 import { resolveSymbols } from "@/lib/isin";
 import * as zerodha from "@/lib/brokers/zerodha";
 import * as zerodhaHoldings from "@/lib/brokers/zerodha-holdings";
+import * as zerodhaTradebook from "@/lib/brokers/zerodha-tradebook";
 import * as icicidirect from "@/lib/brokers/icicidirect";
 import { toHoldingRows, dateCaveat } from "@/lib/holdings";
 import { toJournalRows, journalSummary } from "@/lib/journalImport";
@@ -292,7 +293,13 @@ export default function ImportTrades({
          * is a CSV as well, so the extension identifies nothing now and the
          * header row has to say which it is.
          */
-        if (zerodhaHoldings.detectRows(rows)) broker = zerodhaHoldings;
+        /* The tradebook first: Console offers it as CSV as well as XLSX, and
+           the CSV was never asked for — it fell to the tax P&L parser, so a
+           user whose current year's tradebook was a CSV could not date one
+           holding. Its columns (symbol, trade_date, trade_type) are the most
+           specific of the three. */
+        if (zerodhaTradebook.detectRows(rows)) broker = zerodhaTradebook;
+        else if (zerodhaHoldings.detectRows(rows)) broker = zerodhaHoldings;
         /**
          * ICICI Direct's P&L is a CSV too, so it lands here rather than in the
          * detectBroker branch above — and without this line it would be handed

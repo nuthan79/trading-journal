@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { RefreshCw, Flag, Rocket, CornerDownRight, Download } from "lucide-react";
 import { rupee, rfmt, pct, signedPct, moneyParts, exportFilename,
-         monthShort } from "@/lib/format";
+         monthShort, dmy } from "@/lib/format";
 import { COLUMN_HINTS } from "@/lib/columns";
 import { useColumnPrefs } from "@/lib/useColumnPrefs";
 import ColumnPicker from "./ColumnPicker";
@@ -16,6 +16,7 @@ import { bankedEvents } from "@/lib/positions";
    Review can never describe the same trade with two different numbers. */
 import { FREE_AT_R, POWER_R, POWER_DAYS, breakevenPrompt } from "@/lib/path";
 import PositionDetail from "./PositionDetail";
+import { soldSinceSnapshot } from "@/lib/snapshots";
 
 /**
  * The columns of the holdings table, in the order the table shows them, plus
@@ -289,6 +290,7 @@ const HOLDINGS_COLUMNS = [
 export default function Holdings({
   open, closed, diary = [], journalName = "", onRefresh, refreshing, onAckBreakeven,
   onEditTrade, onExitTrade, onDeleteTrade, onAttachChart, onRemoveChart,
+  onFixSoldSnapshots,
 }) {
   const [detailId, setDetailId] = useState(null);
   const [acked, setAcked] = useState([]);
@@ -303,6 +305,22 @@ export default function Holdings({
    * would lose it. Same key and direction the hardcoded sort used.
    */
   const [sort, setSort] = useState({ k: "entry_date", dir: -1 });
+
+  /* Holdings sold after they were imported, proven by the closed trades' own
+     sells — see lib/snapshots.js. Offered as a fix, never done silently. */
+  const soldPlan = useMemo(() => soldSinceSnapshot([...(open || []), ...(closed || [])]), [open, closed]);
+  const soldFixable = soldPlan.filter((p) => p.action !== "unclear");
+  const [fixingSold, setFixingSold] = useState(false);
+  const fixSold = async () => {
+    const removes = soldFixable.filter((p) => p.action === "remove").length;
+    const shrinks = soldFixable.length - removes;
+    if (!window.confirm(
+      [removes && `Remove ${removes} holding row${removes === 1 ? "" : "s"} whose shares were all sold`,
+       shrinks && `trim ${shrinks} to what is still held`].filter(Boolean).join(" and ")
+      + "? The closed trades that record the sales stay exactly as they are.")) return;
+    setFixingSold(true);
+    try { await onFixSoldSnapshots?.(soldFixable); } finally { setFixingSold(false); }
+  };
 
   /**
    * WHICH COLUMNS. Seventeen is a wall to somebody opening this for the first
@@ -812,6 +830,41 @@ export default function Holdings({
 
       {/* The dial sits with the open-risk figure it describes, rather than as a
           separate band that has to be tied back to a number above it. */}
+      {/*
+        * SOLD SINCE THE SNAPSHOT. A holdings row is what was held on the day
+        * it was imported; when the tax P&L later shows those shares sold, the
+        * holding is a stale copy of shares that are gone. Said plainly, with
+        * the evidence per stock, and fixed only on a click.
+        */}
+      {soldPlan.length > 0 && (
+        <div className="ps-sold">
+          <div className="ps-sold-head">
+            <div>
+              <b>{soldPlan.length} holding{soldPlan.length === 1 ? " was" : "s were"} sold after you imported {soldPlan.length === 1 ? "it" : "them"}</b>
+              <p>Your holdings file showed {soldPlan.length === 1 ? "this" : "these"} as held on the day you imported it.
+                Your closed trades show the shares sold since — so each is in your journal twice.</p>
+            </div>
+            {soldFixable.length > 0 && onFixSoldSnapshots && (
+              <button className="btn sm" onClick={fixSold} disabled={fixingSold}>
+                {fixingSold ? "Fixing…" : `Fix ${soldFixable.length} row${soldFixable.length === 1 ? "" : "s"}`}
+              </button>
+            )}
+          </div>
+          <ul>
+            {soldPlan.map((p) => (
+              <li key={p.id}>
+                <b>{p.symbol}</b>{" "}
+                {p.action === "remove"
+                  ? <>— {p.held} held on {dmy(p.snapshot)}, all sold since. The row goes; the closed trade keeps the whole purchase.</>
+                  : p.action === "shrink"
+                  ? <>— {p.held} held on {dmy(p.snapshot)}, {p.soldSince} sold since. It will show the {p.stillHeld} still held.</>
+                  : <span className="ps-sold-unclear">— more sold since {dmy(p.snapshot)} ({p.soldSince}) than it held ({p.held}). Left alone: check it by hand.</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className="ps-top">
         <div className="ps-riskcard">
           <RiskDial riskR={totals.openRiskR}
@@ -1360,6 +1413,18 @@ export default function Holdings({
            each, which is what the cap was protecting in the first place. */
         /* One wrapping row across the full width, not a column with the right
            half empty. Each mark sits beside the words it explains. */
+        .ps-sold {
+          border: 1px solid var(--brass); background: var(--card); border-radius: 3px;
+          padding: 14px 16px; margin-bottom: 14px;
+        }
+        .ps-sold-head { display: flex; justify-content: space-between; align-items: flex-start;
+                        gap: 14px; flex-wrap: wrap; }
+        .ps-sold-head b { font-size: 14px; }
+        .ps-sold-head p { margin: 4px 0 0; font-size: 12.5px; color: var(--ink2); max-width: var(--note-w); }
+        .ps-sold ul { margin: 10px 0 0; padding-left: 18px; font-size: 12.5px; color: var(--ink2);
+                      display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 3px 24px; }
+        .ps-sold li b { color: var(--ink); }
+        .ps-sold-unclear { color: var(--short); }
         .ps-key {
           display: flex; flex-wrap: wrap; gap: 8px 26px; align-items: baseline;
           margin-top: 10px; font-size: 11.5px; color: var(--ink3); line-height: 1.5;

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Holdings from "@/components/journal/Holdings";
-import { markOpenPositions, acknowledgeBreakeven } from "@/lib/db";
+import { markOpenPositions, acknowledgeBreakeven, resolveSoldSnapshots } from "@/lib/db";
 import { measurePaths, needsMeasuring } from "@/lib/measure";
 import { useJournal } from "../JournalContext";
 
@@ -12,6 +12,23 @@ export default function HoldingsPage() {
     openEditTrade, openExitTrade, removeTrade, profile,
   } = useJournal();
   const [refreshing, setRefreshing] = useState(false);
+
+  /* Holdings sold after they were imported — see lib/snapshots.js. The card
+     on Holdings builds the plan and asks first; this carries it out. */
+  const fixSoldSnapshots = async (plan) => {
+    try {
+      const done = await resolveSoldSnapshots(plan);
+      await reloadTrades();
+      say([
+        done.removed && `${done.removed} sold holding${done.removed === 1 ? "" : "s"} removed`,
+        done.shrunk && `${done.shrunk} trimmed to what is still held`,
+        done.diaryMoved && `${done.diaryMoved} diary entr${done.diaryMoved === 1 ? "y" : "ies"} moved to the closed trade`,
+      ].filter(Boolean).join(" · ") + ".");
+    } catch (e) {
+      say(e.message || "Could not fix those holdings.");
+      await reloadTrades();
+    }
+  };
 
   const refresh = async () => {
     setRefreshing(true);
@@ -63,6 +80,7 @@ export default function HoldingsPage() {
 
   return (
     <Holdings
+      onFixSoldSnapshots={fixSoldSnapshots}
 journalName={profile?.journal_name}
             open={open}
       closed={closed}

@@ -123,6 +123,20 @@ export function detect(workbook) {
 }
 
 /**
+ * The same test on rows already read — for a CSV, which has no workbook.
+ *
+ * Console offers the tradebook as XLSX or CSV, and only the XLSX was ever
+ * recognised: the import screen's CSV branch never asked, and treated a
+ * tradebook as a tax P&L. A user whose current year's tradebook was a CSV
+ * could not date a single holding — every one stayed on its import day. The
+ * CSV's header is the same columns in lower snake case, which `key` folds to
+ * the same labels.
+ */
+export function detectRows(rows) {
+  return !!findHeader(rows);
+}
+
+/**
  * Rows in, normalised trades out.
  *
  * The output is the input `matchFifo` wants, not the lot shape the closed-trade

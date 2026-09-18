@@ -310,6 +310,42 @@ export async function deleteTrade(id) {
 }
 
 /**
+ * Carry out a plan from `soldSinceSnapshot` — holdings rows whose shares were
+ * sold after they were imported.
+ *
+ * `remove`: the closed trade already records the whole purchase, so the
+ * holding row is a copy. Anything attached to it in the diary moves to that
+ * closed trade FIRST — diary_entries.trade_id is ON DELETE SET NULL, so a
+ * chart linked to the holding would otherwise survive with no trade at all.
+ * `shrink`: the holding keeps only the shares still held.
+ * `unclear` is never acted on; the caller shows it.
+ *
+ * One row at a time, stopping at the first failure, so what it reports as done
+ * is exactly what the database holds.
+ */
+export async function resolveSoldSnapshots(plan) {
+  const done = { removed: 0, shrunk: 0, diaryMoved: 0 };
+  for (const p of plan || []) {
+    if (p.action === "remove") {
+      if (p.heir) {
+        const { data, error } = await supabase.from("diary_entries")
+          .update({ trade_id: p.heir }).eq("trade_id", p.id).select("id");
+        if (error) throw error;
+        done.diaryMoved += data?.length || 0;
+      }
+      const { error } = await supabase.from("trades").delete().eq("id", p.id);
+      if (error) throw error;
+      done.removed++;
+    } else if (p.action === "shrink" && p.quantity > 0) {
+      const { error } = await supabase.from("trades").update({ quantity: p.quantity }).eq("id", p.id);
+      if (error) throw error;
+      done.shrunk++;
+    }
+  }
+  return done;
+}
+
+/**
  * Refresh last_price on the open positions.
  *
  * Uses .update() per row rather than .upsert(). An upsert sends Postgres
@@ -599,7 +635,10 @@ export async function listImportTargets() {
         // against one from a different broker, and cannot tell without it.
         // entry_date_source since 036: the tradebook path only offers to date
         // positions whose date was invented, and cannot tell which without it.
-        .select("id,symbol,entry_date,quantity,status,imported,broker,entry_date_source")
+        // created_at and entry_price since the snapshot rule: a holdings row
+        // is sized against the day it was imported, and re-priced when earlier
+        // sells of the same purchase join it. See snapshotFit.
+        .select("id,symbol,entry_date,quantity,status,imported,broker,entry_date_source,created_at,entry_price")
         .order("id")),
     fetchAllPages(() =>
       supabase.from("trade_exits")
