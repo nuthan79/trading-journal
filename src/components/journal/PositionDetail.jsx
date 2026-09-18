@@ -461,40 +461,11 @@ export default function PositionDetail({ row, diary = [], twin = null, onAcknowl
                       {isFinite(row.mark) && (
                         <i className="pd-dim">at {rfmt(atR(Number(row.mark)))}</i>
                       )}
-                      {isFinite(row.unrealisedPnl) && row.openInterest > 0 && (
-                        <i className="pd-dim">after {rupee(row.openInterest)} interest so far</i>
-                      )}
+
                     </td>
                   </tr>
                 )}
 
-                {/*
-                  * WHAT MARGIN COST, ON ITS OWN ROW. The sells above show their
-                  * own charges and their gross result; the interest on what was
-                  * sold, the pledge and the unpledges are one more cost against
-                  * the position, and the Position total below is net of them.
-                  * A row rather than folded into each sell, so the sells still
-                  * read as the prices they went at.
-                  */}
-                {isMtf(row.mtf_leverage) && (row.realisedMargin > 0 || row.interestUnknown) && (
-                  <tr className="pd-mtfrow">
-                    <td>
-                      <span className="pd-leg" data-kind="mtf">MTF</span>
-                      <i className="pd-dim"> {Number(row.mtf_leverage)}× · ₹{Number(row.mtf_rate)} per lakh a day</i>
-                    </td>
-                    <td className="num pd-dim">—</td>
-                    <td className="num pd-dim">—</td>
-                    <td className="num pd-dim">—</td>
-                    <td className="num neg">
-                      {row.realisedMargin > 0 ? <Money v={-row.realisedMargin} /> : "—"}
-                      <i className="pd-dim">
-                        {row.interestUnknown
-                          ? "interest not counted — the entry date was estimated"
-                          : `${rupee(row.realisedInterest)} interest · ${rupee(row.pledgeFees)} pledge fees`}
-                      </i>
-                    </td>
-                  </tr>
-                )}
               </tbody>
               <tfoot>
                 <tr>
@@ -510,6 +481,24 @@ export default function PositionDetail({ row, diary = [], twin = null, onAcknowl
               </tfoot>
             </table>
           </div>
+
+          {/*
+            * MARGIN, IN ONE LINE UNDER THE TABLE. It was a row of its own, with
+            * dashes in four columns and a third line on the still-held row, and
+            * the two together made the table wider than the panel. The table is
+            * back to what was bought and sold; this says what margin cost and
+            * that it is already inside the P&L figures above.
+            */}
+          {isMtf(row.mtf_leverage) && (
+            <p className="pd-mtf">
+              <b>MTF</b> {Number(row.mtf_leverage)}× at ₹{Number(row.mtf_rate)} per lakh a day
+              {row.margin > 0 && (
+                <> · <b>{rupee(row.margin)}</b> so far — {rupee(row.interest)} interest,{" "}
+                  {rupee(row.pledgeFees)} pledge fees — already in the P&amp;L above</>
+              )}
+              {row.interestUnknown && <> · interest not counted, the entry date was estimated</>}
+            </p>
+          )}
 
           {row.thesis && (
             <div className="pd-thesis">
@@ -686,7 +675,8 @@ export default function PositionDetail({ row, diary = [], twin = null, onAcknowl
           .pd-leg[data-kind="in"] { color: var(--ink3); }
           .pd-leg[data-kind="out"] { color: var(--long); }
           .pd-leg[data-kind="hold"] { color: var(--brass); }
-          .pd-leg[data-kind="mtf"] { color: var(--short); }
+          .pd-mtf { margin: 8px 2px 0; font-size: 12px; color: var(--ink3); line-height: 1.6; }
+          .pd-mtf b { color: var(--ink2); font-weight: 600; }
           .pd-openrow { background: #FAFBFA; }
 
           .pd-thesis {

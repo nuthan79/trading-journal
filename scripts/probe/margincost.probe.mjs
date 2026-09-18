@@ -144,11 +144,14 @@ test("the CSV carries margin, so pnl still reconciles", () => {
   ok(/"notes",[\s\S]*?"margin"\];/.test(read("components/journal/Trades.jsx")));
 });
 
-test("the detail panel shows margin on its own row, never inside a sell", () => {
+test("the detail panel says margin in one line under the table, not in it", () => {
+  /* A row of its own, plus a third line on the still-held row, made the table
+     wider than the panel and pushed its first column off the edge. */
   const s = read("components/journal/PositionDetail.jsx");
-  ok(/data-kind="mtf"/.test(s));
-  ok(/const net = gross - \(Number\(e\.charges\) \|\| 0\);/.test(s),
-    "each sell still reads as its own price and charge");
+  const table = s.slice(s.indexOf('<div className="card scroll pd-table">'), s.indexOf("</table>"));
+  ok(!/mtf|interest/i.test(table.replace(/\{\/\*[\s\S]*?\*\/\}/g, "")), "nothing about margin inside the table");
+  ok(/<p className="pd-mtf">/.test(s), "one line under it");
+  ok(/const net = gross - \(Number\(e\.charges\) \|\| 0\);/.test(s), "each sell still reads as its own price and charge");
 });
 
 /* ---- interest paid, on its own ------------------------------------- */
