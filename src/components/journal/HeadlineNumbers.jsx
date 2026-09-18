@@ -91,11 +91,11 @@ export default function HeadlineNumbers({ closed, banking = [], openingCapital, 
    */
   /* Charges, and MTF interest and pledge fees where there were any — named
      separately, because they are different costs and only one is trading's. */
-  const afterCosts = `After ${rupee(h.charges)} of charges`
-    + (h.margin > 0 ? ` and ${rupee(h.margin)} of MTF costs` : "");
+  const afterCosts = `After ${rupee(h.charges)} charges`
+    + (h.margin > 0 ? ` and ${rupee(h.margin)} MTF` : "");
 
-  const mtfNote = `Interest paid on MTF positions, on the shares sold so far. `
-    + `With ${rupee(h.fees)} of pledge fees, ${rupee(h.margin)} in all — taken out of P&L and R`;
+  const mtfNote = "Interest with pledge and unpledge charges, on MTF shares sold so far. "
+    + "Already taken out of P&L and R";
 
   /* Named because it is now said twice — on the tile and on the figure. */
   const chargeShare = isFinite(h.netPnl) && h.netPnl + h.charges > 0
@@ -217,11 +217,11 @@ export default function HeadlineNumbers({ closed, banking = [], openingCapital, 
           hint: chargeShare },
         /* Beside Charges because both are what trading cost, and only for
            someone who has bought on margin — a tile reading ₹0 for everybody
-           else would be a question they never asked. The interest is the
-           figure; pledge fees are the rest of what margin cost, in the hover. */
+           else would be a question they never asked. One figure: MTF means the
+           interest with the pledge and unpledge charges, never split out. */
         ...(h.margin > 0 ? [{
-          label: "MTF interest",
-          value: <Money v={h.interest} note={mtfNote} />,
+          label: "MTF",
+          value: <Money v={h.margin} note={mtfNote} />,
           tone: "neg", hint: mtfNote,
         }] : []),
         { label: "Green months", value: `${h.months.green}/${h.months.total}` },

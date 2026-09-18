@@ -131,13 +131,13 @@ test("unticking MTF on the form takes the cost off at once", () => {
   ok(/mtf_rate: t\.mtf_on \? t\.mtf_rate : null,/.test(s));
 });
 
-test("every 'after charges' on a Net P&L also names MTF costs", () => {
-  /* Otherwise the "before them" figure is quietly net of interest while
-     calling itself the result before costs. */
+test("every 'after charges' on a Net P&L also names MTF", () => {
+  /* Otherwise the "before them" figure is quietly net of MTF while calling
+     itself the result before costs. */
   const pp = read("components/journal/PeriodPerformance.jsx");
-  ok(/full\(pnl \+ c \+ m\)/.test(pp), "the period table adds margin back into 'before'");
-  ok(!/of charges — \$\{\s*full\(totals\.pnl \+ totals\.charges\)/.test(pp), "no old form left");
-  ok(/h\.margin > 0 \? ` and \$\{rupee\(h\.margin\)\} of MTF costs`/.test(read("components/journal/HeadlineNumbers.jsx")));
+  ok(/full\(pnl \+ c \+ m\)/.test(pp), "the period table adds MTF back into 'before'");
+  ok(/`\$\{full\(m\)\} MTF`/.test(pp));
+  ok(/h\.margin > 0 \? ` and \$\{rupee\(h\.margin\)\} MTF`/.test(read("components/journal/HeadlineNumbers.jsx")));
 });
 
 test("the CSV carries margin, so pnl still reconciles", () => {
@@ -175,9 +175,31 @@ test("what an open MTF position costs to carry per day", () => {
 });
 
 test("all three places stay hidden for anyone who never used margin", () => {
-  ok(/\.\.\.\(h\.margin > 0 \? \[\{\s*label: "MTF interest"/.test(read("components/journal/HeadlineNumbers.jsx")),
+  ok(/\.\.\.\(h\.margin > 0 \? \[\{\s*label: "MTF"/.test(read("components/journal/HeadlineNumbers.jsx")),
     "the Dashboard tile");
   ok(/foot=\{totals\.mtfN > 0 \?/.test(read("components/journal/Holdings.jsx")), "the Holdings line");
-  ok(/i > 0 \? `, \$\{full\(i\)\} of it interest`/.test(read("components/journal/PeriodPerformance.jsx")),
-    "the period hover names interest only when there was some");
+  ok(/m > 0 && `\$\{full\(m\)\} MTF`/.test(read("components/journal/PeriodPerformance.jsx")),
+    "the period hover names MTF only when there was some");
+});
+
+/**
+ * MTF IS ONE FIGURE. It means the interest with the pledge and unpledge
+ * charges; the user asked for the parts never to be shown apart. The split
+ * still exists in the data — the figures are built from it — but no screen
+ * prints it.
+ */
+test("no screen shows interest and pledge charges as separate amounts", () => {
+  for (const f of ["components/journal/PeriodPerformance.jsx", "components/journal/HeadlineNumbers.jsx",
+                   "components/journal/Holdings.jsx", "components/journal/Trades.jsx",
+                   "components/journal/PositionDetail.jsx", "components/journal/TradeForm.jsx"]) {
+    const src = read(f).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    ok(!/rupee\((mtf|row|t|h)\.(interest|fees|pledgeFees)\)|full\(i\)|of it interest/.test(src),
+      `${f} prints a part of MTF on its own`);
+  }
+});
+
+test("the Dashboard tile and Holdings 'so far' are MTF as a whole", () => {
+  ok(/label: "MTF",\s*value: <Money v=\{h\.margin\}/.test(read("components/journal/HeadlineNumbers.jsx")));
+  ok(/Number\(r\.realisedMargin\) \|\| 0\) \+ \(Number\(r\.openInterest\)/.test(read("components/journal/Holdings.jsx")),
+    "so far includes the pledge charges, not interest alone");
 });

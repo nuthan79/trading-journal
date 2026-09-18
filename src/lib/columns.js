@@ -28,16 +28,15 @@ export const COLUMN_HINTS = {
   exposure: "What the position cost: entry price × shares bought",
   avgExitPrice: "Average sell price. Sold in parts, each sell counts by the shares in it",
   exitPct: "How far the average sell price was from your entry",
-  pnl: "Profit or loss after charges, and after interest and pledge fees on a trade "
-    + "bought on MTF. For a position still held, includes what the unsold shares are "
+  pnl: "Profit or loss after charges, and after MTF on a trade bought on margin. For a position still held, includes what the unsold shares are "
     + "worth at the last price",
   r: "Profit or loss divided by the risk you took at entry. +2R means you made twice "
     + "what you risked; −1R means the stop was hit",
   charges: "Brokerage, STT, exchange and SEBI fees, stamp duty, GST and DP charges on this "
     + "trade — worked out by the app, or taken from your broker's file on import. Already "
-    + "taken out of P&L. MTF costs are not in it",
-  margin: "What buying on MTF cost this trade: interest on the funded part, ₹18 to pledge "
-    + "and ₹18 for each sell to unpledge. Already taken out of P&L and R",
+    + "taken out of P&L. MTF is not in it",
+  margin: "MTF on this trade — the interest with the pledge and unpledge charges. "
+    + "Already taken out of P&L and R",
   riskAmt: "Rupees between entry and stop, across the whole position. This is one R",
   pattern: "The base the stock broke out of — VCP, cup, flat base, pullback",
   distPivot: "How far above the pivot you actually bought. Small is tight, large is chasing",
@@ -63,8 +62,8 @@ export const COLUMN_HINTS = {
     + "At zero or below, this position can no longer cost you money overall",
   mark: "Current market price, from the last refresh",
   changePct: "How far the price has moved since you bought — not today's move",
-  realisedPnl: "Profit already taken from part-sells, after charges and any MTF costs",
+  realisedPnl: "Profit already taken from part-sells, after charges and any MTF",
   unrealisedPnl: "What the shares still held are up or down at the current price, "
-    + "less MTF interest so far",
+    + "less MTF so far",
   atR: "Where the price sits in R: how many times your original risk it has moved from entry",
 };

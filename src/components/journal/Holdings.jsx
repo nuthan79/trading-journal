@@ -538,7 +538,7 @@ export default function Holdings({
       mtfN: rows.filter((r) => r.marginPerDay > 0).length,
       mtfPerDay: sum((r) => r.marginPerDay),
       mtfSoFar: sum((r) => (r.marginPerDay > 0
-        ? (Number(r.realisedInterest) || 0) + (Number(r.openInterest) || 0) : NaN)),
+        ? (Number(r.realisedMargin) || 0) + (Number(r.openInterest) || 0) : NaN)),
       // Weighted by what each position was worth at yesterday's close, so
       // this is the book's move rather than the average of its rows'.
       todayPct: todayN && todayBase > 0 ? (today / todayBase) * 100 : NaN,
@@ -889,7 +889,7 @@ export default function Holdings({
                when something open is on margin. */
             foot={totals.mtfN > 0 ? `−${rupee(totals.mtfPerDay)}` : null}
             footLabel={totals.mtfN > 0
-              ? `MTF interest a day · ${rupee(totals.mtfSoFar)} so far`
+              ? `MTF a day · ${rupee(totals.mtfSoFar)} so far`
               : undefined}
           />
           {/* Ordered by how close each figure is to right now: today, then

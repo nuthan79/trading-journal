@@ -903,8 +903,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                   {show("margin") && (
                   <td className="num" style={{ fontSize: 12, color: "var(--ink2)" }}>
                     {Number(t.margin) > 0
-                      ? <Money v={t.margin} note={`${rupee(t.interest)} interest · ${
-                          rupee(t.pledgeFees)} pledge and unpledge`} />
+                      ? <Money v={t.margin} />
                       : t.interestUnknown ? <span title="Interest not counted — the entry date was estimated">—</span>
                       : "—"}</td>
                   )}
