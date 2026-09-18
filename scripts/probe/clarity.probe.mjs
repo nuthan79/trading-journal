@@ -64,7 +64,8 @@ import { COLUMN_HINTS } from "@/lib/columns";
 const headerKeys = (file) => {
   const src = read(file);
   const thead = src.slice(src.indexOf("<thead"), src.indexOf("</tr></thead>"));
-  return [...thead.matchAll(/\{th\("([^"]+)"/g)].map((m) => m[1]);
+  /* Either bare or behind a column switch: {th("k"…)} or {show("k") && th("k"…)}. */
+  return [...thead.matchAll(/[{&]\s*th\("([^"]+)"/g)].map((m) => m[1]);
 };
 
 for (const [file, table] of [["components/journal/Trades.jsx", "Trades"],
@@ -188,4 +189,39 @@ test("every Dashboard chart leads with a reading and keeps its old name beside i
 
 test("the running-total chart says how to read it", () => {
   ok(/The line is your total in R after each closed trade/.test(read("components/journal/LedgerPlot.jsx")));
+});
+
+/**
+ * HOLDINGS: ESSENTIALS OR EVERYTHING.
+ *
+ * The failure mode is silent. Hide a header without its body cell, or the
+ * other way round, and every column to its right slides under the wrong
+ * heading — Unrealised figures under "Change %" — with nothing erroring.
+ */
+test("every column the switch hides, it hides in the header and the body together", () => {
+  const src = read("components/journal/Holdings.jsx");
+  const head = src.slice(src.indexOf("<thead"), src.indexOf("</thead>"));
+  const body = src.slice(src.indexOf("<tbody"), src.indexOf("</tbody>"));
+  const keysIn = (part) => [...part.matchAll(/show\("([^"]+)"\)/g)].map((m) => m[1]).sort();
+
+  const set = src.match(/const BEYOND_ESSENTIALS = new Set\(\[([\s\S]*?)\]\)/)[1];
+  const hidden = [...set.matchAll(/"([^"]+)"/g)].map((m) => m[1]).sort();
+
+  eq(keysIn(head).join(","), hidden.join(","), "each hidden column's header is switched");
+  eq(keysIn(body).join(","), hidden.join(","), "and each one's body cell, the same set");
+});
+
+test("Essentials keeps what a position's standing needs", () => {
+  const src = read("components/journal/Holdings.jsx");
+  const set = src.match(/const BEYOND_ESSENTIALS = new Set\(\[([\s\S]*?)\]\)/)[1];
+  for (const k of ["symbol", "days", "entry_price", "stop", "openRiskAmt", "mark",
+                   "changePct", "unrealisedPnl", "atR"]) {
+    ok(!set.includes(`"${k}"`), `${k} must stay visible in Essentials`);
+  }
+});
+
+test("the column choice survives blocked storage", () => {
+  const src = read("components/journal/Holdings.jsx");
+  ok(/try \{ return localStorage\.getItem\(COLS_KEY\)/.test(src), "the read is guarded");
+  ok(/try \{ localStorage\.setItem\(COLS_KEY, v\); \} catch \{\}/.test(src), "and so is the write");
 });

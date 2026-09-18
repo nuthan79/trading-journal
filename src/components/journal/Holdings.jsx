@@ -262,6 +262,15 @@ function BreakevenFlag({ c, busy, onAck }) {
   );
 }
 
+/* Hidden in the Essentials view. Every one of them is still a click away, and
+   every one is detail about a position rather than its standing. The date is
+   here because Days says the same thing more usefully; the rest are the
+   workings behind Open risk and Unrealised, which stay. */
+const BEYOND_ESSENTIALS = new Set([
+  "entry_date", "qtyOpen", "openPct", "slPct", "toStop", "buyValue", "netRiskR", "realisedPnl",
+]);
+const COLS_KEY = "ledgerr:holdings-columns";
+
 export default function Holdings({
   open, closed, diary = [], journalName = "", onRefresh, refreshing, onAckBreakeven,
   onEditTrade, onExitTrade, onDeleteTrade, onAttachChart, onRemoveChart,
@@ -279,6 +288,28 @@ export default function Holdings({
    * would lose it. Same key and direction the hardcoded sort used.
    */
   const [sort, setSort] = useState({ k: "entry_date", dir: -1 });
+
+  /**
+   * ESSENTIALS OR EVERYTHING. Seventeen columns is a wall to somebody opening
+   * this for the first time, on the screen they will check most often. The
+   * essentials answer "where does each position stand and what can it still
+   * cost me"; the other eight are detail for when you are managing one.
+   *
+   * Essentials by default, remembered per browser once changed. Read in the
+   * initializer rather than an effect: this screen only renders after the
+   * session resolves on the client, so there is no server render to disagree
+   * with, and an effect would flash the wrong set of columns on every load for
+   * whoever chose Everything. Guarded, since blocked storage throws.
+   */
+  const [cols, setCols] = useState(() => {
+    try { return localStorage.getItem(COLS_KEY) === "all" ? "all" : "essentials"; }
+    catch { return "essentials"; }
+  });
+  const pickCols = (v) => {
+    setCols(v);
+    try { localStorage.setItem(COLS_KEY, v); } catch {}
+  };
+  const show = (k) => cols === "all" || !BEYOND_ESSENTIALS.has(k);
 
   const rows = useMemo(() => {
     return open
@@ -910,6 +941,23 @@ export default function Holdings({
         </div>
       </div>
 
+      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center",
+                    gap: 12, margin: "0 0 8px", flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12, color: "var(--ink3)" }}>
+          {cols === "essentials"
+            ? `${BEYOND_ESSENTIALS.size} more columns under Everything`
+            : "Every column"}
+        </span>
+        <div className="seg" role="group" aria-label="Columns shown">
+          <button data-on={cols === "essentials" ? 1 : 0} onClick={() => pickCols("essentials")}>
+            Essentials
+          </button>
+          <button data-on={cols === "all" ? 1 : 0} onClick={() => pickCols("all")}>
+            Everything
+          </button>
+        </div>
+      </div>
+
       <div className="card scroll ps-table">
         <table className="t ps-t">
           <thead>
@@ -918,20 +966,20 @@ export default function Holdings({
                   it — on its own it would slide under and disappear. */}
               <th className="num fz">#</th>
               {th("symbol", "Symbol", "fz2 fz-last")}
-              {th("entry_date", "Entered")}
+              {show("entry_date") && th("entry_date", "Entered")}
               {th("days", "Days", "num")}
-              {th("qtyOpen", "Open qty", "num")}
-              {th("openPct", "Open %", "num")}
+              {show("qtyOpen") && th("qtyOpen", "Open qty", "num")}
+              {show("openPct") && th("openPct", "Open %", "num")}
               {th("entry_price", "Entry", "num")}
               {th("stop", "Stop", "num")}
-              {th("slPct", "SL %", "num")}
-              {th("toStop", "To stop", "num")}
-              {th("buyValue", "Buy value", "num")}
+              {show("slPct") && th("slPct", "SL %", "num")}
+              {show("toStop") && th("toStop", "To stop", "num")}
+              {show("buyValue") && th("buyValue", "Buy value", "num")}
               {th("openRiskAmt", "Open risk", "num")}
-              {th("netRiskR", "Open risk R", "num")}
+              {show("netRiskR") && th("netRiskR", "Open risk R", "num")}
               {th("mark", "CMP", "num")}
               {th("changePct", "Change %", "num")}
-              {th("realisedPnl", "Banked", "num")}
+              {show("realisedPnl") && th("realisedPnl", "Banked", "num")}
               {th("unrealisedPnl", "Unrealised", "num")}
               {th("atR", "Now at", "num")}
             </tr>
@@ -1005,6 +1053,7 @@ export default function Holdings({
                     )}
                     {r.status === "partial" && <span className="ps-tag">part sold</span>}
                   </td>
+                  {show("entry_date") && (
                   <td className="mono ps-dim">
                     {r.entry_date}
                     {/* A holdings file carries no purchase date, so the import
@@ -1020,8 +1069,12 @@ export default function Holdings({
                       }>assumed</span>
                     )}
                   </td>
+                  )}
                   <td className="num ps-dim">{isFinite(r.days) ? r.days : "—"}</td>
+                  {show("qtyOpen") && (
                   <td className="num">{r.qtyOpen}</td>
+                  )}
+                  {show("openPct") && (
                   <td className="num">
                     {/* A bar rather than only a number: how much of the position
                         is still on is easier to scan than to read. */}
@@ -1030,6 +1083,7 @@ export default function Holdings({
                       <i style={{ width: `${Math.min(100, Math.max(0, r.openPct || 0))}%` }} />
                     </div>
                   </td>
+                  )}
                   <td className="num">{Number(r.entry_price).toFixed(2)}</td>
                   {/* Marked assumed here as it is on the trade sheet, and for a
                       sharper reason: this screen already prints ASSUMED beside
@@ -1049,7 +1103,10 @@ export default function Holdings({
                       <span className="ps-assumed">assumed</span>
                     )}
                   </td>
+                  {show("slPct") && (
                   <td className="num ps-dim">{isFinite(r.slPct) ? pct(r.slPct) : "—"}</td>
+                  )}
+                  {show("toStop") && (
                   <td className="num ps-tostop"
                       data-state={r.breached ? "breached" : r.stopAboveEntry ? "locked" : "live"}
                       title={r.breached
@@ -1062,9 +1119,12 @@ export default function Holdings({
                       : r.stopAboveEntry ? `locked ${pct(Math.abs(r.toStop))}`
                       : pct(Math.abs(r.toStop))}
                   </td>
+                  )}
+                  {show("buyValue") && (
                   <td className="num">
                     <Money v={r.buyValue}
                            note="What the shares still held cost — entry price × open quantity" /></td>
+                  )}
                   {/* A dash, not a zero, when no stop was ever recorded. "0"
                       here is a measurement saying there is nothing to lose;
                       the dash says nobody has told us. The column already uses
@@ -1075,6 +1135,7 @@ export default function Holdings({
                         : undefined}>
                     {r.unknownRisk ? "—" : riskFree ? "0" : rupee(-Math.abs(r.openRiskAmt))}
                   </td>
+                  {show("netRiskR") && (
                   <td className="num">
                     {/* Same distinction as the rupee column, and the bar is
                         drawn at zero width either way — but "0.00R" claims a
@@ -1090,6 +1151,7 @@ export default function Holdings({
                       }} />
                     </div>
                   </td>
+                  )}
                   {/* The mark, and — only when it is near an end of the day's
                       range — where in that day it landed. Under the price
                       rather than beside the symbol, because it is a fact
@@ -1114,9 +1176,11 @@ export default function Holdings({
                   <td className={`num ${r.changePct >= 0 ? "pos" : "neg"}`}>
                     {isFinite(r.changePct) ? signedPct(r.changePct) : "—"}
                   </td>
+                  {show("realisedPnl") && (
                   <td className={`num ${r.realisedPnl >= 0 ? "pos" : "neg"}`}>
                     {isFinite(r.realisedPnl) && r.qtyExited > 0 ? rupee(r.realisedPnl) : <span className="ps-dim">—</span>}
                   </td>
+                  )}
                   <td className={`num ${r.unrealisedPnl >= 0 ? "pos" : "neg"}`} style={{ fontWeight: 500 }}>
                     {isFinite(r.unrealisedPnl) ? rupee(r.unrealisedPnl) : "—"}
                   </td>
