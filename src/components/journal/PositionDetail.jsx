@@ -218,6 +218,35 @@ export default function PositionDetail({ row, diary = [], twin = null, onAcknowl
   const atR = (price) => (perShare > 0 ? ((price - entry) * dir) / perShare : NaN);
   const gainPct = (price) => (entry > 0 ? ((price - entry) / entry) * 100 * dir : NaN);
 
+  /**
+   * AT RISK NOW, SAID FROM WHAT IS ACTUALLY KNOWN.
+   *
+   * This read "nil — nothing left to lose" on a position down 1.25R with its
+   * price below entry. The nil came from the breakeven flag having been
+   * clicked, and a stop really at entry would have sold those shares already —
+   * so the box stated the opposite of the page around it. The figure itself is
+   * unchanged here (the Holdings dial reads the same one); what changes is
+   * that the box says WHERE a zero comes from, and says so loudly when the
+   * price contradicts it.
+   */
+  const atRiskNow = () => {
+    if (!isFinite(row.stop)) return stat("At risk now", "Unknown", "no stop recorded");
+    const acked = !!row.breakeven_ack_at;
+    const belowEntry = isFinite(row.mark) && gainPct(row.mark) < 0;
+    if (row.openRiskAmt > 0) {
+      return stat("At risk now", rupee(row.openRiskAmt),
+        row.isRiskFree ? "if the stop is hit — covered by what is banked" : "if the stop is hit");
+    }
+    if (acked) {
+      return stat("At risk now", "None",
+        belowEntry
+          ? <span className="pd-warn">marked at breakeven, but the price is below entry — check your stop</span>
+          : "stop moved to breakeven");
+    }
+    if (row.stopAboveEntry) return stat("At risk now", "None", "stop is past entry");
+    return stat("At risk now", "None", "nothing left open");
+  };
+
   const stat = (label, value, sub) => (
     <div className="pd-stat">
       <div className="pd-stat-l">{label}</div>
@@ -321,71 +350,87 @@ export default function PositionDetail({ row, diary = [], twin = null, onAcknowl
               <b className="disp">{row.symbol}</b>
               <span>{[row.company, row.exchange].filter(Boolean).join(" · ")}</span>
             </div>
+            {/* When, how long, how much of it is gone — in words. "46.6% sold"
+                made people work out a share count they already knew. */}
             <div className="pd-when mono">
-              {day(row.entry_date)}
-              {closed && row.lastExit && ` → ${day(row.lastExit)}`}
+              {closed
+                ? `${day(row.entry_date)} → ${day(row.lastExit || row.exit_date)}`
+                : `Bought ${day(row.entry_date)}`}
               {isFinite(row.heldDays) && ` · ${row.heldDays} days`}
-              {!closed && ` · ${isFinite(row.pctClosed) ? row.pctClosed.toFixed(1) : "0"}% sold`}
+              {!closed && row.qtyExited > 0 && ` · ${row.qtyExited} of ${qty} sold`}
               {closed && exits.length > 1 && ` · ${exits.length} sells`}
             </div>
-            <div className={`pd-big mono ${row.pnl >= 0 ? "pos" : "neg"}`}>
+
+            {/* ONE figure, with its R beside it. The percentage sat here too,
+                in brackets, next to a different percentage under the price —
+                two unexplained percentages on one card. It is in the hover. */}
+            <div className={`pd-big mono ${row.pnl >= 0 ? "pos" : "neg"}`}
+                 title={isFinite(row.pnl) && row.exposure > 0
+                   ? `${signedPct((row.pnl / row.exposure) * 100)} of what the position cost` : undefined}>
               {isFinite(row.pnl) ? rupee(row.pnl) : "—"}
-              <i>
-                {isFinite(row.exposure) && row.exposure > 0 && isFinite(row.pnl)
-                  ? ` (${signedPct((row.pnl / row.exposure) * 100)})`
-                  : ""}
-                {isFinite(row.r) ? ` (${rfmt(row.r)})` : ""}
-              </i>
+              {isFinite(row.r) && <i>{rfmt(row.r)}</i>}
             </div>
-            <div className="pd-split mono">
+
+            {/* What that figure is made of, as a sentence. "banked ₹−30.4k"
+                asked the reader to decode a negative bank balance. */}
+            <div className="pd-split">
               {closed
-                ? `after ${rupee(row.charges)} of charges`
+                ? `After ${rupee(row.charges)} of charges`
                   + (row.margin > 0 ? ` and ${rupee(row.margin)} of MTF costs` : "")
-                : <>
-                    banked {isFinite(row.realisedPnl) && row.qtyExited > 0 ? rupee(row.realisedPnl) : "—"}
-                    {row.qtyOpen > 0 && (
-                      <> · still running {isFinite(row.unrealisedPnl) ? rupee(row.unrealisedPnl) : "no mark"}</>
-                    )}
-                  </>}
+                : [
+                    row.qtyExited > 0 && isFinite(row.realisedPnl) &&
+                      `${row.realisedPnl >= 0 ? "Made" : "Lost"} ${rupee(Math.abs(row.realisedPnl))} on the ${row.qtyExited} sold`,
+                    row.qtyOpen > 0 && (isFinite(row.unrealisedPnl)
+                      ? `${row.unrealisedPnl >= 0 ? "up" : "down"} ${rupee(Math.abs(row.unrealisedPnl))} on the ${row.qtyOpen} still held`
+                      : `no price yet on the ${row.qtyOpen} still held`),
+                  ].filter(Boolean).join(" · ").replace(/^./, (c) => c.toUpperCase())}
             </div>
           </div>
 
-          {/* The numbers the position was built on */}
+          {/*
+            * TWO ROWS, EACH ONE QUESTION. The eight boxes used to alternate
+            * between what was decided at entry and what is true now — entry,
+            * exit, price, charges, then stop, risk, size, open risk — so the eye
+            * had to sort them. Now the first row is the trade as it was opened
+            * and the second is where it stands, each with its heading.
+            */}
           <div className="pd-grid">
-            {stat("Avg entry", entry.toFixed(2), `${qty} shares`)}
-            {stat("Avg exit",
-              isFinite(row.avgExitPrice) ? row.avgExitPrice.toFixed(2) : "—",
-              isFinite(row.avgExitPrice) ? signedPct(gainPct(row.avgExitPrice)) : null)}
-            {closed
-              ? stat("Held",
-                  isFinite(row.heldDays) ? `${row.heldDays}d` : "—",
-                  exits.length > 1 ? `over ${exits.length} sells` : "one sell")
-              : stat("CMP",
-                  isFinite(row.mark) ? Number(row.mark).toFixed(2) : "—",
-                  isFinite(row.mark) ? signedPct(gainPct(row.mark)) : null)}
-            {stat("Charges", isFinite(row.charges) ? rupee(row.charges) : "—",
-              isFinite(row.exposure) && row.exposure > 0
-                ? `${pct((row.charges / row.exposure) * 100, 2)} of size` : null)}
-            {/* One stop. It was two tiles — the stop the position opened with
-                and the stop now — which read as a distinction the trader had
-                made when it was one number they had typed once. */}
+            <div className="pd-row-l">When you bought</div>
+            {stat("Bought at", entry.toFixed(2), `${qty} shares`)}
             {stat("Stop",
               isFinite(row.stop) ? row.stop.toFixed(2) : "—",
               row.stop_source === "assumed"
-                ? `${isFinite(row.slPct) ? pct(row.slPct) : ""} — assumed, not set`
-                : isFinite(row.slPct) ? `${pct(row.slPct)} from entry` : null)}
-            {stat("1R — risk taken",
+                ? "assumed, not set"
+                : isFinite(row.slPct) ? `${pct(row.slPct)} ${dir > 0 ? "below" : "above"} entry` : "none recorded")}
+            {stat("Risked",
               isFinite(row.riskAmt) ? rupee(row.riskAmt) : "—",
-              isFinite(row.riskPct) ? `${pct(row.riskPct, 2)} of account` : null)}
-            {stat("Position size", isFinite(row.exposure) ? rupee(row.exposure) : "—")}
+              isFinite(row.riskAmt)
+                ? `${isFinite(row.riskPct) ? `${pct(row.riskPct, 2)} of account · ` : ""}this is 1R`
+                : "needs a stop")}
+            {stat("Position", isFinite(row.exposure) ? rupee(row.exposure) : "—", "what it cost")}
+
+            <div className="pd-row-l">{closed ? "How it ended" : "Where it stands"}</div>
+            {closed
+              ? stat("Held",
+                  isFinite(row.heldDays) ? `${row.heldDays} days` : "—",
+                  exits.length > 1 ? `over ${exits.length} sells` : "one sell")
+              : stat("Price now",
+                  isFinite(row.mark) ? Number(row.mark).toFixed(2) : "—",
+                  isFinite(row.mark) ? `${signedPct(gainPct(row.mark))} from entry` : "refresh prices on Holdings")}
+            {stat("Sold at",
+              row.qtyExited > 0 && isFinite(row.avgExitPrice) ? row.avgExitPrice.toFixed(2) : "—",
+              row.qtyExited > 0 && isFinite(row.avgExitPrice)
+                ? `${closed ? "" : `${row.qtyExited} shares · `}${signedPct(gainPct(row.avgExitPrice))} from entry`
+                : "nothing sold yet")}
             {closed
               ? stat("Result",
                   isFinite(row.r) ? rfmt(row.r) : "—",
-                  isFinite(row.pnl) && isFinite(row.exposure) && row.exposure > 0
-                    ? signedPct((row.pnl / row.exposure) * 100) : null)
-              : stat("Open risk",
-                  row.isRiskFree || !(row.openRiskAmt > 0) ? "nil" : rupee(-Math.abs(row.openRiskAmt)),
-                  row.isRiskFree || !(row.openRiskAmt > 0) ? "nothing left to lose" : null)}
+                  isFinite(row.pnl) && row.exposure > 0
+                    ? `${signedPct((row.pnl / row.exposure) * 100)} of what it cost` : null)
+              : atRiskNow()}
+            {stat("Charges", isFinite(row.charges) ? rupee(row.charges) : "—",
+              isFinite(row.exposure) && row.exposure > 0
+                ? `${pct((row.charges / row.exposure) * 100, 2)} of position` : null)}
           </div>
 
           {/* Every leg, in order */}
@@ -652,8 +697,15 @@ export default function PositionDetail({ row, diary = [], twin = null, onAcknowl
             font-size: 26px; font-weight: 600; margin-top: 10px;
             font-variant-numeric: tabular-nums;
           }
-          .pd-big i { font-style: normal; font-size: 14px; font-weight: 500; }
-          .pd-split { font-size: 11.5px; color: var(--ink2); margin-top: 5px; }
+          .pd-big i { font-style: normal; font-size: 15px; font-weight: 500; margin-left: 10px; }
+          .pd-split { font-size: 12.5px; color: var(--ink2); margin-top: 6px; }
+          /* A heading across the grid, one per row of boxes. */
+          .pd-row-l {
+            grid-column: 1 / -1; background: var(--paper); padding: 7px 13px 6px;
+            font-size: 9.5px; font-weight: 600; letter-spacing: 0.1em;
+            text-transform: uppercase; color: var(--ink2);
+          }
+          .pd-warn { color: var(--short); }
 
           /* 1px gap over a ruled background draws the separators: with eight
              cells on two rows, borders on the cells themselves leave the wrap
