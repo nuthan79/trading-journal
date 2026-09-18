@@ -780,9 +780,10 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                     </button>
                     <span style={{ color: "var(--ink3)", fontSize: 11 }}> {t.exchange}</span>
                     {t.side === "short" && <span style={{ color: "var(--short)", fontSize: 10 }}> ▾</span>}
-                    {(t.mistakes || []).length > 0 && (
-                      <span title={t.mistakes.join(", ")}
-                            style={{ color: "var(--brass)", fontSize: 11, marginLeft: 4 }}>▲</span>)}
+                    {/* No mark for a tagged mistake. It was an amber ▲ on nearly
+                        every closed row, read as a warning, and explained only by
+                        a line under the table. Mistakes are counted on Review and
+                        Performance, and the tags are in each trade's panel. */}
                     {/* Red, and next to the name rather than in a column of its
                         own: this is a question about which row you are looking
                         at, so it belongs on the row's identity. Clicking the
@@ -1078,8 +1079,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
       )}
       {!(SHOW_CHART_WALL && asCharts) && rows.length > 0 && (
         <div className="hint" style={{ marginTop: 8 }}>
-          ▲ marks a trade where you tagged a mistake · ▾ marks a short · click a symbol to open it
-          · click any column to sort
+          ▾ marks a short · click a symbol to open it · click any column to sort
         </div>
       )}
 

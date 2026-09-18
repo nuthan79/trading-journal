@@ -171,7 +171,16 @@ function RiskDial({ riskR, measured = null }) {
   };
 
   return (
-    <div className="ps-dial" data-level={level}>
+    <div className="ps-dial" data-level={level}
+         title={blind ? undefined
+           : (level === "hot"
+             ? past
+               ? `Past the ${RISK_WARN_R}R line — more is riding on this than usual.`
+               : `Right on the ${RISK_WARN_R}R line.`
+             : level === "warm"
+             ? `Inside the ${RISK_WARN_R}R line, but filling up.`
+             : `Room to the ${RISK_WARN_R}R line.`)
+             + ` ${RISK_WARN_R}R is a warning line, not a limit — hold as many as you like.`}>
       <div className="ps-dial-ring">
         <svg viewBox="0 0 140 140" role="img"
              aria-label={`Open risk ${magnitude.toFixed(2)}R against a ${RISK_WARN_R}R warning line`}>
@@ -200,17 +209,10 @@ function RiskDial({ riskR, measured = null }) {
       {/* Keyed off the same level the colour uses. Testing `past` on its own
           left exactly 5.00R — five untrailed positions, which is not a rare
           place to be — showing a red ring over the words "room to the line". */}
-      <div className="ps-dial-note">
-        {blind
-          ? "Nothing to measure yet — no stops recorded."
-          : level === "hot"
-          ? past
-            ? `Past the ${RISK_WARN_R}R line — more is riding on this than usual.`
-            : `Right on the ${RISK_WARN_R}R line.`
-          : level === "warm"
-          ? `Inside the ${RISK_WARN_R}R line, but filling up.`
-          : `Room to the ${RISK_WARN_R}R line.`}
-      </div>
+      {/* Only the case the ring cannot show. Where it stands against the line
+          — room, filling up, past it — is what the ring and its colour already
+          say, so those words moved to the hover. */}
+      {blind && <div className="ps-dial-note">Nothing to measure yet — no stops recorded.</div>}
     </div>
   );
 }
@@ -848,11 +850,7 @@ export default function Holdings({
                 {" "}<Money v={totals.unknownExposure} /> of exposure with nothing recorded to get out at.
                 {" "}<a href="/stops">Set them</a> and this starts counting.
               </div>
-            ) : (
-              <div className="ps-riskfig-note">
-                {RISK_WARN_R}R is a warning line, not a limit — hold as many as you like.
-              </div>
-            )}
+            ) : null /* "5R is a warning line, not a limit" is in the dial's hover now. */}
           </div>
         </div>
 

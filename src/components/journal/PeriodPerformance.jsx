@@ -131,24 +131,19 @@ export default function PeriodPerformance({ closed, openingCapital, flows = [], 
       <div className="pp-head">
         <div>
           <div className="eyebrow">Performance by period</div>
+          {/*
+            * ONE LINE. This was three sentences — what a financial year is, a
+            * tip about hovering, how split sells are counted — before the
+            * table began, and the buttons beside it already say which basis
+            * and which periods. What stays is the one thing the buttons cannot
+            * say: why a position can appear in two rows. Q1's months stay for
+            * quarters, because an Indian financial quarter is not a calendar one.
+            */}
           <div className="pp-sub">
-            {grain === "month"
-              ? "Calendar months."
-              : grain === "quarter"
-              ? "Financial-year quarters — Q1 is April to June."
-              : "Financial years, April to March."}
-            {" Hover any rupee figure for its exact amount, and a Net P&L one for what that period cost in charges."}
+            {grain === "quarter" && "Q1 is April to June. "}
             {byEntry
-              ? " Grouped by when each trade was entered — how the decisions taken then worked out."
-              /* This used to say "when each trade was closed — when the money
-                 was actually realised", and those were two different things:
-                 a position sold across a boundary was credited whole to the
-                 period of its LAST sell. Now each sell counts where it
-                 happened, so the second half is finally true — and the first
-                 half had to go, because a position can now appear twice. */
-              : " Grouped by when the money was realised. A position sold across a" +
-                " period boundary counts in each period it paid out in, so it appears" +
-                " in both rows."}
+              ? "Counted by when each trade was entered."
+              : "Counted when the money was realised — a position sold across two periods appears in both."}
           </div>
         </div>
         <div className="pp-controls">
@@ -240,7 +235,6 @@ export default function PeriodPerformance({ closed, openingCapital, flows = [], 
                 <td className="num">
                   <Money v={r.avgRisk} note={r.avgRiskPct != null
                     ? `${pct(r.avgRiskPct, 2)} of capital` : undefined} />
-                  {r.avgRiskPct != null && <span className="pp-dim"> · {pct(r.avgRiskPct, 2)}</span>}
                 </td>
                 <td className="num">
                   {r.maxDD == null ? <span className="pp-dim">—</span> : `${r.maxDD.toFixed(1)}R`}
@@ -272,9 +266,9 @@ export default function PeriodPerformance({ closed, openingCapital, flows = [], 
                 {/* Header has 11 columns: 5 filled above + these 5 + the bar
                     column below. Getting this sum wrong shifts the whole
                     footer row out of line with the body. */}
-                <td colSpan={5} className="num pp-dim">
-                  {totals.green} of {rows.length} periods green
-                </td>
+                {/* Empty on purpose: "2 of 3 periods green" repeated what the
+                    coloured rows above already show. */}
+                <td colSpan={5}></td>
                 <td></td>
               </tr>
               {rows.length > 1 && (
@@ -291,10 +285,8 @@ export default function PeriodPerformance({ closed, openingCapital, flows = [], 
                   {/* The divisor, said out loud. A period you didn't trade has
                       no row here, so this is per period traded — which is the
                       same as per calendar month only if you never sat one out. */}
-                  <td colSpan={5} className="num pp-dim">
-                    across {rows.length} {grainWord}
-                    {rows.length === 1 ? "" : grain === "year" ? "s" : "s"} with trades
-                  </td>
+                  {/* Empty on purpose: the row's own label already says per what. */}
+                  <td colSpan={5}></td>
                   <td></td>
                 </tr>
               )}
