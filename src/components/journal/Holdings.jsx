@@ -1007,8 +1007,8 @@ export default function Holdings({
                     {!flagged.has(r.id) && (ackd || riskFree) && (
                       <span className="ps-flag done"
                             title={ackd
-                              ? "Breakeven reminder dismissed — you moved this stop at your broker. "
-                                + "Nothing changed here: the dial still counts the stop recorded in this journal."
+                              ? "Stop moved to breakeven at your broker, so this no longer counts towards "
+                                + "open risk or the dial. Your recorded stop, and every R measured from it, is unchanged."
                               : "Risk-free — enough is banked that this position can no longer lose overall"}>
                         <Flag size={11} />
                       </span>
@@ -1228,24 +1228,37 @@ export default function Holdings({
         />
       )}
 
-      <div className="ps-foot">
-        Buy value is what the shares still held cost, so it falls as a position is sold down.
-        Now at is where price stands against that trade's 1R — it holds still when you sell part
-        of a position, so a trade at a new high never reads as one that gave it back.
-        Open risk is what the current stop still exposes, so a stop moved past entry reads zero.
-        The {RISK_WARN_R}R dial is there to be read, not obeyed: there&apos;s no cap on how many
-        holdings you can carry at once, and nothing is blocked past the line.
-        A solid flag means the trade is up past {FREE_AT_R}R and its stop could go to breakeven at
-        your broker. Move it there, then click it to put the reminder down: the flag turns hollow
-        and that position stops counting towards open risk, because a stop at entry cannot lose.
-        Your recorded stop is untouched, so 1R and every R measured against it stay exactly as
-        they are.
-        {" "}Two more marks come from price history rather than from today: a rocket says the
-        position closed at or past {POWER_R}R within {POWER_DAYS} sessions of entry, and an arrow
-        says it closed past {FREE_AT_R}R at some point and is now back below what you paid.
-        Both are records of what already happened, so unlike the flag they stay put on a day the
-        stock moves. Neither is advice — they mark the trades worth a second look, not ones you
-        have got wrong.
+      {/*
+        * A KEY TO THE MARKS, NOT A MANUAL. This was 323 words in two columns,
+        * and most of them defined columns — Buy value, Now at, Open risk —
+        * which now explain themselves on hover and in the column picker. The
+        * 5R dial's "a warning, not a limit" is printed on the dial itself.
+        * What nothing else explains is the four marks beside a symbol, so that
+        * is all this says, each next to the mark it describes.
+        *
+        * The marks here are spans, not the flag button, so hovering the key
+        * does not look like it will do something.
+        */}
+      <div className="ps-key">
+        <span className="ps-key-item">
+          <span className="ps-flag ps-key-mark"><Flag size={11} /></span>
+          Up past {FREE_AT_R}R. Move the stop to breakeven at your broker, then click the flag.
+        </span>
+        <span className="ps-key-item">
+          <span className="ps-flag done ps-key-mark"><Flag size={11} /></span>
+          Can no longer lose: stop at breakeven, or enough banked. Left out of open risk.
+        </span>
+        <span className="ps-key-item">
+          <span className="ps-badge ps-badge-power ps-key-mark"><Rocket size={11} /></span>
+          Closed at or past {POWER_R}R within {POWER_DAYS} sessions of entry.
+        </span>
+        <span className="ps-key-item">
+          <span className="ps-badge ps-badge-back ps-key-mark"><CornerDownRight size={11} /></span>
+          Was past {FREE_AT_R}R, now back below what you paid.
+        </span>
+        <span className="ps-key-item ps-key-aside">
+          Rocket and arrow record what already happened. Neither is advice.
+        </span>
       </div>
 
       <style jsx>{`
@@ -1322,16 +1335,16 @@ export default function Holdings({
            a third of the card empty and looked like a mistake. Columns keep
            the measure readable AND use the box: two of them at ~85 characters
            each, which is what the cap was protecting in the first place. */
-        .ps-foot {
-          font-size: 11px; color: var(--ink3); margin-top: 9px;
-          line-height: 1.6; text-wrap: pretty;
-          columns: 2; column-gap: 30px;
+        /* One wrapping row across the full width, not a column with the right
+           half empty. Each mark sits beside the words it explains. */
+        .ps-key {
+          display: flex; flex-wrap: wrap; gap: 8px 26px; align-items: baseline;
+          margin-top: 10px; font-size: 11.5px; color: var(--ink3); line-height: 1.5;
         }
-        /* Below this a single column is already about the right measure, and
-           two would be too narrow to read. */
-        @media (max-width: 900px) {
-          .ps-foot { columns: 1; }
-        }
+        .ps-key-item { display: inline-flex; align-items: center; gap: 6px; }
+        .ps-key-aside { font-style: italic; }
+        .ps-key :global(.ps-key-mark) { margin-left: 0; cursor: default; }
+        .ps-key :global(.ps-key-mark:hover) { transform: none; }
       `}</style>
 
       {/* Global, not scoped: styled-jsx only reaches elements rendered by the
