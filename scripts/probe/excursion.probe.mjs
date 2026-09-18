@@ -68,25 +68,6 @@ test("a reading that stops before the exit is marked stale", () => {
     "an open position has no exit to fall short of");
 });
 
-/**
- * THE FOOTER SPANS HAVE TO ADD UP TO THE HEADER.
- *
- * Two columns in the header and not in the footer's trailing span slide the
- * whole totals row out from under its headings, with nothing erroring. The
- * comment above that footer has warned about exactly this since the table was
- * 21 columns wide.
- */
-test("the Trades footer spans exactly as many columns as the header", () => {
-  const src = read("components/journal/Trades.jsx");
-  const thead = src.slice(src.indexOf("<thead"), src.indexOf("</tr></thead>"));
-  const headers = (thead.match(/\{th\(/g) || []).length + (thead.match(/<th[\s>]/g) || []).length;
-
-  const tfoot = src.slice(src.indexOf('<tr className="tr-tot">'), src.indexOf("</tfoot>"));
-  const cells = [...tfoot.matchAll(/<td(?:\s[^>]*?)?(?:colSpan=\{(\d+)\})?[^>]*>/g)];
-  const footer = cells.reduce((a, m) => a + (m[1] ? Number(m[1]) : 1), 0);
-
-  eq(footer, headers, `header has ${headers} columns, footer spans ${footer}`);
-});
 
 test("MFE and MAE come after RS and before the actions column", () => {
   const src = read("components/journal/Trades.jsx");

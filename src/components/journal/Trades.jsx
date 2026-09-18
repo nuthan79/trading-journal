@@ -7,6 +7,8 @@ import { Plus, Pencil, Trash2, Download, Image as ImageIcon, X, Check, Flag, Upl
 import { rupee, rfmt, pct, signedPct, exportFilename, dmy } from "@/lib/format";
 import { excursion } from "@/lib/path";
 import { COLUMN_HINTS } from "@/lib/columns";
+import { useColumnPrefs } from "@/lib/useColumnPrefs";
+import ColumnPicker from "./ColumnPicker";
 import Money from "@/components/Money";
 import { downloadCsv } from "@/lib/csv";
 import PositionDetail from "./PositionDetail";
@@ -62,6 +64,27 @@ const REALISED_HERE_NOTE =
   + "instead, so it carries money realised before or after. This figure "
   + "matches Performance by period for the same dates.";
 
+/* The picker's list, in table order, with the labels the headers use. Symbol
+   is not in it: a row with no name is not a row anybody can read. */
+const TRADE_COLUMNS = [
+  { k: "entry_date", label: "In" }, { k: "exit_date", label: "Out" },
+  { k: "heldDays", label: "Held" }, { k: "entry_price", label: "Entry" },
+  { k: "stop_loss", label: "Stop" }, { k: "slPct", label: "SL %" },
+  { k: "quantity", label: "Qty" }, { k: "exposure", label: "Size" },
+  { k: "avgExitPrice", label: "Exit" }, { k: "exitPct", label: "Exit %" },
+  { k: "pnl", label: "P&L" }, { k: "r", label: "R" }, { k: "riskAmt", label: "Risk" },
+  { k: "chart", label: "Chart" }, { k: "pattern", label: "Pattern" },
+  { k: "distPivot", label: "Δ pivot" }, { k: "vol_pct_avg", label: "Vol %" },
+  { k: "weinstein_stage", label: "Stg" }, { k: "rs_rank", label: "RS" },
+  { k: "mfe", label: "MFE" }, { k: "mae", label: "MAE" },
+];
+/* Where the totals row splits. Symbol is first in BEFORE_PNL and never hidden,
+   so the lead span is always at least one. */
+const BEFORE_PNL = ["symbol", "entry_date", "exit_date", "heldDays", "entry_price", "stop_loss",
+                    "slPct", "quantity", "exposure", "avgExitPrice", "exitPct"];
+const AFTER_R = ["riskAmt", "chart", "pattern", "distPivot", "vol_pct_avg",
+                 "weinstein_stage", "rs_rank", "mfe", "mae"];
+
 export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNew,
                                  onAttachChart, onRemoveChart, onSaveStop,
                                  filters = [], onSaveView, onDeleteView, journalName = "",
@@ -70,6 +93,20 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
   const [filter, setFilter] = useState("all");
   const [q, setQ] = useState("");
   const [sort, setSort] = useState({ k: "entry_date", dir: -1 });
+
+  /**
+   * WHICH COLUMNS. Every column shows by default, as it always has; the picker
+   * takes away what you do not use. Remembered per browser — see
+   * useColumnPrefs.
+   *
+   * The totals row spans are derived from the same choice. It used to be two
+   * hard-coded numbers, 11 and 10, and a column hidden without them changing
+   * slides the whole row out from under its headings with nothing erroring.
+   */
+  const colPrefs = useColumnPrefs("trades");
+  const show = colPrefs.show;
+  const leadSpan = BEFORE_PNL.filter(show).length;
+  const trailSpan = AFTER_R.filter(show).length + 1;   // + the edit/delete column
 
   const [view, setView] = useState(null);
 
@@ -637,6 +674,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
               the tooltip rather than on the button: "CSV · 27" reads as a
               debug readout next to a row of plain word buttons, and the count
               is already stated twice on this screen. */}
+          <ColumnPicker columns={TRADE_COLUMNS} prefs={colPrefs} />
           <button className="btn ghost sm" title={`Download the ${rows.length} trade${
                     rows.length === 1 ? "" : "s"} shown, as ${exportFilename(viewLabel, { prefix: journalName })}`}
                   onClick={() => exportCsv(rows, viewLabel, journalName)}>
@@ -676,38 +714,38 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
           <table className="t">
             <thead><tr>
               {th("symbol", "Symbol", "fz fz-last")}
-              {th("entry_date", "In")}
-              {th("exit_date", "Out")}
-              {th("heldDays", "Held", "num")}
+              {show("entry_date") && th("entry_date", "In")}
+              {show("exit_date") && th("exit_date", "Out")}
+              {show("heldDays") && th("heldDays", "Held", "num")}
               {/* Left to right, the life of the trade: what went on, how it
                   came off, what it came to. Risk sits after R because it is
                   the denominator R was measured against — useful once you
                   have seen the multiple, noise before it. */}
-              {th("entry_price", "Entry", "num")}
-              {th("stop_loss", "Stop", "num")}
-              {th("slPct", "SL %", "num")}
-              {th("quantity", "Qty", "num")}
-              {th("exposure", "Size", "num")}
-              {th("avgExitPrice", "Exit", "num")}
-              {th("exitPct", "Exit %", "num")}
-              {th("pnl", "P&L", "num")}
-              {th("r", "R", "num")}
-              {th("riskAmt", "Risk", "num")}
+              {show("entry_price") && th("entry_price", "Entry", "num")}
+              {show("stop_loss") && th("stop_loss", "Stop", "num")}
+              {show("slPct") && th("slPct", "SL %", "num")}
+              {show("quantity") && th("quantity", "Qty", "num")}
+              {show("exposure") && th("exposure", "Size", "num")}
+              {show("avgExitPrice") && th("avgExitPrice", "Exit", "num")}
+              {show("exitPct") && th("exitPct", "Exit %", "num")}
+              {show("pnl") && th("pnl", "P&L", "num")}
+              {show("r") && th("r", "R", "num")}
+              {show("riskAmt") && th("riskAmt", "Risk", "num")}
               {/* The setup — what the chart looked like going in. Behind the
                   outcome because most rows have none of it recorded, and a
                   block of dashes shouldn't sit between a symbol and its P&L. */}
-              <th title="Charts saved against this trade in the diary">Chart</th>
-              {th("pattern", "Pattern")}
-              {th("distPivot", "Δ pivot", "num")}
-              {th("vol_pct_avg", "Vol %", "num")}
-              {th("weinstein_stage", "Stg", "num")}
-              {th("rs_rank", "RS", "num")}
+              {show("chart") && <th title="Charts saved against this trade in the diary">Chart</th>}
+              {show("pattern") && th("pattern", "Pattern")}
+              {show("distPivot") && th("distPivot", "Δ pivot", "num")}
+              {show("vol_pct_avg") && th("vol_pct_avg", "Vol %", "num")}
+              {show("weinstein_stage") && th("weinstein_stage", "Stg", "num")}
+              {show("rs_rank") && th("rs_rank", "RS", "num")}
               {/* After RS, at the end of the setup block, as asked. They are
                   outcomes rather than setup, but they describe the PATH, and
                   sit better beside the chart column's cousins than wedged
                   between P&L and R, which already say where it ended. */}
-              {th("mfe", "MFE", "num")}
-              {th("mae", "MAE", "num")}
+              {show("mfe") && th("mfe", "MFE", "num")}
+              {show("mae") && th("mae", "MAE", "num")}
               <th></th>
             </tr></thead>
             <tbody>
@@ -733,12 +771,19 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                         <Flag size={10} strokeWidth={2.5} style={{ verticalAlign: "-1px" }} />
                       </span>)}
                   </td>
+                  {show("entry_date") && (
                   <td className="mono" style={{ fontSize: 12 }}>{t.entry_date}</td>
+                  )}
+                  {show("exit_date") && (
                   <td className="mono" style={{ fontSize: 12, color: t.exit_date ? "inherit" : "var(--ink3)" }}>
                     {t.exit_date || "open"}</td>
+                  )}
+                  {show("heldDays") && (
                   <td className="num" style={{ fontSize: 12, color: "var(--ink2)" }}
                       title={t.exit_date ? undefined : "Still open — counted to today"}>
                     {isFinite(t.heldDays) ? `${t.heldDays}d` : "—"}</td>
+                  )}
+                  {show("entry_price") && (
                   <td className="num" title={t.acquisition === "bonus"
                         ? "Bonus, split or allotment — these shares cost nothing, "
                           + "so the sale is all profit and there is no R to compute"
@@ -746,6 +791,8 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                     {t.acquisition === "bonus"
                       ? <span className="tr-free">free</span>
                       : Number(t.entry_price).toFixed(2)}</td>
+                  )}
+                  {show("stop_loss") && (
                   <td className="num" title={t.stop_source === "assumed"
                         ? "Assumed at import, not a stop you set — every R on this row follows from it"
                         : undefined}>
@@ -782,6 +829,8 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                     )}
                     {t.stop_source === "assumed" && <i className="tr-assumed">assumed</i>}
                     {noStopOnRecord(t) && <i className="tr-assumed">no stop</i>}</td>
+                  )}
+                  {show("slPct") && (
                   <td className="num" style={{ fontSize: 12 }}>
                     {editStop === t.id ? (
                       <span className="tr-stopedit">
@@ -795,31 +844,49 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                     ) : (
                       isFinite(t.slPct) ? pct(t.slPct, 1) : "—"
                     )}</td>
+                  )}
+                  {show("quantity") && (
                   <td className="num">{t.quantity}</td>
+                  )}
+                  {show("exposure") && (
                   <td className="num" style={{ fontSize: 12 }}
                       title="Entry price × quantity — what the position cost">
-                    {isFinite(t.exposure) ? rupee(t.exposure) : "—"}</td>
+                    {isFinite(t.exposure) ? <Money v={t.exposure} note="Entry price × quantity — what the position cost" /> : "—"}</td>
+                  )}
+                  {show("avgExitPrice") && (
                   <td className="num" title={isPartial(t)
                         ? "Average of the sells so far — the rest is still open"
                         : undefined}>
                     {isFinite(t.avgExitPrice) ? t.avgExitPrice.toFixed(2) : "—"}
                     {isPartial(t) && <i className="tr-part">part</i>}</td>
+                  )}
+                  {show("exitPct") && (
                   <td className={`num ${isFinite(t.exitPct) ? (t.exitPct >= 0 ? "pos" : "neg") : ""}`}
                       style={{ fontSize: 12 }}
                       title="Price move from entry to the average exit, before charges">
                     {isFinite(t.exitPct) ? signedPct(t.exitPct) : "—"}</td>
+                  )}
+                  {show("pnl") && (
                   <td className={`num ${isFinite(t.pnl) ? (t.pnl >= 0 ? "pos" : "neg") : ""}`}>
-                    {isFinite(t.pnl) ? rupee(t.pnl) : "—"}</td>
+                    {isFinite(t.pnl) ? <Money v={t.pnl} /> : "—"}</td>
+                  )}
+                  {show("r") && (
                   <td className={`num ${isFinite(t.r) ? (t.r >= 0 ? "pos" : "neg") : ""}`}
                       style={{ fontWeight: 500 }}>{isFinite(t.r) ? rfmt(t.r) : "—"}</td>
+                  )}
+                  {show("riskAmt") && (
                   <td className="num" style={{ fontSize: 12 }}
                       title={isFinite(t.riskPct)
                         ? `${pct(t.riskPct, 2)} of the account — the 1R every R above divides by`
                         : "No stop, so no 1R to divide by"}>
-                    {isFinite(t.riskAmt) ? rupee(t.riskAmt) : "—"}</td>
+                    {isFinite(t.riskAmt) ? <Money v={t.riskAmt} note={isFinite(t.riskPct)
+                      ? `${pct(t.riskPct, 2)} of the account — the 1R every R above divides by`
+                      : undefined} /> : "—"}</td>
+                  )}
                   {/* Clickable when there is one: opens the trade, where the
                       chart is actually rendered. A count only shows past one,
                       since "1" beside every charted row is noise. */}
+                  {show("chart") && (
                   <td style={{ textAlign: "center" }}>
                     {charted.has(t.id) ? (
                       <button className="tr-chart" onClick={() => setDetailId(t.id)}
@@ -831,15 +898,26 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                       <span style={{ color: "var(--rule)", fontSize: 11 }}>—</span>
                     )}
                   </td>
+                  )}
+                  {show("pattern") && (
                   <td style={{ fontSize: 12, color: "var(--ink2)" }}>{t.pattern || "—"}</td>
+                  )}
+                  {show("distPivot") && (
                   <td className="num" style={{ fontSize: 12,
                         color: t.distPivot > 5 ? "var(--short)" : "inherit" }}>
                     {isFinite(t.distPivot) ? `${t.distPivot >= 0 ? "+" : ""}${t.distPivot.toFixed(1)}%` : "—"}</td>
+                  )}
+                  {show("vol_pct_avg") && (
                   <td className="num" style={{ fontSize: 12,
                         color: isFinite(num(t.vol_pct_avg)) && num(t.vol_pct_avg) < 100 ? "var(--short)" : "inherit" }}>
                     {t.vol_pct_avg ? `${t.vol_pct_avg}%` : "—"}</td>
+                  )}
+                  {show("weinstein_stage") && (
                   <td className="num" style={{ fontSize: 12 }}>{t.weinstein_stage || "—"}</td>
+                  )}
+                  {show("rs_rank") && (
                   <td className="num" style={{ fontSize: 12 }}>{t.rs_rank || "—"}</td>
+                  )}
                   {(() => {
                     const x = excursion(t);
                     const cell = (v, label) => {
@@ -858,7 +936,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                         </td>
                       );
                     };
-                    return <>{cell(x.mfe, "Best")}{cell(x.mae, "Worst")}</>;
+                    return <>{show("mfe") && cell(x.mfe, "Best")}{show("mae") && cell(x.mae, "Worst")}</>;
                   })()}
                   <td style={{ whiteSpace: "nowrap" }}>
                     <button className="x" onClick={() => onEdit(t)} aria-label="Edit"><Pencil size={13} /></button>
@@ -867,12 +945,13 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                 </tr>
               ))}
             </tbody>
-            {/* 23 columns: 11 spanned here, P&L, R, then 10 spanned to the end.
+            {/* Spanned to match whatever the column picker leaves showing: the
+                columns before P&L, P&L, R, then the rest including the actions.
                 Get that sum wrong and the whole row slides out of line under
                 the headers without anything erroring. */}
             <tfoot className="stick">
               <tr className="tr-tot">
-                <td colSpan={11}>
+                <td colSpan={leadSpan}>
                   <b>{totals.n}</b> {totals.n === 1 ? "trade" : "trades"} shown
                   {/* Only when it differs ON SCREEN — the same string as the
                       total cell renders, not the raw value.
@@ -915,6 +994,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                     cell, because each figure carries a hover of its own now
                     and the inner title is the one the pointer finds over the
                     digits. The "—" case still needs it on the td. */}
+                {show("pnl") && (
                 <td className={`num ${totals.withPnl === 0 ? "" : totals.pnl >= 0 ? "pos" : "neg"}`}
                     title={unmarkedNote}>
                   {/* A dash, not ₹0, when nothing in view has a P&L. Summing an
@@ -934,6 +1014,8 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                     <i className="tr-tot-sub"><Money v={totals.avg} note={unmarkedNote} /> per trade</i>
                   )}
                 </td>
+                )}
+                {show("r") && (
                 <td className={`num ${totals.r >= 0 ? "pos" : "neg"}`}
                     title={totals.withR < totals.n
                       ? `${totals.n - totals.withR} of these have no stop recorded, so no R`
@@ -943,7 +1025,8 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                     <i className="tr-tot-sub">of {totals.withR}</i>
                   )}
                 </td>
-                <td colSpan={10}></td>
+                )}
+                <td colSpan={trailSpan}></td>
               </tr>
             </tfoot>
           </table>

@@ -5,6 +5,8 @@ import { RefreshCw, Flag, Rocket, CornerDownRight, Download } from "lucide-react
 import { rupee, rfmt, pct, signedPct, moneyParts, exportFilename,
          monthShort } from "@/lib/format";
 import { COLUMN_HINTS } from "@/lib/columns";
+import { useColumnPrefs } from "@/lib/useColumnPrefs";
+import ColumnPicker from "./ColumnPicker";
 import Money from "@/components/Money";
 import { downloadCsv } from "@/lib/csv";
 import { SHOW_HOLDINGS_CSV } from "@/lib/flags";
@@ -269,7 +271,18 @@ function BreakevenFlag({ c, busy, onAck }) {
 const BEYOND_ESSENTIALS = new Set([
   "entry_date", "qtyOpen", "openPct", "slPct", "toStop", "buyValue", "netRiskR", "realisedPnl",
 ]);
-const COLS_KEY = "ledgerr:holdings-columns";
+/* The picker's list, in table order. Labels match the headers exactly — the
+   list is how somebody finds a column they can see, so it must use its name. */
+const HOLDINGS_COLUMNS = [
+  { k: "entry_date", label: "Entered" }, { k: "days", label: "Days" },
+  { k: "qtyOpen", label: "Open qty" }, { k: "openPct", label: "Open %" },
+  { k: "entry_price", label: "Entry" }, { k: "stop", label: "Stop" },
+  { k: "slPct", label: "SL %" }, { k: "toStop", label: "To stop" },
+  { k: "buyValue", label: "Buy value" }, { k: "openRiskAmt", label: "Open risk" },
+  { k: "netRiskR", label: "Open risk R" }, { k: "mark", label: "CMP" },
+  { k: "changePct", label: "Change %" }, { k: "realisedPnl", label: "Banked" },
+  { k: "unrealisedPnl", label: "Unrealised" }, { k: "atR", label: "Now at" },
+];
 
 export default function Holdings({
   open, closed, diary = [], journalName = "", onRefresh, refreshing, onAckBreakeven,
@@ -290,26 +303,18 @@ export default function Holdings({
   const [sort, setSort] = useState({ k: "entry_date", dir: -1 });
 
   /**
-   * ESSENTIALS OR EVERYTHING. Seventeen columns is a wall to somebody opening
-   * this for the first time, on the screen they will check most often. The
-   * essentials answer "where does each position stand and what can it still
-   * cost me"; the other eight are detail for when you are managing one.
-   *
-   * Essentials by default, remembered per browser once changed. Read in the
-   * initializer rather than an effect: this screen only renders after the
-   * session resolves on the client, so there is no server render to disagree
-   * with, and an effect would flash the wrong set of columns on every load for
-   * whoever chose Everything. Guarded, since blocked storage throws.
+   * WHICH COLUMNS. Seventeen is a wall to somebody opening this for the first
+   * time, on the screen they will check most often, so the default is the
+   * essentials — where each position stands and what it can still cost — and
+   * the picker adds back whatever else you want. Reset returns to those
+   * essentials rather than to everything, because that is this table's
+   * default. Remembered per browser; see useColumnPrefs.
    */
-  const [cols, setCols] = useState(() => {
-    try { return localStorage.getItem(COLS_KEY) === "all" ? "all" : "essentials"; }
-    catch { return "essentials"; }
+  const colPrefs = useColumnPrefs("holdings", {
+    defaults: [...BEYOND_ESSENTIALS],
+    legacyKey: "ledgerr:holdings-columns",
   });
-  const pickCols = (v) => {
-    setCols(v);
-    try { localStorage.setItem(COLS_KEY, v); } catch {}
-  };
-  const show = (k) => cols === "all" || !BEYOND_ESSENTIALS.has(k);
+  const show = colPrefs.show;
 
   const rows = useMemo(() => {
     return open
@@ -941,21 +946,8 @@ export default function Holdings({
         </div>
       </div>
 
-      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center",
-                    gap: 12, margin: "0 0 8px", flexWrap: "wrap" }}>
-        <span style={{ fontSize: 12, color: "var(--ink3)" }}>
-          {cols === "essentials"
-            ? `${BEYOND_ESSENTIALS.size} more columns under Everything`
-            : "Every column"}
-        </span>
-        <div className="seg" role="group" aria-label="Columns shown">
-          <button data-on={cols === "essentials" ? 1 : 0} onClick={() => pickCols("essentials")}>
-            Essentials
-          </button>
-          <button data-on={cols === "all" ? 1 : 0} onClick={() => pickCols("all")}>
-            Everything
-          </button>
-        </div>
+      <div style={{ display: "flex", justifyContent: "flex-end", margin: "0 0 8px" }}>
+        <ColumnPicker columns={HOLDINGS_COLUMNS} prefs={colPrefs} resetLabel="Essentials" />
       </div>
 
       <div className="card scroll ps-table">
@@ -967,21 +959,21 @@ export default function Holdings({
               <th className="num fz">#</th>
               {th("symbol", "Symbol", "fz2 fz-last")}
               {show("entry_date") && th("entry_date", "Entered")}
-              {th("days", "Days", "num")}
+              {show("days") && th("days", "Days", "num")}
               {show("qtyOpen") && th("qtyOpen", "Open qty", "num")}
               {show("openPct") && th("openPct", "Open %", "num")}
-              {th("entry_price", "Entry", "num")}
-              {th("stop", "Stop", "num")}
+              {show("entry_price") && th("entry_price", "Entry", "num")}
+              {show("stop") && th("stop", "Stop", "num")}
               {show("slPct") && th("slPct", "SL %", "num")}
               {show("toStop") && th("toStop", "To stop", "num")}
               {show("buyValue") && th("buyValue", "Buy value", "num")}
-              {th("openRiskAmt", "Open risk", "num")}
+              {show("openRiskAmt") && th("openRiskAmt", "Open risk", "num")}
               {show("netRiskR") && th("netRiskR", "Open risk R", "num")}
-              {th("mark", "CMP", "num")}
-              {th("changePct", "Change %", "num")}
+              {show("mark") && th("mark", "CMP", "num")}
+              {show("changePct") && th("changePct", "Change %", "num")}
               {show("realisedPnl") && th("realisedPnl", "Banked", "num")}
-              {th("unrealisedPnl", "Unrealised", "num")}
-              {th("atR", "Now at", "num")}
+              {show("unrealisedPnl") && th("unrealisedPnl", "Unrealised", "num")}
+              {show("atR") && th("atR", "Now at", "num")}
             </tr>
           </thead>
           <tbody>
@@ -1070,7 +1062,9 @@ export default function Holdings({
                     )}
                   </td>
                   )}
+                  {show("days") && (
                   <td className="num ps-dim">{isFinite(r.days) ? r.days : "—"}</td>
+                  )}
                   {show("qtyOpen") && (
                   <td className="num">{r.qtyOpen}</td>
                   )}
@@ -1084,7 +1078,9 @@ export default function Holdings({
                     </div>
                   </td>
                   )}
+                  {show("entry_price") && (
                   <td className="num">{Number(r.entry_price).toFixed(2)}</td>
+                  )}
                   {/* Marked assumed here as it is on the trade sheet, and for a
                       sharper reason: this screen already prints ASSUMED beside
                       the entry date two columns to the left. Both values come
@@ -1092,6 +1088,7 @@ export default function Holdings({
                       one and not the other reads as a statement that the stop
                       IS yours — the exact belief the flag exists to prevent.
                       Every R on the row follows from this number. */}
+                  {show("stop") && (
                   <td className={`num ${r.stopAboveEntry ? "ps-locked" : ""}`}
                       title={r.stop_source === "assumed"
                         ? "Assumed at import, not a stop you set — every R on this row follows from it"
@@ -1103,6 +1100,7 @@ export default function Holdings({
                       <span className="ps-assumed">assumed</span>
                     )}
                   </td>
+                  )}
                   {show("slPct") && (
                   <td className="num ps-dim">{isFinite(r.slPct) ? pct(r.slPct) : "—"}</td>
                   )}
@@ -1129,12 +1127,14 @@ export default function Holdings({
                       here is a measurement saying there is nothing to lose;
                       the dash says nobody has told us. The column already uses
                       "—" for every other figure it cannot compute. */}
+                  {show("openRiskAmt") && (
                   <td className={`num ${r.unknownRisk ? "ps-dim" : riskFree ? "ps-dim" : "neg"}`}
                       title={r.unknownRisk
                         ? "No stop recorded, so there is no risk figure — not a risk of zero. Set a stop and this fills in."
                         : undefined}>
                     {r.unknownRisk ? "—" : riskFree ? "0" : rupee(-Math.abs(r.openRiskAmt))}
                   </td>
+                  )}
                   {show("netRiskR") && (
                   <td className="num">
                     {/* Same distinction as the rupee column, and the bar is
@@ -1158,6 +1158,7 @@ export default function Holdings({
                       about this number and the association should not need
                       explaining. Lowercase like `breached` in the To stop
                       column, which is the same kind of remark. */}
+                  {show("mark") && (
                   <td className="num">
                     {isFinite(r.mark) ? Number(r.mark).toFixed(2) : "—"}
                     {r.dayEnd && (
@@ -1173,17 +1174,23 @@ export default function Holdings({
                       </span>
                     )}
                   </td>
+                  )}
+                  {show("changePct") && (
                   <td className={`num ${r.changePct >= 0 ? "pos" : "neg"}`}>
                     {isFinite(r.changePct) ? signedPct(r.changePct) : "—"}
                   </td>
+                  )}
                   {show("realisedPnl") && (
                   <td className={`num ${r.realisedPnl >= 0 ? "pos" : "neg"}`}>
                     {isFinite(r.realisedPnl) && r.qtyExited > 0 ? rupee(r.realisedPnl) : <span className="ps-dim">—</span>}
                   </td>
                   )}
+                  {show("unrealisedPnl") && (
                   <td className={`num ${r.unrealisedPnl >= 0 ? "pos" : "neg"}`} style={{ fontWeight: 500 }}>
                     {isFinite(r.unrealisedPnl) ? rupee(r.unrealisedPnl) : "—"}
                   </td>
+                  )}
+                  {show("atR") && (
                   <td className={`num ${r.atR >= 0 ? "pos" : "neg"}`}
                       title={"Where price stands against this trade's 1R. It does not change when "
                         + "you sell part of the position — sell a third at 6R and this still reads "
@@ -1191,6 +1198,7 @@ export default function Holdings({
                         + "what the shares you still hold are worth."}>
                     {isFinite(r.atR) ? rfmt(r.atR) : "—"}
                   </td>
+                  )}
                 </tr>
               );
             })}
