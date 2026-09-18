@@ -1268,6 +1268,10 @@ export default function Holdings({
           Can no longer lose: stop at breakeven, or enough banked. Left out of open risk.
         </span>
         <span className="ps-key-item">
+          <span className="ps-flag done broken ps-key-mark"><Flag size={11} /></span>
+          Marked at breakeven, but the price has been below entry. Counted in open risk again — check your stop.
+        </span>
+        <span className="ps-key-item">
           <span className="ps-badge ps-badge-power ps-key-mark"><Rocket size={11} /></span>
           Closed at or past {POWER_R}R within {POWER_DAYS} sessions of entry.
         </span>

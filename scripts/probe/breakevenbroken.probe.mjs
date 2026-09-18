@@ -79,3 +79,10 @@ test("Holdings draws an overruled mark in the warning colour, with the reason", 
   ok(/ps-flag done\$\{r\.breakevenBroken \? " broken" : ""\}/.test(s));
   ok(/a stop at entry would have sold it/.test(s));
 });
+
+test("the Holdings key explains the red hollow flag", () => {
+  const s = read("components/journal/Holdings.jsx");
+  const key = s.slice(s.indexOf('<div className="ps-key">'), s.indexOf("</div>", s.indexOf('<div className="ps-key">')));
+  ok(/className="ps-flag done broken ps-key-mark"><Flag/.test(key), "drawn as it appears on the row");
+  ok(/Counted in open risk again — check your stop/.test(key));
+});
