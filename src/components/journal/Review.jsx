@@ -1259,7 +1259,7 @@ export default function Review({ closed, stats, all, diary, onMeasured }) {
   if (!closed.length) {
     return (
       <div className="sec card empty">
-        <div className="eyebrow">Review</div>
+        <div className="eyebrow">Your process</div>
         <p>This reads your closed trades for behavioural patterns — stop discipline, sizing,
           entries, exits, and how well your activity tracks the market. Log a few closed
           trades and come back.</p>

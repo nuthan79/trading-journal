@@ -17,18 +17,30 @@ import { SHOW_CHART_DRILL } from "@/lib/flags";
  * never seen. Sub-tabs keep the top nav short AND each screen whole, which is
  * the only version where combining is a gain rather than a filing decision.
  *
- * ORDER IS AN ARGUMENT. Edge is where the edge actually was, in trades that
- * were taken; What-if starts from those measured numbers and lets you move
- * them; Mindset is the state they were taken in; Review is the verdict.
+ * ORDER IS AN ARGUMENT. What works is where the edge actually was, in trades
+ * that were taken; What if starts from those measured numbers and lets you
+ * move them; Mindset is the state they were taken in; Process is the verdict.
  * Evidence, then hypothesis, then cause, then verdict — and the verdict reads
  * last because it only means something once the other three have been seen.
  */
 
 const SUB = [
-  { href: "/analysis/edge", label: "Edge" },
-  { href: "/analysis/what-if", label: "What-if" },
+  /*
+    NAMED FOR THE QUESTION, not the concept. "Edge" was trader shorthand for a
+    page whose own headings are plain English — where the edge is, what the
+    mistakes cost, what didn't work — so the tab was harder to read than the
+    page behind it. "Review" said a review was there and not of what; the page
+    is your process, stage by stage. Mindset was already an ordinary word and
+    stays: the page is as much about state as habit, and "Habits" would have
+    mislabelled half of it.
+
+    ROUTES DO NOT CHANGE. /analysis/edge and /analysis/review stay, so every
+    bookmark and every link inside the app keeps working.
+  */
+  { href: "/analysis/edge", label: "What works" },
+  { href: "/analysis/what-if", label: "What if" },
   { href: "/analysis/mindset", label: "Mindset" },
-  { href: "/analysis/review", label: "Review" },
+  { href: "/analysis/review", label: "Process" },
   /* Built, and held back as a paid feature — see lib/flags.js. The tab is not
      rendered while the flag is off, so the route exists and is unreachable. */
   ...(SHOW_CHART_DRILL ? [{ href: "/analysis/drill", label: "Drill" }] : []),

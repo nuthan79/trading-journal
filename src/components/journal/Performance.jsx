@@ -11,7 +11,7 @@ import { annualisedReturn, returnQuality, equityCurve, realisedR, underwater } f
  * The statement: how much, over what period, on what capital.
  *
  * The three breakdown tables that used to live below — where the edge is, what
- * the mistakes cost, what didn't work — moved to Analysis → Edge. They are one
+ * the mistakes cost, what didn't work — moved to Analysis → What works. They are one
  * idea (group the trades by something and see what each group earned) and this
  * is another (totals and periods, consulted the way a statement is). Keeping
  * both here made this the longest screen in the app and buried the argument
@@ -22,7 +22,7 @@ export default function Performance({ closed, banking = [], S, accountSize, flow
     return (
       <div className="sec card empty">
         <div className="eyebrow">Performance sheet</div>
-        {/* No longer promises to say which setups pay — that is Analysis → Edge
+        {/* No longer promises to say which setups pay — that is Analysis → What works
             now, and an empty state advertising a table this screen no longer
             has is how somebody ends up looking for it here forever. */}
         <p>This page totals your closed trades by period and shows what capital was
@@ -169,14 +169,14 @@ export default function Performance({ closed, banking = [], S, accountSize, flow
       </div>
 
       {/* The three breakdown tables that used to sit here — where the edge is,
-          what the mistakes cost, what didn't work — moved to Analysis → Edge.
+          what the mistakes cost, what didn't work — moved to Analysis → What works.
           They are one idea (group the trades and see what each group earned)
           and this screen is another (how much, over what period, on what
           capital). A pointer, because somebody arriving here for "which setups
           pay" should not have to guess that it moved. */}
       <p className="perf-more">
         Which setups actually pay, what the mistakes cost, and what simply didn&rsquo;t
-        work now live in <Link href="/analysis/edge">Analysis → Edge</Link>.
+        work now live in <Link href="/analysis/edge">Analysis → What works</Link>.
       </p>
 
       {/* Global because the anchor is rendered by next/link, not by this

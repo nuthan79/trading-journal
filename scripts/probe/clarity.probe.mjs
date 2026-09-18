@@ -86,3 +86,28 @@ test("Change % on Holdings says it is since entry, not today", () => {
   /* The one header whose obvious reading is wrong. */
   ok(/not today/.test(COLUMN_HINTS.changePct));
 });
+
+/* 4 — The Analysis tabs were named in trader shorthand, worse than the pages. */
+test("the Analysis tabs are named for what they answer", () => {
+  const src = read("app/(app)/analysis/layout.jsx");
+  const labels = [...src.matchAll(/label: "([^"]+)"/g)].map((m) => m[1]);
+  ok(labels.includes("What works"), "Edge becomes What works");
+  ok(labels.includes("Process"), "Review becomes Process");
+  ok(!labels.includes("Edge") && !labels.includes("What-if"), "the old names are gone");
+});
+
+test("renaming the tabs did not move the pages", () => {
+  const src = read("app/(app)/analysis/layout.jsx");
+  ok(/href: "\/analysis\/edge", label: "What works"/.test(src), "bookmarks to /analysis/edge still land");
+  ok(/href: "\/analysis\/review", label: "Process"/.test(src), "and to /analysis/review");
+});
+
+test("nothing in the app still sends people to a tab by its old name", () => {
+  /* What a user can read, so comments are stripped: a stale comment is a
+     code-quality problem, a stale link label is a navigation one. */
+  const visible = (f) => read(f).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  for (const f of ["components/journal/Performance.jsx", "components/journal/Review.jsx",
+                   "components/journal/Edge.jsx", "components/journal/WhatIf.jsx"]) {
+    ok(!/Analysis → (Edge|Review|What-if)\b/.test(visible(f)), `${f} names an old tab`);
+  }
+});
