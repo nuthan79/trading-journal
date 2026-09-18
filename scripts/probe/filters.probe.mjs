@@ -421,3 +421,30 @@ test("a view's date window is read only from the SELL dates", () => {
   /* And it must not fire on a rule that has no window at all. */
   eq(realisedWindow(V([{ field: "exit_date", op: "empty" }])), null);
 });
+
+/* ---- tabs narrow within a saved view, until Clear -------------------- */
+import { readFileSync as _rf } from "node:fs";
+import _path from "node:path";
+import { fileURLToPath as _fu } from "node:url";
+const _trades = () => _rf(_path.join(_path.resolve(_fu(new URL("../../src", import.meta.url))),
+  "components/journal/Trades.jsx"), "utf8");
+
+test("a tab narrows the active view instead of clearing it", () => {
+  const s = _trades();
+  const choose = s.slice(s.indexOf("const chooseFilter = (id) => {"), s.indexOf("};", s.indexOf("const chooseFilter")));
+  ok(!/setView\(null\)/.test(choose), "picking a tab must not throw the view away");
+  ok(/if \(filter === "winners"\)[\s\S]*?if \(view\) r = r\.filter\(\(t\) => matches\(t, view\)\)/.test(s),
+    "the rows apply both, tab and view");
+});
+
+test("the layering is never silent: the banner names the tab, and it lights up", () => {
+  const s = _trades();
+  ok(/\{filter !== "all" && <><b>\{TAB_LABEL\[filter\] \|\| filter\}<\/b> within <\/>\}/.test(s));
+  ok(/data-on=\{filter === id \? 1 : 0\}/.test(s), "the active tab is lit even under a view");
+  ok(/if \(filter !== "all"\) parts\.push\(filter === "nostop" \? "no stop" : filter\);\s*\} else if \(mistake\)/.test(s),
+    "and the CSV is named for both");
+});
+
+test("a view named after its own rules is not described twice", () => {
+  ok(/view\.name\.trim\(\)\.toLowerCase\(\) !== describeFilter\(view\)\.trim\(\)\.toLowerCase\(\)/.test(_trades()));
+});

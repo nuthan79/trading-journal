@@ -94,6 +94,10 @@ const COSTS = ["charges", "margin"];
 const AFTER_COSTS = ["riskAmt", "chart", "pattern", "distPivot", "vol_pct_avg",
                  "weinstein_stage", "rs_rank", "mfe", "mae"];
 
+/* Names for the tabs, for the banner that says one is narrowing a view. */
+const TAB_LABEL = { open: "Open", closed: "Closed", winners: "Winners", losers: "Losers",
+                    nostop: "No stop", flagged: "Flagged" };
+
 export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNew,
                                  onAttachChart, onRemoveChart, onSaveStop,
                                  filters = [], onSaveView, onDeleteView, journalName = "",
@@ -150,20 +154,27 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
    * Clicking a column still wins, until the next tab change.
    */
   const OPENING_SORT = { closed: { k: "exit_date", dir: -1 } };
+  /* A tab narrows WITHIN a saved view now, rather than clearing it — see
+     applyView. The order follows the tab where it has one of its own, and
+     otherwise stays the view's. */
   const chooseFilter = (id) => {
     setFilter(id);
-    setView(null);
-    setSort(OPENING_SORT[id] || { k: "entry_date", dir: -1 });
+    setSort(OPENING_SORT[id] || (view && sortForFilter(view)) || { k: "entry_date", dir: -1 });
   };
 
   /**
-   * A saved view and a tab are alternatives, not layers.
+   * A saved view and a tab are LAYERS: the view picks the trades, the tabs
+   * narrow within them until Clear.
    *
-   * Both answer "which trades", so leaving a tab switched on underneath a view
-   * would silently intersect the two — you would apply "Everything over 2R",
-   * see nine trades, and have no way to tell that Losers was still narrowing
-   * it. Choosing either one clears the other, so what is on screen is always
-   * explained by exactly one control.
+   * They used to be alternatives — picking a tab threw the view away — on the
+   * worry that an intersection would be silent: apply "Everything over 2R",
+   * see nine trades, and not know Losers was narrowing it. The user asked for
+   * the layering, filtering big positions and then wanting their winners, and
+   * the worry is answered by saying it: the banner names the tab beside the
+   * view whenever one is narrowing it.
+   *
+   * Applying a view starts it on All, so a view always opens showing all of
+   * what it asks for.
    *
    * A view also brings its own opening order, since a view that asks about the
    * big R multiples is not answered by entry-date order. Clearing one restores
@@ -450,8 +461,11 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
    */
   const viewLabel = useMemo(() => {
     const parts = [];
-    if (view) parts.push(view.name);
-    else if (mistake) parts.push(`tagged ${mistake}`);
+    /* The tab too when it narrows a view, so the file says what is in it. */
+    if (view) {
+      parts.push(view.name);
+      if (filter !== "all") parts.push(filter === "nostop" ? "no stop" : filter);
+    } else if (mistake) parts.push(`tagged ${mistake}`);
     else if (missingField) parts.push(`missing ${missingField.label}`);
     else if (edgeDesc) parts.push(`${edgeDesc.label} ${edgeDesc.value}`);
     else if (filter !== "all") parts.push(filter === "nostop" ? "no stop" : filter);
@@ -591,7 +605,16 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
           {/* The rules spelled out, not just the name. A view called "Q3 pain"
               is a label somebody chose months ago; this is what it actually
               asks, so the list never narrows for a reason you cannot read. */}
-          <span>Showing <b>{view.name}</b> — {describeFilter(view).toLowerCase()}</span>
+          {/* The tab named first when it narrows the view, so the count beside
+              it is always explained. The rules are said once: a view named
+              after its own rules printed them twice. */}
+          <span>
+            Showing{" "}
+            {filter !== "all" && <><b>{TAB_LABEL[filter] || filter}</b> within </>}
+            <b>{view.name}</b>
+            {view.name.trim().toLowerCase() !== describeFilter(view).trim().toLowerCase() &&
+              <> — {describeFilter(view).toLowerCase()}</>}
+          </span>
           <span className="tr-chip-n">{rows.length} of {all.length}</span>
           <button className="btn ghost sm" onClick={() => applyView(null)}>
             <X size={12} />Clear
@@ -642,7 +665,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
           {[["all","All"],["open","Open"],["closed","Closed"],["winners","Winners"],["losers","Losers"],
             ...(flaggedCount > 0 ? [["flagged", `Flagged · ${flaggedCount}`]] : []),
             ...(noStopCount > 0 ? [["nostop", `No stop · ${noStopCount}`]] : [])].map(([id,l]) => (
-            <button key={id} data-on={view ? 0 : filter === id ? 1 : 0}
+            <button key={id} data-on={filter === id ? 1 : 0}
                     onClick={() => chooseFilter(id)}>{l}</button>
           ))}
         </div>
