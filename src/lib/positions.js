@@ -131,6 +131,7 @@ export function bankedEvents(t) {
     margin: n(t?.realisedMargin) || 0,
     interest: n(t?.realisedInterest) || 0,
     fees: n(t?.pledgeFees) || 0,
+    marginCounted: t?.marginInPnl !== false,
     placedByEntry: !t?.exit_date,
   }];
 }
@@ -219,7 +220,11 @@ export function realisationEvents(t) {
   const ownMargin = (e) => (im ? im.onSell(e) + im.unpledgeFee : 0);
   const pledge = im ? im.pledgeFee : 0;
   const marginSum = sum(exits.map(ownMargin)) + pledge;
-  const chargeTotal = grossSum - total - marginSum;
+  /* Taken out of the remainder only if it was taken out of realisedPnl. The
+     two must agree, or MTF left in P&L would be found again here, called a
+     charge, and added to the Charges figure. */
+  const counted = !!im && im.inPnl;
+  const chargeTotal = grossSum - total - (counted ? marginSum : 0);
   const ownSum = sum(exits.map((e) => n(e.charges) || 0));
   const spare = chargeTotal - ownSum;
   const qtyOut = sum(exits.map((e) => n(e.quantity) || 0));
@@ -239,7 +244,7 @@ export function realisationEvents(t) {
     const interest = im ? im.onSell(e) : 0;
     const fees = (im ? im.unpledgeFee : 0) + share;
     const margin = interest + fees;
-    const pnl = gross[i] - charge - margin;
+    const pnl = gross[i] - charge - (counted ? margin : 0);
     return {
       date: String(e.exit_date).slice(0, 10),
       pnl,
@@ -251,6 +256,8 @@ export function realisationEvents(t) {
       /* This sell's margin cost — interest and fees — reported beside its
          charge, never in it. */
       margin, interest, fees,
+      /* Whether this sell's pnl is net of that margin. */
+      marginCounted: im ? im.inPnl : true,
       /* Risk is fixed at entry for the whole position, so these sum to
          realisedR with no weighting to argue about. */
       r: risk > 0 ? pnl / risk : NaN,
@@ -381,7 +388,11 @@ export function derivePosition(t, accountSize) {
   const realisedInterest = im ? sum(exits.map(im.onSell)) : 0;
   const pledgeFees = im && qtyExited > 0 ? im.pledgeFee + im.unpledgeFee * exits.length : 0;
   const realisedMargin = realisedInterest + pledgeFees;
-  const realisedPnl = qtyExited > 0 ? grossRealised - charges - realisedMargin : NaN;
+  /* Worked out either way; taken out only when the user counts MTF in P&L.
+     Set to show it as an expense only, it is reported and subtracted from
+     nothing. */
+  const counted = !!im && im.inPnl;
+  const realisedPnl = qtyExited > 0 ? grossRealised - charges - (counted ? realisedMargin : 0) : NaN;
   const realisedR = riskAmt > 0 && isFinite(realisedPnl) ? realisedPnl / riskAmt : NaN;
   const avgExitPrice = qtyExited > 0
     ? sum(exits.map((e) => n(e.price) * n(e.quantity))) / qtyExited
@@ -412,7 +423,7 @@ export function derivePosition(t, accountSize) {
      unrealised P&L to be net of anything. */
   const openInterest = im && qtyOpen > 0 ? im.onHeld(qtyOpen, today()) : 0;
   const unrealisedPnl =
-    qtyOpen > 0 && hasMark ? (mark - entry) * qtyOpen * dir - openInterest : NaN;
+    qtyOpen > 0 && hasMark ? (mark - entry) * qtyOpen * dir - (counted ? openInterest : 0) : NaN;
   const unrealisedR =
     riskAmt > 0 && isFinite(unrealisedPnl) ? unrealisedPnl / riskAmt : NaN;
 
@@ -489,6 +500,9 @@ export function derivePosition(t, accountSize) {
     realisedMargin,
     interest: realisedInterest + (qtyOpen > 0 && hasMark ? openInterest : 0),
     realisedInterest, pledgeFees, openInterest,
+    /* Whether `margin` is inside pnl and r, so every screen can say so
+       truthfully rather than assuming. */
+    marginInPnl: im ? im.inPnl : true,
     /* What the shares still held cost to carry for one more day. */
     marginPerDay: im && qtyOpen > 0 ? im.perShareDay * qtyOpen : 0,
     interestUnknown: !!im && !im.known,

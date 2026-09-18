@@ -131,13 +131,16 @@ test("unticking MTF on the form takes the cost off at once", () => {
   ok(/mtf_rate: t\.mtf_on \? t\.mtf_rate : null,/.test(s));
 });
 
-test("every 'after charges' on a Net P&L also names MTF", () => {
-  /* Otherwise the "before them" figure is quietly net of MTF while calling
-     itself the result before costs. */
+test("every 'after charges' on a Net P&L names MTF the way it was treated", () => {
+  /* Counted: named as taken out, and added back into "before them". Shown as
+     an expense only: named as not taken out, and NOT added back. */
   const pp = read("components/journal/PeriodPerformance.jsx");
-  ok(/full\(pnl \+ c \+ m\)/.test(pp), "the period table adds MTF back into 'before'");
-  ok(/`\$\{full\(m\)\} MTF`/.test(pp));
-  ok(/h\.margin > 0 \? ` and \$\{rupee\(h\.margin\)\} MTF`/.test(read("components/journal/HeadlineNumbers.jsx")));
+  ok(/full\(pnl \+ c \+ m\)/.test(pp), "counted, the period table adds MTF back into 'before'");
+  ok(/if \(m > 0 && !counted\)[\s\S]*?full\(pnl \+ c\)[\s\S]*?MTF, not taken out/.test(pp),
+    "not counted, it adds back charges only and says so");
+  const hn = read("components/journal/HeadlineNumbers.jsx");
+  ok(/h\.marginCounted !== false\s*\? ` and \$\{rupee\(h\.margin\)\} MTF`/.test(hn));
+  ok(/MTF shown separately, not taken out/.test(hn));
 });
 
 test("the CSV carries margin, so pnl still reconciles", () => {

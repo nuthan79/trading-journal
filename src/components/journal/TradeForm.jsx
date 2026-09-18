@@ -397,7 +397,7 @@ function useRememberedFold(key) {
   return [open, set];
 }
 
-export default function TradeForm({ initial, accountSize, defaultRiskPct, chargeConfig, startSelling, defaultMtfRate, onSave, onClose }) {
+export default function TradeForm({ initial, accountSize, defaultRiskPct, chargeConfig, startSelling, defaultMtfRate, mtfPrefs, onSave, onClose }) {
   const formId = formIdOf(initial);
   const persisted = loadDraft(DRAFT_KEYS.trade);
   const restored = persisted?.formId === formId ? persisted : null;
@@ -412,7 +412,7 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
   const split = splitCharges(t, withExits(t).exits, chargeConfig);
   const d = derivePosition(
     {
-      ...t, charges: split.tradeCharges, exits: split.exits,
+      ...t, ...(mtfPrefs || {}), charges: split.tradeCharges, exits: split.exits,
       /* Margin only counts while ticked: unticking must take the cost off the
          figures at once, even though the typed values are kept in case it
          is ticked again. */
@@ -429,7 +429,10 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
     entryDate: t.entry_date, entryDateAssumed: t.entry_date_source === "assumed",
     exits: withExits(t).exits, leverage: t.mtf_leverage, rate: t.mtf_rate,
     riskAmt: d.riskAmt, pnl: d.pnl, asOf: today(),
+    pledgeFee: mtfPrefs?._mtfPledge, unpledgeFee: mtfPrefs?._mtfUnpledge,
   }) : null;
+  /* Whether this user counts MTF in P&L and R, or only reports it — Setup. */
+  const mtfCounted = mtfPrefs?._mtfInPnl !== false;
 
 
 
@@ -916,8 +919,10 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                     )}
                     {mtf && (
                       <div className="hint" style={{ marginTop: 8 }}>
-                        MTF is the interest with the pledge and unpledge charges. Already taken out
-                        of your P&amp;L and R.
+                        MTF is the interest with the pledge and unpledge charges.{" "}
+                        {mtfCounted
+                          ? "Already taken out of your P&L and R."
+                          : "Shown as an expense only — not taken out of P&L or R. You can change this in Setup."}
                       </div>
                     )}
                   </>
@@ -1175,7 +1180,7 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                   <div className="readout" style={{ marginTop: 12 }}>
                     {derivedStatus === "partial" ? (
                       <>
-                        <div className="row"><span>Banked so far (net of charges{t.mtf_on ? " and MTF" : ""})</span>
+                        <div className="row"><span>Banked so far (net of charges{t.mtf_on && mtfCounted ? " and MTF" : ""})</span>
                           <b className={d.realisedPnl >= 0 ? "pos" : "neg"}><Money v={d.realisedPnl} /></b></div>
                         <div className="row"><span>Banked in R</span>
                           <b className={d.realisedR >= 0 ? "pos" : "neg"}>
@@ -1190,7 +1195,7 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                       </>
                     ) : (
                       <>
-                        <div className="row"><span>Realised P&amp;L (net of charges{t.mtf_on ? " and MTF" : ""})</span>
+                        <div className="row"><span>Realised P&amp;L (net of charges{t.mtf_on && mtfCounted ? " and MTF" : ""})</span>
                           <b className={d.pnl >= 0 ? "pos" : "neg"}><Money v={d.pnl} /></b></div>
                         <div className="row"><span>Outcome in R</span>
                           <b className={d.r >= 0 ? "pos" : "neg"} style={{ fontSize: 15 }}>

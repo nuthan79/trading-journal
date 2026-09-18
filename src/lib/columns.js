@@ -28,7 +28,7 @@ export const COLUMN_HINTS = {
   exposure: "What the position cost: entry price × shares bought",
   avgExitPrice: "Average sell price. Sold in parts, each sell counts by the shares in it",
   exitPct: "How far the average sell price was from your entry",
-  pnl: "Profit or loss after charges, and after MTF on a trade bought on margin. For a position still held, includes what the unsold shares are "
+  pnl: "Profit or loss after charges — and after MTF on a margin trade, unless Setup says to show MTF as an expense only. For a position still held, includes what the unsold shares are "
     + "worth at the last price",
   r: "Profit or loss divided by the risk you took at entry. +2R means you made twice "
     + "what you risked; −1R means the stop was hit",
@@ -36,7 +36,7 @@ export const COLUMN_HINTS = {
     + "trade — worked out by the app, or taken from your broker's file on import. Already "
     + "taken out of P&L. MTF is not in it",
   margin: "MTF on this trade — the interest with the pledge and unpledge charges. "
-    + "Already taken out of P&L and R",
+    + "Taken out of P&L and R, unless Setup says to show it as an expense only",
   riskAmt: "Rupees between entry and stop, across the whole position. This is one R",
   pattern: "The base the stock broke out of — VCP, cup, flat base, pullback",
   distPivot: "How far above the pivot you actually bought. Small is tight, large is chasing",

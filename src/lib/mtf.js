@@ -26,16 +26,47 @@
 
 const LAKH = 1e5;
 
+const num = (v) => (v === "" || v === null || v === undefined ? NaN : Number(v));
+
 /**
  * PLEDGE AND UNPLEDGE. Shares bought on MTF are pledged to the broker, and
- * unpledged to be sold: ₹18 once when the position is bought, ₹18 on every
- * sell — each sell is its own unpledge request. Flat fees, the figures this
- * journal's user pays; one place to change them if a broker's change.
+ * unpledged to be sold: a fee once when the position is bought, and one on
+ * every sell — each sell is its own unpledge request.
+ *
+ * ₹18 each is the DEFAULT, not the rule: the user sets their own in Setup,
+ * and those reach the calculation through `mtfPrefs` below. These constants
+ * are what applies until they have, and what a database without migration
+ * 050 falls back to.
  */
 export const PLEDGE_FEE = 18;
 export const UNPLEDGE_FEE = 18;
 
-const num = (v) => (v === "" || v === null || v === undefined ? NaN : Number(v));
+const finiteOr = (v, d) => {
+  const n = num(v);
+  return Number.isFinite(n) && n >= 0 ? n : d;
+};
+
+/**
+ * The user's MTF settings, as fields to lay onto each trade before it is
+ * derived — how the calculation, which only ever sees a trade, learns them.
+ *
+ * UNDERSCORED, because they are not columns. They ride on the derived row so
+ * the per-sell split sees the same settings as the totals, and no write path
+ * sends a derived row back (every save builds its own field list), so they
+ * never reach the database.
+ *
+ * `_mtfInPnl` false means MTF is an expense shown for information: worked out
+ * and reported everywhere, taken out of nothing. Anything but an explicit
+ * false counts it — the default, and the behaviour before this setting existed.
+ */
+export function mtfPrefs(profile) {
+  return {
+    _mtfPledge: finiteOr(profile?.mtf_pledge_fee, PLEDGE_FEE),
+    _mtfUnpledge: finiteOr(profile?.mtf_unpledge_fee, UNPLEDGE_FEE),
+    _mtfInPnl: profile?.mtf_in_pnl !== false,
+  };
+}
+
 
 /* Parsed by hand and compared as UTC days, so the count cannot shift by one
    depending on the browser's timezone — the bug `new Date("YYYY-MM-DD")`
@@ -76,8 +107,10 @@ export function interestModel(t) {
       ? (num(e.quantity) || 0) * perShareDay * daysBetween(t.entry_date, e.exit_date)
       : 0),
     /* Fees do not depend on dates, so they apply even on an estimated one. */
-    pledgeFee: PLEDGE_FEE,
-    unpledgeFee: UNPLEDGE_FEE,
+    pledgeFee: finiteOr(t._mtfPledge, PLEDGE_FEE),
+    unpledgeFee: finiteOr(t._mtfUnpledge, UNPLEDGE_FEE),
+    /* Whether any of it comes out of P&L and R, or is only reported. */
+    inPnl: t._mtfInPnl !== false,
     /** Interest so far on what is still held. */
     onHeld: (qtyOpen, asOf) => (known && qtyOpen > 0
       ? qtyOpen * perShareDay * daysBetween(t.entry_date, asOf)
@@ -91,6 +124,7 @@ export const annualPct = (rate) => (Number.isFinite(num(rate)) ? (num(rate) * 36
 export function mtfFigures({
   entryPrice, quantity, entryDate, entryDateAssumed = false,
   exits = [], leverage, rate, riskAmt, pnl, asOf,
+  pledgeFee = PLEDGE_FEE, unpledgeFee = UNPLEDGE_FEE,
 }) {
   const L = num(leverage);
   const r = num(rate);
@@ -127,7 +161,7 @@ export function mtfFigures({
 
   /* The pledge on the way in, one unpledge per sell made so far. */
   const sells = exits.filter((e) => num(e.quantity) > 0).length;
-  const fees = PLEDGE_FEE + UNPLEDGE_FEE * sells;
+  const fees = finiteOr(pledgeFee, PLEDGE_FEE) + finiteOr(unpledgeFee, UNPLEDGE_FEE) * sells;
 
   const R = num(riskAmt);
   const P = num(pnl);

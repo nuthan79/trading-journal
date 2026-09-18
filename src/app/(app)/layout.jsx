@@ -14,6 +14,7 @@ import {
   sendPasswordReset, avatarUrl, trackVisit, setAnalyticsFlag } from "@/lib/db";
 import { stats } from "@/lib/calc";
 import { derivePosition, isOpen, isPartial } from "@/lib/positions";
+import { mtfPrefs } from "@/lib/mtf";
 import FirstRun from "@/components/journal/FirstRun";
 import TradeForm from "@/components/journal/TradeForm";
 import SettingsSheet from "@/components/journal/SettingsSheet";
@@ -446,13 +447,23 @@ export default function AppLayout({ children }) {
       .catch(() => { /* the sample is already hidden by the length check */ });
   }, [profile?.id, profile?.demo_dismissed_at, trades.length]);
 
+  /* The user's MTF settings — fees and whether MTF counts in P&L — laid onto
+     each trade before it is derived, because the calculation only ever sees a
+     trade. Defaults when the profile has none, so nothing changes until the
+     user changes it, and nothing breaks before migration 050. */
+  const mtf = useMemo(() => mtfPrefs(profile),
+    [profile?.mtf_pledge_fee, profile?.mtf_unpledge_fee, profile?.mtf_in_pnl]);
+
   const all = useMemo(
-    () => (demo ? demo.trades : trades).map((t) => ({
-      ...t,
-      ...derivePosition(withExits(t, exitsByTrade), accountSize),
-      status: t.status, // authoritative from the DB; a trigger keeps it in step with the tranches
-    })),
-    [demo, trades, exitsByTrade, accountSize]
+    () => (demo ? demo.trades : trades).map((raw) => {
+      const t = { ...raw, ...mtf };
+      return {
+        ...t,
+        ...derivePosition(withExits(t, exitsByTrade), accountSize),
+        status: t.status, // authoritative from the DB; a trigger keeps it in step with the tranches
+      };
+    }),
+    [demo, trades, exitsByTrade, accountSize, mtf]
   );
   // Every closed trade, whether or not its R is computable. Filtering on
   // isFinite(r) here made a trade with no stop vanish from the money figures
@@ -984,6 +995,7 @@ export default function AppLayout({ children }) {
           <TradeForm initial={editing} accountSize={accountSize} defaultRiskPct={profile?.default_risk_pct}
                      chargeConfig={profile?.charge_config} startSelling={selling}
                      defaultMtfRate={profile?.mtf_rate}
+                     mtfPrefs={mtf}
                      onSave={saveTrade}
                      onClose={() => { setShowForm(false); setEditing(null); setSelling(false); }} />
         )}

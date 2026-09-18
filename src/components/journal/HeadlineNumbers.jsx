@@ -91,11 +91,19 @@ export default function HeadlineNumbers({ closed, banking = [], openingCapital, 
    */
   /* Charges, and MTF interest and pledge fees where there were any — named
      separately, because they are different costs and only one is trading's. */
+  /* MTF is named as taken out only when it was: set to show it as an expense
+     only, it is still named, as not taken out. */
   const afterCosts = `After ${rupee(h.charges)} charges`
-    + (h.margin > 0 ? ` and ${rupee(h.margin)} MTF` : "");
+    + (h.margin > 0
+      ? h.marginCounted !== false
+        ? ` and ${rupee(h.margin)} MTF`
+        : ` · ${rupee(h.margin)} MTF shown separately, not taken out`
+      : "");
 
   const mtfNote = "Interest with pledge and unpledge charges, on MTF shares sold so far. "
-    + "Already taken out of P&L and R";
+    + (h.marginCounted !== false
+      ? "Already taken out of P&L and R"
+      : "Shown as an expense only — not taken out of P&L or R");
 
   /* Named because it is now said twice — on the tile and on the figure. */
   const chargeShare = isFinite(h.netPnl) && h.netPnl + h.charges > 0

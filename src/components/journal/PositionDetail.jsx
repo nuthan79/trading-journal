@@ -376,7 +376,7 @@ export default function PositionDetail({ row, diary = [], twin = null, onAcknowl
             <div className="pd-split">
               {closed
                 ? `After ${rupee(row.charges)} of charges`
-                  + (row.margin > 0 ? ` and ${rupee(row.margin)} MTF` : "")
+                  + (row.margin > 0 && row.marginInPnl !== false ? ` and ${rupee(row.margin)} MTF` : "")
                 : [
                     row.qtyExited > 0 && isFinite(row.realisedPnl) &&
                       `${row.realisedPnl >= 0 ? "Made" : "Lost"} ${rupee(Math.abs(row.realisedPnl))} on the ${row.qtyExited} sold`,
@@ -538,7 +538,9 @@ export default function PositionDetail({ row, diary = [], twin = null, onAcknowl
             <p className="pd-mtf">
               <b>MTF</b> {Number(row.mtf_leverage)}× at ₹{Number(row.mtf_rate)} per lakh a day
               {row.margin > 0 && (
-                <> · <b>{rupee(row.margin)}</b> so far, already in the P&amp;L above</>
+                <> · <b>{rupee(row.margin)}</b> so far, {row.marginInPnl !== false
+                  ? "already in the P&L above"
+                  : "shown as an expense — not in the P&L above"}</>
               )}
               {row.interestUnknown && <> · interest not counted, the entry date was estimated</>}
             </p>

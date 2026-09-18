@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { X, Check, Upload, Ruler } from "lucide-react";
 import { BROKER_PRESETS, mergeConfig } from "@/lib/charges";
 import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
+import { mtfPrefs } from "@/lib/mtf";
 
 const STATUTORY_FIELDS = [
   { k: "sttPct", label: "STT %", hint: "of turnover, both legs" },
@@ -34,10 +35,19 @@ const fromDraftCfg = (cfg) => ({
 export default function SettingsSheet({ profile, onSave, onClose, onNavigate, needStopsCount = 0 }) {
   const persisted = loadDraft(DRAFT_KEYS.settings);
 
-  const [s, setS] = useState(persisted?.s ?? {
+  /* What the MTF settings are now — the profile's, or the defaults a profile
+     without them (before migration 050) is calculated with. */
+  const mtfNow = mtfPrefs(profile);
+  /* The draft is laid OVER these, so a Setup draft saved before the MTF fields
+     existed still opens with them filled in rather than blank. */
+  const [s, setS] = useState({
     journal_name: profile.journal_name || "",
     account_size: String(profile.account_size ?? ""),
     default_risk_pct: String(profile.default_risk_pct ?? ""),
+    mtf_pledge_fee: String(mtfNow._mtfPledge),
+    mtf_unpledge_fee: String(mtfNow._mtfUnpledge),
+    mtf_in_pnl: mtfNow._mtfInPnl,
+    ...(persisted?.s || {}),
   });
   const [cfg, setCfg] = useState(() =>
     persisted?.cfg ? fromDraftCfg(persisted.cfg) : mergeConfig(profile.charge_config)
@@ -67,11 +77,29 @@ export default function SettingsSheet({ profile, onSave, onClose, onNavigate, ne
   const submit = async () => {
     setSaving(true);
     try {
+      /* A fee is a rupee amount of zero or more; anything else keeps what was
+         there, rather than saving a blank as a free pledge. */
+      const fee = (v, was) => {
+        const n = Number(v);
+        return v !== "" && Number.isFinite(n) && n >= 0 ? n : was;
+      };
+      const pledge = fee(s.mtf_pledge_fee, mtfNow._mtfPledge);
+      const unpledge = fee(s.mtf_unpledge_fee, mtfNow._mtfUnpledge);
+      const inPnl = s.mtf_in_pnl !== false;
       await onSave({
         journal_name: s.journal_name.trim() || "Breakout Ledger",
         account_size: Number(s.account_size) || 0,
         default_risk_pct: Number(s.default_risk_pct) || 0,
         charge_config: forSave(cfg),
+        /*
+         * ONLY WHAT CHANGED. Sent every time, these three would make every
+         * Setup save fail on a database where migration 050 has not run — a
+         * user changing their account size told the save failed over a margin
+         * setting they never touched.
+         */
+        ...(pledge !== mtfNow._mtfPledge ? { mtf_pledge_fee: pledge } : {}),
+        ...(unpledge !== mtfNow._mtfUnpledge ? { mtf_unpledge_fee: unpledge } : {}),
+        ...(inPnl !== mtfNow._mtfInPnl ? { mtf_in_pnl: inPnl } : {}),
       });
       clearDraft();
       onClose();
@@ -134,6 +162,46 @@ export default function SettingsSheet({ profile, onSave, onClose, onNavigate, ne
             </div>
           </div>
 
+          {/*
+            * MARGIN (MTF). The broker's pledge and unpledge fees, and whether
+            * MTF comes out of P&L and R. Here rather than on each trade: they
+            * are the same on every margin trade, and the choice is about how
+            * this user reads their whole record.
+            */}
+          <div style={{ borderTop: "1px solid var(--rule)", paddingTop: 18 }}>
+            <div className="eyebrow" style={{ marginBottom: 4 }}>Margin (MTF)</div>
+            <div className="hint" style={{ marginTop: 0, marginBottom: 12 }}>
+              Used on trades you mark as bought on MTF. The interest rate is set on each trade.
+            </div>
+            <div className="grid2" style={{ gap: 12, marginBottom: 14 }}>
+              <label className="f"><span>Pledge charge — ₹ per buy</span>
+                <input className="in mono" inputMode="decimal" value={s.mtf_pledge_fee}
+                       onChange={set("mtf_pledge_fee")} /></label>
+              <label className="f"><span>Unpledge charge — ₹ per sell</span>
+                <input className="in mono" inputMode="decimal" value={s.mtf_unpledge_fee}
+                       onChange={set("mtf_unpledge_fee")} /></label>
+            </div>
+            <div className="f"><span>MTF in your results</span></div>
+            <div className="st-choice" role="radiogroup" aria-label="MTF in your results">
+              <label>
+                <input type="radio" name="mtf_in_pnl" checked={s.mtf_in_pnl !== false}
+                       onChange={() => setS((p) => ({ ...p, mtf_in_pnl: true }))} />
+                <span>
+                  <b>Take it out of P&amp;L and R</b>
+                  <i>Your results are what you kept after paying for the margin.</i>
+                </span>
+              </label>
+              <label>
+                <input type="radio" name="mtf_in_pnl" checked={s.mtf_in_pnl === false}
+                       onChange={() => setS((p) => ({ ...p, mtf_in_pnl: false }))} />
+                <span>
+                  <b>Show it as an expense only</b>
+                  <i>P&amp;L and R measure the trade; MTF is shown beside them, not taken out.</i>
+                </span>
+              </label>
+            </div>
+          </div>
+
           <div style={{ borderTop: "1px solid var(--rule)", paddingTop: 18 }}>
             <div className="eyebrow" style={{ marginBottom: 4 }}>Trades</div>
             <div className="hint" style={{ marginTop: 0, marginBottom: 12 }}>
@@ -165,6 +233,19 @@ export default function SettingsSheet({ profile, onSave, onClose, onNavigate, ne
           </div>
         </div>
       </div>
+      <style jsx>{`
+        /* Two choices, each with the sentence that says what it does. */
+        .st-choice { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+        .st-choice label {
+          display: flex; gap: 10px; align-items: flex-start; cursor: pointer;
+          border: 1px solid var(--rule); border-radius: 3px; padding: 10px 12px;
+          background: var(--card);
+        }
+        .st-choice input { margin: 3px 0 0; accent-color: var(--ink); flex: none; }
+        .st-choice span { display: flex; flex-direction: column; gap: 2px; }
+        .st-choice b { font-size: 13px; font-weight: 600; color: var(--ink); }
+        .st-choice i { font-style: normal; font-size: 12px; color: var(--ink3); line-height: 1.45; }
+      `}</style>
     </div>
   );
 }
