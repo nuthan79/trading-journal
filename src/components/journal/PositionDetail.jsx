@@ -225,24 +225,20 @@ export default function PositionDetail({ row, diary = [], twin = null, onAcknowl
    * price below entry. The nil came from the breakeven flag having been
    * clicked, and a stop really at entry would have sold those shares already —
    * so the box stated the opposite of the page around it. The figure itself is
-   * unchanged here (the Holdings dial reads the same one); what changes is
-   * that the box says WHERE a zero comes from, and says so loudly when the
-   * price contradicts it.
+   * The fix is now upstream: a breakeven mark the price has contradicted no
+   * longer counts, so the risk to the recorded stop comes back in rupees here
+   * and on the Holdings dial alike — `breakevenBroken` is why, and the box
+   * says so.
    */
   const atRiskNow = () => {
     if (!isFinite(row.stop)) return stat("At risk now", "Unknown", "no stop recorded");
-    const acked = !!row.breakeven_ack_at;
-    const belowEntry = isFinite(row.mark) && gainPct(row.mark) < 0;
     if (row.openRiskAmt > 0) {
       return stat("At risk now", rupee(row.openRiskAmt),
-        row.isRiskFree ? "if the stop is hit — covered by what is banked" : "if the stop is hit");
+        row.breakevenBroken
+          ? <span className="pd-warn">you marked breakeven, but the price has been below entry — check your stop</span>
+          : row.isRiskFree ? "if the stop is hit — covered by what is banked" : "if the stop is hit");
     }
-    if (acked) {
-      return stat("At risk now", "None",
-        belowEntry
-          ? <span className="pd-warn">marked at breakeven, but the price is below entry — check your stop</span>
-          : "stop moved to breakeven");
-    }
+    if (row.breakeven_ack_at) return stat("At risk now", "None", "stop moved to breakeven");
     if (row.stopAboveEntry) return stat("At risk now", "None", "stop is past entry");
     return stat("At risk now", "None", "nothing left open");
   };

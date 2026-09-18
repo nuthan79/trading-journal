@@ -49,10 +49,10 @@ test("the boxes come in two labelled rows: at entry, then now", () => {
   }
 });
 
-test("a zero risk says where it comes from, and flags a price that contradicts it", () => {
+test("a breakeven mark the price overruled shows its risk, and says why", () => {
   const s = panel();
   ok(!/"nothing left to lose"/.test(s), "the claim that caused the confusion is gone");
-  ok(/marked at breakeven, but the price is below entry — check your stop/.test(s));
+  ok(/row\.breakevenBroken\s*\? <span className="pd-warn">you marked breakeven, but the price has been below entry — check your stop/.test(s));
   ok(/if the stop is hit — covered by what is banked/.test(s),
     "risk covered by banked profit shows the rupees, not a nil");
 });

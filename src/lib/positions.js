@@ -459,7 +459,38 @@ export function derivePosition(t, accountSize) {
    * Without this the dial argued with the flag — a hollow flag saying nothing
    * left to lose beside a dial counting a full R against it.
    */
-  const atBreakeven = !!t.breakeven_ack_at;
+  /**
+   * A BREAKEVEN MARK COUNTS ONLY WHILE THE PRICE HAS NOT BEEN BACK THROUGH
+   * ENTRY.
+   *
+   * Clicking the flag says "my broker stop is at entry now". A stop at entry
+   * sells the position the moment price trades there, so a position still
+   * open with its price below entry — or with today's low below it — proves
+   * the stop is not where the mark says. The app kept counting it as zero
+   * risk anyway: DATAPATTNS sat at "nil, nothing left to lose" down 1.25R.
+   * Now the mark stops counting and the risk to the RECORDED stop is back in
+   * open risk and on the dial, which is what can actually still be lost.
+   *
+   * Mirrored for a short: price above entry, or today's high above it.
+   *
+   * ONLY PRICES SEEN AFTER THE MARK. A low from a refresh before the click
+   * says nothing about a stop moved afterwards, so a price counts as evidence
+   * only when it was fetched at or after the mark was set. With no fetch time
+   * on record, the current price is still used.
+   *
+   * Nothing is written: the mark stays, and `breakevenBroken` says it is being
+   * overruled, so every screen can say why the risk came back.
+   */
+  const ackd = !!t.breakeven_ack_at;
+  /* Compared as instants, not as text: the database writes "+00:00" and the
+     browser "Z", and the same moment must compare equal either way. */
+  const priceAt = Date.parse(t.last_price_at), ackAt = Date.parse(t.breakeven_ack_at);
+  const seenAfterAck = !isFinite(priceAt) || !isFinite(ackAt) || priceAt >= ackAt;
+  const through = (p) => isFinite(p) && (p - entry) * dir < 0;
+  const extreme = n(dir > 0 ? t.day_low : t.day_high);
+  const breakevenBroken = ackd && qtyOpen > 0 && seenAfterAck
+    && (through(mark) || through(extreme));
+  const atBreakeven = ackd && !breakevenBroken;
   const openRiskAmt =
     qtyOpen > 0 && !stopAboveEntry && !atBreakeven
       ? Math.abs(entry - stop) * qtyOpen
@@ -503,6 +534,7 @@ export function derivePosition(t, accountSize) {
     /* Whether `margin` is inside pnl and r, so every screen can say so
        truthfully rather than assuming. */
     marginInPnl: im ? im.inPnl : true,
+    breakevenBroken,
     /* What the shares still held cost to carry for one more day. */
     marginPerDay: im && qtyOpen > 0 ? im.perShareDay * qtyOpen : 0,
     interestUnknown: !!im && !im.known,

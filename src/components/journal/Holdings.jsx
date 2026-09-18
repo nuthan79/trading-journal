@@ -1016,9 +1016,16 @@ export default function Holdings({
                         a two-state design quietly became one. Now it is drawn
                         for the two things that actually mean "nothing more to
                         do here", and says which. */}
+                    {/* A mark the price has since gone back through is drawn in the
+                        short colour, with the reason — it no longer takes the
+                        position off the dial, and the row should not look settled. */}
                     {!flagged.has(r.id) && (ackd || riskFree) && (
-                      <span className="ps-flag done"
-                            title={ackd
+                      <span className={`ps-flag done${r.breakevenBroken ? " broken" : ""}`}
+                            title={r.breakevenBroken
+                              ? "You marked this stop at breakeven, but the price has been below entry since — "
+                                + "a stop at entry would have sold it. Counting the risk to your recorded stop "
+                                + "again. Check the stop at your broker."
+                              : ackd
                               ? "Stop moved to breakeven at your broker, so this no longer counts towards "
                                 + "open risk or the dial. Your recorded stop, and every R measured from it, is unchanged."
                               : "Risk-free — enough is banked that this position can no longer lose overall"}>
@@ -1432,6 +1439,7 @@ export default function Holdings({
           cursor: default; opacity: 0.5; padding: 0;
         }
         .ps-flag.done svg { fill: none; }
+        .ps-flag.done.broken { color: var(--short); opacity: 1; }
         .ps-sub-flag {
           display: inline-flex; align-items: center; gap: 4px;
           color: var(--long); font-weight: 600;
