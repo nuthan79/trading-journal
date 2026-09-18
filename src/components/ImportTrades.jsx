@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Upload, Check, AlertTriangle, X, FileSpreadsheet } from "lucide-react";
 import { detectBroker, brokerNames, assembleImport, kindOf, wrongReportHint } from "@/lib/brokers";
+import { BROKER_STEPS } from "@/lib/brokerSteps";
 import { resolveSymbols } from "@/lib/isin";
 import * as zerodha from "@/lib/brokers/zerodha";
 import * as zerodhaHoldings from "@/lib/brokers/zerodha-holdings";
@@ -205,6 +206,9 @@ export default function ImportTrades({
   // Remembered so re-parsing at a different assumed stop uses the same
   // adapter that read the file, rather than defaulting back to one of them.
   const [broker, setBroker] = useState(null);
+  /* Which broker's steps are showing under the drop zone. Zerodha first
+     because it is where most files here come from. */
+  const [stepsFor, setStepsFor] = useState("zerodha");
   // A tax report has no stops, so without one every R figure stays blank and a
   // freshly imported journal looks broken. Assuming a single percentage is the
   // difference between a page of dashes and something you can read — as long
@@ -787,14 +791,10 @@ export default function ImportTrades({
             {busy ? "Reading…" : "Drop a broker file here, or click to choose"}
           </div>
           <div className="im-drop-sub">
-            {/* Both lists come from the registry, so a broker added next month
-                appears here without anyone remembering to edit this line. */}
-            <b>Closed trades:</b> the tax P&amp;L or capital gains report from{" "}
-            {brokerNames().join(", ")}.
-            {" "}<b>Open positions:</b> your holdings file — Console&apos;s Equity
-            Holdings Statement, or the CSV from Kite&apos;s Holdings tab.
-            {" "}The file says which it is, so there is nothing to choose.
-            Re-importing is safe; anything already in your journal is skipped.
+            {/* Two lines. This was a paragraph naming every report and broker;
+                the steps below now say where each file is. */}
+            Your broker&apos;s file says what it is — there is nothing to choose.
+            Re-importing is safe; anything already here is skipped.
           </div>
         </div>
         <input
@@ -804,7 +804,57 @@ export default function ImportTrades({
         />
         {error && <div className="warn im-err">{error}</div>}
 
+        {/*
+          * WHERE TO FIND THE FILE, BROKER BY BROKER. One broker at a time,
+          * picked from a row of tabs, so the screen shows four short steps
+          * rather than every broker's menus at once. The steps come from
+          * lib/brokerSteps.js, taken from each broker's help pages.
+          */}
+        <div className="im-where">
+          <div className="im-where-head">
+            <span className="eyebrow">Where to find your file</span>
+            <div className="seg" role="tablist" aria-label="Broker">
+              {BROKER_STEPS.map((b) => (
+                <button key={b.id} type="button" role="tab" aria-selected={stepsFor === b.id}
+                        data-on={stepsFor === b.id ? 1 : 0} onClick={() => setStepsFor(b.id)}>
+                  {b.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="im-where-files">
+            {(BROKER_STEPS.find((b) => b.id === stepsFor) || BROKER_STEPS[0]).files.map((f) => (
+              <div key={f.name} className="im-file-steps">
+                <div className="im-file-what">{f.what}</div>
+                <div className="im-file-name">{f.name}</div>
+                <ol>{f.steps.map((st) => <li key={st}>{st}</li>)}</ol>
+                {f.note && <div className="im-file-note">{f.note}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+
         <style jsx>{`
+          .im-where { margin-top: 22px; }
+          .im-where-head {
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 12px; flex-wrap: wrap; margin-bottom: 10px;
+          }
+          /* Side by side across the width — Zerodha's three files in one row —
+             rather than stacked down the left with the right half empty. */
+          .im-where-files {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px;
+          }
+          .im-file-steps {
+            border: 1px solid var(--rule); border-radius: 3px; background: var(--card);
+            padding: 12px 14px;
+          }
+          .im-file-what { font-size: 10px; font-weight: 600; letter-spacing: 0.1em;
+                          text-transform: uppercase; color: var(--ink3); }
+          .im-file-name { font-size: 14px; font-weight: 600; color: var(--ink); margin-top: 2px; }
+          .im-file-steps ol { margin: 8px 0 0; padding-left: 18px; font-size: 13px;
+                              color: var(--ink2); line-height: 1.65; }
+          .im-file-note { font-size: 11.5px; color: var(--ink3); margin-top: 6px; line-height: 1.5; }
           .im-drop {
             border: 1.5px dashed var(--rule); border-radius: 4px;
             background: var(--card); padding: 38px 24px; text-align: center;
