@@ -18,10 +18,10 @@ const Fig = ({ children, tone }) => (
   <span className={`sum-fig ${tone || ""}`}>{children}</span>
 );
 
-export default function Summary({ closed, openingCapital, flows = [] }) {
+export default function Summary({ closed, banking = [], openingCapital, flows = [] }) {
   const s = useMemo(
-    () => summaryParts(closed, { openingCapital, flows }),
-    [closed, openingCapital, flows]
+    () => summaryParts(closed, { openingCapital, flows, banking }),
+    [closed, banking, openingCapital, flows]
   );
 
   if (!s) {
@@ -61,7 +61,12 @@ export default function Summary({ closed, openingCapital, flows = [] }) {
           {s.trades} closed trades over {s.monthsSpan} months. Expectancy{" "}
           <Fig tone={s.expectancy >= 0 ? "up" : "down"}>{rfmt(s.expectancy)}</Fig>{" "}
           per trade at a {pct(s.winRate)} win rate, for{" "}
-          <Fig tone={s.totalR >= 0 ? "up" : "down"}>{rfmt(s.totalR)}</Fig> total.
+          <Fig tone={s.totalR >= 0 ? "up" : "down"}>{rfmt(s.totalR)}</Fig> total
+          {/* The rupees, which this paragraph never said — and now the one
+              headline figure the folded tiles below would otherwise hide. */}
+          {isFinite(s.netPnl) && (
+            <>, <Fig tone={s.netPnl >= 0 ? "up" : "down"}><Money v={s.netPnl} /></Fig> after charges</>
+          )}.
           {" "}Deepest drawdown <Fig tone="risk">{s.maxDD.toFixed(2)}R</Fig>
           {isFinite(s.maxDDPct) && <> ({pct(s.maxDDPct)} of capital)</>}, worst
           losing run <Fig tone="risk">{s.worstStreak}</Fig> trading day{s.worstStreak === 1 ? "" : "s"}.

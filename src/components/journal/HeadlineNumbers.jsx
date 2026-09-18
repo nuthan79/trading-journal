@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { headline } from "@/lib/calc";
 import { rupee, rfmt, pct, days } from "@/lib/format";
 import Money from "@/components/Money";
@@ -24,9 +25,21 @@ function Cell({ label, value, tone, hint }) {
   );
 }
 
+const OPEN_KEY = "ledgerr:headline-numbers-open";
+
 const sign = (v) => (!isFinite(v) ? "" : v > 0 ? "pos" : v < 0 ? "neg" : "");
 
 export default function HeadlineNumbers({ closed, banking = [], openingCapital, flows = [] }) {
+  /* Remembered per browser. Read in the initializer: this renders only after
+     the session resolves on the client, so an effect would only add a flash of
+     the wrong state. Guarded, since blocked storage throws. */
+  const [open, setOpen] = useState(() => {
+    try { return localStorage.getItem(OPEN_KEY) === "1"; } catch { return false; }
+  });
+  const setOpenRemembered = (v) => {
+    setOpen(v);
+    try { localStorage.setItem(OPEN_KEY, v ? "1" : "0"); } catch {}
+  };
   const h = useMemo(
     () => headline(closed, { openingCapital, flows, banking }),
     [closed, banking, openingCapital, flows]
@@ -211,11 +224,32 @@ export default function HeadlineNumbers({ closed, banking = [], openingCapital, 
   // The honest quality measure: return earned per unit of drawdown endured
   const quality = isFinite(h.quality) ? h.quality : null;
 
+  const tileCount = bands.reduce((a, b) => a + b.cells.length, 0);
+
   return (
     <section>
-      <div className="eyebrow" style={{ marginBottom: 9 }}>Headline numbers</div>
+      {/*
+        * FOLDED BY DEFAULT. The summary paragraph above already states the
+        * figures most people come for — expectancy, win rate, total R, net P&L,
+        * the deepest drawdown and the worst run — and twenty-one tiles under it
+        * said most of them a second time. They are one click away for anyone
+        * who wants the full sheet, and the click is remembered.
+        *
+        * The two stop warnings below sit OUTSIDE the fold on purpose. They
+        * qualify every R figure on the page, the paragraph's included, and
+        * each links to where it gets fixed; a caveat you have to open a panel
+        * to find is not a caveat.
+        */}
+      <div className="hn-top">
+        <div className="eyebrow">Headline numbers</div>
+        <button type="button" className="btn ghost sm" aria-expanded={open}
+                onClick={() => setOpenRemembered(!open)}>
+          <ChevronDown size={12} style={{ transform: open ? "rotate(180deg)" : "none" }} />
+          {open ? "Hide the numbers" : `All ${tileCount} numbers`}
+        </button>
+      </div>
 
-      {bands.map((band) => (
+      {open && bands.map((band) => (
         <div key={band.label} className="hn-band">
           <div className="hn-band-l">{band.label}</div>
           {/* Its own column count, so each band is one clean row on a wide
@@ -233,7 +267,7 @@ export default function HeadlineNumbers({ closed, banking = [], openingCapital, 
       {assumed > 0 && (
         <div className="hn-foot">
           <b>{assumed} of {h.n}</b> trade{assumed === 1 ? " uses" : "s use"} an assumed stop,
-          so the R figures above show what your record would look like at that risk
+          so the R figures on this page show what your record would look like at that risk
           rather than what you actually risked.{" "}
           <a href="/stops" className="hn-link">Replace them</a> as you work out what
           you really used.
@@ -252,7 +286,7 @@ export default function HeadlineNumbers({ closed, banking = [], openingCapital, 
         </div>
       )}
 
-      {quality !== null && (
+      {open && quality !== null && (
         <div className="hn-foot">
           <span className="mono" style={{ fontWeight: 500 }}>
             {quality === Infinity ? "∞" : quality.toFixed(2)}
@@ -268,6 +302,8 @@ export default function HeadlineNumbers({ closed, banking = [], openingCapital, 
            background turns that leftover into a grey slab. A 1px spread over a
            1px gap means neighbouring cells share one line, so the grid can
            reflow to any column count without nth-child arithmetic. */
+        .hn-top { display: flex; justify-content: space-between; align-items: center;
+                  gap: 12px; margin-bottom: 9px; }
         .hn-band { margin-bottom: 12px; }
         .hn-band:last-of-type { margin-bottom: 0; }
         /* A second figure in the same tile, subordinate to the first. The

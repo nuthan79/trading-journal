@@ -184,7 +184,7 @@ export function bestWorst(closed, limit = 8) {
  * so the component can highlight individual figures without parsing prose
  * back apart.
  */
-export function summaryParts(closed, { openingCapital = 0, flows = [] } = {}) {
+export function summaryParts(closed, { openingCapital = 0, flows = [], banking = null } = {}) {
   // Gated on having closed something, not on being able to compute R for it.
   // The paragraph has a money-only form for when stops are still missing;
   // returning null there hid the record of 20 real trades behind "close your
@@ -202,6 +202,17 @@ export function summaryParts(closed, { openingCapital = 0, flows = [] } = {}) {
   );
 
   const eq = equityCurve(closed, { openingCapital, flows });
+  /*
+   * THE MONEY IS EVERY SELL, the same figure as the Net P&L tile. `closed`
+   * leaves out what was banked from positions still partly held, so on a book
+   * with a part-sold position the paragraph printed one rupee total and the
+   * tile below it another. `banking` is that fuller list — the one headline()
+   * already reads — and only the money comes from it: the drawdown and the
+   * verdict figures stay on finished positions, as everywhere else.
+   */
+  const money = banking?.length
+    ? equityCurve(banking, { openingCapital, flows })
+    : eq;
   const months = greenCount(closed, "month", { openingCapital, flows });
   const quarters = greenCount(closed, "quarter", { openingCapital, flows });
 
@@ -215,7 +226,7 @@ export function summaryParts(closed, { openingCapital = 0, flows = [] } = {}) {
     withR: s.n || 0,
     needStop: closed.length - (s.n || 0),
     hasR: (s.n || 0) > 0,
-    netPnl: eq.netPnl,
+    netPnl: money.netPnl,
     winRateByCount: decided.length ? (won / decided.length) * 100 : NaN,
     monthsSpan,
     expectancy: s.expectancy,

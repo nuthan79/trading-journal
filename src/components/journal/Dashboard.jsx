@@ -25,7 +25,7 @@ export default function Dashboard({ closed, banking = [], accountSize, diary, fl
           itself once the three steps are done or two weeks have passed. */}
       {firstWeek && <FirstWeek {...firstWeek} />}
 
-      <div className="sec"><Summary closed={closed} openingCapital={accountSize} flows={flows} /></div>
+      <div className="sec"><Summary closed={closed} banking={banking} openingCapital={accountSize} flows={flows} /></div>
 
       <div className="sec"><HeadlineNumbers closed={closed} banking={banking} openingCapital={accountSize} flows={flows} /></div>
 
