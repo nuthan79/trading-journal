@@ -39,3 +39,9 @@ export const SHOW_CHART_WALL = false;
  * Needs migration 045, which is already applied to the live database.
  */
 export const SHOW_CHART_DRILL = false;
+
+/* The Trades section in Setup — Import trades and Add missing stops. Hidden
+   since Import got its own tab and the stops queue is linked from the top bar:
+   two ways in to each, and Setup is for settings. Built and working; set true
+   to bring it back. */
+export const SHOW_SETUP_TRADES = false;

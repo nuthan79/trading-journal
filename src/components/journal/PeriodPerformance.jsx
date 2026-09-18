@@ -31,7 +31,7 @@ const costNote = (charges, margin, pnl, counted = true) => {
      back into "before them" — only named, beside it. */
   if (m > 0 && !counted) {
     return `After ${full(c)} charges${isFinite(pnl) ? ` — ${full(pnl + c)} before them` : ""}`
-      + ` · ${full(m)} MTF, not taken out`;
+      + ` · ${full(m)} MTF, not deducted`;
   }
   /* Two costs, two words: charges, and MTF — which is interest together with
      the pledge and unpledge charges, never split out. */

@@ -136,11 +136,11 @@ test("every 'after charges' on a Net P&L names MTF the way it was treated", () =
      an expense only: named as not taken out, and NOT added back. */
   const pp = read("components/journal/PeriodPerformance.jsx");
   ok(/full\(pnl \+ c \+ m\)/.test(pp), "counted, the period table adds MTF back into 'before'");
-  ok(/if \(m > 0 && !counted\)[\s\S]*?full\(pnl \+ c\)[\s\S]*?MTF, not taken out/.test(pp),
+  ok(/if \(m > 0 && !counted\)[\s\S]*?full\(pnl \+ c\)[\s\S]*?MTF, not deducted/.test(pp),
     "not counted, it adds back charges only and says so");
   const hn = read("components/journal/HeadlineNumbers.jsx");
   ok(/h\.marginCounted !== false\s*\? ` and \$\{rupee\(h\.margin\)\} MTF`/.test(hn));
-  ok(/MTF shown separately, not taken out/.test(hn));
+  ok(/MTF, not deducted`/.test(hn));
 });
 
 test("the CSV carries margin, so pnl still reconciles", () => {

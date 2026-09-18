@@ -143,7 +143,7 @@ test("an old Setup draft still opens with the MTF fields filled in", () => {
 
 test("a blank or negative fee in Setup keeps the fee there was", () => {
   const s = read("components/journal/SettingsSheet.jsx");
-  ok(/v !== "" && Number\.isFinite\(n\) && n >= 0 \? n : was/.test(s));
+  ok(/v !== "" && Number\.isFinite\(n\) && n >= 0 && n < 1000 \? n : was/.test(s), "and nothing past ₹999.99");
 });
 
 test("migration 050 defaults to exactly what the code falls back to", () => {
@@ -152,4 +152,29 @@ test("migration 050 defaults to exactly what the code falls back to", () => {
   ok(/mtf_unpledge_fee numeric not null default 18/.test(sql));
   ok(/mtf_in_pnl\s+boolean not null default true/.test(sql));
   eq(PLEDGE_FEE, 18); eq(UNPLEDGE_FEE, 18);
+});
+
+test("Setup: the choice is a plain question, and one word is used for it everywhere", () => {
+  const setup = read("components/journal/SettingsSheet.jsx");
+  ok(/Deduct MTF from P&amp;L and R\?/.test(setup));
+  ok(/Yes, deduct it/.test(setup) && /No, show it separately/.test(setup));
+  /* "taken out", "expense only" — the old words — nowhere a user reads. */
+  const strip = (x) => x.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  for (const f of ["components/journal/SettingsSheet.jsx", "components/journal/HeadlineNumbers.jsx",
+                   "components/journal/PeriodPerformance.jsx", "components/journal/PositionDetail.jsx",
+                   "components/journal/TradeForm.jsx", "lib/columns.js"]) {
+    ok(!/taken out|expense only/i.test(strip(read(f))), `${f} still uses the old wording`);
+  }
+});
+
+test("Setup: the fee boxes are sized for ₹999.99", () => {
+  const s = read("components/journal/SettingsSheet.jsx");
+  ok(/className="in mono st-fee" inputMode="decimal" maxLength=\{6\}/.test(s));
+  ok(/\.st-fee \{ max-width: 110px; \}/.test(s));
+});
+
+test("Setup: the Trades section is hidden behind a flag, not deleted", () => {
+  const s = read("components/journal/SettingsSheet.jsx");
+  ok(/\{SHOW_SETUP_TRADES && \(/.test(s), "still in the code, one flag from coming back");
+  ok(/export const SHOW_SETUP_TRADES = false;/.test(read("lib/flags.js")));
 });

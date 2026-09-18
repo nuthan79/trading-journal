@@ -5,6 +5,7 @@ import { X, Check, Upload, Ruler } from "lucide-react";
 import { BROKER_PRESETS, mergeConfig } from "@/lib/charges";
 import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
 import { mtfPrefs } from "@/lib/mtf";
+import { SHOW_SETUP_TRADES } from "@/lib/flags";
 
 const STATUTORY_FIELDS = [
   { k: "sttPct", label: "STT %", hint: "of turnover, both legs" },
@@ -81,7 +82,7 @@ export default function SettingsSheet({ profile, onSave, onClose, onNavigate, ne
          there, rather than saving a blank as a free pledge. */
       const fee = (v, was) => {
         const n = Number(v);
-        return v !== "" && Number.isFinite(n) && n >= 0 ? n : was;
+        return v !== "" && Number.isFinite(n) && n >= 0 && n < 1000 ? n : was;
       };
       const pledge = fee(s.mtf_pledge_fee, mtfNow._mtfPledge);
       const unpledge = fee(s.mtf_unpledge_fee, mtfNow._mtfUnpledge);
@@ -174,34 +175,36 @@ export default function SettingsSheet({ profile, onSave, onClose, onNavigate, ne
               Used on trades you mark as bought on MTF. The interest rate is set on each trade.
             </div>
             <div className="grid2" style={{ gap: 12, marginBottom: 14 }}>
+              {/* Sized for the figure, not the column: a fee is at most ₹999.99. */}
               <label className="f"><span>Pledge charge — ₹ per buy</span>
-                <input className="in mono" inputMode="decimal" value={s.mtf_pledge_fee}
-                       onChange={set("mtf_pledge_fee")} /></label>
+                <input className="in mono st-fee" inputMode="decimal" maxLength={6}
+                       value={s.mtf_pledge_fee} onChange={set("mtf_pledge_fee")} /></label>
               <label className="f"><span>Unpledge charge — ₹ per sell</span>
-                <input className="in mono" inputMode="decimal" value={s.mtf_unpledge_fee}
-                       onChange={set("mtf_unpledge_fee")} /></label>
+                <input className="in mono st-fee" inputMode="decimal" maxLength={6}
+                       value={s.mtf_unpledge_fee} onChange={set("mtf_unpledge_fee")} /></label>
             </div>
-            <div className="f"><span>MTF in your results</span></div>
-            <div className="st-choice" role="radiogroup" aria-label="MTF in your results">
+            <div className="f"><span>Deduct MTF from P&amp;L and R?</span></div>
+            <div className="st-choice" role="radiogroup" aria-label="Deduct MTF from P&L and R?">
               <label>
                 <input type="radio" name="mtf_in_pnl" checked={s.mtf_in_pnl !== false}
                        onChange={() => setS((p) => ({ ...p, mtf_in_pnl: true }))} />
                 <span>
-                  <b>Take it out of P&amp;L and R</b>
-                  <i>Your results are what you kept after paying for the margin.</i>
+                  <b>Yes, deduct it</b>
+                  <i>P&amp;L and R show what you kept after paying MTF.</i>
                 </span>
               </label>
               <label>
                 <input type="radio" name="mtf_in_pnl" checked={s.mtf_in_pnl === false}
                        onChange={() => setS((p) => ({ ...p, mtf_in_pnl: false }))} />
                 <span>
-                  <b>Show it as an expense only</b>
-                  <i>P&amp;L and R measure the trade; MTF is shown beside them, not taken out.</i>
+                  <b>No, show it separately</b>
+                  <i>P&amp;L and R show the trade alone. MTF is listed on its own.</i>
                 </span>
               </label>
             </div>
           </div>
 
+          {SHOW_SETUP_TRADES && (
           <div style={{ borderTop: "1px solid var(--rule)", paddingTop: 18 }}>
             <div className="eyebrow" style={{ marginBottom: 4 }}>Trades</div>
             <div className="hint" style={{ marginTop: 0, marginBottom: 12 }}>
@@ -223,6 +226,7 @@ export default function SettingsSheet({ profile, onSave, onClose, onNavigate, ne
               </button>
             </div>
           </div>
+          )}
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 10,
                         borderTop: "1px solid var(--rule)", paddingTop: 16 }}>
@@ -236,6 +240,7 @@ export default function SettingsSheet({ profile, onSave, onClose, onNavigate, ne
       <style jsx>{`
         /* Two choices, each with the sentence that says what it does. */
         .st-choice { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+        .st-fee { max-width: 110px; }
         .st-choice label {
           display: flex; gap: 10px; align-items: flex-start; cursor: pointer;
           border: 1px solid var(--rule); border-radius: 3px; padding: 10px 12px;

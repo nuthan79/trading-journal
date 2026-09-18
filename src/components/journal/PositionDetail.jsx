@@ -539,8 +539,8 @@ export default function PositionDetail({ row, diary = [], twin = null, onAcknowl
               <b>MTF</b> {Number(row.mtf_leverage)}× at ₹{Number(row.mtf_rate)} per lakh a day
               {row.margin > 0 && (
                 <> · <b>{rupee(row.margin)}</b> so far, {row.marginInPnl !== false
-                  ? "already in the P&L above"
-                  : "shown as an expense — not in the P&L above"}</>
+                  ? "deducted from the P&L above"
+                  : "not deducted from the P&L above"}</>
               )}
               {row.interestUnknown && <> · interest not counted, the entry date was estimated</>}
             </p>

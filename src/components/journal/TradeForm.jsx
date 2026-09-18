@@ -921,8 +921,8 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                       <div className="hint" style={{ marginTop: 8 }}>
                         MTF is the interest with the pledge and unpledge charges.{" "}
                         {mtfCounted
-                          ? "Already taken out of your P&L and R."
-                          : "Shown as an expense only — not taken out of P&L or R. You can change this in Setup."}
+                          ? "Deducted from your P&L and R."
+                          : "Not deducted from your P&L or R — you can change this in Setup."}
                       </div>
                     )}
                   </>

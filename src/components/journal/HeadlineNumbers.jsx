@@ -97,13 +97,13 @@ export default function HeadlineNumbers({ closed, banking = [], openingCapital, 
     + (h.margin > 0
       ? h.marginCounted !== false
         ? ` and ${rupee(h.margin)} MTF`
-        : ` · ${rupee(h.margin)} MTF shown separately, not taken out`
+        : ` · ${rupee(h.margin)} MTF, not deducted`
       : "");
 
   const mtfNote = "Interest with pledge and unpledge charges, on MTF shares sold so far. "
     + (h.marginCounted !== false
-      ? "Already taken out of P&L and R"
-      : "Shown as an expense only — not taken out of P&L or R");
+      ? "Deducted from P&L and R"
+      : "Not deducted from P&L or R");
 
   /* Named because it is now said twice — on the tile and on the figure. */
   const chargeShare = isFinite(h.netPnl) && h.netPnl + h.charges > 0
