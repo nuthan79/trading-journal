@@ -7,15 +7,11 @@ import { mistakeCost, outcomeTagCounts } from "@/lib/analysis";
 import { isExecutionError } from "@/lib/constants";
 import { rupee, rfmt, pct } from "@/lib/format";
 import Money from "@/components/Money";
-import { useColumnPrefs } from "@/lib/useColumnPrefs";
-import ColumnPicker from "./ColumnPicker";
 
 /*
- * The table's columns, and which start hidden. Its own caption says
- * "Expectancy is the column that matters", and it then sat among ten. Five
- * answer what the page asks — how often, how much per trade, how much in all,
- * in R and in rupees — and the rest are a click away in the picker. Hints
- * travel with each, because these are this table's figures, not Trades'.
+ * The table's columns, each with its own hover. All ten always show: a Columns
+ * picker was tried here and taken out at the user's request — this table is
+ * read whole, not configured. Hints are this table's own, not Trades'.
  */
 const EDGE_COLUMNS = [
   { k: "trades", label: "Trades", hint: "Closed trades in this group" },
@@ -29,7 +25,7 @@ const EDGE_COLUMNS = [
   { k: "avgRisk", label: "Avg risk", hint: "The average rupees put at risk" },
   { k: "returnOnRisk", label: "Return on risk", hint: "Net P&L as a multiple of the rupees risked" },
 ];
-const EDGE_HIDDEN = ["avgWin", "avgLoss", "avgValue", "avgRisk", "returnOnRisk"];
+
 
 /**
  * Where the edge is — the same trades, cut ten ways.
@@ -52,8 +48,7 @@ const EDGE_HIDDEN = ["avgWin", "avgLoss", "avgValue", "avgRisk", "returnOnRisk"]
  */
 export default function Edge({ closed = [], accountSize }) {
   const [dim, setDim] = useState("pattern");
-  const colPrefs = useColumnPrefs("edge", { defaults: EDGE_HIDDEN });
-  const show = colPrefs.show;
+
   const D = DIMENSIONS.find((d) => d.id === dim) || DIMENSIONS[0];
 
   const groups = useMemo(
@@ -87,20 +82,16 @@ export default function Edge({ closed = [], accountSize }) {
             </div>
           </div>
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
-                      gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
-          <div className="seg">
-            {DIMENSIONS.map((d) => (
-              <button key={d.id} data-on={dim === d.id ? 1 : 0} onClick={() => setDim(d.id)}>{d.label}</button>
-            ))}
-          </div>
-          <ColumnPicker columns={EDGE_COLUMNS} prefs={colPrefs} />
+        <div className="seg" style={{ marginBottom: 12 }}>
+          {DIMENSIONS.map((d) => (
+            <button key={d.id} data-on={dim === d.id ? 1 : 0} onClick={() => setDim(d.id)}>{d.label}</button>
+          ))}
         </div>
         <div className="card scroll">
           <table className="t">
             <thead><tr>
               <th>{D.label}</th>
-              {EDGE_COLUMNS.filter((c) => show(c.k)).map((c) => (
+              {EDGE_COLUMNS.map((c) => (
                 <th key={c.k} className="num" title={c.hint}>{c.label}</th>
               ))}
               <th style={{ width: "16%" }}></th>
@@ -123,28 +114,24 @@ export default function Edge({ closed = [], accountSize }) {
                         {g.key}
                       </Link>
                     </td>
-                    {show("trades") && <td className="num">{g.n}</td>}
-                    {show("winRate") && <td className="num">{pct(g.winRate, 0)}</td>}
-                    {show("avgWin") && <td className="num pos">{rfmt(g.avgWin)}</td>}
-                    {show("avgLoss") && <td className="num neg">{rfmt(-g.avgLoss)}</td>}
-                    {show("expectancy") && (
-                    <td className={`num ${g.expectancy >= 0 ? "pos" : "neg"}`} style={{ fontWeight: 500 }}>
+                    <td className="num">{g.n}</td>
+                    <td className="num">{pct(g.winRate, 0)}</td>
+                    <td className="num pos">{rfmt(g.avgWin)}</td>
+                    <td className="num neg">{rfmt(-g.avgLoss)}</td>
+                                        <td className={`num ${g.expectancy >= 0 ? "pos" : "neg"}`} style={{ fontWeight: 500 }}>
                       {rfmt(g.expectancy)}</td>
-                    )}
-                    {show("totalR") && <td className={`num ${g.totalR >= 0 ? "pos" : "neg"}`}>{rfmt(g.totalR, 1)}</td>}
+                    <td className={`num ${g.totalR >= 0 ? "pos" : "neg"}`}>{rfmt(g.totalR, 1)}</td>
                     {/* Net of charges — grossRealised minus charges, the same
                         figure returnOnRisk beside it is already built from. R
                         answers whether the setup works; this answers what it
                         paid, and they part company whenever risk per trade
                         was not constant. */}
-                    {show("netPnl") && (
-                    <td className={`num ${g.netPnl >= 0 ? "pos" : "neg"}`} style={{ fontWeight: 500 }}>
+                                        <td className={`num ${g.netPnl >= 0 ? "pos" : "neg"}`} style={{ fontWeight: 500 }}>
                       <Money v={g.netPnl} />
                     </td>
-                    )}
-                    {show("avgValue") && <td className="num"><Money v={g.avgValue} /></td>}
-                    {show("avgRisk") && <td className="num"><Money v={g.avgRisk} note={`${pct(g.avgRiskPct, 2)} of capital`} /></td>}
-                    {show("returnOnRisk") && <td className="num">{isFinite(g.returnOnRisk) ? `${g.returnOnRisk.toFixed(2)}×` : "—"}</td>}
+                    <td className="num"><Money v={g.avgValue} /></td>
+                    <td className="num"><Money v={g.avgRisk} note={`${pct(g.avgRiskPct, 2)} of capital`} /></td>
+                    <td className="num">{isFinite(g.returnOnRisk) ? `${g.returnOnRisk.toFixed(2)}×` : "—"}</td>
                     <td>
                       <div style={{ display: "flex", justifyContent: g.totalR >= 0 ? "flex-start" : "flex-end" }}>
                         <div style={{ width: `${wpx}%`, height: 7, borderRadius: 1,

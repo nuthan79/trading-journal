@@ -47,23 +47,7 @@ test("Holdings: the dial explains itself on hover, and only warns in words", () 
 
 /* ---- Analysis, 2026-09-18 ------------------------------------------ */
 
-test("What works: its cells follow the header's column list, in order", () => {
-  const s = read("components/journal/Edge.jsx");
-  const list = [...s.match(/const EDGE_COLUMNS = \[([\s\S]*?)\];/)[1].matchAll(/k: "([^"]+)"/g)].map((m) => m[1]);
-  const body = s.slice(s.indexOf("<tbody>"), s.indexOf("</tbody>"));
-  const cells = [...body.matchAll(/show\("([^"]+)"\)/g)].map((m) => m[1]);
-  ok(cells.join(",") === list.join(","), `cells ${cells.join(",")} vs header ${list.join(",")}`);
-  ok(/EDGE_COLUMNS\.filter\(\(c\) => show\(c\.k\)\)\.map/.test(s), "the header is built from the same list");
-});
 
-test("What works: five columns by default, expectancy among them", () => {
-  const s = read("components/journal/Edge.jsx");
-  const hidden = s.match(/const EDGE_HIDDEN = \[([^\]]*)\]/)[1];
-  for (const k of ["trades", "winRate", "expectancy", "totalR", "netPnl"]) {
-    ok(!hidden.includes(`"${k}"`), `${k} must show by default`);
-  }
-  ok((hidden.match(/"/g) || []).length / 2 === 5, "five start hidden");
-});
 
 test("Process: each card shows one line; detail and 'What it means' are one click down", () => {
   const s = read("components/journal/Review.jsx");
@@ -102,4 +86,22 @@ test("What works: the rupee-risk caveat is one line with the fix a click away", 
   const s = visible("components/journal/Edge.jsx");
   ok(!/₹15k against ₹20L/.test(s));
   ok(/onClick=\{\(\) => setDim\("risk"\)\}>Risk % of capital</.test(s));
+});
+
+test("What works: no Columns picker — all ten columns, cells in header order", () => {
+  /* A picker was added here and taken out at the user's request: this table
+     is read whole. The header is built from EDGE_COLUMNS, so the cells must
+     follow that list or a figure lands under the wrong heading. */
+  const s = read("components/journal/Edge.jsx");
+  ok(!/ColumnPicker|useColumnPrefs/.test(s), "no picker");
+  const list = [...s.match(/const EDGE_COLUMNS = \[([\s\S]*?)\];/)[1].matchAll(/k: "([^"]+)"/g)].map((m) => m[1]);
+  ok(list.length === 10, `ten columns, found ${list.length}`);
+  const body = s.slice(s.indexOf("<tbody>"), s.indexOf("</tbody>"));
+  /* Each data cell reads its own field; their order must be the list's. */
+  const FIELD = { trades: "g.n}", winRate: "g.winRate", avgWin: "g.avgWin", avgLoss: "g.avgLoss",
+    expectancy: "g.expectancy)}", totalR: "g.totalR, 1", netPnl: "v={g.netPnl}",
+    avgValue: "g.avgValue", avgRisk: "v={g.avgRisk}", returnOnRisk: "g.returnOnRisk.toFixed" };
+  const at = list.map((k) => body.indexOf(FIELD[k]));
+  ok(at.every((x) => x > 0), "every column has its cell");
+  ok(at.every((x, i) => i === 0 || x > at[i - 1]), "and in the header's order");
 });
