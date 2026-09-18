@@ -47,7 +47,7 @@ export default function ColumnPicker({ columns, prefs, resetLabel = "Reset" }) {
         <div className="cp-menu" role="menu">
           <div className="cp-list">
             {columns.map((c) => (
-              <label key={c.k} className="cp-item" title={COLUMN_HINTS[c.k]}>
+              <label key={c.k} className="cp-item" title={c.hint ?? COLUMN_HINTS[c.k]}>
                 <input type="checkbox" checked={prefs.show(c.k)}
                        onChange={() => prefs.toggle(c.k)} />
                 <span>{c.label}</span>

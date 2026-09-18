@@ -44,3 +44,39 @@ test("Holdings: the dial explains itself on hover, and only warns in words", () 
   ok(/\{blind && <div className="ps-dial-note">Nothing to measure yet/.test(s),
     "no stops recorded is a real warning and stays visible");
 });
+
+/* ---- Analysis, 2026-09-18 ------------------------------------------ */
+
+test("What works: its cells follow the header's column list, in order", () => {
+  const s = read("components/journal/Edge.jsx");
+  const list = [...s.match(/const EDGE_COLUMNS = \[([\s\S]*?)\];/)[1].matchAll(/k: "([^"]+)"/g)].map((m) => m[1]);
+  const body = s.slice(s.indexOf("<tbody>"), s.indexOf("</tbody>"));
+  const cells = [...body.matchAll(/show\("([^"]+)"\)/g)].map((m) => m[1]);
+  ok(cells.join(",") === list.join(","), `cells ${cells.join(",")} vs header ${list.join(",")}`);
+  ok(/EDGE_COLUMNS\.filter\(\(c\) => show\(c\.k\)\)\.map/.test(s), "the header is built from the same list");
+});
+
+test("What works: five columns by default, expectancy among them", () => {
+  const s = read("components/journal/Edge.jsx");
+  const hidden = s.match(/const EDGE_HIDDEN = \[([^\]]*)\]/)[1];
+  for (const k of ["trades", "winRate", "expectancy", "totalR", "netPnl"]) {
+    ok(!hidden.includes(`"${k}"`), `${k} must show by default`);
+  }
+  ok((hidden.match(/"/g) || []).length / 2 === 5, "five start hidden");
+});
+
+test("Process: each card shows one line; detail and 'What it means' are one click down", () => {
+  const s = read("components/journal/Review.jsx");
+  const card = s.slice(s.indexOf("function FindingCard"), s.indexOf("\n}\n", s.indexOf("function FindingCard")));
+  const open = card.slice(0, card.indexOf('<details className="rv-evidence">'));
+  const folded = card.slice(card.indexOf('<details className="rv-evidence">'));
+  ok(!/<p className="rv-verdict"/.test(open) && /<p className="rv-verdict"/.test(folded), "the verdict box is inside");
+  ok(/moreDetail && <p className="rv-detail">/.test(folded), "the detail paragraph is inside");
+  ok(/const oneLine = rich \? \(f\.lede \|\| f\.verdict\) : f\.detail;/.test(card));
+});
+
+test("Process: Watch and Good fold unless nothing is critical or a warning", () => {
+  const s = read("components/journal/Review.jsx");
+  ok(/opened\[k\] \?\? \(k === "critical" \|\| k === "warning" \|\| \(!urgent && k === "watch"\)\)/.test(s));
+  ok(/\{groupOpen\(sevKey\) && groups\[sevKey\]\.map/.test(s), "cards render only in an open group");
+});

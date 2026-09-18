@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { apiFetch, track } from "@/lib/db";
 import { reviewFindings, reviewThesis, recentBook } from "@/lib/analysis";
 import { classifyRegime, regimeIndex, REGIME_LABEL } from "@/lib/market";
@@ -744,6 +745,22 @@ function FindingCard({ f, n }) {
   const sev = SEVERITY[f.severity] || SEVERITY.watch;
   const rich = Array.isArray(f.figures) && f.figures.length > 0;
 
+  /*
+   * ONE LINE IN THE OPEN. A card used to stack an opening line, a detail
+   * paragraph and a "What it means" box — three passes of prose over one
+   * finding, on every card, with up to a dozen cards on the page. What stays
+   * visible is the title, one line, the chart and the figures; the rest is
+   * one click down, with the evidence.
+   *
+   * The one line is the lede where there is one, otherwise the verdict —
+   * whichever the card leads with — and for a card with no figures, its
+   * detail, since that is all it has to say.
+   */
+  const oneLine = rich ? (f.lede || f.verdict) : f.detail;
+  const moreDetail = rich && f.detail;
+  const moreVerdict = rich && f.lede && f.verdict;
+  const hasMore = moreDetail || moreVerdict || f.evidence;
+
   return (
     <div className="rv-card" style={{ borderLeftColor: sev.color }}>
       <div className="rv-card-head">
@@ -753,7 +770,7 @@ function FindingCard({ f, n }) {
 
       {rich ? (
         <>
-          {f.lede && <p className="rv-lede">{f.lede}</p>}
+          {oneLine && <p className="rv-lede">{oneLine}</p>}
           {/* The chart is the centre of the card, not an illustration under
               it. The figures that used to sit here in boxes now read as its
               caption — the same numbers, but a legend for something you can
@@ -784,8 +801,15 @@ function FindingCard({ f, n }) {
               ))}
             </p>
           )}
-          {f.detail && <p className="rv-detail">{f.detail}</p>}
-          {f.verdict && (
+        </>
+      ) : (
+        <p className="rv-detail">{oneLine}</p>
+      )}
+
+      {hasMore && (
+        <details className="rv-evidence">
+          <summary>{moreDetail || moreVerdict ? "Why, and the numbers" : "Check the numbers"}</summary>
+          {moreVerdict && (
             <p className="rv-verdict" style={{ borderLeftColor: sev.color }}>
               {/* Named, because an unlabelled box of bold text reads as an
                   alert. This one is the answer, not the alarm. */}
@@ -793,15 +817,8 @@ function FindingCard({ f, n }) {
               {f.verdict}
             </p>
           )}
-        </>
-      ) : (
-        <p className="rv-detail">{f.detail}</p>
-      )}
-
-      {f.evidence && (
-        <details className="rv-evidence">
-          <summary>{rich ? "Check the numbers" : "Evidence"}</summary>
-          <Evidence data={f.evidence} />
+          {moreDetail && <p className="rv-detail">{f.detail}</p>}
+          {f.evidence && <Evidence data={f.evidence} />}
         </details>
       )}
     </div>
@@ -1230,6 +1247,18 @@ export default function Review({ closed, stats, all, diary, onMeasured }) {
    * eleven cards sorted by severity. Every finding said something true and
    * nothing said what the record amounted to.
    */
+  /**
+   * WHICH GROUPS ARE OPEN. Every finding the record supports used to render at
+   * once — Critical, Warning, Watch and Good, up to a dozen cards. Critical and
+   * Warning are what to act on and stay open; Watch and Good fold to a count
+   * you can open. With nothing critical or warning, Watch opens instead, so
+   * the page is never only a row of counts. A click overrides either way.
+   */
+  const [opened, setOpened] = useState({});
+  const urgent = (groups.critical?.length || 0) + (groups.warning?.length || 0) > 0;
+  const groupOpen = (k) => opened[k] ?? (k === "critical" || k === "warning" || (!urgent && k === "watch"));
+  const FOLDED_LABEL = { watch: "to watch", good: "going well", critical: "critical", warning: "warnings" };
+
   const thesis = useMemo(
     () => reviewThesis(closed, result.findings, stats),
     [closed, result, stats]
@@ -1379,10 +1408,17 @@ export default function Review({ closed, stats, all, diary, onMeasured }) {
         SEVERITY_ORDER.map((sevKey) =>
           groups[sevKey].length ? (
             <div key={sevKey} className="rv-group">
-              <div className="eyebrow" style={{ color: SEVERITY[sevKey].color, marginBottom: 9 }}>
-                {SEVERITY[sevKey].label} · {groups[sevKey].length}
-              </div>
-              {groups[sevKey].map((f) => <FindingCard key={f.id} f={f} />)}
+              <button type="button" className="rv-group-toggle" aria-expanded={groupOpen(sevKey)}
+                      onClick={() => setOpened((o) => ({ ...o, [sevKey]: !groupOpen(sevKey) }))}
+                      style={{ color: SEVERITY[sevKey].color }}>
+                <ChevronDown size={13} style={{ transform: groupOpen(sevKey) ? "none" : "rotate(-90deg)" }} />
+                <span className="eyebrow" style={{ color: "inherit" }}>
+                  {groupOpen(sevKey)
+                    ? `${SEVERITY[sevKey].label} · ${groups[sevKey].length}`
+                    : `${groups[sevKey].length} ${FOLDED_LABEL[sevKey]}`}
+                </span>
+              </button>
+              {groupOpen(sevKey) && groups[sevKey].map((f) => <FindingCard key={f.id} f={f} />)}
             </div>
           ) : null
         )
@@ -1570,6 +1606,13 @@ export default function Review({ closed, stats, all, diary, onMeasured }) {
         .rv-dim { color: var(--ink3); }
 
         .rv-group { margin-bottom: 22px; }
+        /* The group's heading is its switch. Folded, it reads as a count —
+           "4 to watch" — in the group's own colour. */
+        .rv-group-toggle {
+          display: flex; align-items: center; gap: 6px; background: none; border: 0;
+          padding: 0; margin-bottom: 9px; cursor: pointer; font: inherit;
+        }
+        .rv-group-toggle:hover .eyebrow { text-decoration: underline; text-underline-offset: 3px; }
 
         .rv-card {
           border: 1px solid var(--rule); border-left: 3px solid var(--rule);
