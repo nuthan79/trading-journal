@@ -852,6 +852,10 @@ export default function AppLayout({ children }) {
     <JournalContext.Provider
       value={{
         trades, diary: demo ? demo.diary : diary, flows, profile, accountSize,
+        /* The user's OWN progress, for the first-week card. `diary` above is
+           the sample book's while that is showing, and counting it would tick
+           a step the user has not done. */
+        ownDiaryCount: diary.length, needStopsCount, assumedStopsCount, userId,
         all, closed, open, banking, S,
         say,
         openNewTrade, openEditTrade, openExitTrade,

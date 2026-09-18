@@ -111,3 +111,56 @@ test("nothing in the app still sends people to a tab by its old name", () => {
     ok(!/Analysis → (Edge|Review|What-if)\b/.test(visible(f)), `${f} names an old tab`);
   }
 });
+
+/* 5 — After first run there was no next step at all. */
+import { firstWeek, FIRST_WEEK_DAYS } from "@/lib/firstweek";
+
+const NOW = new Date("2026-09-18T10:00:00Z");
+const daysAgo = (n) => new Date(NOW - n * 86400000).toISOString();
+
+test("a brand-new journal shows the path with nothing ticked", () => {
+  const fw = firstWeek({ onboardedAt: daysAgo(0), now: NOW });
+  eq(fw.show, true);
+  eq(fw.doneCount, 0);
+});
+
+test("zero trades missing a stop is not a finished stops step", () => {
+  /* Out of zero trades, none lacks a stop. That is not the user having done
+     step two, and ticking it would be the card lying on its first view. */
+  const fw = firstWeek({ trades: 0, needStops: 0, assumedStops: 0, now: NOW, onboardedAt: daysAgo(1) });
+  eq(fw.steps[1].done, false);
+});
+
+test("imported stops that were guessed keep step two open", () => {
+  const fw = firstWeek({ trades: 40, needStops: 0, assumedStops: 12, onboardedAt: daysAgo(2), now: NOW });
+  eq(fw.steps[0].done, true);
+  eq(fw.steps[1].done, false, "an assumed stop is not the stop you used");
+  eq(fw.steps[1].pending, 12);
+});
+
+test("it goes by itself once all three are done", () => {
+  const fw = firstWeek({ trades: 3, diary: 1, onboardedAt: daysAgo(1), now: NOW });
+  eq(fw.show, false);
+});
+
+/* THE NAG TEST. Somebody six months in who never wrote a diary entry is not
+   in their first week, and a card reminding them every visit is exactly the
+   thing this was told never to become. */
+test("it does not follow an established user around", () => {
+  const fw = firstWeek({ trades: 120, diary: 0, onboardedAt: daysAgo(180), now: NOW });
+  eq(fw.show, false);
+  eq(firstWeek({ trades: 5, onboardedAt: daysAgo(FIRST_WEEK_DAYS + 1), now: NOW }).show, false);
+  eq(firstWeek({ trades: 5, onboardedAt: daysAgo(FIRST_WEEK_DAYS - 1), now: NOW }).show, true);
+});
+
+test("an empty journal still gets the path however old the account", () => {
+  /* Signed up in spring, never logged anything, came back today. The path is
+     exactly what they need, and age alone must not hide it. */
+  eq(firstWeek({ trades: 0, onboardedAt: daysAgo(200), now: NOW }).show, true);
+});
+
+test("the card counts the user's own diary, never the sample book's", () => {
+  const page = read("app/(app)/dashboard/page.jsx");
+  ok(/diary: ownDiaryCount/.test(page), "the sample diary would tick step three for them");
+  ok(/trades: trades\.length/.test(page), "`trades` is the real table; `all` would include the sample");
+});
