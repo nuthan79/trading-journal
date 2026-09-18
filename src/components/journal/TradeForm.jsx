@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { X, Check, Plus } from "lucide-react";
+import { X, Check, Plus, ChevronDown } from "lucide-react";
 import SymbolSearch from "@/components/SymbolSearch";
 import ChargesField from "./ChargesField";
 import { derivePosition } from "@/lib/positions";
-import { rupee, pct, today } from "@/lib/format";
+import { rupee, pct, rfmt, signedPct, today } from "@/lib/format";
+import { mtfFigures, isMtf, annualPct } from "@/lib/mtf";
 import Money from "@/components/Money";
 import {
   PATTERNS, EXIT_REASONS, MISTAKES, STAGES, slBand,
@@ -194,6 +195,7 @@ const blank = () => ({
   entry_price: "", quantity: "", stop_loss: "", initial_stop_loss: "", stop_source: "",
   pattern: "", pivot_price: "", vol_pct_avg: "", weinstein_stage: "", rs_rank: "",
   thesis: "",
+  mtf_on: false, mtf_leverage: "", mtf_rate: "",
   exit_date: "", exit_price: "", exit_reason: "",
   exits: [],
   charges: "0", charges_auto: true, charges_breakdown: null,
@@ -226,6 +228,10 @@ function fromInitial(row) {
     vol_pct_avg: str(row.vol_pct_avg), weinstein_stage: str(row.weinstein_stage),
     rs_rank: str(row.rs_rank),
     thesis: row.thesis || "",
+    mtf_on: row.mtf_leverage != null,
+    mtf_leverage: str(row.mtf_leverage), mtf_rate: str(row.mtf_rate),
+    /* Whether the saved row carried margin, so unticking it sends nulls. */
+    _hadMtf: row.mtf_leverage != null || row.mtf_rate != null,
     exit_date: row.exit_date || "", exit_price: str(row.exit_price),
     exit_reason: row.exit_reason || "",
     // Real tranches when the row has them; otherwise the flat columns become
@@ -337,6 +343,17 @@ function toPayload(t) {
     weinstein_stage: t.weinstein_stage ? Number(t.weinstein_stage) : null,
     rs_rank: numOrNull(t.rs_rank),
     thesis: t.thesis?.trim() || null,
+    /*
+     * ONLY SENT WHEN THE TRADE IS, OR WAS, ON MARGIN. Sending the two keys on
+     * every save would make every save fail on a database where migration 049
+     * has not run yet — a trader logging an ordinary trade would be told the
+     * save failed over a column they never touched. Unticking MTF on a trade
+     * that had it still sends nulls, so it can be taken off.
+     */
+    ...(t.mtf_on || t._hadMtf ? {
+      mtf_leverage: t.mtf_on ? numOrNull(t.mtf_leverage) : null,
+      mtf_rate: t.mtf_on ? numOrNull(t.mtf_rate) : null,
+    } : {}),
     exit_date: lastExit,
     // Only meaningful once the position is fully out; a partial has no single
     // exit price, and inventing one would misreport what's still running.
@@ -366,7 +383,21 @@ function toPayload(t) {
 // an in-progress edit on trade A could leak into trade B's form.
 const formIdOf = (initial) => initial?.id ?? "new";
 
-export default function TradeForm({ initial, accountSize, defaultRiskPct, chargeConfig, startSelling, onSave, onClose }) {
+/* A section that stays open or shut the way it was last left, in this browser.
+   Read in the initializer: the form only ever renders on the client, so there
+   is no server render to disagree with. Guarded, since blocked storage throws. */
+function useRememberedFold(key) {
+  const [open, setOpen] = useState(() => {
+    try { return localStorage.getItem(key) === "1"; } catch { return false; }
+  });
+  const set = (v) => {
+    setOpen(v);
+    try { localStorage.setItem(key, v ? "1" : "0"); } catch {}
+  };
+  return [open, set];
+}
+
+export default function TradeForm({ initial, accountSize, defaultRiskPct, chargeConfig, startSelling, defaultMtfRate, onSave, onClose }) {
   const formId = formIdOf(initial);
   const persisted = loadDraft(DRAFT_KEYS.trade);
   const restored = persisted?.formId === formId ? persisted : null;
@@ -385,6 +416,15 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
   );
   const editing = !!t.id;
   const slBandLabel = slBand(d.slPct);
+
+  const mtf = t.mtf_on ? mtfFigures({
+    entryPrice: t.entry_price, quantity: t.quantity,
+    entryDate: t.entry_date, entryDateAssumed: t.entry_date_source === "assumed",
+    exits: withExits(t).exits, leverage: t.mtf_leverage, rate: t.mtf_rate,
+    riskAmt: d.riskAmt, pnl: d.pnl, asOf: today(),
+  }) : null;
+
+
 
   const { clear: clearDraft } = useAutosave(DRAFT_KEYS.trade, { formId, t, riskPct });
   const closeAndClear = () => { clearDraft(); onClose(); };
@@ -495,8 +535,11 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
     !oversold &&
     (t.exits || []).every((e) => e.exit_date && num(e.quantity) > 0 && num(e.price) > 0);
 
+  /* Ticked as MTF, it needs both figures: a leverage with no rate has no cost
+     to show, and a rate with no leverage has nothing to charge it on. */
+  const mtfOk = !t.mtf_on || (isMtf(t.mtf_leverage) && num(t.mtf_rate) > 0);
   const valid = t.symbol.trim() && num(t.entry_price) > 0 &&
-    num(t.quantity) > 0 && stopOk && exitsOk;
+    num(t.quantity) > 0 && stopOk && exitsOk && mtfOk;
 
   const overRisk = isFinite(d.riskPct) && d.riskPct > 2;
 
@@ -540,7 +583,11 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
    * that has something in it is how the something gets dropped on the next
    * save.
    */
-  const [showMore, setShowMore] = useState(false);
+  /* Both sections fold, and each remembers how it was left in this browser —
+     a trader who always fills the setup should not have to open it every
+     time, and one who never uses margin should not see it open. */
+  const [setupOpen, setSetupOpen] = useRememberedFold("ledgerr:form-setup-open");
+  const [mtfOpen, setMtfOpen] = useRememberedFold("ledgerr:form-mtf-open");
 
   /**
    * What the stock is trading at right now, shown under the price fields.
@@ -567,9 +614,6 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
   const [chartLink, setChartLink] = useState("");
   const [chartOk, setChartOk] = useState(null);
   const chart = resolveTradingViewChart(chartLink);
-  useEffect(() => {
-    if (t.pattern || t.pivot_price || t.vol_pct_avg || t.weinstein_stage) setShowMore(true);
-  }, [t.pattern, t.pivot_price, t.vol_pct_avg, t.weinstein_stage]);
   useEffect(() => { setChartOk(null); }, [chart.url]);
 
   const submit = async () => {
@@ -611,6 +655,37 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
     viewer, and Profile and Settings hold a handful of fields rather than a form
     built over several visits to a chart.
   */
+  /* What a folded section still says, so nothing in it is hidden silently. */
+  const setupBits = [
+    num(t.rs_rank) > 0 && `RS ${t.rs_rank}`,
+    t.pattern,
+    isFinite(d.distPivot) && `${d.distPivot >= 0 ? "+" : "−"}${Math.abs(d.distPivot).toFixed(1)}% from pivot`,
+    num(t.vol_pct_avg) > 0 && `volume ${t.vol_pct_avg}%`,
+    t.weinstein_stage && `stage ${t.weinstein_stage}`,
+    t.thesis?.trim() && "reason written",
+    chart.ok && "chart attached",
+  ].filter(Boolean);
+  const setupSummary = setupBits.length
+    ? setupBits.join(" · ")
+    : "Nothing yet — RS rank and your reason can only be written today";
+
+  const mtfSummary = !t.mtf_on
+    ? "Not on margin"
+    : !mtfOk
+    ? "Needs the leverage and the interest rate"
+    : `${t.mtf_leverage}× · ₹${t.mtf_rate} per lakh a day`
+      + (mtf && isFinite(mtf.interest)
+        ? ` · ${rupee(mtf.interest)} interest${isFinite(mtf.interestR) ? ` (${rfmt(mtf.interestR)})` : ""}`
+        : "");
+
+  /* Ticking MTF fills in the saved rate — the broker's charge rarely changes
+     between trades — and leaves any rate already typed alone. */
+  const setMtfOn = (on) => setT((p) => ({
+    ...p,
+    mtf_on: on,
+    mtf_rate: on && p.mtf_rate === "" && defaultMtfRate != null ? String(defaultMtfRate) : p.mtf_rate,
+  }));
+
   return (
     <div className="modal">
       <div className="sheet">
@@ -726,7 +801,26 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
           </div>
 
           <div>
-            <div className="eyebrow" style={{ marginBottom: 10 }}>The setup</div>
+            {/*
+              * THE SETUP, FOLDED. One section rather than three fields in the
+              * open and four behind a "+" link: a fold inside a fold is two
+              * clicks to reach a field, and the half that stayed open took
+              * most of the form's height on every trade.
+              *
+              * Folded is not hidden. The header says what is filled in —
+              * "RS 88 · VCP · reason written" — or, when nothing is, that RS
+              * rank and the reason are the two things that can only be written
+              * today. That is the fact that used to justify keeping them in
+              * the open, and it is still said where it can be read.
+              */}
+            <button type="button" className="tf-fold" aria-expanded={setupOpen}
+                    onClick={() => setSetupOpen(!setupOpen)}>
+              <ChevronDown size={14} className="tf-fold-chev" data-open={setupOpen ? 1 : 0} />
+              <span className="eyebrow">The setup</span>
+              <span className="tf-fold-sum">{setupSummary}</span>
+            </button>
+            {setupOpen && (
+              <div className="tf-fold-body">
             {/* What survives the trade, first. RS rank, the thesis and the
                 chart cannot be recovered once the outcome is known; the four
                 behind the link below can, off the same chart, any time. */}
@@ -775,7 +869,6 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
               </div>
             )}
 
-            {showMore ? (
               <div className="grid4" style={{ gap: 12, marginTop: 14 }}>
                 <label className="f"><span>Base pattern</span>
                   <select className="in" value={t.pattern} onChange={set("pattern")}>
@@ -804,21 +897,124 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                     {STAGES.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}
                   </select></label>
               </div>
-            ) : (
-              <button type="button" className="lnk" style={{ marginTop: 14 }}
-                      onClick={() => setShowMore(true)}>
-                + Pattern, pivot, volume and stage
-              </button>
-            )}
-            {!showMore && (
-              <div className="hint" style={{ marginTop: 5 }}>
-                All four are still on the chart later — add them now or when you review.
               </div>
             )}
 
             {/*
-              Always visible, deliberately not behind the "+ Pattern, pivot"
-              toggle that hides the rest.
+              * MARGIN (MTF). Bought partly with the broker's money: the
+              * leverage from the broker's MTF screen and the interest they
+              * charge, in the ₹ per lakh per day brokers quote it in. The rate
+              * is remembered on the profile and filled in next time.
+              *
+              * What this adds is the COST OF TIME. A swing trade on margin pays
+              * every day it is held, and the numbers below put that in the
+              * units the rest of the journal uses — rupees, and R.
+              */}
+            <button type="button" className="tf-fold" aria-expanded={mtfOpen}
+                    onClick={() => setMtfOpen(!mtfOpen)}>
+              <ChevronDown size={14} className="tf-fold-chev" data-open={mtfOpen ? 1 : 0} />
+              <span className="eyebrow">Margin (MTF)</span>
+              <span className="tf-fold-sum" data-warn={t.mtf_on && !mtfOk ? 1 : 0}>{mtfSummary}</span>
+            </button>
+            {mtfOpen && (
+              <div className="tf-fold-body">
+                <label className="tf-check">
+                  <input type="checkbox" checked={!!t.mtf_on}
+                         onChange={(e) => setMtfOn(e.target.checked)} />
+                  Bought on MTF — part of it with the broker&apos;s money
+                </label>
+
+                {t.mtf_on && (
+                  <>
+                    <div className="grid2" style={{ gap: 12, marginTop: 12 }}>
+                      <label className="f"><span>Leverage (×)</span>
+                        <input className="in" inputMode="decimal" placeholder="e.g. 2.35"
+                               value={t.mtf_leverage} onChange={set("mtf_leverage")} />
+                        <div className="hint" style={{
+                          color: t.mtf_leverage !== "" && !isMtf(t.mtf_leverage) ? "var(--short)" : undefined }}>
+                          {t.mtf_leverage === ""
+                            ? "The multiple on your broker's MTF screen for this stock. Required."
+                            : !isMtf(t.mtf_leverage)
+                            ? "Must be above 1× — at 1× nothing is borrowed."
+                            : mtf
+                            ? `${rupee(mtf.own)} of yours buys ${rupee(mtf.position)}; the broker funds ${rupee(mtf.funded)}.`
+                              + (num(t.mtf_leverage) > 7 ? " That is unusually high — worth checking." : "")
+                            : "Add the entry price and quantity to see the split."}
+                        </div></label>
+                      <label className="f"><span>Interest — ₹ per lakh per day</span>
+                        <input className="in" inputMode="decimal" placeholder="From your broker"
+                               value={t.mtf_rate} onChange={set("mtf_rate")} />
+                        <div className="hint" style={{
+                          color: t.mtf_rate !== "" && !(num(t.mtf_rate) > 0) ? "var(--short)" : undefined }}>
+                          {t.mtf_rate === ""
+                            ? "What your broker charges on the funded part. Required, and remembered for next time."
+                            : !(num(t.mtf_rate) > 0)
+                            ? "Must be a positive amount."
+                            : num(t.mtf_rate) < 1
+                            /* Somebody who typed the percentage: 0.04 % a day is ₹40 a lakh. */
+                            ? `That looks like a percentage. As ₹ per lakh, ${t.mtf_rate}% a day is ₹${(num(t.mtf_rate) * 1000).toFixed(0)}.`
+                            : `${pct(annualPct(t.mtf_rate), 1)} a year on the funded part.`
+                              + (defaultMtfRate != null && num(t.mtf_rate) === Number(defaultMtfRate)
+                                ? " Your saved rate."
+                                : defaultMtfRate != null
+                                ? " Saving makes this your new default."
+                                : " Saved as your default for next time.")}
+                        </div></label>
+                    </div>
+
+                    {mtf && isFinite(mtf.perDayFull) && (
+                      <div className="tf-mtf">
+                        {mtf.openQty > 0 && (
+                          <div className="tf-mtf-cell">
+                            <b className="mono">{rupee(mtf.perDayNow)}</b>
+                            <span>a day to hold{mtf.openQty < num(t.quantity) ? " what is left" : ""}</span>
+                          </div>
+                        )}
+                        <div className="tf-mtf-cell" title={mtf.why || undefined}>
+                          <b className="mono">{isFinite(mtf.interest) ? rupee(mtf.interest) : "—"}</b>
+                          <span>
+                            {!isFinite(mtf.interest)
+                              ? mtf.why
+                              : `interest ${mtf.openQty > 0 ? "so far" : "paid"}`
+                                + (isFinite(mtf.interestR) ? `, ${rfmt(mtf.interestR)} of your risk` : "")}
+                          </span>
+                        </div>
+                        {isFinite(mtf.daysPerR) && (
+                          <div className="tf-mtf-cell"
+                               title="Your planned risk divided by what the full position costs a day">
+                            <b className="mono">{Math.round(mtf.daysPerR)} days</b>
+                            <span>held at full size costs 1R in interest</span>
+                          </div>
+                        )}
+                        {isFinite(mtf.coverMovePct) && mtf.coverMovePct > 0 && (
+                          <div className="tf-mtf-cell">
+                            <b className="mono">+{mtf.coverMovePct.toFixed(2)}%</b>
+                            <span>price move needed just to pay it</span>
+                          </div>
+                        )}
+                        {isFinite(mtf.returnOnOwnPct) && (
+                          <div className="tf-mtf-cell">
+                            <b className={`mono ${mtf.returnOnOwnPct >= 0 ? "pos" : "neg"}`}>
+                              {signedPct(mtf.returnOnOwnPct)}
+                            </b>
+                            <span>on your own money, after interest — {signedPct(mtf.returnOnPositionPct)} on the whole position</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {mtf && (
+                      <div className="hint" style={{ marginTop: 8 }}>
+                        Counted in calendar days, per sell — shares sold stop costing interest the day
+                        they go. Shown here for now; not yet taken out of P&amp;L or R.
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            {/*
+              Always visible, deliberately outside both folds above.
 
               Pattern and pivot are still on the chart in a month; how you felt
               is not. Asked later it gets answered by whatever the trade went on
@@ -1044,6 +1240,37 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
         </div>
       </div>
 
+      <style jsx global>{`
+        /* A section header that opens and closes. The whole row is the
+           button, so the summary is clickable too. */
+        .tf-fold {
+          display: flex; align-items: baseline; gap: 10px; width: 100%;
+          background: none; border: 0; border-top: 1px solid var(--rule);
+          padding: 12px 0 10px; cursor: pointer; text-align: left; font: inherit;
+        }
+        .tf-fold:hover .tf-fold-sum { color: var(--ink2); }
+        .tf-fold .eyebrow { flex: none; }
+        .tf-fold-chev { flex: none; align-self: center; color: var(--ink3);
+                        transition: transform 0.15s ease; transform: rotate(-90deg); }
+        .tf-fold-chev[data-open="1"] { transform: none; }
+        .tf-fold-sum { font-size: 12.5px; color: var(--ink3); min-width: 0;
+                       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .tf-fold-sum[data-warn="1"] { color: var(--short); }
+        .tf-fold-body { padding: 2px 0 14px; }
+        .tf-check { display: flex; align-items: center; gap: 9px; font-size: 13.5px;
+                    color: var(--ink); cursor: pointer; }
+        .tf-check input { width: 15px; height: 15px; margin: 0; accent-color: var(--ink); }
+        /* The figures, across the width rather than stacked down the left. */
+        .tf-mtf {
+          display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+          gap: 1px; margin-top: 12px; background: var(--rule);
+          border: 1px solid var(--rule); border-radius: 3px; overflow: hidden;
+        }
+        .tf-mtf-cell { background: var(--card); padding: 10px 12px;
+                       display: flex; flex-direction: column; gap: 3px; }
+        .tf-mtf-cell b { font-size: 15px; font-weight: 500; color: var(--ink); }
+        .tf-mtf-cell span { font-size: 11.5px; color: var(--ink3); line-height: 1.4; }
+      `}</style>
       <style jsx>{`
         .tf-opt {
           font-style: normal; font-weight: 400; color: var(--ink3);

@@ -599,6 +599,20 @@ export default function AppLayout({ children }) {
         }
       }
 
+      /*
+       * The MTF rate becomes this user's default for the next margin trade.
+       * It is what their broker charges, which changes rarely and is the same
+       * on every trade, so retyping it each time is pure friction — and it
+       * lives on the profile, not in the browser, so it follows them to
+       * another machine. Only written when it actually changed.
+       *
+       * Its own try/catch, like the chart above: the trade is saved, and a
+       * default that failed to update must not read as a failed save.
+       */
+      if (payload.mtf_rate != null && Number(payload.mtf_rate) !== Number(profile?.mtf_rate)) {
+        try { setProfile(await dbSaveProfile({ mtf_rate: payload.mtf_rate })); } catch {}
+      }
+
       const [t, ex] = await Promise.all([listTrades(), listExitsByTrade()]);
       setTrades(t);
       setExitsByTrade(ex);
@@ -969,6 +983,7 @@ export default function AppLayout({ children }) {
         {showForm && (
           <TradeForm initial={editing} accountSize={accountSize} defaultRiskPct={profile?.default_risk_pct}
                      chargeConfig={profile?.charge_config} startSelling={selling}
+                     defaultMtfRate={profile?.mtf_rate}
                      onSave={saveTrade}
                      onClose={() => { setShowForm(false); setEditing(null); setSelling(false); }} />
         )}
