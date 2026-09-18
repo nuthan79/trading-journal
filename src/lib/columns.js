@@ -33,6 +33,11 @@ export const COLUMN_HINTS = {
     + "worth at the last price",
   r: "Profit or loss divided by the risk you took at entry. +2R means you made twice "
     + "what you risked; −1R means the stop was hit",
+  charges: "Brokerage, STT, exchange and SEBI fees, stamp duty, GST and DP charges on this "
+    + "trade — worked out by the app, or taken from your broker's file on import. Already "
+    + "taken out of P&L. MTF costs are not in it",
+  margin: "What buying on MTF cost this trade: interest on the funded part, ₹18 to pledge "
+    + "and ₹18 for each sell to unpledge. Already taken out of P&L and R",
   riskAmt: "Rupees between entry and stop, across the whole position. This is one R",
   pattern: "The base the stock broke out of — VCP, cup, flat base, pullback",
   distPivot: "How far above the pivot you actually bought. Small is tight, large is chasing",

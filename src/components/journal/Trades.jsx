@@ -76,7 +76,9 @@ const TRADE_COLUMNS = [
   { k: "stop_loss", label: "Stop" }, { k: "slPct", label: "SL %" },
   { k: "quantity", label: "Qty" }, { k: "exposure", label: "Size" },
   { k: "avgExitPrice", label: "Exit" }, { k: "exitPct", label: "Exit %" },
-  { k: "pnl", label: "P&L" }, { k: "r", label: "R" }, { k: "riskAmt", label: "Risk" },
+  { k: "pnl", label: "P&L" }, { k: "r", label: "R" },
+  { k: "charges", label: "Charges" }, { k: "margin", label: "MTF cost" },
+  { k: "riskAmt", label: "Risk" },
   { k: "chart", label: "Chart" }, { k: "pattern", label: "Pattern" },
   { k: "distPivot", label: "Δ pivot" }, { k: "vol_pct_avg", label: "Vol %" },
   { k: "weinstein_stage", label: "Stg" }, { k: "rs_rank", label: "RS" },
@@ -86,7 +88,10 @@ const TRADE_COLUMNS = [
    so the lead span is always at least one. */
 const BEFORE_PNL = ["symbol", "entry_date", "exit_date", "heldDays", "entry_price", "stop_loss",
                     "slPct", "quantity", "exposure", "avgExitPrice", "exitPct"];
-const AFTER_R = ["riskAmt", "chart", "pattern", "distPivot", "vol_pct_avg",
+/* Between R and these sit the two cost columns, which have totals of their
+   own in the footer rather than falling inside the trailing span. */
+const COSTS = ["charges", "margin"];
+const AFTER_COSTS = ["riskAmt", "chart", "pattern", "distPivot", "vol_pct_avg",
                  "weinstein_stage", "rs_rank", "mfe", "mae"];
 
 export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNew,
@@ -107,10 +112,15 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
    * hard-coded numbers, 11 and 10, and a column hidden without them changing
    * slides the whole row out from under its headings with nothing erroring.
    */
-  const colPrefs = useColumnPrefs("trades");
+  /* Everything shows by default, except MTF cost for someone who has never
+     bought on margin — a column of dashes on every row would be noise. Only
+     the default: a saved choice, or a first MTF trade, shows it. */
+  const colPrefs = useColumnPrefs("trades", {
+    defaults: all.some((t) => Number(t.mtf_leverage) > 1) ? [] : ["margin"],
+  });
   const show = colPrefs.show;
   const leadSpan = BEFORE_PNL.filter(show).length;
-  const trailSpan = AFTER_R.filter(show).length + 1;   // + the edit/delete column
+  const trailSpan = AFTER_COSTS.filter(show).length + 1;   // + the edit/delete column
 
   const [view, setView] = useState(null);
 
@@ -528,6 +538,9 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
       n: rows.length,
       pnl: money,
       r: rs.reduce((a, b) => a + b, 0),
+      /* What the trades on screen paid, the same rows the P&L above sums. */
+      charges: rows.reduce((a, t) => a + (Number(t.charges) || 0), 0),
+      margin: rows.reduce((a, t) => a + (Number(t.margin) || 0), 0),
       withR: rs.length,
       /**
        * DIVIDED BY WHAT WENT INTO THE SUM, NOT BY WHAT IS ON SCREEN.
@@ -734,6 +747,11 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
               {show("exitPct") && th("exitPct", "Exit %", "num")}
               {show("pnl") && th("pnl", "P&L", "num")}
               {show("r") && th("r", "R", "num")}
+              {/* What came out of P&L on the way to that R: the trading charges
+                  and, on a margin trade, what the margin cost. Both are already
+                  inside the P&L beside them — these say how much of it. */}
+              {show("charges") && th("charges", "Charges", "num")}
+              {show("margin") && th("margin", "MTF cost", "num")}
               {show("riskAmt") && th("riskAmt", "Risk", "num")}
               {/* The setup — what the chart looked like going in. Behind the
                   outcome because most rows have none of it recorded, and a
@@ -877,6 +895,18 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                   {show("r") && (
                   <td className={`num ${isFinite(t.r) ? (t.r >= 0 ? "pos" : "neg") : ""}`}
                       style={{ fontWeight: 500 }}>{isFinite(t.r) ? rfmt(t.r) : "—"}</td>
+                  )}
+                  {show("charges") && (
+                  <td className="num" style={{ fontSize: 12, color: "var(--ink2)" }}>
+                    {Number(t.charges) > 0 ? <Money v={t.charges} /> : "—"}</td>
+                  )}
+                  {show("margin") && (
+                  <td className="num" style={{ fontSize: 12, color: "var(--ink2)" }}>
+                    {Number(t.margin) > 0
+                      ? <Money v={t.margin} note={`${rupee(t.interest)} interest · ${
+                          rupee(t.pledgeFees)} pledge and unpledge`} />
+                      : t.interestUnknown ? <span title="Interest not counted — the entry date was estimated">—</span>
+                      : "—"}</td>
                   )}
                   {show("riskAmt") && (
                   <td className="num" style={{ fontSize: 12 }}
@@ -1028,6 +1058,16 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                   {totals.withR > 0 && totals.withR < totals.n && (
                     <i className="tr-tot-sub">of {totals.withR}</i>
                   )}
+                </td>
+                )}
+                {show("charges") && (
+                <td className="num" style={{ color: "var(--ink2)" }}>
+                  {totals.charges > 0 ? <Money v={totals.charges} /> : "—"}
+                </td>
+                )}
+                {show("margin") && (
+                <td className="num" style={{ color: "var(--ink2)" }}>
+                  {totals.margin > 0 ? <Money v={totals.margin} /> : "—"}
                 </td>
                 )}
                 <td colSpan={trailSpan}></td>

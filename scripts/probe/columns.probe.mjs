@@ -78,8 +78,8 @@ test("Trades: the totals row splits exactly where the header does", () => {
   const order = [...head.matchAll(/th\("([^"]+)"|show\("(chart)"\)/g)].map((m) => m[1] || m[2]);
   const arr = (name) => [...src.match(new RegExp(`const ${name} = \\[([\\s\\S]*?)\\];`))[1]
     .matchAll(/"([^"]+)"/g)].map((m) => m[1]);
-  eq(order.join(","), [...arr("BEFORE_PNL"), "pnl", "r", ...arr("AFTER_R")].join(","),
-    "BEFORE_PNL, then P&L and R, then AFTER_R, must be the header left to right");
+  eq(order.join(","), [...arr("BEFORE_PNL"), "pnl", "r", ...arr("COSTS"), ...arr("AFTER_COSTS")].join(","),
+    "BEFORE_PNL, P&L and R, the two cost columns, then AFTER_COSTS — the header left to right");
   ok(/<th><\/th>\s*<\/tr><\/thead>/.test(src), "and the actions column closes it — the +1 in trailSpan");
 });
 
@@ -88,7 +88,8 @@ test("Trades: the totals row spans follow the picker, not fixed numbers", () => 
   const foot = src.slice(src.indexOf("<tfoot"), src.indexOf("</tfoot>"));
   ok(/colSpan=\{leadSpan\}/.test(foot) && /colSpan=\{trailSpan\}/.test(foot));
   ok(!/colSpan=\{\d+\}/.test(foot), "no hard-coded span is left");
-  eq(switched(foot).join(","), "pnl,r", "the P&L and R totals hide with their columns");
+  eq(switched(foot).join(","), "pnl,r,charges,margin",
+    "the P&L, R, charges and MTF totals each hide with their columns");
 });
 
 /* ---- what is stored ------------------------------------------------ */
@@ -126,4 +127,15 @@ test("storage is only ever touched inside a guard", () => {
   /* Each access sits between a `try {` and its `catch`. */
   const unguarded = hook.split(/try \{[\s\S]*?\} catch \{\}/).join("").match(/localStorage\./g);
   eq(unguarded, null, "every storage access is inside try/catch");
+});
+
+test("Trades: MTF cost is hidden by default only for someone with no margin trades", () => {
+  const src = read("components/journal/Trades.jsx");
+  ok(/defaults: all\.some\(\(t\) => Number\(t\.mtf_leverage\) > 1\) \? \[\] : \["margin"\],/.test(src));
+});
+
+test("Trades: the cost columns total the same rows the P&L does", () => {
+  const src = read("components/journal/Trades.jsx");
+  ok(/charges: rows\.reduce\(\(a, t\) => a \+ \(Number\(t\.charges\) \|\| 0\), 0\),/.test(src));
+  ok(/margin: rows\.reduce\(\(a, t\) => a \+ \(Number\(t\.margin\) \|\| 0\), 0\),/.test(src));
 });
