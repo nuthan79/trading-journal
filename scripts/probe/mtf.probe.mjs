@@ -179,3 +179,33 @@ test("folded, the setup still says how you felt — or that only today can", () 
   ok(/t\.entry_emotion && `feeling \$\{t\.entry_emotion\.toLowerCase\(\)\}`/.test(s));
   ok(/RS rank, your reason and how you feel can only be written today/.test(s));
 });
+
+/* Checked against a real part-sold trade: DATAPATTNS, 232 at ₹4,609.80, 2.35→2.55×,
+   ₹40/lakh/day, 108 sold after 13 days. Every figure matched by hand; two were
+   presented wrongly. */
+test("a cost in R is shown without a plus sign", () => {
+  const s = form();
+  ok(!/rfmt\(mtf\.costR\)/.test(s), "rfmt signs it, and +0.10R reads as a gain");
+  ok(/Math\.abs\(mtf\.costR\)\.toFixed\(2\)\}R/.test(s));
+});
+
+test("return on your own money shows only once the whole position is sold", () => {
+  /* Part-sold, the P&L in the form is the banked part alone: −7.2% was the
+     loss on 108 shares divided by the money behind all 232. */
+  ok(/\{mtf\.openQty === 0 && isFinite\(mtf\.returnOnOwnPct\) && \(/.test(form()));
+});
+
+test("the DATAPATTNS figures, as the form showed them", () => {
+  const m = mtfFigures({
+    entryPrice: 4609.8, quantity: 232, entryDate: "2026-09-03", leverage: 2.55, rate: 40,
+    riskAmt: 153.2 * 232, asOf: "2026-09-18",
+    exits: [{ exit_date: "2026-09-16", quantity: 108 }],
+  });
+  near(m.own, 419401.41, 0.01);
+  near(m.funded, 650072.19, 0.01);
+  near(m.perDayNow, 138.98, 0.01, "₹139 a day on the 124 still held");
+  near(m.interest, 1573.62 + 2084.71, 0.02, "13 days on 108, 15 days on 124");
+  eq(m.fees, 36);
+  eq(Math.round(m.daysPerR), 137);
+  near(m.coverMovePct, 0.64, 0.005);
+});

@@ -683,7 +683,7 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
     ? "Needs the leverage and the interest rate"
     : `${t.mtf_leverage}× · ₹${t.mtf_rate} per lakh a day`
       + (mtf && isFinite(mtf.cost)
-        ? ` · ${rupee(mtf.cost)} so far${isFinite(mtf.costR) ? ` (${rfmt(mtf.costR)})` : ""}`
+        ? ` · ${rupee(mtf.cost)} so far${isFinite(mtf.costR) ? ` (${Math.abs(mtf.costR).toFixed(2)}R)` : ""}`
         : "");
 
   /* Ticking MTF fills in the saved rate — the broker's charge rarely changes
@@ -830,7 +830,7 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                 <label className="tf-check">
                   <input type="checkbox" checked={!!t.mtf_on}
                          onChange={(e) => setMtfOn(e.target.checked)} />
-                  Bought on MTF — part of it with the broker&apos;s money
+                  Bought on MTF
                 </label>
 
                 {t.mtf_on && (
@@ -842,13 +842,13 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                         <div className="hint" style={{
                           color: t.mtf_leverage !== "" && !isMtf(t.mtf_leverage) ? "var(--short)" : undefined }}>
                           {t.mtf_leverage === ""
-                            ? "The multiple on your broker's MTF screen for this stock. Required."
+                            ? "From your broker's MTF screen. Required."
                             : !isMtf(t.mtf_leverage)
                             ? "Must be above 1× — at 1× nothing is borrowed."
                             : mtf
-                            ? `${rupee(mtf.own)} of yours buys ${rupee(mtf.position)}; the broker funds ${rupee(mtf.funded)}.`
-                              + (num(t.mtf_leverage) > 7 ? " That is unusually high — worth checking." : "")
-                            : "Add the entry price and quantity to see the split."}
+                            ? `Your ${rupee(mtf.own)} + broker's ${rupee(mtf.funded)} = ${rupee(mtf.position)}`
+                              + (num(t.mtf_leverage) > 7 ? " — unusually high, worth checking" : "")
+                            : "Add entry price and quantity to see the split"}
                         </div></label>
                       <label className="f"><span>Interest — ₹ per lakh per day</span>
                         <input className="in" inputMode="decimal" placeholder="From your broker"
@@ -856,18 +856,16 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                         <div className="hint" style={{
                           color: t.mtf_rate !== "" && !(num(t.mtf_rate) > 0) ? "var(--short)" : undefined }}>
                           {t.mtf_rate === ""
-                            ? "What your broker charges on the funded part. Required, and remembered for next time."
+                            ? "Required. Remembered for your next trade."
                             : !(num(t.mtf_rate) > 0)
-                            ? "Must be a positive amount."
+                            ? "Must be more than zero"
                             : num(t.mtf_rate) < 1
                             /* Somebody who typed the percentage: 0.04 % a day is ₹40 a lakh. */
-                            ? `That looks like a percentage. As ₹ per lakh, ${t.mtf_rate}% a day is ₹${(num(t.mtf_rate) * 1000).toFixed(0)}.`
-                            : `${pct(annualPct(t.mtf_rate), 1)} a year on the funded part.`
+                            ? `Looks like a percentage — ${t.mtf_rate}% a day is ₹${(num(t.mtf_rate) * 1000).toFixed(0)} per lakh`
+                            : `${pct(annualPct(t.mtf_rate), 1)} a year`
                               + (defaultMtfRate != null && num(t.mtf_rate) === Number(defaultMtfRate)
-                                ? " Your saved rate."
-                                : defaultMtfRate != null
-                                ? " Saving makes this your new default."
-                                : " Saved as your default for next time.")}
+                                ? " · your saved rate"
+                                : " · saved as your rate for next time")}
                         </div></label>
                     </div>
 
@@ -876,47 +874,52 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                         {mtf.openQty > 0 && (
                           <div className="tf-mtf-cell">
                             <b className="mono">{rupee(mtf.perDayNow)}</b>
-                            <span>a day to hold{mtf.openQty < num(t.quantity) ? " what is left" : ""}</span>
+                            <span>interest per day</span>
                           </div>
                         )}
-                        <div className="tf-mtf-cell" title={mtf.why || undefined}>
+                        <div className="tf-mtf-cell"
+                             title={isFinite(mtf.cost)
+                               ? `${rupee(mtf.interest)} interest + ${rupee(mtf.fees)} pledge fees`
+                               : mtf.why}>
                           <b className="mono">{isFinite(mtf.cost) ? rupee(mtf.cost) : "—"}</b>
                           <span>
                             {!isFinite(mtf.cost)
                               ? mtf.why
-                              : `MTF cost ${mtf.openQty > 0 ? "so far" : "in all"}`
-                                + (isFinite(mtf.costR) ? `, ${rfmt(mtf.costR)} of your risk` : "")
-                                + ` — ${rupee(mtf.interest)} interest, ${rupee(mtf.fees)} pledge fees`}
+                              : `cost so far${isFinite(mtf.costR) ? ` · ${Math.abs(mtf.costR).toFixed(2)}R` : ""}`}
                           </span>
                         </div>
                         {isFinite(mtf.daysPerR) && (
                           <div className="tf-mtf-cell"
-                               title="Your planned risk divided by what the full position costs a day">
+                               title="How long holding the full position takes for interest to cost as much as your risk">
                             <b className="mono">{Math.round(mtf.daysPerR)} days</b>
-                            <span>held at full size costs 1R in interest</span>
+                            <span>until interest costs 1R</span>
                           </div>
                         )}
                         {isFinite(mtf.coverMovePct) && mtf.coverMovePct > 0 && (
-                          <div className="tf-mtf-cell">
+                          <div className="tf-mtf-cell"
+                               title="How much the shares still held must rise just to pay the interest so far">
                             <b className="mono">+{mtf.coverMovePct.toFixed(2)}%</b>
-                            <span>price move needed just to pay it</span>
+                            <span>rise needed to cover it</span>
                           </div>
                         )}
-                        {isFinite(mtf.returnOnOwnPct) && (
-                          <div className="tf-mtf-cell">
+                        {/* Only once everything is sold. On a part-sold trade the
+                            P&L here is the banked part alone, and dividing it by
+                            all of your money gave a return for half a trade. */}
+                        {mtf.openQty === 0 && isFinite(mtf.returnOnOwnPct) && (
+                          <div className="tf-mtf-cell"
+                               title={`${signedPct(mtf.returnOnPositionPct)} on the whole position`}>
                             <b className={`mono ${mtf.returnOnOwnPct >= 0 ? "pos" : "neg"}`}>
                               {signedPct(mtf.returnOnOwnPct)}
                             </b>
-                            <span>on your own money, after interest — {signedPct(mtf.returnOnPositionPct)} on the whole position</span>
+                            <span>return on your own money</span>
                           </div>
                         )}
                       </div>
                     )}
                     {mtf && (
                       <div className="hint" style={{ marginTop: 8 }}>
-                        Interest counts calendar days, per sell — shares sold stop costing interest the
-                        day they go. Pledge is ₹18 when bought and ₹18 for each sell. All of it comes
-                        out of P&amp;L and R, reported separately from charges.
+                        Interest runs every day until each share is sold, plus ₹18 to pledge and ₹18
+                        per sell. Already taken out of your P&amp;L and R.
                       </div>
                     )}
                   </>
@@ -1269,12 +1272,14 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                     color: var(--ink); cursor: pointer; }
         .tf-check input { width: 15px; height: 15px; margin: 0; accent-color: var(--ink); }
         /* The figures, across the width rather than stacked down the left. */
+        /* Flex, not grid: a last row with fewer figures stretches to fill the
+           width. As a grid it left an empty grey block where a cell was not. */
         .tf-mtf {
-          display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-          gap: 1px; margin-top: 12px; background: var(--rule);
-          border: 1px solid var(--rule); border-radius: 3px; overflow: hidden;
+          display: flex; flex-wrap: wrap; gap: 1px; margin-top: 12px;
+          background: var(--rule); border: 1px solid var(--rule);
+          border-radius: 3px; overflow: hidden;
         }
-        .tf-mtf-cell { background: var(--card); padding: 10px 12px;
+        .tf-mtf-cell { flex: 1 1 160px; background: var(--card); padding: 10px 12px;
                        display: flex; flex-direction: column; gap: 3px; }
         .tf-mtf-cell b { font-size: 15px; font-weight: 500; color: var(--ink); }
         .tf-mtf-cell span { font-size: 11.5px; color: var(--ink3); line-height: 1.4; }
