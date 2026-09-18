@@ -193,7 +193,7 @@ export default function LedgerPlot({ rows }) {
     return (
       <div ref={box} className="card" style={{ padding: "16px 14px 10px" }}>
         <div className="lp-head">
-          <div className="eyebrow">Cumulative R</div>
+          <div className="eyebrow">Your running total, trade by trade<span className="term">Cumulative R</span></div>
           {rangeBar}
         </div>
         <div className="empty" style={{ minHeight: 150, border: 0, padding: "34px 10px" }}>
@@ -242,7 +242,8 @@ export default function LedgerPlot({ rows }) {
     <div ref={box} className="card" style={{ padding: "16px 14px 10px" }}>
       <div className="lp-head">
         <div className="eyebrow">
-          Cumulative R · {win ? "this window, from zero" : "every closed trade in sequence"}
+          Your running total, trade by trade
+          <span className="term">Cumulative R, {win ? "this window from zero" : "every closed trade in sequence"}</span>
         </div>
         {rangeBar}
         <div className="mono lp-total"
@@ -334,6 +335,14 @@ export default function LedgerPlot({ rows }) {
           </>
         ) : null}
       </div>
+
+      {/* The one chart on the Dashboard with no reading under it. It is also
+          the first, so it is where somebody learns what a curve here means. */}
+      <p className="edge-foot" style={{ marginTop: 12 }}>
+        The line is your total in R after each closed trade. Each bar below it is one
+        trade on its own, teal for a win and rust for a loss. Hover anywhere for the
+        trade behind that step.
+      </p>
 
       {styles}
     </div>

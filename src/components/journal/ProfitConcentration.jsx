@@ -88,7 +88,7 @@ export default function ProfitConcentration({ closed }) {
     <>
       {pcData && (
         <section className="pc-card">
-          <div className="eyebrow pc-title">Profit concentration</div>
+          <div className="eyebrow pc-title">How much rests on your best trades<span className="term">Profit concentration</span></div>
 
           <div className="pc-strip">
             <Stat

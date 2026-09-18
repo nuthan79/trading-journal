@@ -20,7 +20,7 @@ export default function MonthlyReturns({ closed }) {
   if (!grid) {
     return (
       <section className="mr-card mr-empty">
-        <div className="eyebrow">Monthly returns in R</div>
+        <div className="eyebrow">Which months paid<span className="term">Monthly returns in R</span></div>
         <p>
           {closed?.length
             ? `Each month's total is measured in R, so it waits on a stop for the
@@ -42,7 +42,7 @@ export default function MonthlyReturns({ closed }) {
   return (
     <section className="mr-card">
       <div className="mr-head">
-        <span className="eyebrow">Monthly returns in R</span>
+        <span className="eyebrow">Which months paid<span className="term">Monthly returns in R</span></span>
         <span className="mr-key mono">green = profitable month</span>
       </div>
 

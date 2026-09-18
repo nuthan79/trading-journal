@@ -76,7 +76,7 @@ export default function Distribution({ rows }) {
   return (
     <div className="card">
       <div className="dist-head">
-        <div className="eyebrow">R distribution</div>
+        <div className="eyebrow">How big your wins and losses were<span className="term">R distribution</span></div>
         <div className="dist-legend">
           <span><i className="dist-sw dist-sw-r" />Total R</span>
           <span><i className="dist-sw dist-sw-n" />Trades<i className="dist-dim"> · right</i></span>

@@ -164,3 +164,28 @@ test("the card counts the user's own diary, never the sample book's", () => {
   ok(/diary: ownDiaryCount/.test(page), "the sample diary would tick step three for them");
   ok(/trades: trades\.length/.test(page), "`trades` is the real table; `all` would include the sample");
 });
+
+/* The Dashboard charts were labelled with what they are, not what to look for. */
+test("every Dashboard chart leads with a reading and keeps its old name beside it", () => {
+  const charts = {
+    "components/journal/LedgerPlot.jsx": "Cumulative R",
+    "components/journal/MonthlyReturns.jsx": "Monthly returns in R",
+    "components/journal/ProfitConcentration.jsx": "Profit concentration",
+    "components/journal/Distribution.jsx": "R distribution",
+  };
+  for (const [file, term] of Object.entries(charts)) {
+    const src = read(file);
+    const heads = [...src.matchAll(/className="eyebrow[^"]*">([\s\S]*?)<\/(?:div|span)>\s*(?:\n|<)/g)]
+      .map((m) => m[1]).filter((h) => h.includes(term));
+    ok(heads.length > 0, `${file} still names ${term} somewhere a user can find it`);
+    for (const h of heads) {
+      ok(/<span className="term">/.test(h),
+        `${file}: "${term}" must sit in the quiet .term slot, after a plain heading`);
+      ok(/^\s*[A-Z][a-z]/.test(h), `${file}: the heading must open with words, not the term`);
+    }
+  }
+});
+
+test("the running-total chart says how to read it", () => {
+  ok(/The line is your total in R after each closed trade/.test(read("components/journal/LedgerPlot.jsx")));
+});

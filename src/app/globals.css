@@ -62,6 +62,11 @@ button { font-family: inherit; cursor: pointer; }
   font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase;
   color: var(--ink2);
 }
+/* A heading that says what to look for, with the chart's technical name kept
+   beside it, quieter. "Your running total · Cumulative R": the newcomer reads
+   the first half, and anybody who learned the old label still finds it. */
+.eyebrow .term { color: var(--ink3); font-weight: 500; }
+.eyebrow .term::before { content: " · "; }
 
 .wrap { max-width: 680px; margin: 0 auto; padding: 56px 20px 80px; }
 
