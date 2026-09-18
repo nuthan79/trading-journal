@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Info, X } from "lucide-react";
 
 /**
@@ -59,6 +60,10 @@ export default function DemoBanner({ onDismiss, pinned = false, hiddenCount = 0 
           <b>This is sample data.</b> A made-up book so the charts have something to
           show. It disappears the moment you log a trade of your own — nothing here
           is saved, and none of it counts towards your figures.
+          {/* The banner is the one thing every new user reads, so it carries the
+              fastest way out of the sample: their real history, in one file. */}
+          {" "}Already trading? <Link href="/import" className="db-link">Import your broker&apos;s
+          tax P&amp;L</Link> and the whole year arrives at once.
         </p>
       )}
       <button className="btn ghost sm" onClick={go} disabled={busy}>
@@ -78,6 +83,10 @@ export default function DemoBanner({ onDismiss, pinned = false, hiddenCount = 0 
           flex: 1 1 340px; margin: 0; font-size: 12.5px; line-height: 1.6;
         }
         .db b { font-weight: 600; }
+        /* :global because <Link> is a component, and styled-jsx only stamps its
+           scoping class onto plain elements — a bare .db-link would never match. */
+        .db :global(.db-link) { color: var(--brass); font-weight: 600;
+                                text-underline-offset: 2px; }
       `}</style>
     </div>
   );

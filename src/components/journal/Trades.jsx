@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { matchesEdgeFilter, describeEdgeFilter } from "@/lib/edge";
-import { Plus, Pencil, Trash2, Download, Image as ImageIcon, X, Check, Flag } from "lucide-react";
+import Link from "next/link";
+import { Plus, Pencil, Trash2, Download, Image as ImageIcon, X, Check, Flag, Upload } from "lucide-react";
 import { rupee, rfmt, pct, signedPct, exportFilename, dmy } from "@/lib/format";
 import { excursion } from "@/lib/path";
 import Money from "@/components/Money";
@@ -648,12 +649,28 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
       ) : (
       <div className="card scroll">
         {rows.length === 0 ? (
-          <div className="empty">
-            <div className="eyebrow">Nothing here yet</div>
-            <p>Every trade you log becomes a row here and a bar on the plot. Start with
-              one — even an old trade you still remember clearly.</p>
-            <button className="btn" onClick={onNew}><Plus size={14} />Log a trade</button>
-          </div>
+          all.length === 0 ? (
+            <div className="empty">
+              <div className="eyebrow">Nothing here yet</div>
+              <p>Every trade you log becomes a row here and a bar on the plot. Start with
+                one — even an old trade you still remember clearly.</p>
+              {/* The second way in, and for most people the faster one. */}
+              <p>Already traded this year? Import your broker&apos;s tax P&amp;L and the
+                whole year arrives at once, with charges to the paisa.</p>
+              <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+                <button className="btn" onClick={onNew}><Plus size={14} />Log a trade</button>
+                <Link href="/import" className="btn ghost"><Upload size={14} />Import from a broker file</Link>
+              </div>
+            </div>
+          ) : (
+            /* A filter that matches nothing is not an empty journal. This used
+               to say "Nothing here yet" to somebody with a hundred trades who
+               had clicked Losers on a winning month. */
+            <div className="empty">
+              <div className="eyebrow">No trades match</div>
+              <p>Nothing in your journal fits this view. Try another tab, or clear the search.</p>
+            </div>
+          )
         ) : (
           <table className="t">
             <thead><tr>

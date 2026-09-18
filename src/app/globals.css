@@ -89,6 +89,9 @@ label.f > span {
   display: inline-flex; align-items: center; gap: 7px;
 }
 .btn:disabled { opacity: 0.4; cursor: default; }
+/* A link styled as a button — Import from the Trades empty state — must not
+   pick up the anchor underline. */
+a.btn { text-decoration: none; }
 .btn.ghost { background: transparent; color: var(--ink2); border-color: var(--rule); }
 
 .check {

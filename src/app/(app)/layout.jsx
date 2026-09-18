@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Plus, LayoutGrid, Layers, Table2, LineChart, BookOpen, ClipboardList, Target, Brain } from "lucide-react";
+import { Plus, LayoutGrid, Layers, Table2, LineChart, BookOpen, ClipboardList, Target, Brain, Upload } from "lucide-react";
 import {
   supabase, getProfile, saveProfile as dbSaveProfile,
   listTrades, listExitsByTrade, saveExits, saveTrade as dbSaveTrade, deleteTrade as dbDeleteTrade,
@@ -63,6 +63,13 @@ const TABS = [
   { id: "dash", href: "/dashboard", label: "Dashboard", icon: LayoutGrid },
   { id: "holdings", href: "/holdings", label: "Holdings", icon: Layers },
   { id: "trades", href: "/trades", label: "Trades", icon: Table2 },
+  /*
+    Import used to be reachable only from a button inside the settings sheet,
+    which made the fastest way to a journal worth opening — a year of broker
+    history in one file — a feature new users could not discover. Beside
+    Trades because that is where its output lands.
+  */
+  { id: "import", href: "/import", label: "Import", icon: Upload },
   { id: "perf", href: "/performance", label: "Performance", icon: LineChart },
   /*
     Points at the first sub-page, not at /analysis.
@@ -86,7 +93,7 @@ export default function AppLayout({ children }) {
   /*
     Exact match, then prefix.
 
-    No fallback to "dash": /import and /stops match no tab, and defaulting
+    No fallback to "dash": /stops matches no tab, and defaulting
     would light up Dashboard while you're plainly somewhere else.
 
     The prefix pass exists for Analysis, whose real pages are one level down
