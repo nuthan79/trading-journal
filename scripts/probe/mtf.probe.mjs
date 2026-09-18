@@ -209,3 +209,16 @@ test("the DATAPATTNS figures, as the form showed them", () => {
   eq(Math.round(m.daysPerR), 137);
   near(m.coverMovePct, 0.64, 0.005);
 });
+
+test("the MTF section starts closed, and open only on a trade already on MTF", () => {
+  /* Remembered, it came up open on every new trade after being opened once. */
+  const s = form();
+  ok(!/useRememberedFold\("ledgerr:form-mtf-open"\)/.test(s));
+  ok(/useState\(\(\) => !!initial && initial\.mtf_leverage != null\)/.test(s));
+  ok(/useRememberedFold\("ledgerr:form-setup-open"\)/.test(s), "the setup still remembers");
+});
+
+test("the charges box is sized for its figure", () => {
+  const cf = readFileSync(path.join(SRC, "components/journal/ChargesField.jsx"), "utf8");
+  ok(/\.cf-in \{ flex: 0 1 160px; min-width: 0; \}/.test(cf));
+});

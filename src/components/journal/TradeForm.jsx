@@ -597,7 +597,11 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
      a trader who always fills the setup should not have to open it every
      time, and one who never uses margin should not see it open. */
   const [setupOpen, setSetupOpen] = useRememberedFold("ledgerr:form-setup-open");
-  const [mtfOpen, setMtfOpen] = useRememberedFold("ledgerr:form-mtf-open");
+  /* NOT remembered, unlike the setup. Most trades are not on margin, so a
+     section left open once came up open on every new trade after. It starts
+     closed, and open only when editing a trade that is on MTF — there its
+     figures are the point. */
+  const [mtfOpen, setMtfOpen] = useState(() => !!initial && initial.mtf_leverage != null);
 
   /**
    * What the stock is trading at right now, shown under the price fields.

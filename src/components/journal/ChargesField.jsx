@@ -182,7 +182,10 @@ export default function ChargesField({
       <style jsx>{`
         .cf { display: block; }
         .cf-row { display: flex; align-items: center; gap: 8px; }
-        .cf-in { flex: 1; }
+        /* Sized for the figure — a trade's charges run to five or six digits
+           with paise — with the auto badge beside it, not stretched across the
+           form with the badge stranded at the far edge. */
+        .cf-in { flex: 0 1 160px; min-width: 0; }
         .cf-tag {
           font-size: 9px; font-weight: 700; letter-spacing: 0.1em;
           text-transform: uppercase; color: var(--brass);
