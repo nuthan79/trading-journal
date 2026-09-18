@@ -89,6 +89,11 @@ export default function HeadlineNumbers({ closed, banking = [], openingCapital, 
    * It also settles "Avg loss" appearing twice: once as a share of position
    * size and once in R. Same word, different question, and now visibly so.
    */
+  /* Charges, and MTF interest and pledge fees where there were any — named
+     separately, because they are different costs and only one is trading's. */
+  const afterCosts = `After ${rupee(h.charges)} of charges`
+    + (h.margin > 0 ? ` and ${rupee(h.margin)} of MTF costs` : "");
+
   /* Named because it is now said twice — on the tile and on the figure. */
   const chargeShare = isFinite(h.netPnl) && h.netPnl + h.charges > 0
     ? `${pct((h.charges / (h.netPnl + h.charges)) * 100, 1)} of gross profit`
@@ -102,8 +107,8 @@ export default function HeadlineNumbers({ closed, banking = [], openingCapital, 
            figure now has a hover of its own and a nested title wins whichever
            one the pointer happens to be over. Folded, both facts survive. */
         { label: "Net P&L",
-          value: <Money v={h.netPnl} note={`After ${rupee(h.charges)} of charges`} />,
-          tone: sign(h.netPnl), hint: `After ${rupee(h.charges)} of charges` },
+          value: <Money v={h.netPnl} note={afterCosts} />,
+          tone: sign(h.netPnl), hint: afterCosts },
         /*
           NO RETURN PERCENTAGE HERE, DELIBERATELY.
 

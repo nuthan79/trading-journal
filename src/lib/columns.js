@@ -28,8 +28,9 @@ export const COLUMN_HINTS = {
   exposure: "What the position cost: entry price × shares bought",
   avgExitPrice: "Average sell price. Sold in parts, each sell counts by the shares in it",
   exitPct: "How far the average sell price was from your entry",
-  pnl: "Profit or loss after charges. For a position still held, includes what the "
-    + "unsold shares are worth at the last price",
+  pnl: "Profit or loss after charges, and after interest and pledge fees on a trade "
+    + "bought on MTF. For a position still held, includes what the unsold shares are "
+    + "worth at the last price",
   r: "Profit or loss divided by the risk you took at entry. +2R means you made twice "
     + "what you risked; −1R means the stop was hit",
   riskAmt: "Rupees between entry and stop, across the whole position. This is one R",
@@ -57,7 +58,8 @@ export const COLUMN_HINTS = {
     + "At zero or below, this position can no longer cost you money overall",
   mark: "Current market price, from the last refresh",
   changePct: "How far the price has moved since you bought — not today's move",
-  realisedPnl: "Profit already taken from part-sells, after charges",
-  unrealisedPnl: "What the shares still held are up or down, at the current price",
+  realisedPnl: "Profit already taken from part-sells, after charges and any MTF costs",
+  unrealisedPnl: "What the shares still held are up or down at the current price, "
+    + "less MTF interest so far",
   atR: "Where the price sits in R: how many times your original risk it has moved from entry",
 };

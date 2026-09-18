@@ -72,11 +72,21 @@ test("no rate yet: the split shows, the cost waits", () => {
   ok(!Number.isFinite(m.interest) && /rate/.test(m.why));
 });
 
-test("return on your own money is after interest", () => {
-  /* ₹10,000 made, ₹540 of interest: 9.46% on ₹1,00,000 of your own. */
-  const m = mtfFigures({ ...BASE, pnl: 10000 });
-  near(m.returnOnOwnPct, 9.46, 0.001);
-  near(m.returnOnPositionPct, (9460 / 235000) * 100, 0.0001, "and on the whole position");
+test("return on your own money divides P&L that is already net of margin", () => {
+  /* derivePosition takes interest and fees out of pnl, so the form hands in a
+     net figure. Taking interest off again here counted it twice — this test
+     used to pass a gross ₹10,000 and expect the subtraction. */
+  const m = mtfFigures({ ...BASE, pnl: 9460 });
+  near(m.returnOnOwnPct, 9.46, 0.001, "₹9,460 net on ₹1,00,000 of your own");
+  near(m.returnOnPositionPct, (9460 / 235000) * 100, 0.0001);
+});
+
+test("the form counts the pledge and one unpledge per sell", () => {
+  near(mtfFigures(BASE).fees, 18, 0.001, "pledged, nothing sold yet");
+  const m = mtfFigures({ ...BASE, exits: [
+    { exit_date: "2026-09-05", quantity: 100 }, { exit_date: "2026-09-08", quantity: 135 }] });
+  near(m.fees, 18 + 18 * 2, 0.001);
+  near(m.cost, m.interest + m.fees, 0.001);
 });
 
 test("what is and is not margin", () => {

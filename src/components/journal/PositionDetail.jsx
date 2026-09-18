@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Pencil, Trash2, X, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, LogOut, ImagePlus, Flag, Check } from "lucide-react";
 import { rupee, rfmt, pct, signedPct, today } from "@/lib/format";
+import { isMtf } from "@/lib/mtf";
 import Money from "@/components/Money";
 import { chartUrl } from "@/lib/db";
 import ChartViewer from "./ChartViewer";
@@ -339,6 +340,7 @@ export default function PositionDetail({ row, diary = [], twin = null, onAcknowl
             <div className="pd-split mono">
               {closed
                 ? `after ${rupee(row.charges)} of charges`
+                  + (row.margin > 0 ? ` and ${rupee(row.margin)} of MTF costs` : "")
                 : <>
                     banked {isFinite(row.realisedPnl) && row.qtyExited > 0 ? rupee(row.realisedPnl) : "—"}
                     {row.qtyOpen > 0 && (
@@ -459,6 +461,37 @@ export default function PositionDetail({ row, diary = [], twin = null, onAcknowl
                       {isFinite(row.mark) && (
                         <i className="pd-dim">at {rfmt(atR(Number(row.mark)))}</i>
                       )}
+                      {isFinite(row.unrealisedPnl) && row.openInterest > 0 && (
+                        <i className="pd-dim">after {rupee(row.openInterest)} interest so far</i>
+                      )}
+                    </td>
+                  </tr>
+                )}
+
+                {/*
+                  * WHAT MARGIN COST, ON ITS OWN ROW. The sells above show their
+                  * own charges and their gross result; the interest on what was
+                  * sold, the pledge and the unpledges are one more cost against
+                  * the position, and the Position total below is net of them.
+                  * A row rather than folded into each sell, so the sells still
+                  * read as the prices they went at.
+                  */}
+                {isMtf(row.mtf_leverage) && (row.realisedMargin > 0 || row.interestUnknown) && (
+                  <tr className="pd-mtfrow">
+                    <td>
+                      <span className="pd-leg" data-kind="mtf">MTF</span>
+                      <i className="pd-dim"> {Number(row.mtf_leverage)}× · ₹{Number(row.mtf_rate)} per lakh a day</i>
+                    </td>
+                    <td className="num pd-dim">—</td>
+                    <td className="num pd-dim">—</td>
+                    <td className="num pd-dim">—</td>
+                    <td className="num neg">
+                      {row.realisedMargin > 0 ? <Money v={-row.realisedMargin} /> : "—"}
+                      <i className="pd-dim">
+                        {row.interestUnknown
+                          ? "interest not counted — the entry date was estimated"
+                          : `${rupee(row.realisedInterest)} interest · ${rupee(row.pledgeFees)} pledge fees`}
+                      </i>
                     </td>
                   </tr>
                 )}
@@ -653,6 +686,7 @@ export default function PositionDetail({ row, diary = [], twin = null, onAcknowl
           .pd-leg[data-kind="in"] { color: var(--ink3); }
           .pd-leg[data-kind="out"] { color: var(--long); }
           .pd-leg[data-kind="hold"] { color: var(--brass); }
+          .pd-leg[data-kind="mtf"] { color: var(--short); }
           .pd-openrow { background: #FAFBFA; }
 
           .pd-thesis {

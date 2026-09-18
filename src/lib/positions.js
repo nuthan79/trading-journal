@@ -1,4 +1,6 @@
 import { noStopOnRecord } from "./stops";
+import { interestModel } from "./mtf";
+import { today } from "./format";
 /**
  * Tranched positions.
  *
@@ -124,6 +126,9 @@ export function bankedEvents(t) {
     date: String(d).slice(0, 10),
     pnl, r, trade: t,
     charge: n(t?.charges) || 0,
+    /* The fallback event is the whole realised part, so it carries all of the
+       realised margin cost — the same amount realisedPnl already has out. */
+    margin: n(t?.realisedMargin) || 0,
     placedByEntry: !t?.exit_date,
   }];
 }
@@ -199,13 +204,26 @@ export function realisationEvents(t) {
    * is exact to the paisa. When every charge is already on the tranches, as it
    * is on an imported book, the remainder is zero and each sell is untouched.
    */
-  const chargeTotal = grossSum - total;
+  /* Margin costs are taken out FIRST, sell by sell, from the same model that
+     took them out of realisedPnl. Left in, they would sit inside the
+     remainder below, be called a charge and be spread by quantity —
+     mislabelled, misallocated, and added to the Charges tile.
+
+     Each sell carries its own interest and its own unpledge fee. The pledge
+     fee belongs to the purchase, not to any one sell, so it is spread by
+     quantity the way entry-side charges are, the last sell taking what is
+     left so the parts sum to the paisa. */
+  const im = interestModel(t);
+  const ownMargin = (e) => (im ? im.onSell(e) + im.unpledgeFee : 0);
+  const pledge = im ? im.pledgeFee : 0;
+  const marginSum = sum(exits.map(ownMargin)) + pledge;
+  const chargeTotal = grossSum - total - marginSum;
   const ownSum = sum(exits.map((e) => n(e.charges) || 0));
   const spare = chargeTotal - ownSum;
   const qtyOut = sum(exits.map((e) => n(e.quantity) || 0));
   const risk = n(t.riskAmt);
 
-  let allocated = 0;
+  let allocated = 0, pledged = 0;
   return exits.map((e, i) => {
     const q = n(e.quantity) || 0;
     const last = i === exits.length - 1;
@@ -213,7 +231,11 @@ export function realisationEvents(t) {
       : spare * (qtyOut > 0 ? q / qtyOut : 1 / exits.length);
     allocated += extra;
     const charge = (n(e.charges) || 0) + extra;
-    const pnl = gross[i] - charge;
+    const share = last ? pledge - pledged
+      : pledge * (qtyOut > 0 ? q / qtyOut : 1 / exits.length);
+    pledged += share;
+    const margin = ownMargin(e) + share;
+    const pnl = gross[i] - charge - margin;
     return {
       date: String(e.exit_date).slice(0, 10),
       pnl,
@@ -222,6 +244,9 @@ export function realisationEvents(t) {
          same dates, rather than being handed a position-level figure that
          belongs to no single period. */
       charge,
+      /* This sell's margin cost — interest and fees — reported beside its
+         charge, never in it. */
+      margin,
       /* Risk is fixed at entry for the whole position, so these sum to
          realisedR with no weighting to argue about. */
       r: risk > 0 ? pnl / risk : NaN,
@@ -327,7 +352,32 @@ export function derivePosition(t, accountSize) {
   const grossRealised = sum(
     exits.map((e) => (n(e.price) - entry) * n(e.quantity) * dir)
   );
-  const realisedPnl = qtyExited > 0 ? grossRealised - charges : NaN;
+  /**
+   * MARGIN COSTS COME OUT OF P&L, and so out of R — the interest, and the
+   * pledge and unpledge fees.
+   *
+   * A trade bought on MTF pays the broker for every day the funded part is
+   * held. That is as real a cost as brokerage, and a journal that measures
+   * everything after costs cannot leave it out: 1R made while paying 0.4R of
+   * interest is 0.6R made.
+   *
+   * Charged per sell — each tranche from entry to the day it went — so a
+   * position scaled out over weeks is not billed for shares already sold. Kept
+   * APART from `charges`: it is not a transaction charge, the Charges tile must
+   * not grow with it, and the tables report it on its own line.
+   *
+   * The fees are the pledge when bought and an unpledge per sell. Like the
+   * entry-side charges they are taken from realised P&L once something has
+   * been sold — the same moment, for the same reason.
+   *
+   * Zero for every trade not ticked as MTF. On an estimated entry date the
+   * interest is not guessed at; `interestUnknown` says so instead.
+   */
+  const im = interestModel(t);
+  const realisedInterest = im ? sum(exits.map(im.onSell)) : 0;
+  const pledgeFees = im && qtyExited > 0 ? im.pledgeFee + im.unpledgeFee * exits.length : 0;
+  const realisedMargin = realisedInterest + pledgeFees;
+  const realisedPnl = qtyExited > 0 ? grossRealised - charges - realisedMargin : NaN;
   const realisedR = riskAmt > 0 && isFinite(realisedPnl) ? realisedPnl / riskAmt : NaN;
   const avgExitPrice = qtyExited > 0
     ? sum(exits.map((e) => n(e.price) * n(e.quantity))) / qtyExited
@@ -353,8 +403,12 @@ export function derivePosition(t, accountSize) {
   /* ---- unrealised on whatever is left ------------------------------ */
   const mark = n(t.last_price);
   const hasMark = isFinite(mark);
+  /* Interest so far on what is still held — taken off the unrealised figure,
+     and only when there is a mark to take it off. With no price there is no
+     unrealised P&L to be net of anything. */
+  const openInterest = im && qtyOpen > 0 ? im.onHeld(qtyOpen, today()) : 0;
   const unrealisedPnl =
-    qtyOpen > 0 && hasMark ? (mark - entry) * qtyOpen * dir : NaN;
+    qtyOpen > 0 && hasMark ? (mark - entry) * qtyOpen * dir - openInterest : NaN;
   const unrealisedR =
     riskAmt > 0 && isFinite(unrealisedPnl) ? unrealisedPnl / riskAmt : NaN;
 
@@ -424,6 +478,14 @@ export function derivePosition(t, accountSize) {
     status, qtyExited, qtyOpen, pctClosed, exitsCount: exits.length,
     // money
     realisedPnl, realisedR, avgExitPrice, exitPct, charges,
+    /* What margin actually cost, as deducted: the realised part always, the
+       open interest only where it came off an unrealised figure. `interest`
+       and `pledgeFees` are its two halves, for anywhere that shows them. */
+    margin: realisedMargin + (qtyOpen > 0 && hasMark ? openInterest : 0),
+    realisedMargin,
+    interest: realisedInterest + (qtyOpen > 0 && hasMark ? openInterest : 0),
+    realisedInterest, pledgeFees, openInterest,
+    interestUnknown: !!im && !im.known,
     unrealisedPnl, unrealisedR, mark, hasMark,
     pnl, r,
     // live risk

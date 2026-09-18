@@ -21,6 +21,17 @@ import Money from "@/components/Money";
 /** Every rupee of it — for the hovers, where the point is the exact figure. */
 const full = (v) => rupee(v, { compact: false });
 
+/* What a period's P&L is net of. MTF costs are named beside charges and added
+   back into the "before" figure — leaving them out would make that figure
+   quietly net of interest while calling itself the result before costs. */
+const costNote = (charges, margin, pnl) => {
+  const c = Number(charges) || 0, m = Number(margin) || 0;
+  if (!(c > 0) && !(m > 0)) return undefined;
+  const what = [c > 0 && `${full(c)} of charges`, m > 0 && `${full(m)} of MTF costs`]
+    .filter(Boolean).join(" and ");
+  return `After ${what}${isFinite(pnl) ? ` — ${full(pnl + c + m)} before them` : ""}`;
+};
+
 const GRAINS = [
   { id: "month", label: "Monthly" },
   { id: "quarter", label: "Quarterly" },
@@ -95,6 +106,7 @@ export default function PeriodPerformance({ closed, openingCapital, flows = [], 
       pnl: rows.reduce((a, r) => a + num(r.pnl), 0),
       totalR: rows.reduce((a, r) => a + num(r.totalR), 0),
       charges: rows.reduce((a, r) => a + num(r.charges), 0),
+      margin: rows.reduce((a, r) => a + num(r.margin), 0),
       green: rows.filter((r) => r.pnl > 0).length,
     };
   }, [rows]);
@@ -214,10 +226,7 @@ export default function PeriodPerformance({ closed, openingCapital, flows = [], 
                   * is the only question anyone opens this tooltip to ask.
                   */}
                 <td className={`num ${r.pnl >= 0 ? "pos" : "neg"}`} style={{ fontWeight: 500 }}>
-                  <Money v={r.pnl} note={isFinite(r.charges) && r.charges > 0
-                    ? `After ${full(r.charges)} of charges${
-                        isFinite(r.pnl) ? ` — ${full(r.pnl + r.charges)} before them` : ""}`
-                    : undefined} />
+                  <Money v={r.pnl} note={costNote(r.charges, r.margin, r.pnl)} />
                 </td>
                 <td className={`num ${r.returnPct >= 0 ? "pos" : "neg"}`}>
                   {r.returnPct == null ? <span className="pp-dim">—</span> : signedPct(r.returnPct)}
@@ -252,10 +261,7 @@ export default function PeriodPerformance({ closed, openingCapital, flows = [], 
                 <td><b>All</b></td>
                 <td className="num">{totals.trades}</td>
                 <td className={`num ${totals.pnl >= 0 ? "pos" : "neg"}`} style={{ fontWeight: 500 }}>
-                  <Money v={totals.pnl} note={totals.charges > 0
-                    ? `After ${full(totals.charges)} of charges — ${
-                        full(totals.pnl + totals.charges)} before them`
-                    : undefined} />
+                  <Money v={totals.pnl} note={costNote(totals.charges, totals.margin, totals.pnl)} />
                 </td>
                 <td className="num pp-dim">—</td>
                 <td className={`num ${totals.totalR >= 0 ? "pos" : "neg"}`}>

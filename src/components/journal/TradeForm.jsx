@@ -411,7 +411,14 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
   // shows is the R that gets stored rather than a slightly different one.
   const split = splitCharges(t, withExits(t).exits, chargeConfig);
   const d = derivePosition(
-    { ...t, charges: split.tradeCharges, exits: split.exits },
+    {
+      ...t, charges: split.tradeCharges, exits: split.exits,
+      /* Margin only counts while ticked: unticking must take the cost off the
+         figures at once, even though the typed values are kept in case it
+         is ticked again. */
+      mtf_leverage: t.mtf_on ? t.mtf_leverage : null,
+      mtf_rate: t.mtf_on ? t.mtf_rate : null,
+    },
     accountSize
   );
   const editing = !!t.id;
@@ -674,8 +681,8 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
     : !mtfOk
     ? "Needs the leverage and the interest rate"
     : `${t.mtf_leverage}× · ₹${t.mtf_rate} per lakh a day`
-      + (mtf && isFinite(mtf.interest)
-        ? ` · ${rupee(mtf.interest)} interest${isFinite(mtf.interestR) ? ` (${rfmt(mtf.interestR)})` : ""}`
+      + (mtf && isFinite(mtf.cost)
+        ? ` · ${rupee(mtf.cost)} so far${isFinite(mtf.costR) ? ` (${rfmt(mtf.costR)})` : ""}`
         : "");
 
   /* Ticking MTF fills in the saved rate — the broker's charge rarely changes
@@ -971,12 +978,13 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                           </div>
                         )}
                         <div className="tf-mtf-cell" title={mtf.why || undefined}>
-                          <b className="mono">{isFinite(mtf.interest) ? rupee(mtf.interest) : "—"}</b>
+                          <b className="mono">{isFinite(mtf.cost) ? rupee(mtf.cost) : "—"}</b>
                           <span>
-                            {!isFinite(mtf.interest)
+                            {!isFinite(mtf.cost)
                               ? mtf.why
-                              : `interest ${mtf.openQty > 0 ? "so far" : "paid"}`
-                                + (isFinite(mtf.interestR) ? `, ${rfmt(mtf.interestR)} of your risk` : "")}
+                              : `MTF cost ${mtf.openQty > 0 ? "so far" : "in all"}`
+                                + (isFinite(mtf.costR) ? `, ${rfmt(mtf.costR)} of your risk` : "")
+                                + ` — ${rupee(mtf.interest)} interest, ${rupee(mtf.fees)} pledge fees`}
                           </span>
                         </div>
                         {isFinite(mtf.daysPerR) && (
@@ -1004,8 +1012,9 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                     )}
                     {mtf && (
                       <div className="hint" style={{ marginTop: 8 }}>
-                        Counted in calendar days, per sell — shares sold stop costing interest the day
-                        they go. Shown here for now; not yet taken out of P&amp;L or R.
+                        Interest counts calendar days, per sell — shares sold stop costing interest the
+                        day they go. Pledge is ₹18 when bought and ₹18 for each sell. All of it comes
+                        out of P&amp;L and R, reported separately from charges.
                       </div>
                     )}
                   </>
@@ -1166,7 +1175,7 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                   <div className="readout" style={{ marginTop: 12 }}>
                     {derivedStatus === "partial" ? (
                       <>
-                        <div className="row"><span>Banked so far (net of charges)</span>
+                        <div className="row"><span>Banked so far (net of charges{t.mtf_on ? " and MTF costs" : ""})</span>
                           <b className={d.realisedPnl >= 0 ? "pos" : "neg"}><Money v={d.realisedPnl} /></b></div>
                         <div className="row"><span>Banked in R</span>
                           <b className={d.realisedR >= 0 ? "pos" : "neg"}>
@@ -1181,7 +1190,7 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                       </>
                     ) : (
                       <>
-                        <div className="row"><span>Realised P&amp;L (net of charges)</span>
+                        <div className="row"><span>Realised P&amp;L (net of charges{t.mtf_on ? " and MTF costs" : ""})</span>
                           <b className={d.pnl >= 0 ? "pos" : "neg"}><Money v={d.pnl} /></b></div>
                         <div className="row"><span>Outcome in R</span>
                           <b className={d.r >= 0 ? "pos" : "neg"} style={{ fontSize: 15 }}>

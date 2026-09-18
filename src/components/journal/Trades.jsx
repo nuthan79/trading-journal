@@ -41,7 +41,11 @@ const TRADE_COLS = ["symbol", "exchange", "side", "entry_date", "entry_price", "
   "stop_loss", "exposure", "riskAmt", "riskPct", "pattern", "pivot_price", "distPivot",
   "vol_pct_avg", "weinstein_stage", "rs_rank",
   "exit_date", "exit_price", "avgExitPrice", "exitPct", "exit_reason", "charges", "pnl", "r",
-  "heldDays", "mistakes", "notes"];
+  "heldDays", "mistakes", "notes",
+  /* Last, so a spreadsheet keyed on the columns before it is undisturbed. On a
+     trade bought on MTF, pnl is net of this as well as of charges, and without
+     it the export would not reconcile: gross − charges ≠ pnl. */
+  "margin"];
 
 /* Named for THEIR journal, not for the app. A folder of exports from three
    people is three sets of "ledgerr-closed-…" otherwise, and the one thing
