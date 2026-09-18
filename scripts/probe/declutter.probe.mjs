@@ -80,3 +80,26 @@ test("Process: Watch and Good fold unless nothing is critical or a warning", () 
   ok(/opened\[k\] \?\? \(k === "critical" \|\| k === "warning" \|\| \(!urgent && k === "watch"\)\)/.test(s));
   ok(/\{groupOpen\(sevKey\) && groups\[sevKey\]\.map/.test(s), "cards render only in an open group");
 });
+
+test("Process: one-line intro, and the method column is a hover", () => {
+  const s = visible("components/journal/Review.jsx");
+  ok(!/the only baseline available would be a better trader/.test(s), "the five-sentence intro is gone");
+  ok(!/<th>What it rests on<\/th>/.test(s), "no fourth column of method");
+  ok(/<th scope="row" title=\{s\.findingTitle/.test(s), "it lives on the stage's hover");
+  ok(/rv-proc-thin" title=\{`Only \$\{s\.sample\} trades`\}> provisional/.test(s),
+    "a thin sample is still flagged in sight");
+});
+
+test("Mindset: the method sits in hovers, not under the gauges", () => {
+  const s = visible("components/journal/Mindset.jsx");
+  ok(!/className="ms-gbasis"/.test(s), "no basis line under each gauge");
+  ok(/<div className="ms-gauge" title=\{a\.basis/.test(s));
+  ok(!/<p className="ms-note"[^>]*>\s*Each is a percentage of trades meeting a stated test/.test(s),
+    "no method paragraph under the gauges");
+});
+
+test("What works: the rupee-risk caveat is one line with the fix a click away", () => {
+  const s = visible("components/journal/Edge.jsx");
+  ok(!/₹15k against ₹20L/.test(s));
+  ok(/onClick=\{\(\) => setDim\("risk"\)\}>Risk % of capital</.test(s));
+});

@@ -905,12 +905,11 @@ function ProcessMap({ data, week }) {
         )}
       </h3>
 
+      {/* One line. It was five sentences on why only three stages carry a
+          cost; the "not costed" in those rows now says it where it applies. */}
       <p className="rv-proc-lead">
-        Every stage below is a decision you make on every trade, in the order you make it.
-        Three of them can be costed against a baseline you set yourself — your stop, your
-        typical position size, your own final exit price. The rest are ranked but not
-        costed, because the only baseline available would be a better trader, and that is
-        not a number worth printing.
+        Each stage is a decision you make on every trade, in order. Three are costed
+        against your own plan; the rest are ranked.
       </p>
 
       <div className="rv-proc-week" data-quiet={week.trades === 0 ? "1" : undefined}>
@@ -982,7 +981,6 @@ function ProcessMap({ data, week }) {
                 Against your own plan
                 <span className="rv-proc-th-sub">recent trades, where measurable</span>
               </th>
-              <th>What it rests on</th>
             </tr>
           </thead>
           <tbody>
@@ -991,7 +989,14 @@ function ProcessMap({ data, week }) {
               const good = (s.costR || 0) > 0;
               return (
                 <tr key={s.key} data-state={s.state}>
-                  <th scope="row">
+                  {/* What the reading rests on, on hover over the stage — it was a
+                      fourth column of method beside every result. */}
+                  <th scope="row" title={s.findingTitle
+                    || (s.reason === "no-data"
+                      ? "Nothing recorded that would show this"
+                      : s.reason === "no-finding"
+                      ? "Every check on this stage ran and found nothing"
+                      : "Measured, nothing to flag")}>
                     <span className="rv-proc-step">{s.step}</span>
                     <span className="rv-proc-name">{s.name}</span>
                     <span className="rv-proc-blurb">{s.blurb}</span>
@@ -1000,6 +1005,11 @@ function ProcessMap({ data, week }) {
                     <span className="rv-proc-chip" style={{ color: STATE_COLOUR[s.state] }}>
                       {STATE_WORD[s.state]}
                     </span>
+                    {/* Kept in sight: a reading on a handful of trades should
+                        not look as settled as one on a hundred. */}
+                    {s.thin && s.state !== "unmeasured" && (
+                      <span className="rv-proc-thin" title={`Only ${s.sample} trades`}> provisional</span>
+                    )}
                   </td>
                   <td className="num">
                     {s.costR == null ? (
@@ -1039,17 +1049,7 @@ function ProcessMap({ data, week }) {
                       </>
                     )}
                   </td>
-                  <td className="rv-proc-note">
-                    {s.findingTitle
-                      || (s.reason === "no-data"
-                        ? "Nothing recorded that would show this"
-                        : s.reason === "no-finding"
-                        ? "Every check on this stage ran and found nothing"
-                        : "Measured, nothing to flag")}
-                    {s.thin && s.state !== "unmeasured" && (
-                      <span className="rv-proc-thin"> · only {s.sample} trades, provisional</span>
-                    )}
-                  </td>
+
                 </tr>
               );
             })}

@@ -54,7 +54,9 @@ function Gauge({ a }) {
   const tone = has ? scoreTone(score) : "var(--ink3)";
 
   return (
-    <div className="ms-gauge">
+    /* What the score is measured from, on hover — it was a line of small
+       print under every gauge. */
+    <div className="ms-gauge" title={a.basis || undefined}>
       <svg viewBox="0 0 84 84" className="ms-dial" role="img"
            aria-label={`${a.label}: ${has ? Math.round(score) : "not measurable"} out of 100`}>
         <circle cx="42" cy="42" r={R} className="ms-track" />
@@ -85,7 +87,6 @@ function Gauge({ a }) {
       ) : (
         <span className="ms-gtrend ms-gtrend-none">not enough history to trend</span>
       )}
-      <small className="ms-gbasis">{a.basis}</small>
     </div>
   );
 }
@@ -137,7 +138,12 @@ export default function Mindset({ closed = [] }) {
           it. The finding below is the diagnosis; this is the vital signs. */}
       {profile ? (
         <div className="sec">
-          <div className="sechead">
+          {/* How the scores are made, on hover over the heading. It was a
+              paragraph under the gauges, read once and then in the way. */}
+          <div className="sechead" title={"Each is a percentage of trades meeting a stated test. "
+            + "Trends compare the recent half of your record with the earlier half, and stay "
+            + "silent until both have enough trades. There is no score for pattern recognition, "
+            + "because a trade log cannot measure it honestly."}>
             <div className="eyebrow">Habits, counted</div>
             <span className="ms-src">
               {profile.overall != null
@@ -148,14 +154,7 @@ export default function Mindset({ closed = [] }) {
           <div className="ms-gauges">
             {profile.axes.map((a) => <Gauge key={a.key} a={a} />)}
           </div>
-          <p className="ms-note" style={{ marginTop: 14 }}>
-            Each is a percentage of trades meeting a stated test, not a weighting
-            chosen to make the shape look interesting. Trends compare the recent half
-            of your record against the earlier half, and stay silent until both halves
-            have enough trades to be worth comparing. There is no fifth measure for
-            pattern recognition because there is no honest way to compute one from a
-            trade log, and a made-up score would discredit the four beside it.
-          </p>
+
         </div>
       ) : null}
 

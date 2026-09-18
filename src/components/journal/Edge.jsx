@@ -167,12 +167,13 @@ export default function Edge({ closed = [], accountSize }) {
             drift as the account grows, and saying so is cheaper than letting
             someone read a decade of compounding as a finding about sizing. */}
         {dim === "riskamt" && (
+          /* One line, and the fix is one click: the paragraph this replaces
+             explained the drift in sixty words and then named the dimension
+             that removes it without offering a way there. */
           <div className="hint" style={{ marginTop: 8 }}>
-            Rupee risk isn&rsquo;t comparable across a growing account — ₹15k against ₹20L
-            is a large bet, the same ₹15k against ₹1.2Cr is a small one. If your capital
-            has grown a lot, the low bands hold mostly early trades and the high bands
-            mostly recent ones, so some of what you see here is <b>when</b> rather than
-            how much. <b>Risk % of capital</b> is the same question with that removed.
+            Rupee risk grows with your account, so this partly shows <i>when</i>, not how much —{" "}
+            <button type="button" className="lnk" onClick={() => setDim("risk")}>Risk % of capital</button>
+            {" "}compares like with like.
           </div>
         )}
       </div>
