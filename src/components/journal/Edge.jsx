@@ -49,11 +49,15 @@ const EDGE_COLUMNS = [
 export default function Edge({ closed = [], accountSize }) {
   const [dim, setDim] = useState("pattern");
 
-  const D = DIMENSIONS.find((d) => d.id === dim) || DIMENSIONS[0];
+  /* Only the groupings that apply to this record — see `showIf` in edge.js.
+     The table reads D.id, not `dim`, so a grouping that has disappeared falls
+     back to the first one for the table and the lit button alike. */
+  const dims = useMemo(() => DIMENSIONS.filter((d) => !d.showIf || d.showIf(closed)), [closed]);
+  const D = dims.find((d) => d.id === dim) || dims[0];
 
   const groups = useMemo(
-    () => dimensionRows(closed, dim, { accountSize }),
-    [closed, dim, accountSize]
+    () => dimensionRows(closed, D.id, { accountSize }),
+    [closed, D.id, accountSize]
   );
   const maxAbs = useMemo(() => maxAbsTotalR(groups), [groups]);
 
@@ -83,8 +87,8 @@ export default function Edge({ closed = [], accountSize }) {
           </div>
         </div>
         <div className="seg" style={{ marginBottom: 12 }}>
-          {DIMENSIONS.map((d) => (
-            <button key={d.id} data-on={dim === d.id ? 1 : 0} onClick={() => setDim(d.id)}>{d.label}</button>
+          {dims.map((d) => (
+            <button key={d.id} data-on={D.id === d.id ? 1 : 0} onClick={() => setDim(d.id)}>{d.label}</button>
           ))}
         </div>
         <div className="card scroll">
@@ -106,7 +110,7 @@ export default function Edge({ closed = [], accountSize }) {
                         offers no route to the trades inside it is where the
                         reader has to go and find them by hand. */}
                     <td>
-                      <Link className="mk-link" href={edgeHref(dim, g)}
+                      <Link className="mk-link" href={edgeHref(D.id, g)}
                             title={`See the ${g.trades} trade${g.trades === 1 ? "" : "s"} in ${g.key}`}
                             style={g.key === NOT_RECORDED
                               ? { fontStyle: "italic", color: "var(--ink3)" }
@@ -153,7 +157,16 @@ export default function Edge({ closed = [], accountSize }) {
             categorical or already normalised; this is the one whose bands
             drift as the account grows, and saying so is cheaper than letting
             someone read a decade of compounding as a finding about sizing. */}
-        {dim === "riskamt" && (
+        {/* Which R the margin comparison is in, because it depends on Setup:
+            after MTF cost when deducted, before it when not. */}
+        {D.id === "mtf" && (
+          <div className="hint" style={{ marginTop: 8 }}>
+            {closed.some((t) => t.marginInPnl === false)
+              ? "R here is before MTF cost — you chose not to deduct it in Setup. Deduct it to see whether margin pays after its interest."
+              : "R here is after MTF cost, so this shows whether margin pays once its interest and pledge charges are paid."}
+          </div>
+        )}
+        {D.id === "riskamt" && (
           /* One line, and the fix is one click: the paragraph this replaces
              explained the drift in sixty words and then named the dimension
              that removes it without offering a way there. */

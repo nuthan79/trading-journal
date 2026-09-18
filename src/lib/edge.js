@@ -20,6 +20,7 @@
  */
 
 import { stats } from "./calc";
+import { isMtf } from "./mtf";
 
 const n = (v) => (v === "" || v == null ? NaN : Number(v));
 const mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : NaN);
@@ -320,6 +321,20 @@ export const DIMENSIONS = [
   { id: "riskamt", label: "Risk in rupees", continuous: true, money: true,
     fixed: (closed) => moneyBands(closed.map((t) => t.riskAmt)),
     value: (t) => t.riskAmt },
+
+  /*
+   * DOES MARGIN PAY? The same trades split by whether they were bought on
+   * MTF, so leverage answers for itself: win rate, expectancy and total R on
+   * borrowed money against the rest. The R is whatever the user's Setup made
+   * it — after MTF cost if they deduct it — and the page says which.
+   *
+   * `showIf` because for someone who has never bought on margin this is a
+   * button leading to a one-row table; it appears with the first closed MTF
+   * trade. The label reuses isMtf, the same test the MTF figures use.
+   */
+  { id: "mtf", label: "Bought on MTF",
+    get: (t) => (isMtf(t.mtf_leverage) ? "On MTF" : "Own money"),
+    showIf: (closed) => closed.some((t) => isMtf(t.mtf_leverage)) },
 
   { id: "rs", label: "RS rank", continuous: true, unit: "", dp: 0,
     value: (t) => n(t.rs_rank) },
