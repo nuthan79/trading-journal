@@ -129,6 +129,8 @@ export function bankedEvents(t) {
     /* The fallback event is the whole realised part, so it carries all of the
        realised margin cost — the same amount realisedPnl already has out. */
     margin: n(t?.realisedMargin) || 0,
+    interest: n(t?.realisedInterest) || 0,
+    fees: n(t?.pledgeFees) || 0,
     placedByEntry: !t?.exit_date,
   }];
 }
@@ -234,7 +236,9 @@ export function realisationEvents(t) {
     const share = last ? pledge - pledged
       : pledge * (qtyOut > 0 ? q / qtyOut : 1 / exits.length);
     pledged += share;
-    const margin = ownMargin(e) + share;
+    const interest = im ? im.onSell(e) : 0;
+    const fees = (im ? im.unpledgeFee : 0) + share;
+    const margin = interest + fees;
     const pnl = gross[i] - charge - margin;
     return {
       date: String(e.exit_date).slice(0, 10),
@@ -246,7 +250,7 @@ export function realisationEvents(t) {
       charge,
       /* This sell's margin cost — interest and fees — reported beside its
          charge, never in it. */
-      margin,
+      margin, interest, fees,
       /* Risk is fixed at entry for the whole position, so these sum to
          realisedR with no weighting to argue about. */
       r: risk > 0 ? pnl / risk : NaN,
@@ -485,6 +489,8 @@ export function derivePosition(t, accountSize) {
     realisedMargin,
     interest: realisedInterest + (qtyOpen > 0 && hasMark ? openInterest : 0),
     realisedInterest, pledgeFees, openInterest,
+    /* What the shares still held cost to carry for one more day. */
+    marginPerDay: im && qtyOpen > 0 ? im.perShareDay * qtyOpen : 0,
     interestUnknown: !!im && !im.known,
     unrealisedPnl, unrealisedR, mark, hasMark,
     pnl, r,

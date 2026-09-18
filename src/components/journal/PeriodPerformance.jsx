@@ -24,11 +24,14 @@ const full = (v) => rupee(v, { compact: false });
 /* What a period's P&L is net of. MTF costs are named beside charges and added
    back into the "before" figure — leaving them out would make that figure
    quietly net of interest while calling itself the result before costs. */
-const costNote = (charges, margin, pnl) => {
-  const c = Number(charges) || 0, m = Number(margin) || 0;
+const costNote = (charges, margin, pnl, interest) => {
+  const c = Number(charges) || 0, m = Number(margin) || 0, i = Number(interest) || 0;
   if (!(c > 0) && !(m > 0)) return undefined;
-  const what = [c > 0 && `${full(c)} of charges`, m > 0 && `${full(m)} of MTF costs`]
-    .filter(Boolean).join(" and ");
+  /* The interest named inside the MTF figure: interest paid in a financial year
+     is the number people take to their CA, and it is the one broker statements
+     make hardest to add up. */
+  const mtf = m > 0 ? `${full(m)} of MTF costs${i > 0 ? `, ${full(i)} of it interest` : ""}` : null;
+  const what = [c > 0 && `${full(c)} of charges`, mtf].filter(Boolean).join(" and ");
   return `After ${what}${isFinite(pnl) ? ` — ${full(pnl + c + m)} before them` : ""}`;
 };
 
@@ -107,6 +110,7 @@ export default function PeriodPerformance({ closed, openingCapital, flows = [], 
       totalR: rows.reduce((a, r) => a + num(r.totalR), 0),
       charges: rows.reduce((a, r) => a + num(r.charges), 0),
       margin: rows.reduce((a, r) => a + num(r.margin), 0),
+      interest: rows.reduce((a, r) => a + num(r.interest), 0),
       green: rows.filter((r) => r.pnl > 0).length,
     };
   }, [rows]);
@@ -226,7 +230,7 @@ export default function PeriodPerformance({ closed, openingCapital, flows = [], 
                   * is the only question anyone opens this tooltip to ask.
                   */}
                 <td className={`num ${r.pnl >= 0 ? "pos" : "neg"}`} style={{ fontWeight: 500 }}>
-                  <Money v={r.pnl} note={costNote(r.charges, r.margin, r.pnl)} />
+                  <Money v={r.pnl} note={costNote(r.charges, r.margin, r.pnl, r.interest)} />
                 </td>
                 <td className={`num ${r.returnPct >= 0 ? "pos" : "neg"}`}>
                   {r.returnPct == null ? <span className="pp-dim">—</span> : signedPct(r.returnPct)}
@@ -261,7 +265,7 @@ export default function PeriodPerformance({ closed, openingCapital, flows = [], 
                 <td><b>All</b></td>
                 <td className="num">{totals.trades}</td>
                 <td className={`num ${totals.pnl >= 0 ? "pos" : "neg"}`} style={{ fontWeight: 500 }}>
-                  <Money v={totals.pnl} note={costNote(totals.charges, totals.margin, totals.pnl)} />
+                  <Money v={totals.pnl} note={costNote(totals.charges, totals.margin, totals.pnl, totals.interest)} />
                 </td>
                 <td className="num pp-dim">—</td>
                 <td className={`num ${totals.totalR >= 0 ? "pos" : "neg"}`}>

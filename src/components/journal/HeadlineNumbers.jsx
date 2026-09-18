@@ -94,6 +94,9 @@ export default function HeadlineNumbers({ closed, banking = [], openingCapital, 
   const afterCosts = `After ${rupee(h.charges)} of charges`
     + (h.margin > 0 ? ` and ${rupee(h.margin)} of MTF costs` : "");
 
+  const mtfNote = `Interest paid on MTF positions, on the shares sold so far. `
+    + `With ${rupee(h.fees)} of pledge fees, ${rupee(h.margin)} in all — taken out of P&L and R`;
+
   /* Named because it is now said twice — on the tile and on the figure. */
   const chargeShare = isFinite(h.netPnl) && h.netPnl + h.charges > 0
     ? `${pct((h.charges / (h.netPnl + h.charges)) * 100, 1)} of gross profit`
@@ -212,6 +215,15 @@ export default function HeadlineNumbers({ closed, banking = [], openingCapital, 
       cells: [
         { label: "Charges", value: <Money v={h.charges} note={chargeShare} />, tone: "neg",
           hint: chargeShare },
+        /* Beside Charges because both are what trading cost, and only for
+           someone who has bought on margin — a tile reading ₹0 for everybody
+           else would be a question they never asked. The interest is the
+           figure; pledge fees are the rest of what margin cost, in the hover. */
+        ...(h.margin > 0 ? [{
+          label: "MTF interest",
+          value: <Money v={h.interest} note={mtfNote} />,
+          tone: "neg", hint: mtfNote,
+        }] : []),
         { label: "Green months", value: `${h.months.green}/${h.months.total}` },
         { label: "Green quarters", value: `${h.quarters.green}/${h.quarters.total}` },
         rCell("Best run", h.bestW ? `${h.bestW}d` : "—", {

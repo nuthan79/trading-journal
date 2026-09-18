@@ -533,6 +533,12 @@ export default function Holdings({
       unknownExposure,
       today,
       todayN,
+      /* What the positions bought on margin cost to carry: per day now, and
+         the interest they have run up so far — sold parts and held parts. */
+      mtfN: rows.filter((r) => r.marginPerDay > 0).length,
+      mtfPerDay: sum((r) => r.marginPerDay),
+      mtfSoFar: sum((r) => (r.marginPerDay > 0
+        ? (Number(r.realisedInterest) || 0) + (Number(r.openInterest) || 0) : NaN)),
       // Weighted by what each position was worth at yesterday's close, so
       // this is the book's move rather than the average of its rows'.
       todayPct: todayN && todayBase > 0 ? (today / todayBase) * 100 : NaN,
@@ -877,6 +883,14 @@ export default function Holdings({
                   today's. Positions with no stored close are left out of both figures rather
                   than counted as flat."
             tone={isFinite(totals.today) ? (totals.today >= 0 ? "pos" : "neg") : undefined}
+            /* Under today's move, what margin costs every day — the one live
+               version of that figure, and the one that changes decisions: a
+               position going nowhere on MTF is paying for the privilege. Only
+               when something open is on margin. */
+            foot={totals.mtfN > 0 ? `−${rupee(totals.mtfPerDay)}` : null}
+            footLabel={totals.mtfN > 0
+              ? `MTF interest a day · ${rupee(totals.mtfSoFar)} so far`
+              : undefined}
           />
           {/* Ordered by how close each figure is to right now: today, then
               what is still riding on the open book, then what that book is

@@ -150,3 +150,31 @@ test("the detail panel shows margin on its own row, never inside a sell", () => 
   ok(/const net = gross - \(Number\(e\.charges\) \|\| 0\);/.test(s),
     "each sell still reads as its own price and charge");
 });
+
+/* ---- interest paid, on its own ------------------------------------- */
+
+test("interest and fees are the two halves of margin, at every level", () => {
+  for (const e of realisationEvents(TWO)) near(e.interest + e.fees, e.margin, 1e-9);
+  const book = [CLOSED, TWO];
+  const h = headline(book, { openingCapital: 5e6, banking: book });
+  near(h.interest + h.fees, h.margin, 0.0001);
+  near(h.interest, CLOSED.realisedInterest + TWO.realisedInterest, 0.01);
+  near(h.fees, CLOSED.pledgeFees + TWO.pledgeFees, 0.0001);
+  const rows = byPeriod(book, "fy", { openingCapital: 5e6, basis: "exit" });
+  near(rows.reduce((a, r) => a + (r.interest || 0), 0), h.interest, 0.01, "the year sums to the Dashboard");
+});
+
+test("what an open MTF position costs to carry per day", () => {
+  const PART = mk({ ...base, id: "q2", status: "partial", last_price: 1200,
+    exits: [{ exit_date: "2026-09-05", quantity: 100, price: 1050, charges: 0 }] });
+  near(PART.marginPerDay, 135 * PSD, 1e-9, "on the 135 still held, not the 235 bought");
+  eq(CLOSED.marginPerDay, 0, "nothing held, nothing to carry");
+});
+
+test("all three places stay hidden for anyone who never used margin", () => {
+  ok(/\.\.\.\(h\.margin > 0 \? \[\{\s*label: "MTF interest"/.test(read("components/journal/HeadlineNumbers.jsx")),
+    "the Dashboard tile");
+  ok(/foot=\{totals\.mtfN > 0 \?/.test(read("components/journal/Holdings.jsx")), "the Holdings line");
+  ok(/i > 0 \? `, \$\{full\(i\)\} of it interest`/.test(read("components/journal/PeriodPerformance.jsx")),
+    "the period hover names interest only when there was some");
+});

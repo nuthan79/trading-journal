@@ -554,6 +554,7 @@ export function equityCurve(closed, { openingCapital = 0, flows = [] } = {}) {
     bankedEvents(t).map((e) => ({
       id: t.id, entry_date: t.entry_date, exit_date: e.date,
       pnl: e.pnl, r: e.r, charges: e.charge, margin: e.margin || 0,
+      interest: e.interest || 0, fees: e.fees || 0,
     }))
   ).sort((a, b) => {
     const x = a.exit_date || a.entry_date, y = b.exit_date || b.entry_date;
@@ -600,6 +601,8 @@ export function equityCurve(closed, { openingCapital = 0, flows = [] } = {}) {
     netPnl: rows.reduce((s, t) => s + (isFinite(t.pnl) ? t.pnl : 0), 0),
     charges: rows.reduce((s, t) => s + (Number(t.charges) || 0), 0),
     margin: rows.reduce((s, t) => s + (Number(t.margin) || 0), 0),
+    interest: rows.reduce((s, t) => s + (Number(t.interest) || 0), 0),
+    fees: rows.reduce((s, t) => s + (Number(t.fees) || 0), 0),
     capitalIn: fl.reduce((s, f) => s + (f.a > 0 ? f.a : 0), 0),
   };
 }
@@ -763,14 +766,14 @@ export function byPeriod(
    * would be meaningless.
    */
   const buckets = new Map();
-  const put = (k, when, t, pnl, r, charge, margin = 0) => {
+  const put = (k, when, t, pnl, r, charge, margin = 0, interest = 0) => {
     if (!buckets.has(k)) {
       buckets.set(k, { key: k, first: when, trades: [], seen: new Set(), events: [] });
     }
     const b = buckets.get(k);
     if (when < b.first) b.first = when;
     if (!b.seen.has(t.id)) { b.seen.add(t.id); b.trades.push(t); }
-    b.events.push({ trade: t, when, pnl, r, charge, margin });
+    b.events.push({ trade: t, when, pnl, r, charge, margin, interest });
   };
 
   for (const t of rows) {
@@ -781,7 +784,8 @@ export function byPeriod(
          produced, and would move every time a quote refreshed. */
       const p = isFinite(t.realisedPnl) ? t.realisedPnl : t.pnl;
       const rr = isFinite(t.realisedR) ? t.realisedR : t.r;
-      put(label(t.entry_date), t.entry_date, t, p, rr, n(t.charges) || 0, n(t.realisedMargin) || 0);
+      put(label(t.entry_date), t.entry_date, t, p, rr, n(t.charges) || 0,
+          n(t.realisedMargin) || 0, n(t.realisedInterest) || 0);
       continue;
     }
     /* The same helper the equity curve uses, so the two cannot disagree about
@@ -789,7 +793,7 @@ export function byPeriod(
        legacy row whose exits never landed, which keeps that row in the table
        rather than vanishing. */
     const events = bankedEvents(t);
-    for (const e of events) put(label(e.date), e.date, t, e.pnl, e.r, e.charge, e.margin);
+    for (const e of events) put(label(e.date), e.date, t, e.pnl, e.r, e.charge, e.margin, e.interest);
   }
 
   // Walk periods in order, carrying equity forward so each % return is on the
@@ -857,6 +861,7 @@ export function byPeriod(
     /* MTF interest and pledge fees, on the same sells, kept off the charges
        line — they are what margin cost, not what trading cost. */
     const margin = b.events.reduce((a, e) => a + (isFinite(e.margin) ? e.margin : 0), 0);
+    const interest = b.events.reduce((a, e) => a + (isFinite(e.interest) ? e.interest : 0), 0);
     /* Position-level facts, so averaged over the distinct positions in the
        period rather than over the sells — a position sold four times did not
        have four position sizes. */
@@ -881,6 +886,7 @@ export function byPeriod(
       pnl,
       charges,
       margin,
+      interest,
       opening: accounting ? opening : null,
       capitalIn: accounting ? inflow : null,
       returnPct: accounting && opening > 0 ? (pnl / opening) * 100 : null,
@@ -1038,6 +1044,8 @@ export function headline(closed, { openingCapital = 0, flows = [], banking = nul
     netPnl: eq.netPnl,
     charges: eq.charges,
     margin: eq.margin,
+    interest: eq.interest,
+    fees: eq.fees,
     returnOnCapital: capitalBase > 0 ? (eq.netPnl / capitalBase) * 100 : NaN,
     maxDDPct: eq.maxDDPct,
     maxDDAmt: eq.maxDD,
