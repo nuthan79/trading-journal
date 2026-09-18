@@ -6,6 +6,9 @@ import { tradeCharges, entryCharges, CHARGE_LABELS } from "@/lib/charges";
 import { rupee } from "@/lib/format";
 import Money from "@/components/Money";
 
+/* A charge is money: two decimals, never a float's tail in the box. */
+const paisa = (v) => Math.round((Number(v) || 0) * 100) / 100;
+
 /**
  * The charges box.
  *
@@ -85,7 +88,7 @@ export default function ChargesField({
     const neverSet = !(Number(value) > 0) && !trade?.imported;
     if (auto === false && !neverSet) return;       // a real figure is theirs
     if (Math.abs(Number(value || 0) - computed.total) < 0.01) return;
-    onChange?.(computed.total, true, computed.breakdown);
+    onChange?.(paisa(computed.total), true, computed.breakdown);
   }, [computed, auto, disabled, value, onChange, trade?.imported]);
 
   const typeOver = (e) => {
@@ -96,7 +99,7 @@ export default function ChargesField({
 
   const backToAuto = () => {
     touched.current = false;
-    if (computed) onChange?.(computed.total, true, computed.breakdown);
+    if (computed) onChange?.(paisa(computed.total), true, computed.breakdown);
   };
 
   const items = computed

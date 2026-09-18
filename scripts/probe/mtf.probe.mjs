@@ -222,3 +222,15 @@ test("the charges box is sized for its figure", () => {
   const cf = readFileSync(path.join(SRC, "components/journal/ChargesField.jsx"), "utf8");
   ok(/\.cf-in \{ flex: 0 1 160px; min-width: 0; \}/.test(cf));
 });
+
+/* A charges box read 3022.5699999999997: an unrounded float, saved and shown. */
+test("charges are rounded to the paisa on every way in and out of the form", () => {
+  const s = form();
+  ok(/if \(!\(soldQty > 0\)\) return \{ tradeCharges: Math\.round\(total \* 100\) \/ 100, exits \};/.test(s),
+    "a trade with no sells saves a rounded figure");
+  ok(/charges: str\(Math\.round\(\(Number\(row\.charges\) \|\| 0\) \* 100\) \/ 100\)/.test(s),
+    "a value already saved with a tail is shown rounded");
+  const cf = readFileSync(path.join(SRC, "components/journal/ChargesField.jsx"), "utf8");
+  ok(!/onChange\?\.\(computed\.total,/.test(cf), "the auto figure is never written raw");
+  ok((cf.match(/onChange\?\.\(paisa\(computed\.total\)/g) || []).length === 2);
+});

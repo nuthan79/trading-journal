@@ -151,7 +151,10 @@ function splitCharges(t, exits, config) {
 
   const exitSide = Math.max(0, total - entrySide);
   const soldQty = exits.reduce((a, e) => a + e.quantity, 0);
-  if (!(soldQty > 0)) return { tradeCharges: total, exits };
+  /* Rounded to the paisa like every other path out of here. This one was
+     not, so a trade with no sells yet saved 3022.5699999999997 — a float's
+     tail, stored and then shown in the charges box. */
+  if (!(soldQty > 0)) return { tradeCharges: Math.round(total * 100) / 100, exits };
 
   // Across the sells that HAPPENED. A single 40-of-100 sell does take the
   // whole exit bill, and that is correct rather than the thing to avoid — the
@@ -255,7 +258,9 @@ function fromInitial(row) {
     // charges_auto comes straight off the row, never defaulted to true here —
     // an existing trade's figure was either computed or typed by the person
     // who logged it, and only that stored flag says which.
-    charges: str(row.charges ?? 0),
+    /* To the paisa: rows saved before rounding was fixed carry a float's
+       tail, and the box would show all of it. */
+    charges: str(Math.round((Number(row.charges) || 0) * 100) / 100),
     charges_auto: row.charges_auto === true,
     charges_breakdown: row.charges_breakdown || null,
     mistakes: row.mistakes || [], notes: row.notes || "",
