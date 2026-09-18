@@ -671,10 +671,11 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
     t.weinstein_stage && `stage ${t.weinstein_stage}`,
     t.thesis?.trim() && "reason written",
     chart.ok && "chart attached",
+    t.entry_emotion && `feeling ${t.entry_emotion.toLowerCase()}`,
   ].filter(Boolean);
   const setupSummary = setupBits.length
     ? setupBits.join(" · ")
-    : "Nothing yet — RS rank and your reason can only be written today";
+    : "Nothing yet — RS rank, your reason and how you feel can only be written today";
 
   const mtfSummary = !t.mtf_on
     ? "Not on margin"
@@ -809,105 +810,6 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
 
           <div>
             {/*
-              * THE SETUP, FOLDED. One section rather than three fields in the
-              * open and four behind a "+" link: a fold inside a fold is two
-              * clicks to reach a field, and the half that stayed open took
-              * most of the form's height on every trade.
-              *
-              * Folded is not hidden. The header says what is filled in —
-              * "RS 88 · VCP · reason written" — or, when nothing is, that RS
-              * rank and the reason are the two things that can only be written
-              * today. That is the fact that used to justify keeping them in
-              * the open, and it is still said where it can be read.
-              */}
-            <button type="button" className="tf-fold" aria-expanded={setupOpen}
-                    onClick={() => setSetupOpen(!setupOpen)}>
-              <ChevronDown size={14} className="tf-fold-chev" data-open={setupOpen ? 1 : 0} />
-              <span className="eyebrow">The setup</span>
-              <span className="tf-fold-sum">{setupSummary}</span>
-            </button>
-            {setupOpen && (
-              <div className="tf-fold-body">
-            {/* What survives the trade, first. RS rank, the thesis and the
-                chart cannot be recovered once the outcome is known; the four
-                behind the link below can, off the same chart, any time. */}
-            <div className="grid2" style={{ gap: 12 }}>
-              <label className="f" style={{ maxWidth: 280 }}><span>RS rank</span>
-                <input className="in" inputMode="numeric" placeholder="1–99" value={t.rs_rank} onChange={set("rs_rank")} />
-                <div className="hint">Where it ranked the day you bought — not something you can look up later.</div>
-              </label>
-              <label className="f"><span>Why this trade</span>
-                <input className="in" value={t.thesis} onChange={set("thesis")}
-                       readOnly={derivedStatus === "closed"}
-                       style={derivedStatus === "closed" ? { color: "var(--ink2)", background: "var(--paper)" } : undefined}
-                       placeholder="The one-line reason, written now — not reconstructed after you know the outcome." />
-                <div className="hint">
-                  {derivedStatus === "closed"
-                    ? "Locked once closed — this is what you thought at entry, not a rewrite after the fact."
-                    : "Read back after the trade closes, this is often the most honest line in the journal."}
-                </div></label>
-            </div>
-
-            {/* Under the thesis because it is the other half of it — the words
-                and the picture, both taken before the outcome is known. Only
-                on a new trade: an existing one is attached to from its own
-                panel, where the charts already saved are visible and a second
-                place to add them would just be a way to add duplicates. */}
-            {!editing && (
-              <div style={{ marginTop: 12 }}>
-                <label className="f"><span>Chart at entry <i className="tf-opt">optional</i></span>
-                  <input className="in" value={chartLink} onChange={(e) => setChartLink(e.target.value)}
-                         placeholder="Paste a TradingView snapshot link — tradingview.com/x/…" />
-                  <div className="hint">
-                    {chart.ok && chartOk === true
-                      ? "Saved with the trade, as it looks right now — before you know how it turned out."
-                      : chart.ok && chartOk === false
-                      ? "That link is the right shape but TradingView has no snapshot at it."
-                      : chart.empty
-                      ? "The camera icon on the TradingView toolbar (or Alt+S) makes one. Never required."
-                      : chart.error}
-                  </div>
-                </label>
-                {chart.ok && (
-                  <img className="tf-chart" src={chart.url} alt="Chart at entry"
-                       data-bad={chartOk === false ? 1 : 0}
-                       onLoad={() => setChartOk(true)} onError={() => setChartOk(false)} />
-                )}
-              </div>
-            )}
-
-              <div className="grid4" style={{ gap: 12, marginTop: 14 }}>
-                <label className="f"><span>Base pattern</span>
-                  <select className="in" value={t.pattern} onChange={set("pattern")}>
-                    <option value="">—</option>
-                    {PATTERNS.map((p) => <option key={p} value={p}>{p}</option>)}
-                  </select></label>
-                <label className="f"><span>Pivot price</span>
-                  <input className="in" inputMode="decimal" value={t.pivot_price} onChange={set("pivot_price")} />
-                  <div className="hint">
-                    {isFinite(d.distPivot)
-                      ? `Entered ${d.distPivot >= 0 ? "" : "−"}${Math.abs(d.distPivot).toFixed(1)}% ${d.distPivot >= 0 ? "above" : "below"} pivot`
-                      : "Sets your extension at entry"}
-                  </div></label>
-                <label className="f"><span>Volume % of avg</span>
-                  <input className="in" inputMode="decimal" placeholder="240" value={t.vol_pct_avg} onChange={set("vol_pct_avg")} />
-                  <div className="hint" style={{ color: isFinite(num(t.vol_pct_avg)) && num(t.vol_pct_avg) < 100 ? "var(--short)" : undefined }}>
-                    {isFinite(num(t.vol_pct_avg))
-                      ? num(t.vol_pct_avg) >= 100
-                        ? `${(num(t.vol_pct_avg) - 100).toFixed(0)}% above the 30-day average`
-                        : `${(100 - num(t.vol_pct_avg)).toFixed(0)}% below average — thin breakout`
-                      : "100 = the 30-day average"}
-                  </div></label>
-                <label className="f"><span>Weinstein stage</span>
-                  <select className="in" value={t.weinstein_stage} onChange={set("weinstein_stage")}>
-                    <option value="">—</option>
-                    {STAGES.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}
-                  </select></label>
-              </div>
-              </div>
-            )}
-
-            {/*
               * MARGIN (MTF). Bought partly with the broker's money: the
               * leverage from the broker's MTF screen and the interest they
               * charge, in the ₹ per lakh per day brokers quote it in. The rate
@@ -1023,14 +925,108 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
             )}
 
             {/*
-              Always visible, deliberately outside both folds above.
+              * THE SETUP, FOLDED. One section rather than three fields in the
+              * open and four behind a "+" link: a fold inside a fold is two
+              * clicks to reach a field, and the half that stayed open took
+              * most of the form's height on every trade.
+              *
+              * Folded is not hidden. The header says what is filled in —
+              * "RS 88 · VCP · reason written" — or, when nothing is, that RS
+              * rank and the reason are the two things that can only be written
+              * today. That is the fact that used to justify keeping them in
+              * the open, and it is still said where it can be read.
+              */}
+            <button type="button" className="tf-fold" aria-expanded={setupOpen}
+                    onClick={() => setSetupOpen(!setupOpen)}>
+              <ChevronDown size={14} className="tf-fold-chev" data-open={setupOpen ? 1 : 0} />
+              <span className="eyebrow">The setup</span>
+              <span className="tf-fold-sum">{setupSummary}</span>
+            </button>
+            {setupOpen && (
+              <div className="tf-fold-body">
+            {/* What survives the trade, first. RS rank, the thesis and the
+                chart cannot be recovered once the outcome is known; the four
+                behind the link below can, off the same chart, any time. */}
+            <div className="grid2" style={{ gap: 12 }}>
+              <label className="f" style={{ maxWidth: 280 }}><span>RS rank</span>
+                <input className="in" inputMode="numeric" placeholder="1–99" value={t.rs_rank} onChange={set("rs_rank")} />
+                <div className="hint">Where it ranked the day you bought — not something you can look up later.</div>
+              </label>
+              <label className="f"><span>Why this trade</span>
+                <input className="in" value={t.thesis} onChange={set("thesis")}
+                       readOnly={derivedStatus === "closed"}
+                       style={derivedStatus === "closed" ? { color: "var(--ink2)", background: "var(--paper)" } : undefined}
+                       placeholder="The one-line reason, written now — not reconstructed after you know the outcome." />
+                <div className="hint">
+                  {derivedStatus === "closed"
+                    ? "Locked once closed — this is what you thought at entry, not a rewrite after the fact."
+                    : "Read back after the trade closes, this is often the most honest line in the journal."}
+                </div></label>
+            </div>
 
-              Pattern and pivot are still on the chart in a month; how you felt
-              is not. Asked later it gets answered by whatever the trade went on
-              to do — a winner gets remembered as confident and a loser as
-              rushed — and a field that reliably collects hindsight is worse
-              than no field. So it is on the screen at the moment the position
-              is being opened, and it stays optional.
+            {/* Under the thesis because it is the other half of it — the words
+                and the picture, both taken before the outcome is known. Only
+                on a new trade: an existing one is attached to from its own
+                panel, where the charts already saved are visible and a second
+                place to add them would just be a way to add duplicates. */}
+            {!editing && (
+              <div style={{ marginTop: 12 }}>
+                <label className="f"><span>Chart at entry <i className="tf-opt">optional</i></span>
+                  <input className="in" value={chartLink} onChange={(e) => setChartLink(e.target.value)}
+                         placeholder="Paste a TradingView snapshot link — tradingview.com/x/…" />
+                  <div className="hint">
+                    {chart.ok && chartOk === true
+                      ? "Saved with the trade, as it looks right now — before you know how it turned out."
+                      : chart.ok && chartOk === false
+                      ? "That link is the right shape but TradingView has no snapshot at it."
+                      : chart.empty
+                      ? "The camera icon on the TradingView toolbar (or Alt+S) makes one. Never required."
+                      : chart.error}
+                  </div>
+                </label>
+                {chart.ok && (
+                  <img className="tf-chart" src={chart.url} alt="Chart at entry"
+                       data-bad={chartOk === false ? 1 : 0}
+                       onLoad={() => setChartOk(true)} onError={() => setChartOk(false)} />
+                )}
+              </div>
+            )}
+
+              <div className="grid4" style={{ gap: 12, marginTop: 14 }}>
+                <label className="f"><span>Base pattern</span>
+                  <select className="in" value={t.pattern} onChange={set("pattern")}>
+                    <option value="">—</option>
+                    {PATTERNS.map((p) => <option key={p} value={p}>{p}</option>)}
+                  </select></label>
+                <label className="f"><span>Pivot price</span>
+                  <input className="in" inputMode="decimal" value={t.pivot_price} onChange={set("pivot_price")} />
+                  <div className="hint">
+                    {isFinite(d.distPivot)
+                      ? `Entered ${d.distPivot >= 0 ? "" : "−"}${Math.abs(d.distPivot).toFixed(1)}% ${d.distPivot >= 0 ? "above" : "below"} pivot`
+                      : "Sets your extension at entry"}
+                  </div></label>
+                <label className="f"><span>Volume % of avg</span>
+                  <input className="in" inputMode="decimal" placeholder="240" value={t.vol_pct_avg} onChange={set("vol_pct_avg")} />
+                  <div className="hint" style={{ color: isFinite(num(t.vol_pct_avg)) && num(t.vol_pct_avg) < 100 ? "var(--short)" : undefined }}>
+                    {isFinite(num(t.vol_pct_avg))
+                      ? num(t.vol_pct_avg) >= 100
+                        ? `${(num(t.vol_pct_avg) - 100).toFixed(0)}% above the 30-day average`
+                        : `${(100 - num(t.vol_pct_avg)).toFixed(0)}% below average — thin breakout`
+                      : "100 = the 30-day average"}
+                  </div></label>
+                <label className="f"><span>Weinstein stage</span>
+                  <select className="in" value={t.weinstein_stage} onChange={set("weinstein_stage")}>
+                    <option value="">—</option>
+                    {STAGES.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}
+                  </select></label>
+              </div>
+            {/*
+              Inside the setup now, at the user's request. It used to sit
+              outside every fold on purpose: pattern and pivot are still on the
+              chart in a month, how you felt is not, and asked later it gets
+              answered by whatever the trade went on to do. That reason has not
+              gone away, so the folded header carries it — the feeling picked,
+              or a reminder that it can only be recorded today.
             */}
             <div style={{ marginTop: 16 }}>
               <div className="eyebrow" style={{ marginBottom: 8 }}>
@@ -1047,6 +1043,9 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                 Optional, and only useful if it is honest. Tap again to clear.
               </div>
             </div>
+              </div>
+            )}
+
           </div>
 
           <div ref={exitRef}>

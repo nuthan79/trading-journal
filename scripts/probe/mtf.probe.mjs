@@ -163,3 +163,19 @@ test("the migration adds exactly what the app reads", () => {
   ok(/alter table public\.profiles\s+add column if not exists mtf_rate numeric/.test(sql));
   ok(/mtf_leverage is null or mtf_leverage > 1/.test(sql), "1× borrows nothing, as isMtf says");
 });
+
+test("the form reads: margin, then the setup — with how you feel inside it", () => {
+  const s = form();
+  const at = (x) => s.indexOf(x);
+  ok(at('<span className="eyebrow">Margin (MTF)</span>') < at('<span className="eyebrow">The setup</span>'),
+    "MTF comes first");
+  /* Inside the setup fold: between its header and the fold's closing. */
+  const body = s.slice(at('{setupOpen && ('), at('<div className="eyebrow">Exit</div>'));
+  ok(/How you feel taking this/.test(body), "the feelings are in the setup section");
+});
+
+test("folded, the setup still says how you felt — or that only today can", () => {
+  const s = form();
+  ok(/t\.entry_emotion && `feeling \$\{t\.entry_emotion\.toLowerCase\(\)\}`/.test(s));
+  ok(/RS rank, your reason and how you feel can only be written today/.test(s));
+});
