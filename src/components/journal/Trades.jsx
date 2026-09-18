@@ -690,7 +690,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
               {th("avgExitPrice", "Exit", "num")}
               {th("exitPct", "Exit %", "num")}
               {th("pnl", "P&L", "num")}
-              {th("r", "R", "num")}
+              {th("r", "R", "num", "Profit or loss divided by the risk taken at entry. +2R means you made twice what you risked; −1R means the stop was hit")}
               {th("riskAmt", "Risk", "num")}
               {/* The setup — what the chart looked like going in. Behind the
                   outcome because most rows have none of it recorded, and a

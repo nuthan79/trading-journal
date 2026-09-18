@@ -35,3 +35,25 @@ test("an empty journal offers Import, and a filtered-out view does not claim to 
   ok(/href="\/import"/.test(empty), "the empty journal offers the importer");
   ok(/No trades match/.test(empty), "and a filter with no matches says so, not 'nothing here yet'");
 });
+
+/* 2 — The explainers existed and nothing inside the app linked to them. */
+test("the account menu links to the explainers", () => {
+  ok(/href="\/learn"/.test(read("components/journal/AccountMenu.jsx")));
+});
+
+test("the first R on the first screen links to what R is", () => {
+  const src = read("components/journal/Summary.jsx");
+  ok(/href="\/learn\/what-is-an-r-multiple"/.test(src));
+});
+
+test("every in-app link to /learn points at a page that exists", () => {
+  const files = ["components/journal/AccountMenu.jsx", "components/journal/Summary.jsx"];
+  for (const f of files) {
+    for (const [, slug] of read(f).matchAll(/href="\/learn(\/[^"]*)?"/g)) {
+      const page = path.join(SRC, "app/learn", slug || "", "page.jsx");
+      let exists = true;
+      try { readFileSync(page); } catch { exists = false; }
+      ok(exists, `${f} links to /learn${slug || ""}, which has no page`);
+    }
+  }
+});

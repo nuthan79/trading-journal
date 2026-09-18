@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { User, KeyRound, Settings2, LifeBuoy, LogOut, Crown } from "lucide-react";
+import { User, KeyRound, Settings2, LifeBuoy, LogOut, Crown, GraduationCap } from "lucide-react";
 
 /**
  * The avatar in the corner, and what's behind it.
@@ -71,6 +71,14 @@ export default function AccountMenu({ profile, email, avatar, onProfile, onPassw
               gathering profile, setup, importing and billing into panels that
               pointed at screens which already existed — scaffolding rather
               than a feature, so it went and this took its place. */}
+          {/* The explainers were written and live, and nothing inside the app
+              pointed at them — while R, the word everything here is built on,
+              sat on nearly every screen undefined. A new tab, so leaving to
+              read never costs the screen you were on. */}
+          <a className="am-item" role="menuitem" href="/learn" target="_blank" rel="noopener"
+             onClick={() => setOpen(false)}>
+            <GraduationCap size={14} />What the numbers mean
+          </a>
           <button className="am-item" role="menuitem" onClick={pick(onSupport)}>
             <LifeBuoy size={14} />Support
           </button>
@@ -129,6 +137,7 @@ export default function AccountMenu({ profile, email, avatar, onProfile, onPassw
           font: inherit; font-size: 13px; color: var(--ink2); text-align: left;
         }
         .am-item:hover { background: #F3F6F4; color: var(--ink); }
+        a.am-item { text-decoration: none; box-sizing: border-box; }
         .am-item :global(svg) { color: var(--ink3); flex: none; }
         .am-item:hover :global(svg) { color: var(--brass); }
         .am-plan {

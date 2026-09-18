@@ -45,7 +45,15 @@ export default function Summary({ closed, openingCapital, flows = [] }) {
     <section className="sum-card">
       <div className="sum-head">
         <span className="eyebrow">Summary</span>
-        <span className="sum-range mono">{s.from} → {s.to}</span>
+        <span className="sum-right">
+          {/* Where R first appears on the first screen anybody sees, and the
+              only word in this paragraph a newcomer cannot be expected to know. */}
+          {s.hasR && (
+            <a className="sum-learn" href="/learn/what-is-an-r-multiple"
+               target="_blank" rel="noopener">What is R?</a>
+          )}
+          <span className="sum-range mono">{s.from} → {s.to}</span>
+        </span>
       </div>
 
       {s.hasR ? (
@@ -92,6 +100,9 @@ export default function Summary({ closed, openingCapital, flows = [] }) {
           padding-bottom: 9px; margin-bottom: 13px;
         }
         .sum-range { font-size: 11px; color: var(--ink3); letter-spacing: 0.02em; }
+        .sum-right { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+        .sum-learn { font-size: 12px; color: var(--brass); text-decoration: underline;
+                     text-underline-offset: 2px; }
         .sum-body {
           margin: 0;
           font-size: 17px;
