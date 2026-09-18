@@ -57,3 +57,32 @@ test("every in-app link to /learn points at a page that exists", () => {
     }
   }
 });
+
+/* 3 — On Trades, 20 of 23 headers were bare abbreviations with no hover. */
+import { COLUMN_HINTS } from "@/lib/columns";
+
+const headerKeys = (file) => {
+  const src = read(file);
+  const thead = src.slice(src.indexOf("<thead"), src.indexOf("</tr></thead>"));
+  return [...thead.matchAll(/\{th\("([^"]+)"/g)].map((m) => m[1]);
+};
+
+for (const [file, table] of [["components/journal/Trades.jsx", "Trades"],
+                             ["components/journal/Holdings.jsx", "Holdings"]]) {
+  test(`every ${table} column but the symbol explains itself on hover`, () => {
+    const keys = headerKeys(file);
+    ok(keys.length > 10, `found the ${table} header (${keys.length} columns)`);
+    const bare = keys.filter((k) => k !== "symbol" && !COLUMN_HINTS[k]);
+    eq(bare.length, 0, `${table} headers with no hover: ${bare.join(", ")}`);
+  });
+
+  test(`${table} headers fall back to the shared hints`, () => {
+    ok(/title=\{title \?\? COLUMN_HINTS\[k\]\}/.test(read(file)),
+      "the header helper must read the shared map, or the map is decoration");
+  });
+}
+
+test("Change % on Holdings says it is since entry, not today", () => {
+  /* The one header whose obvious reading is wrong. */
+  ok(/not today/.test(COLUMN_HINTS.changePct));
+});

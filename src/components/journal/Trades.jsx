@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Plus, Pencil, Trash2, Download, Image as ImageIcon, X, Check, Flag, Upload } from "lucide-react";
 import { rupee, rfmt, pct, signedPct, exportFilename, dmy } from "@/lib/format";
 import { excursion } from "@/lib/path";
+import { COLUMN_HINTS } from "@/lib/columns";
 import Money from "@/components/Money";
 import { downloadCsv } from "@/lib/csv";
 import PositionDetail from "./PositionDetail";
@@ -512,7 +513,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
   const th = (k, label, cls, title) => {
     const active = sort.k === k;
     return (
-      <th className={cls} data-sortable title={title}
+      <th className={cls} data-sortable title={title ?? COLUMN_HINTS[k]}
           onClick={() => setSort((s) => ({ k, dir: s.k === k ? -s.dir : -1 }))}>
         {label}
         <span className="arrow">{active ? (sort.dir === 1 ? "↑" : "↓") : ""}</span>
@@ -690,7 +691,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
               {th("avgExitPrice", "Exit", "num")}
               {th("exitPct", "Exit %", "num")}
               {th("pnl", "P&L", "num")}
-              {th("r", "R", "num", "Profit or loss divided by the risk taken at entry. +2R means you made twice what you risked; −1R means the stop was hit")}
+              {th("r", "R", "num")}
               {th("riskAmt", "Risk", "num")}
               {/* The setup — what the chart looked like going in. Behind the
                   outcome because most rows have none of it recorded, and a
@@ -705,8 +706,8 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                   outcomes rather than setup, but they describe the PATH, and
                   sit better beside the chart column's cousins than wedged
                   between P&L and R, which already say where it ended. */}
-              {th("mfe", "MFE", "num", `Best R reached — ${EXCURSION_NOTE}`)}
-              {th("mae", "MAE", "num", `Worst R reached — ${EXCURSION_NOTE}`)}
+              {th("mfe", "MFE", "num")}
+              {th("mae", "MAE", "num")}
               <th></th>
             </tr></thead>
             <tbody>

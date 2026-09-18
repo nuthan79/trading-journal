@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { RefreshCw, Flag, Rocket, CornerDownRight, Download } from "lucide-react";
 import { rupee, rfmt, pct, signedPct, moneyParts, exportFilename,
          monthShort } from "@/lib/format";
+import { COLUMN_HINTS } from "@/lib/columns";
 import Money from "@/components/Money";
 import { downloadCsv } from "@/lib/csv";
 import { SHOW_HOLDINGS_CSV } from "@/lib/flags";
@@ -719,10 +720,10 @@ export default function Holdings({
    * the interesting end is the big one — the largest risk, the deepest
    * drawdown, the position closest to its stop. Clicking again flips it.
    */
-  const th = (k, label, cls) => {
+  const th = (k, label, cls, title) => {
     const active = sort.k === k;
     return (
-      <th className={cls} data-sortable
+      <th className={cls} data-sortable title={title ?? COLUMN_HINTS[k]}
           onClick={() => setSort((s) => ({ k, dir: s.k === k ? -s.dir : -1 }))}>
         {label}
         <span className="arrow">{active ? (sort.dir === 1 ? "\u2191" : "\u2193") : ""}</span>
