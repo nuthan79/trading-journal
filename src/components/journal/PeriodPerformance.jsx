@@ -280,7 +280,9 @@ export default function PeriodPerformance({ closed, openingCapital, flows = [], 
               </tr>
               {rows.length > 1 && (
                 <tr className="pp-avg">
-                  <td><b>Per {grainWord}</b></td>
+                  <td title={`Averaged over the ${rows.length} ${grainWord === "financial year" ? "financial years" : grainWord + "s"} with a sale — one you sat out has no row, so it isn't counted`}>
+                    <b>Per {grainWord}</b> <span className="pp-dim">({rows.length})</span>
+                  </td>
                   <td className="num pp-dim">{(totals.trades / rows.length).toFixed(1)}</td>
                   <td className={`num ${totals.pnl >= 0 ? "pos" : "neg"}`}>
                     <Money v={totals.pnl / rows.length} />
