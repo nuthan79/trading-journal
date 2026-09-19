@@ -20,6 +20,17 @@
  *   unclear  more sold since than it held: a re-buy the files cannot see.
  *            Reported, never acted on.
  *
+ * ONLY WHEN THE HOLDING WAS THE WHOLE STORY ON THAT DAY. A holdings import
+ * writes a row for what the journal did NOT already hold — so where other rows
+ * of the same stock already carried shares that day, the holding is only the
+ * remainder, and those rows' later sells are their own. Real case, VBL: 637
+ * held, 306 already in the journal as other rows, so the holding was 331; the
+ * 306 sold on 10 September came out of the other rows, and 331 was exactly
+ * what was still held. Counting those sells against the holding trimmed a
+ * correct row to 25. Any holding that shared its snapshot day with other rows
+ * of its stock is now left alone — the journal alone cannot tell whose shares
+ * a sell took.
+ *
  * Pure: it reads derived trades and returns a plan. Nothing is written here.
  */
 import { brokerFamily, isHoldingsSnapshot, snapshotDay } from "./brokerFamily";
@@ -41,6 +52,24 @@ export function soldSinceSnapshot(trades = []) {
     const openQty = Number.isFinite(Number(h.qtyOpen)) ? Number(h.qtyOpen)
       : Number(h.quantity) - (h.exits || []).reduce((a, e) => a + (Number(e.quantity) || 0), 0);
     if (!(openQty > 0)) continue;
+
+    /* Another row of this stock already held shares on the snapshot day:
+       created no later than the holding, bought on or before that day, and
+       either still open or sold something on or after it. Without a creation
+       time there is no telling, so that is left alone too. */
+    const snapAt = Date.parse(h.created_at);
+    if (!Number.isFinite(snapAt)) continue;
+    const shared = trades.some((o) => {
+      if (o === h || o.id === h.id) return false;
+      if (String(o.symbol || "").toUpperCase() !== sym) return false;
+      if (brokerFamily(o.broker) !== fam) return false;
+      const at = Date.parse(o.created_at);
+      if (!Number.isFinite(at) || at > snapAt) return false;
+      if (day(o.entry_date) > snap) return false;
+      return o.status !== "closed"
+        || (o.exits || []).some((e) => day(e.exit_date) >= snap);
+    });
+    if (shared) continue;
 
     const evidence = [];
     let soldSince = 0;

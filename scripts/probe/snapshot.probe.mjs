@@ -184,3 +184,37 @@ test("a Zerodha tradebook CSV is recognised and read", () => {
 test("the collision check groups brokers the way the importer does", () => {
   ok(/const b = brokerFamily\(t\.broker\);/.test(read("lib/analysis.js")));
 });
+
+/**
+ * VBL, from the live book (ids replaced). DK5510 held 637 on 3 Sep; the
+ * journal already carried 306 of them as other rows, so the holdings import
+ * wrote the 331 remainder. The 306 sold on 10 Sep were those rows' shares.
+ * The tidy-up counted them against the holding and trimmed it to 25; 331 was
+ * right. A holding that shared its day with other rows is now left alone.
+ */
+test("VBL: a holding that is only the remainder is never trimmed by other rows' sells", () => {
+  const h = holding("VBL", 331, 520, { entry_date: "2024-12-03", entry_date_source: "recorded",
+                                       created_at: "2026-09-03T05:59:00Z" });
+  const earlier = closed("VBL", "2024-12-03", [{ exit_date: "2025-03-03", quantity: 9 }, { exit_date: "2026-09-10", quantity: 97 }],
+                         { id: "c-a", created_at: "2026-09-03T04:16:00Z" });
+  const b = closed("VBL", "2024-12-18", [{ exit_date: "2026-09-10", quantity: 153 }], { id: "c-b", created_at: "2026-09-18T18:59:00Z" });
+  const c = closed("VBL", "2024-12-20", [{ exit_date: "2026-09-10", quantity: 56 }], { id: "c-c", created_at: "2026-09-18T18:59:00Z" });
+  eq(soldSinceSnapshot([h, earlier, b, c]).length, 0, "331 stays 331");
+});
+
+test("the six real removals still qualify: no other row held them that day", () => {
+  const plan = soldSinceSnapshot([
+    holding("YATHARTH", 405, 861.55),
+    closed("YATHARTH", "2026-08-24", [{ exit_date: "2026-08-24", quantity: 502 }, { exit_date: "2026-09-16", quantity: 405 }],
+           { created_at: "2026-09-18T18:59:00Z" }),
+  ]);
+  eq(plan.map((p) => p.action).join(), "remove");
+});
+
+test("a row with no creation time is never judged", () => {
+  const plan = soldSinceSnapshot([
+    holding("X", 100, 10, { created_at: null, entry_date_source: "assumed" }),
+    closed("X", "2026-08-01", [{ exit_date: "2026-09-10", quantity: 100 }]),
+  ]);
+  eq(plan.length, 0);
+});
