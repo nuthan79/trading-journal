@@ -26,16 +26,25 @@ test("the layout offers showDemo through the journal context", () => {
   ok(/demoOn,\s*showDemo,/.test(layout), "both are in the context value");
 });
 
-test("the dashboard passes it only when no sample is on screen", () => {
-  ok(/demoOn, showDemo/.test(dash), "the page reads both");
-  ok(/onShowDemo: demoOn \? null : showDemo/.test(dash),
-     "offering it while the sample IS showing would read as a broken button");
+test("the offer sits in the banner's own slot, on every screen", () => {
+  ok(/SampleOffer/.test(layout), "the layout renders it");
+  ok(/\{!demo && trades\.length === 0 && \(/.test(layout),
+     "only with no sample showing and nothing of the user's own");
+  const i = layout.indexOf("<DemoBanner"), j = layout.indexOf("<SampleOffer");
+  ok(i > 0 && j > i && layout.indexOf("{children}") > j,
+     "above the screen being read, beside the banner it mirrors");
 });
 
-test("the first-week card renders the button, and only when given one", () => {
-  ok(/onShowDemo/.test(fw), "the prop is taken");
-  ok(/\{onShowDemo && \(/.test(fw), "guarded, so a full journal shows no link");
-  ok(/Show me a sample journal/.test(fw), "the words say what happens");
+test("the offer says what it does and how to leave", () => {
+  const so = read("components/journal/SampleOffer.jsx");
+  ok(/Show me a sample journal/.test(so), "the words say what happens");
+  ok(/yours are never touched/.test(so), "and that nothing of theirs moves");
+  ok(/\/import/.test(so), "the other way to fill a journal is right there");
+});
+
+test("the dashboard card does not offer it a second time", () => {
+  ok(!/onShowDemo/.test(fw) && !/onShowDemo/.test(dash),
+     "two buttons for one thing on one page is the clutter, not the fix");
 });
 
 /* Pinning must clear the dismissal, or the button writes a flag the sample

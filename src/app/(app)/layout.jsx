@@ -25,6 +25,7 @@ import { pageEvent } from "@/lib/pageEvents";
 import { isPreset, presetIndex, presetDataUri } from "@/lib/avatars";
 import { buildDemo } from "@/lib/demo";
 import DemoBanner from "@/components/journal/DemoBanner";
+import SampleOffer from "@/components/journal/SampleOffer";
 import Landing from "@/components/Landing";
 import Wordmark from "@/components/Wordmark";
 import SignInCard from "@/components/SignInCard";
@@ -1004,6 +1005,15 @@ export default function AppLayout({ children }) {
               <DemoBanner onDismiss={dismissDemo}
                           pinned={demoPinned}
                           hiddenCount={trades.length} />
+            </div>
+          )}
+          {/* The mirror of it: no sample, and nothing of their own either, so
+              every screen below is an explanation of its own emptiness. Same
+              slot on purpose — whichever tab they are reading is the one that
+              has to offer the way out. */}
+          {!demo && trades.length === 0 && (
+            <div style={{ paddingTop: 16 }}>
+              <SampleOffer onShow={showDemo} />
             </div>
           )}
           {children}
