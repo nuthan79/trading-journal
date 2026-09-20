@@ -20,6 +20,17 @@ npm run symbols   # rebuild public/symbols.json — NSE and BSE both download
 ```
 
 ```bash
+npm run admin     # the admin dashboard, http://127.0.0.1:7788 — signups,
+                  # sign-ins, regulars with ledger name and email. LOCAL ONLY:
+                  # plain Node in scripts/admin/, outside the Next app, because
+                  # it reads with SUPABASE_SERVICE_ROLE_KEY (bypasses RLS) and
+                  # that key must never reach Vercel. Read-only; a probe pins
+                  # that nothing in src/ imports it and that it binds to
+                  # 127.0.0.1. Figures are IST days, computed in report.mjs so
+                  # they can be probed against a fixed book.
+```
+
+```bash
 npm run probe          # every check in scripts/probe/*.probe.mjs
 npm run probe -- mtf   # only files whose name contains "mtf"
 npm run probe:tz       # the same, under TZ=America/New_York
