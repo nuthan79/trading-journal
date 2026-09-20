@@ -20,14 +20,17 @@ npm run symbols   # rebuild public/symbols.json — NSE and BSE both download
 ```
 
 ```bash
-npm run admin     # the admin dashboard, http://127.0.0.1:7788 — signups,
+npm run admin     # Pulse, the admin dashboard, http://127.0.0.1:7788 — who is
+                  # active now, signups,
                   # sign-ins, regulars with ledger name and email. LOCAL ONLY:
                   # plain Node in scripts/admin/, outside the Next app, because
                   # it reads with SUPABASE_SERVICE_ROLE_KEY (bypasses RLS) and
                   # that key must never reach Vercel. Read-only; a probe pins
                   # that nothing in src/ imports it and that it binds to
                   # 127.0.0.1. Figures are IST days, computed in report.mjs so
-                  # they can be probed against a fixed book.
+                  # they can be probed against a fixed book. Your own logins
+                  # are left out via ADMIN_EXCLUDE in .env.local — never in the
+                  # repo, which is public.
 ```
 
 ```bash

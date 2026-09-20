@@ -1,5 +1,5 @@
 /**
- * The admin dashboard — on this machine only.
+ * Pulse — the admin dashboard, on this machine only.
  *
  * WHY IT IS NOT A PAGE ON ledgerr.app. Showing who your users are means
  * reading `auth.users`, which needs the service role key, which bypasses
@@ -98,7 +98,10 @@ async function collect() {
     table("trades", "user_id,created_at"),
     table("diary_entries", "user_id,created_at"),
   ]);
-  return buildReport({ users: u, profiles, events, trades, diary }, Date.now());
+  /* Your own logins, out of the figures. Kept in .env.local, not here: the
+     repo is public and these are your addresses. */
+  const exclude = (env("ADMIN_EXCLUDE") || "").split(",").map((e) => e.trim()).filter(Boolean);
+  return buildReport({ users: u, profiles, events, trades, diary }, Date.now(), { exclude });
 }
 
 const port = Number(process.argv[2]) || 7788;
@@ -121,5 +124,5 @@ createServer(async (req, res) => {
 /* 127.0.0.1, not 0.0.0.0: not reachable from the network, not from a café
    wifi, not from anything but this machine. */
 }).listen(port, "127.0.0.1", () => {
-  console.log(`\n  LedgeRR admin — http://127.0.0.1:${port}\n  Read-only. Ctrl-C to stop.\n`);
+  console.log(`\n  Pulse — http://127.0.0.1:${port}\n  Read-only. Ctrl-C to stop.\n`);
 });

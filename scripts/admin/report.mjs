@@ -17,6 +17,17 @@
 
 const IST_OFFSET_MIN = 330;
 
+/**
+ * "Active right now" — anything at all in this many minutes.
+ *
+ * There is no heartbeat in the app and there should not be one: `opened`
+ * fires once per browser session, and a ping every minute would turn a table
+ * of real actions into a table of pings. So this is the honest reading —
+ * somebody who DID something recently — and the page says so in those words
+ * rather than claiming to know who is looking at a screen.
+ */
+export const LIVE_MINUTES = 30;
+
 /** The IST calendar day of an instant, as YYYY-MM-DD. */
 export function istDay(when) {
   const t = when instanceof Date ? when : new Date(when);
@@ -62,6 +73,33 @@ function daySlice(day, { users, events, trades, diary }) {
  * afternoon and never came back is not, and visit counts cannot tell them
  * apart.
  */
+/**
+ * Your own accounts, out of the figures.
+ *
+ * Five test logins against twenty real ones moves every number that matters —
+ * retention, the day board, who counts as loyal — and they move it in the
+ * flattering direction, which is the worst kind of wrong. Matched on email,
+ * case-insensitively, and the list lives in .env.local rather than here: this
+ * repo is public and those addresses are yours.
+ */
+export function excluding(data, emails = []) {
+  const drop = new Set(emails.map((e) => String(e).trim().toLowerCase()).filter(Boolean));
+  if (!drop.size) return { data, excluded: 0 };
+  const users = data.users.filter((u) => !drop.has(String(u.email || "").toLowerCase()));
+  const keep = new Set(users.map((u) => u.id));
+  const mine = (rows) => (rows || []).filter((r) => keep.has(r.user_id));
+  return {
+    data: {
+      users,
+      profiles: (data.profiles || []).filter((p) => keep.has(p.id)),
+      events: mine(data.events),
+      trades: mine(data.trades),
+      diary: mine(data.diary),
+    },
+    excluded: data.users.length - users.length,
+  };
+}
+
 export function people(data, now = Date.now()) {
   const { users, profiles = [], events, trades, diary } = data;
   const byId = new Map(profiles.map((p) => [p.id, p]));
@@ -109,7 +147,8 @@ export const LOYAL_DAYS = 5;
 /** Nothing at all for this many days, after having started — worth a nudge. */
 export const QUIET_DAYS = 14;
 
-export function buildReport(data, now = Date.now()) {
+export function buildReport(raw, now = Date.now(), { exclude = [] } = {}) {
+  const { data, excluded } = excluding(raw, exclude);
   const { users, events, trades, diary } = data;
   const today = istDay(now);
   const list = people(data, now);
@@ -129,8 +168,27 @@ export function buildReport(data, now = Date.now()) {
   const eligible = users.filter((u) => istDay(u.created_at) <= from30);
   const retained = eligible.filter((u) => list.find((p) => p.id === u.id)?.daysSinceSeen <= 7).length;
 
+  /* Who has done something in the last half hour — the closest thing to
+     "who is in there now" that the data can honestly answer. */
+    const liveFrom = now - LIVE_MINUTES * 60000;
+  const stamped = [
+    ...events.map((e) => ({ user_id: e.user_id, at: e.created_at })),
+    ...trades.map((t) => ({ user_id: t.user_id, at: t.created_at })),
+    ...diary.map((d) => ({ user_id: d.user_id, at: d.created_at })),
+  ].filter((x) => new Date(x.at).getTime() >= liveFrom);
+  const liveIds = new Set(stamped.map((x) => x.user_id));
+  const live = list.filter((p) => liveIds.has(p.id)).map((p) => ({
+    ...p,
+    minutesAgo: Math.max(0, Math.round(
+      (now - Math.max(...stamped.filter((x) => x.user_id === p.id)
+        .map((x) => new Date(x.at).getTime()))) / 60000)),
+  })).sort((a, b) => a.minutesAgo - b.minutesAgo);
+
   return {
     generatedAt: new Date(now).toISOString(),
+    excluded,
+    liveMinutes: LIVE_MINUTES,
+    live,
     today: days[0],
     yesterday: days[1],
     days,

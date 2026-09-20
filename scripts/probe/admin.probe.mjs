@@ -2,8 +2,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, ok, eq, near } from "./harness.mjs";
-import { buildReport, people, istDay, istDayBack, LOYAL_DAYS, QUIET_DAYS }
-  from "../admin/report.mjs";
+import { buildReport, people, excluding, istDay, istDayBack,
+         LOYAL_DAYS, QUIET_DAYS, LIVE_MINUTES } from "../admin/report.mjs";
 
 const ROOT = path.resolve(fileURLToPath(new URL("../../", import.meta.url)));
 const read = (p) => readFileSync(path.join(ROOT, p), "utf8");
@@ -35,21 +35,25 @@ const book = () => ({
   ],
   events: [
     /* Six separate days this month, and twice on one of them — a day is a day. */
-    ...["2026-09-20", "2026-09-19", "2026-09-17", "2026-09-14", "2026-09-10", "2026-09-05"]
+    /* Today's stamps sit an hour BEFORE the fixed clock: a row dated later
+       than "now" is not a thing the database can hold, and it would make this
+       user look live in the test below. */
+    ...["2026-09-19", "2026-09-17", "2026-09-14", "2026-09-10", "2026-09-05"]
       .map((d) => ({ user_id: "a", event: "opened", created_at: D(d) })),
     { user_id: "a", event: "opened", created_at: D("2026-09-20", 4) },
-    { user_id: "a", event: "imported", created_at: D("2026-09-20") },
+    { user_id: "a", event: "opened", created_at: D("2026-09-20", 4) },
+    { user_id: "a", event: "imported", created_at: D("2026-09-20", 4) },
     { user_id: "b", event: "opened", created_at: D("2026-08-20") },
     { user_id: "c", event: "opened", created_at: D("2026-09-20", 3) },
     { user_id: "d", event: "opened", created_at: D("2026-09-01") },
   ],
   trades: [
-    { user_id: "a", created_at: D("2026-09-20") },
+    { user_id: "a", created_at: D("2026-09-20", 4) },
     { user_id: "a", created_at: D("2026-09-20", 4) },
     { user_id: "a", created_at: D("2026-09-19") },
     { user_id: "b", created_at: D("2026-08-20") },
   ],
-  diary: [{ user_id: "a", created_at: D("2026-09-20") }],
+  diary: [{ user_id: "a", created_at: D("2026-09-20", 4) }],
 });
 
 test("a day is an IST day, not a UTC one", () => {
@@ -142,4 +146,60 @@ test("the env file is found even when the path has spaces", async () => {
   ok(/fileURLToPath\(new URL\("\.\.\/\.\.\/", import\.meta\.url\)\)/.test(src),
      "fileURLToPath, not .pathname");
   ok(!/import\.meta\.url\)\.pathname/.test(src), "no encoded path anywhere here");
+});
+
+
+/* YOUR OWN ACCOUNTS, OUT OF THE FIGURES. Five test logins against twenty real
+   ones moves retention, the day board and the loyal list — always in the
+   flattering direction. */
+test("excluded accounts leave with everything they did", () => {
+  const b = book();
+  b.users.push({ id: "me", email: "Nuthann@Gmail.com", created_at: D("2026-06-01"),
+                 last_sign_in_at: D("2026-09-20") });
+  b.profiles.push({ id: "me", journal_name: "Mine", onboarded_at: D("2026-06-01") });
+  b.events.push({ user_id: "me", event: "opened", created_at: D("2026-09-20") });
+  b.trades.push({ user_id: "me", created_at: D("2026-09-20") });
+
+  const r = buildReport(b, NOW, { exclude: ["nuthann@gmail.com"] });
+  eq(r.excluded, 1, "case is not a different person");
+  eq(r.totals.users, 4, "the account is gone");
+  eq(r.today.activeUsers, 2, "and so is its sign-in");
+  eq(r.today.trades, 2, "and its trades");
+  ok(!r.people.some((p) => /nuthann/i.test(p.email)), "it appears in no list");
+  /* And the cohort it would have padded. */
+  eq(r.retention.cohort, 2);
+});
+
+test("an empty exclusion list changes nothing", () => {
+  const { data, excluded } = excluding(book(), []);
+  eq(excluded, 0);
+  eq(data.users.length, 4);
+  eq(buildReport(book(), NOW).excluded, 0);
+});
+
+/* ACTIVE RIGHT NOW. There is no heartbeat in the app, so this is "did
+   something in the last half hour" and the page says exactly that. */
+test("live counts anyone who did anything in the last half hour", () => {
+  const b = book();
+  const mins = (m) => new Date(NOW - m * 60000).toISOString();
+  b.events.push({ user_id: "b", event: "opened", created_at: mins(5) });
+  b.trades.push({ user_id: "c", created_at: mins(LIVE_MINUTES - 1) });
+  b.diary.push({ user_id: "d", created_at: mins(LIVE_MINUTES + 10) });
+
+  const r = buildReport(b, NOW);
+  eq(r.live.map((p) => p.email).join(), "quiet@x.com,new@x.com",
+     "the most recent first; the one outside the window is not live");
+  eq(r.live[0].minutesAgo, 5);
+  eq(r.liveMinutes, LIVE_MINUTES);
+});
+
+test("the page names itself Pulse and never claims presence it cannot see", () => {
+  const page = read("scripts/admin/page.mjs");
+  ok(/<title>Pulse — LedgeRR<\/title>/.test(page));
+  ok(/Active right now/.test(page), "the tile is there");
+  ok(/logged a trade, wrote an entry or opened the app in the last \$\{r\.liveMinutes\} minutes/
+      .test(page), "and it says what it actually measured");
+  const ex = read(".env.example");
+  ok(/^ADMIN_EXCLUDE=$/m.test(ex), "the exclusion list is named here, and empty");
+  ok(!/nuthann|ledgerr\.app/.test(ex), "never an address: this file is committed");
 });

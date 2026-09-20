@@ -47,6 +47,23 @@ const table = (title, note, list, kind) => `
     </table>
   </section>`;
 
+/**
+ * Who is in there now — or as near as the data can honestly say.
+ *
+ * There is no heartbeat, so this is "did something in the last half hour",
+ * and it is labelled as that. A tile claiming live presence it cannot
+ * measure would be the one figure here nobody could trust.
+ */
+const liveTile = (r) => `
+  <div class="tile live">
+    <span>Active right now</span>
+    <b>${n(r.live.length)}</b>
+    <i>${r.live.length
+      ? esc(r.live.slice(0, 3).map((p) => `${p.name} · ${p.minutesAgo}m`).join(" · "))
+        + (r.live.length > 3 ? ` +${r.live.length - 3}` : "")
+      : `nothing in the last ${r.liveMinutes} minutes`}</i>
+  </div>`;
+
 export function render(r) {
   const t = r.today, y = r.yesterday;
   const bars = r.days.slice().reverse();
@@ -54,7 +71,7 @@ export function render(r) {
 
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
-<title>LedgeRR admin</title>
+<title>Pulse — LedgeRR</title>
 <meta http-equiv="refresh" content="60">
 <style>
   :root { --ink:#1A1A1A; --ink2:#4A4A4A; --ink3:#8A8A8A; --rule:#E2E0DB;
@@ -70,6 +87,10 @@ export function render(r) {
   .tile span { display:block; font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink3); }
   .tile b { display:block; font-size:25px; font-weight:500; margin-top:5px; font-variant-numeric:tabular-nums; }
   .tile i { display:block; font-style:normal; font-size:11px; color:var(--ink3); margin-top:3px; }
+  .tile.live { border-color:var(--long); }
+  .tile.live b { color:var(--long); }
+  .mk { font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--brass);
+        font-weight:600; margin-left:2px; }
   section { margin-top:30px; }
   h2 { font-size:12px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink2);
        margin:0 0 3px; display:flex; align-items:center; gap:8px; }
@@ -92,11 +113,13 @@ export function render(r) {
 </style></head>
 <body>
   <header>
-    <h1>LedgeRR — admin</h1>
-    <i>${esc(new Date(r.generatedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }))} IST · refreshes every minute · read-only</i>
+    <h1>Pulse <span class="mk">LedgeRR</span></h1>
+    <i>${esc(new Date(r.generatedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }))} IST · refreshes every minute · read-only${
+      r.excluded ? ` · ${r.excluded} of your own accounts left out` : ""}</i>
   </header>
 
   <div class="tiles">
+    ${liveTile(r)}
     ${tile("Signed in today", n(t.activeUsers), `${n(y.activeUsers)} yesterday`)}
     ${tile("New accounts today", n(t.signups), `${n(r.totals.signups7)} this week`)}
     ${tile("Trades logged today", n(t.trades), `${n(y.trades)} yesterday`)}
@@ -116,6 +139,9 @@ export function render(r) {
     <div class="legend"><span>${esc(bars[0].day)}</span><span>${esc(bars[bars.length - 1].day)}</span></div>
   </section>
 
+  ${r.live.length ? table("In the journal now",
+    `Anyone who logged a trade, wrote an entry or opened the app in the last ${r.liveMinutes} minutes.`,
+    r.live, "") : ""}
   ${table("Worth thanking", "Opened the journal on five or more separate days in the last month. These are the people whose habit has actually formed — write to them by name.", r.loyal, "nobody has five active days in the last month yet")}
   ${table("Gone quiet", "Logged trades once and has not been back in a fortnight. A short, specific note here is worth more than any feature.", r.quiet, "nobody has drifted off")}
   ${table("Signed up, never logged a trade", "They made an account and stopped. Whatever happened, it happened before the first trade — the part worth fixing.", r.neverStarted, "everyone who signed up has logged a trade")}
