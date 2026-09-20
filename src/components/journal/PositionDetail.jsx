@@ -279,9 +279,14 @@ export default function PositionDetail({ row, diary = [], twin = null, onAcknowl
                 when a position is being closed, so it gets its own button
                 rather than being something to find inside Edit. Nothing left
                 to sell on a closed trade, so it isn't offered. */}
+            {/* SELL, not "Exit". The word a trader uses at the moment they
+                are doing it, and the word on the form this opens — "Exit" is
+                the journal's own vocabulary for the same act, and reads to
+                half of them as a way out of this panel. Brass rather than
+                Delete's red: see globals.css. */}
             {!closed && onExit && (
-              <button className="btn ghost sm" onClick={() => onExit(row)}>
-                <LogOut size={13} />Exit
+              <button className="btn sell sm" onClick={() => onExit(row)}>
+                <LogOut size={13} />Sell
               </button>
             )}
             <button className="btn ghost sm" onClick={() => onEdit(row)}>

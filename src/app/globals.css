@@ -273,6 +273,12 @@ a.btn { text-decoration: none; }
 .btn.sm { padding: 5px 10px; font-size: 11px; }
 .btn.danger { background: transparent; color: var(--short); border-color: var(--rule); }
 .btn.danger:hover { border-color: var(--short); background: transparent; }
+/* Selling is the other consequential button beside Delete, and it must not
+   wear Delete's red: one undoes the trade, the other IS the trade. Brass is
+   the app's own accent for "this does something", so it reads as an action
+   rather than a warning. */
+.btn.sell { background: transparent; color: var(--brass); border-color: var(--brass); }
+.btn.sell:hover { background: #FBF6EA; border-color: var(--brass); }
 
 .seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 2px; overflow: hidden;
        background: var(--card); flex-wrap: wrap; }

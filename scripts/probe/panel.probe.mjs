@@ -56,3 +56,15 @@ test("a breakeven mark the price overruled shows its risk, and says why", () => 
   ok(/if the stop is hit — covered by what is banked/.test(s),
     "risk covered by banked profit shows the rupees, not a nil");
 });
+
+/* SELL, in brass. The word the trader uses in the moment, and a colour that
+   is not Delete's red — one undoes the trade, the other is the trade. */
+test("the position panel offers Sell, not Exit, and not in red", () => {
+  const src = panel();
+  ok(/<LogOut size=\{13\} \/>Sell/.test(src), "the button says Sell");
+  ok(/className="btn sell sm"/.test(src), "and wears the sell colour");
+  ok(!/\/>Exit\b/.test(src), "nothing here still says Exit");
+  const css = readFileSync(path.join(SRC, "app/globals.css"), "utf8");
+  ok(/\.btn\.sell \{[^}]*var\(--brass\)/.test(css), "brass, defined once in globals");
+  ok(!/\.btn\.sell \{[^}]*var\(--short\)/.test(css), "never Delete's red");
+});
