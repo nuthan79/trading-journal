@@ -11,7 +11,7 @@ import {
   listFlows, listFilters, saveFilter, deleteFilter,
   markOpenPositions, signInWithPassword, signOut,
   signUpWithPassword, signInWithGoogle,
-  sendPasswordReset, avatarUrl, trackVisit, setAnalyticsFlag } from "@/lib/db";
+  sendPasswordReset, avatarUrl, trackVisit, setAnalyticsFlag, setDemoPinned } from "@/lib/db";
 import { stats } from "@/lib/calc";
 import { derivePosition, isOpen, isPartial } from "@/lib/positions";
 import { mtfPrefs } from "@/lib/mtf";
@@ -722,6 +722,23 @@ export default function AppLayout({ children }) {
    * nothing was ever stored — the flag is the whole of it, which is also why
    * this needs no confirmation: there is nothing here to lose.
    */
+  /**
+   * Back to the sample book, from the empty dashboard.
+   *
+   * The same pin the profile sheet writes. It lived only there, which meant
+   * the one person who needs the sample most — an empty journal that has
+   * dismissed it, or landed with it already off — had to find a settings
+   * sheet to get a full app to look at. Here it is a button on the page they
+   * are already looking at.
+   */
+  const showDemo = async () => {
+    try {
+      setProfile(await setDemoPinned(true));
+    } catch (e) {
+      say(e.message || "Could not show the sample.");
+    }
+  };
+
   const dismissDemo = async () => {
     try {
       setProfile(await dbSaveProfile({
@@ -881,6 +898,7 @@ export default function AppLayout({ children }) {
            the sample book's while that is showing, and counting it would tick
            a step the user has not done. */
         ownDiaryCount: diary.length, needStopsCount, assumedStopsCount, userId,
+        demoOn, showDemo,
         all, closed, open, banking, S,
         say,
         openNewTrade, openEditTrade, openExitTrade,

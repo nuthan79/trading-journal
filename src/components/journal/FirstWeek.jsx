@@ -21,7 +21,7 @@ import { firstWeek } from "@/lib/firstweek";
 const keyFor = (userId) => `ledgerr:first-week-hidden:${userId || "anon"}`;
 
 export default function FirstWeek({ trades, needStops, assumedStops, diary,
-                                    onboardedAt, userId, onNewTrade }) {
+                                    onboardedAt, userId, onNewTrade, onShowDemo }) {
   /* Starts hidden and is revealed after the stored flag is read, rather than
      flashing on and then vanishing for somebody who dismissed it last week. */
   const [hidden, setHidden] = useState(true);
@@ -100,6 +100,17 @@ export default function FirstWeek({ trades, needStops, assumedStops, diary,
         </li>
       </ol>
 
+      {/* A journal with nothing in it explains itself badly: every chart says
+          "once you close your first trade". The sample book answers that in
+          one click, and until now the only way to it was a settings sheet. */}
+      {onShowDemo && (
+        <p className="fw-demo">
+          Want to see it full first?{" "}
+          <button className="fw-link" onClick={onShowDemo}>Show me a sample journal</button>
+          {" "}— made-up trades you can explore. Your own stay untouched.
+        </p>
+      )}
+
       <style jsx>{`
         .fw { border: 1px solid var(--brass); background: var(--card);
               border-radius: 3px; padding: 16px 20px 18px; }
@@ -121,6 +132,11 @@ export default function FirstWeek({ trades, needStops, assumedStops, diary,
         .fw-steps b { font-size: 14px; font-weight: 600; color: var(--ink); }
         .fw-steps p { margin: 4px 0 0; font-size: 12.5px; line-height: 1.55; color: var(--ink2); }
         .fw-acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+        .fw-demo { margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--rule);
+                   font-size: 12.5px; color: var(--ink2); }
+        .fw-link { background: none; border: 0; padding: 0; font: inherit; cursor: pointer;
+                   color: var(--brass); font-weight: 600; text-decoration: underline; }
+        .fw-link:hover { color: var(--ink); }
       `}</style>
     </section>
     </div>
