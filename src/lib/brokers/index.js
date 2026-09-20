@@ -29,6 +29,7 @@ import * as icicidirect from "./icicidirect";
 import * as zerodhaHoldings from "./zerodha-holdings";
 import * as zerodhaTradebook from "./zerodha-tradebook";
 import * as champions from "./champions";
+import * as swingbot from "./swingbot";
 
 export { assembleImport } from "../import-pipeline";
 
@@ -59,7 +60,7 @@ export { assembleImport } from "../import-pipeline";
   being read as a tax P&L, which would silently throw away the stops that are
   the only reason to prefer it.
 */
-export const BROKERS = [champions, zerodha, groww, dhan, icicidirect, zerodhaHoldings, zerodhaTradebook];
+export const BROKERS = [champions, swingbot, zerodha, groww, dhan, icicidirect, zerodhaHoldings, zerodhaTradebook];
 
 /** What a file yields. Absent means matched lots — the original assumption. */
 export const kindOf = (broker) => broker?.kind || "taxpnl";

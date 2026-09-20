@@ -78,7 +78,15 @@ dispatches on an adapter's `kind`, and `ImportTrades.jsx` branches on it:
 | `taxpnl` (default) | closed trades — real charges | yes |
 | `holdings` | open positions — complete, no purchase date | yes |
 | `tradebook` | entry dates for positions already held | **no** |
-| `journal` | another journal's export (Champions) — trades with their stops | yes |
+| `journal` | a whole book with its stops — Champions, SwingBot | yes |
+
+The journal kind is the only one that can carry a REAL stop, which is why a
+bot's own CSV pair (`swingbot.js`: `trades.csv` closed, `open_positions.csv`
+still held) goes through it rather than the lot pipeline. Its closed file has
+no stop column and does not need one — R is P&L over risk, so the stop comes
+back out of `pnl` and `R`, reproducing the file's own R to two decimals. Only
+a format that states pattern, exit reason or a note writes those columns;
+`toJournalRows` spreads them in, so no other format starts writing nulls.
 
 A tradebook deliberately imports nothing: its closed lots would duplicate the
 tax P&L's while being worse (no charges, mis-pairs pre-file buys). Anything

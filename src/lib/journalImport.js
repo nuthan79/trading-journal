@@ -107,13 +107,24 @@ export function toJournalRows(positions, {
          the final word — and a position with no exits keeps them null. */
       exit_date: last ? last.exit_date : null,
       exit_price: last ? round2(last.price) : null,
-      exit_reason: null,
+      /* A journal export that records WHY it sold keeps it; the Champions
+         sheet does not, and passes nothing. Same for the pattern and the
+         note — taken only when the file states them, so no format grows a
+         field it never had. */
+      ...(p.exitReason ? { exit_reason: p.exitReason } : { exit_reason: null }),
 
       /* The ENTRY-side charge only. Every exit carries its own below, and
          derivePosition adds the two — putting the total here would deduct the
          exit costs twice, which is the same trap the tax P&L path documents. */
       charges: round2(p.charges || 0),
       charges_auto: false,
+
+      /* Spread rather than set: a format that states none of these must not
+         start writing three nulls it never had — the probe on this file
+         pins exactly that, and a null pattern would overwrite nothing today
+         and something tomorrow. */
+      ...(p.pattern ? { pattern: p.pattern } : null),
+      ...(p.notes ? { notes: p.notes } : null),
 
       imported: true,
       import_batch: batchId,

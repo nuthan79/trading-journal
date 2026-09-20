@@ -7,6 +7,7 @@ import { BROKER_STEPS } from "@/lib/brokerSteps";
 import { resolveSymbols } from "@/lib/isin";
 import * as zerodha from "@/lib/brokers/zerodha";
 import * as zerodhaHoldings from "@/lib/brokers/zerodha-holdings";
+import * as swingbot from "@/lib/brokers/swingbot";
 import * as zerodhaTradebook from "@/lib/brokers/zerodha-tradebook";
 import * as icicidirect from "@/lib/brokers/icicidirect";
 import { toHoldingRows, dateCaveat } from "@/lib/holdings";
@@ -298,7 +299,13 @@ export default function ImportTrades({
            user whose current year's tradebook was a CSV could not date one
            holding. Its columns (symbol, trade_date, trade_type) are the most
            specific of the three. */
-        if (zerodhaTradebook.detectRows(rows)) broker = zerodhaTradebook;
+        /* SwingBot's two files first: they are the only CSVs here with a
+           `pattern` column, so the test is cheap and certain — and both would
+           otherwise fall to the Zerodha tax P&L parser by the default above,
+           which is the failure where an adapter claims a file it cannot
+           read. */
+        if (swingbot.detectRows(rows)) broker = swingbot;
+        else if (zerodhaTradebook.detectRows(rows)) broker = zerodhaTradebook;
         else if (zerodhaHoldings.detectRows(rows)) broker = zerodhaHoldings;
         /**
          * ICICI Direct's P&L is a CSV too, so it lands here rather than in the

@@ -14,11 +14,13 @@ const read = (p) => readFileSync(path.join(SRC, p), "utf8");
 
 test("every broker the importer reads has steps to find its file", () => {
   /* The registered adapters, read off the list the importer itself uses.
-     Champions is a journal export, not a broker report; the Zerodha holdings
-     and tradebook adapters are files under Zerodha's own entry. */
+     Champions and SwingBot are journal-kind files — one journal's export, one
+     trader's own bot — and neither has a broker site to find them on; the
+     Zerodha holdings and tradebook adapters are files under Zerodha's own
+     entry. Anything that IS a broker report belongs in the steps. */
   const list = read("lib/brokers/index.js").match(/export const BROKERS = \[([^\]]+)\]/)[1]
     .split(",").map((x) => x.trim());
-  const brokers = list.filter((x) => !/^champions$|^zerodha(Holdings|Tradebook)$/.test(x))
+  const brokers = list.filter((x) => !/^champions$|^swingbot$|^zerodha(Holdings|Tradebook)$/.test(x))
     .map((x) => x.toLowerCase());
   const ids = BROKER_STEPS.map((b) => b.id);
   for (const b of brokers) ok(ids.includes(b), `${b} can be imported but has no steps`);
