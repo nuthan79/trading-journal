@@ -127,6 +127,19 @@ test("it listens on this machine only, and can only read", () => {
     ok(!src.includes(verb), `no ${verb} — the dashboard reads and nothing else`);
   }
   ok(/replace\(KEY, "«key»"\)/.test(src), "an error message can never print the service key");
-  ok(!/SUPABASE_SERVICE_ROLE_KEY=/.test(read(".env.example")),
-     "the example file names the key, never carries one");
+  /* The example NAMES the key so somebody knows to set it, and its value is
+     always empty — a key committed here is a key published, on a public repo. */
+  const ex = read(".env.example");
+  ok(/^SUPABASE_SERVICE_ROLE_KEY=$/m.test(ex), "named, and left empty");
+  ok(!/^SUPABASE_SERVICE_ROLE_KEY=.+$/m.test(ex), "never carries a value");
+});
+
+/* A real failure: `new URL(...).pathname` spells a space %20, and this
+   project's folder has two of them. The key was in .env.local and the tool
+   insisted it was missing. */
+test("the env file is found even when the path has spaces", async () => {
+  const src = read("scripts/admin/server.mjs");
+  ok(/fileURLToPath\(new URL\("\.\.\/\.\.\/", import\.meta\.url\)\)/.test(src),
+     "fileURLToPath, not .pathname");
+  ok(!/import\.meta\.url\)\.pathname/.test(src), "no encoded path anywhere here");
 });

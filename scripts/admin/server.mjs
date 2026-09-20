@@ -19,10 +19,15 @@
  */
 import { createServer } from "node:http";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { buildReport } from "./report.mjs";
 import { render } from "./page.mjs";
 
-const ROOT = new URL("../../", import.meta.url).pathname;
+/* fileURLToPath, never `.pathname`: this project lives in a folder with
+   spaces in its name, and a URL spells those %20. The file then never opens,
+   every key reads as missing, and the tool reports a setup problem that is
+   entirely its own. */
+const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 
 /** One variable out of .env.local, without sourcing the file. */
 function env(name) {
