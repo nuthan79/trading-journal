@@ -1024,6 +1024,7 @@ export default function AppLayout({ children }) {
                      chargeConfig={profile?.charge_config} startSelling={selling}
                      defaultMtfRate={profile?.mtf_rate}
                      mtfPrefs={mtf}
+                     profile={profile}
                      onSave={saveTrade}
                      onClose={() => { setShowForm(false); setEditing(null); setSelling(false); }} />
         )}
@@ -1045,6 +1046,10 @@ export default function AppLayout({ children }) {
             onSave={saveSettings}
             onClose={() => setShowSettings(false)}
             needStopsCount={needStopsCount}
+            /* The user's own rows, not the sample's: the count beside a setup
+               is what makes "this one is still in use" checkable. */
+            trades={trades}
+            onProfileChange={setProfile}
             onNavigate={(href) => { setShowSettings(false); router.push(href); }}
           />
         )}

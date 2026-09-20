@@ -9,9 +9,10 @@ import { rupee, pct, rfmt, signedPct, today } from "@/lib/format";
 import { mtfFigures, isMtf, annualPct } from "@/lib/mtf";
 import Money from "@/components/Money";
 import {
-  PATTERNS, EXIT_REASONS, MISTAKES, STAGES, slBand,
+  EXIT_REASONS, MISTAKES, STAGES, slBand,
   ENTRY_EMOTIONS, EXIT_EMOTIONS,
 } from "@/lib/constants";
+import { patternOptions } from "@/lib/patterns";
 import { resolveTradingViewChart } from "@/lib/charts";
 import { entryCharges, mergeConfig } from "@/lib/charges";
 import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
@@ -402,7 +403,7 @@ function useRememberedFold(key) {
   return [open, set];
 }
 
-export default function TradeForm({ initial, accountSize, defaultRiskPct, chargeConfig, startSelling, defaultMtfRate, mtfPrefs, onSave, onClose }) {
+export default function TradeForm({ initial, accountSize, defaultRiskPct, chargeConfig, startSelling, defaultMtfRate, mtfPrefs, profile, onSave, onClose }) {
   const formId = formIdOf(initial);
   const persisted = loadDraft(DRAFT_KEYS.trade);
   const restored = persisted?.formId === formId ? persisted : null;
@@ -1011,7 +1012,12 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                 <label className="f"><span>Base pattern</span>
                   <select className="in" value={t.pattern} onChange={set("pattern")}>
                     <option value="">—</option>
-                    {PATTERNS.map((p) => <option key={p} value={p}>{p}</option>)}
+                    {/* The built-ins, this trader's own three, and — listed or
+                        not — whatever this trade already says, so editing a
+                        trade never silently clears a setup that was removed
+                        from the list or retired from the built-ins. */}
+                    {patternOptions(profile, t.pattern).map((p) =>
+                      <option key={p} value={p}>{p}</option>)}
                   </select></label>
                 <label className="f"><span>Pivot price</span>
                   <input className="in" inputMode="decimal" value={t.pivot_price} onChange={set("pivot_price")} />

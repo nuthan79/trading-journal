@@ -6,6 +6,7 @@ import { BROKER_PRESETS, mergeConfig } from "@/lib/charges";
 import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
 import { mtfPrefs } from "@/lib/mtf";
 import { SHOW_SETUP_TRADES } from "@/lib/flags";
+import OwnSetups from "./OwnSetups";
 
 const STATUTORY_FIELDS = [
   { k: "sttPct", label: "STT %", hint: "of turnover, both legs" },
@@ -33,7 +34,8 @@ const fromDraftCfg = (cfg) => ({
   brokerageCap: cfg.brokerageCap === UNCAPPED ? Infinity : cfg.brokerageCap,
 });
 
-export default function SettingsSheet({ profile, onSave, onClose, onNavigate, needStopsCount = 0 }) {
+export default function SettingsSheet({ profile, onSave, onClose, onNavigate,
+                                       needStopsCount = 0, trades = [], onProfileChange }) {
   const persisted = loadDraft(DRAFT_KEYS.settings);
 
   /* What the MTF settings are now — the profile's, or the defaults a profile
@@ -203,6 +205,11 @@ export default function SettingsSheet({ profile, onSave, onClose, onNavigate, ne
               </label>
             </div>
           </div>
+
+          {/* Saved as they are edited rather than with this sheet — see the
+              note in OwnSetups: a rename writes the trades too, and a list
+              saved without them would split one setup across two names. */}
+          <OwnSetups profile={profile} trades={trades} onProfileChange={onProfileChange} />
 
           {SHOW_SETUP_TRADES && (
           <div style={{ borderTop: "1px solid var(--rule)", paddingTop: 18 }}>

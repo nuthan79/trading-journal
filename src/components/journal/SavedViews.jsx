@@ -35,6 +35,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Plus, X, Pencil, Trash2, Check, Filter } from "lucide-react";
 import { rupee, rfmt, dmy } from "@/lib/format";
+import { PATTERNS } from "@/lib/constants";
 import {
   FIELD_GROUPS, fieldOf, opsFor, arityOf, isNumeric, DATE_PRESETS,
   emptyFilter, emptyRule, withField, withOp, isComplete, matches, suggestName,
@@ -73,7 +74,7 @@ function MultiPick({ options, value, onChange, placeholder = "Add…" }) {
   );
 }
 
-function ValueEditor({ field, rule, symbols, onChange }) {
+function ValueEditor({ field, rule, symbols, patternsInBook, onChange }) {
   const f = fieldOf(field);
   if (!f) return null;
   const n = arityOf(f.type, rule.op);
@@ -82,7 +83,14 @@ function ValueEditor({ field, rule, symbols, onChange }) {
   const set = (patch) => onChange({ ...rule, ...patch });
 
   if (n === "many") {
-    const opts = f.type === "symbol" ? symbols : (f.options || []);
+    /* A pattern filter offers the built-in list PLUS every setup this book
+       actually uses — the trader's own three, and anything retired from the
+       built-ins that old trades still carry. A rule can only match what is
+       written on a trade, and a name the list cannot offer is a filter that
+       has to be typed exactly or not used at all. */
+    const opts = f.type === "symbol" ? symbols
+      : field === "pattern" ? patternsInBook
+      : (f.options || []);
     return <MultiPick options={opts} value={rule.value}
                       onChange={(v) => set({ value: v })}
                       placeholder={f.type === "symbol" ? "Pick a symbol…" : "Pick one…"} />;
@@ -141,7 +149,7 @@ function ValueEditor({ field, rule, symbols, onChange }) {
  *  One rule
  * ------------------------------------------------------------------ */
 
-function RuleRow({ rule, symbols, onChange, onRemove, canRemove }) {
+function RuleRow({ rule, symbols, patternsInBook, onChange, onRemove, canRemove }) {
   const f = fieldOf(rule.field);
   return (
     <div className="sv-rule">
@@ -163,7 +171,8 @@ function RuleRow({ rule, symbols, onChange, onRemove, canRemove }) {
 
       <div className="sv-value">
         {f
-          ? <ValueEditor field={rule.field} rule={rule} symbols={symbols} onChange={onChange} />
+          ? <ValueEditor field={rule.field} rule={rule} symbols={symbols}
+                         patternsInBook={patternsInBook} onChange={onChange} />
           : <div className="sv-novalue">pick a field first</div>}
       </div>
 
@@ -207,6 +216,15 @@ function Builder({ all, draft, existing, onCancel, onSave }) {
     const s = new Set();
     for (const t of all || []) if (t.symbol) s.add(t.symbol);
     return [...s].sort();
+  }, [all]);
+
+  /* Same idea for setups: the list as it stands, plus whatever the book
+     already says. `patternOptions` needs no profile here — every custom name
+     in use is on a trade. */
+  const patternsInBook = useMemo(() => {
+    const s = new Set(PATTERNS);
+    for (const t of all || []) if (t.pattern) s.add(t.pattern);
+    return [...s];
   }, [all]);
 
   const suggestion = suggestName(f);
@@ -263,7 +281,7 @@ function Builder({ all, draft, existing, onCancel, onSave }) {
                     {f.conjunction}
                   </button>
                 )}
-                <RuleRow rule={r} symbols={symbols} canRemove={f.rules.length > 1 || !!r.field}
+                <RuleRow rule={r} symbols={symbols} patternsInBook={patternsInBook} canRemove={f.rules.length > 1 || !!r.field}
                          onChange={(x) => setRule(i, x)} onRemove={() => dropRule(i)} />
               </div>
             ))}

@@ -1642,6 +1642,32 @@ export async function getProfile() {
   return data;
 }
 
+/**
+ * Rename a setup everywhere it is written.
+ *
+ * The list on the profile is only what the dropdown offers; the NAME is on
+ * every trade that used it. Change the list alone and the old trades keep the
+ * old string — one idea in two categories, each half as populated, and both
+ * then reported as a thin slice. So the trades move in the same breath, and
+ * the caller writes the new list only if this succeeds.
+ *
+ * Scoped by user_id as well as by name: `pattern` is free text and another
+ * account's "Support Entry" is not this one's to touch.
+ */
+export async function renamePattern(from, to) {
+  const id = await uid();
+  if (!id) throw new Error("Sign in first.");
+  const before = String(from || "").trim();
+  const after = String(to || "").trim();
+  if (!before || !after || before === after) return 0;
+
+  const { data, error } = await supabase
+    .from("trades").update({ pattern: after })
+    .eq("user_id", id).eq("pattern", before).select("id");
+  if (error) throw new Error(migrationHint(error) || error.message);
+  return (data || []).length;
+}
+
 export async function saveProfile(patch) {
   const id = await uid();
   const { data, error } = await supabase
