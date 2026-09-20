@@ -117,10 +117,22 @@ test("an open row is open, and the same file twice adds nothing", () => {
   eq(again.duplicates.length, 2);
 });
 
-test("the file says its P&L is gross, once, where it will be read", () => {
-  const { warnings } = swingbot.parseRows(closedRows);
-  ok(warnings.some((w) => /no charges/.test(w)), "charges are absent and said to be");
-  ok(warnings.some((w) => /worked back from the P&L and R/.test(w)), "and the stops are explained");
+test("what the file says about itself is a note, not a lost row", () => {
+  const { warnings, notes } = swingbot.parseRows(closedRows);
+  ok(notes.some((w) => /no charges/.test(w)), "charges are absent and said to be");
+  ok(notes.some((w) => /worked back from the P&L and R/.test(w)), "and the stops are explained");
+  /* Under warnings these read as "2 rows unreadable — skipped before anything
+     was matched", which claims a loss that did not happen. */
+  eq(warnings.length, 0, "nothing was skipped, so nothing is reported as skipped");
+});
+
+test("the preview hands those notes through, and offers no stop to assume", () => {
+  const src = read("components/ImportTrades.jsx");
+  ok(/notes: raw\.notes \|\| \[\]/.test(src), "a journal file's notes reach the screen");
+  ok(/!tradebook && !journal && parsed\.trades\.length > 0/.test(src),
+     "the assume-a-stop control is hidden for a file that carries real stops");
+  ok(/holdings \|\| journal \? parsed\.trades\.length : s\.trades/.test(src),
+     "and the button counts the rows it is about to write");
 });
 
 test("the import screen tries it before the tax P&L parser", () => {

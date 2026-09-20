@@ -53,8 +53,8 @@ const SECTION_LABEL = {
 };
 
 /** A file can bring new trades, finish ones already here, or both. */
-function importLabel(newCount, completeCount, hasReport = false) {
-  const trades = `${newCount} trade${newCount === 1 ? "" : "s"}`;
+function importLabel(newCount, completeCount, hasReport = false, unit = "trade") {
+  const trades = `${newCount} ${unit}${newCount === 1 ? "" : "s"}`;
   const done = `${completeCount} position${completeCount === 1 ? "" : "s"}`;
   if (newCount && completeCount) return `Import ${trades}, complete ${done}`;
   if (newCount) return `Import ${trades}`;
@@ -461,7 +461,10 @@ export default function ImportTrades({
           skippedSections: [], missingColumns: [],
           summary: journalSummary(made),
           warnings: raw.warnings || [],
-          notes: [],
+          /* Advisories the file states about itself — no charges in it, stops
+             reconstructed. Under `warnings` they would be counted as rows
+             lost, which is the Groww mistake this pair exists to avoid. */
+          notes: raw.notes || [],
         });
         return;
       }
@@ -1493,7 +1496,11 @@ export default function ImportTrades({
           rows are all already here would otherwise show a control offering to
           set stops on no trades, beside a note explaining a decision that
           cannot apply. Same reason the empty table is hidden above. */}
-      {!tradebook && parsed.trades.length > 0 && (
+      {/* Not for a journal export either, and for the opposite reason: it
+          carries the real stops, and `toJournalRows` never consults this
+          assumption — so the control did nothing while its note offered to
+          replace a measured stop with a percentage. */}
+      {!tradebook && !journal && parsed.trades.length > 0 && (
       <div className="im-assume">
         <label className="im-assume-on">
           <input type="checkbox" checked={assume}
@@ -1522,7 +1529,13 @@ export default function ImportTrades({
 
       <div className="im-confirm">
         <span className="im-dim">
-          {tradebook ? (
+          {journal ? (
+            /* The stop question is settled by the file. What is left to say is
+               what the assumption line says for the other kinds: what will be
+               true of these rows once they land. */
+            `Stops, entry dates and exits come from the file as recorded. ` +
+            `Nothing here is assumed.`
+          ) : tradebook ? (
             parsed.changing.length
               ? `Only the dates change. Stops, prices, quantities and charges stay ` +
                 `exactly as they are.`
@@ -1565,8 +1578,14 @@ export default function ImportTrades({
             ? parsed.changing.length
               ? `Set ${parsed.changing.length} date${parsed.changing.length === 1 ? "" : "s"}`
               : "Keep this record"
-            : importLabel(holdings ? parsed.trades.length : s.trades,
-                          parsed.completions?.length || 0, explainable)}
+            /* `summary.trades` is the tax P&L's own count and exists on no
+               other kind — read off a journal or holdings preview it is
+               undefined, and the button read "Nothing to import" over a table
+               of fifteen. Those kinds count the rows they are about to write,
+               which is what `parsed.trades` is. */
+            : importLabel(holdings || journal ? parsed.trades.length : s.trades,
+                          parsed.completions?.length || 0, explainable,
+                          journal ? "position" : "trade")}
         </button>
       </div>
 

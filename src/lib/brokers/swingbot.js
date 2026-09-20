@@ -115,10 +115,16 @@ const col = (rows) => {
  * open file yields none.
  */
 export function parseRows(rows) {
+  /* `warnings` means A ROW WAS LOST — the import screen files them under "N
+     rows unreadable in the file itself". Anything true of the file as a whole
+     goes in `notes`, which is shown plainly. Putting an advisory in warnings
+     claims a loss that did not happen and sends somebody hunting for a trade
+     that is sitting right there; Groww's charge note did exactly that once. */
   const warnings = [];
+  const notes = [];
   const positions = [];
   const which = fileKind(rows);
-  if (!which) return { positions, warnings: ["This is not a SwingBot file."] };
+  if (!which) return { positions, warnings: ["This is not a SwingBot file."], notes };
 
   const at = col(rows);
   const cell = (r, name) => r[at[name]];
@@ -194,7 +200,7 @@ export function parseRows(rows) {
   }
 
   if (reconstructed) {
-    warnings.push(
+    notes.push(
       `${reconstructed} stop${reconstructed === 1 ? "" : "s"} worked back from the P&L and R ` +
       `in this file, since it has no stop column — right to the paisa, give or take ` +
       `the rounding in R. Add a stop column to trades.csv and they will be read straight off it.`
@@ -202,7 +208,7 @@ export function parseRows(rows) {
   }
   /* The bot states no costs, and its P&L is gross. Said once here rather than
      left to be discovered in a figure that is quietly a few thousand light. */
-  warnings.push("Brokerage and taxes are not in this file, so these trades import with no charges.");
+  notes.push("Brokerage and taxes are not in this file, so these trades import with no charges.");
 
-  return { positions, warnings };
+  return { positions, warnings, notes };
 }
