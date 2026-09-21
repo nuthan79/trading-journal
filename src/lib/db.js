@@ -1712,6 +1712,63 @@ export async function listRegionAccess() {
   }
 }
 
+/**
+ * The splits a book's stocks have had.
+ *
+ * One request for the whole list — the check is per book, not per symbol —
+ * and the answer is cached upstream for six hours, which is far shorter than
+ * a corporate action is announced in advance.
+ */
+export async function listSplits(keys = []) {
+  if (!keys.length) return {};
+  const out = {};
+  for (let i = 0; i < keys.length; i += 60) {
+    try {
+      const res = await apiFetch(`/api/quotes?splits=${encodeURIComponent(keys.slice(i, i + 60).join(","))}`);
+      if (!res.ok) continue;
+      Object.assign(out, (await res.json())?.splits || {});
+    } catch { /* a missing answer costs the check and nothing else */ }
+  }
+  return out;
+}
+
+/**
+ * Restate positions a split has overtaken — quantity up, prices down.
+ *
+ * WRITTEN AS ONE ROW AND ITS SELLS, in that order, and `split_adjusted_to`
+ * last of all: if the tranches fail, the trade must not be left claiming it
+ * has been adjusted, because the next pass would then skip it forever.
+ */
+export async function applySplitAdjustments(plan = []) {
+  let done = 0;
+  for (const p of plan) {
+    const patch = {
+      quantity: p.quantity,
+      entry_price: p.entry_price,
+      ...(p.stop_loss != null ? { stop_loss: p.stop_loss } : {}),
+      ...(p.initial_stop_loss != null ? { initial_stop_loss: p.initial_stop_loss } : {}),
+      ...(p.pivot_price != null ? { pivot_price: p.pivot_price } : {}),
+      ...(p.exit_price !== undefined ? { exit_price: p.exit_price } : {}),
+    };
+    const { error } = await supabase.from("trades").update(patch).eq("id", p.id);
+    if (error) throw new Error(migrationHint(error) || error.message);
+
+    for (const e of p.exits || []) {
+      if (!e.id) continue;
+      const { error: exErr } = await supabase.from("trade_exits")
+        .update({ quantity: e.quantity, price: e.price }).eq("id", e.id);
+      if (exErr) throw new Error(migrationHint(exErr) || exErr.message);
+    }
+
+    const { error: markErr } = await supabase.from("trades")
+      .update({ split_adjusted_to: p.split_adjusted_to }).eq("id", p.id);
+    if (markErr) throw new Error(migrationHint(markErr) || markErr.message);
+    done += 1;
+  }
+  track("splits_adjusted", { trades: done });
+  return done;
+}
+
 export async function saveProfile(patch) {
   const id = await uid();
   const { data, error } = await supabase

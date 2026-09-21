@@ -136,6 +136,18 @@ the fix, never applies it silently. **Trades carry no account**, so two
 accounts at one broker are one family: auto-merging only happens with a single
 candidate, and the snapshot fix waits for a click.
 
+**A split restates a position; a dividend does not.** `lib/splits.js` plans
+the adjustment and `split_adjusted_to` (056) remembers it — applied twice, a
+10:1 becomes 100:1 and the second pass looks as reasonable as the first. A
+bonus issue IS a split here: the source reports one as the other (NESTLEIND
+10:1 then 2:1, TRENT 3:2), so India needs no separate idea of it. Everything
+dated BEFORE the split is restated — quantity up, prices down, including the
+stop and the pinned initial stop, since R divides by it — and everything after
+is already in those terms, which is why a trade that opened and closed before
+a split is untouched. Dividends are deliberately absent: no figure in the
+journal becomes wrong when one is paid, and folding them into a trade's P&L
+would redefine R.
+
 **An assumed value must be a flag the calculations consult, not a tint.**
 `stop_source` and `entry_date_source` (036) both mean "the importer invented
 this". `calc.js`/`positions.js` refuse to count days from an assumed date, and

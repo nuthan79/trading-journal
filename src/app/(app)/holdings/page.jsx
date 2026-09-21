@@ -1,17 +1,49 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Holdings from "@/components/journal/Holdings";
-import { markOpenPositions, acknowledgeBreakeven, resolveSoldSnapshots } from "@/lib/db";
+import { markOpenPositions, acknowledgeBreakeven, resolveSoldSnapshots,
+         listSplits, applySplitAdjustments } from "@/lib/db";
+import { splitPlan, symbolsOf } from "@/lib/splits";
 import { measurePaths, needsMeasuring } from "@/lib/measure";
 import { useJournal } from "../JournalContext";
 
 export default function HoldingsPage() {
   const {
     open, closed, diary, mergeMarks, say, reloadTrades, saveDiaryEntry, removeChartFromEntry,
-    openEditTrade, openExitTrade, removeTrade, profile,
+    openEditTrade, openExitTrade, removeTrade, profile, all,
   } = useJournal();
   const [refreshing, setRefreshing] = useState(false);
+
+  /**
+   * SPLITS AND BONUS ISSUES, asked about once per visit.
+   *
+   * The whole book, not only what is held: a trade that opened before a split
+   * and closed after it has a P&L in two different currencies of share, and
+   * that one is already in the record. One request for every symbol, cached
+   * upstream for six hours — a corporate action is announced weeks ahead.
+   */
+  const [splits, setSplits] = useState({});
+  useEffect(() => {
+    let live = true;
+    const keys = symbolsOf(all);
+    if (!keys.length) return;
+    listSplits(keys).then((got) => { if (live) setSplits(got); });
+    return () => { live = false; };
+  }, [all]);
+
+  const splitsDuePlan = useMemo(() => splitPlan(all, splits), [all, splits]);
+
+  const fixSplits = async (plan) => {
+    try {
+      const done = await applySplitAdjustments(plan);
+      await reloadTrades();
+      say(`${done} position${done === 1 ? "" : "s"} restated for the split.`);
+    } catch (e) {
+      say(e.message || "Could not adjust those positions.");
+      await reloadTrades();
+    }
+  };
 
   /* Holdings sold after they were imported — see lib/snapshots.js. The card
      on Holdings builds the plan and asks first; this carries it out. */
@@ -81,6 +113,8 @@ export default function HoldingsPage() {
   return (
     <Holdings
       onFixSoldSnapshots={fixSoldSnapshots}
+      splitPlan={splitsDuePlan}
+      onFixSplits={fixSplits}
 journalName={profile?.journal_name}
             open={open}
       closed={closed}

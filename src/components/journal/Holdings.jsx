@@ -8,6 +8,7 @@ import { COLUMN_HINTS } from "@/lib/columns";
 import { hasMtf, activeRegion } from "@/lib/regions";
 import { useColumnPrefs } from "@/lib/useColumnPrefs";
 import Qty from "@/components/Qty";
+import { qty } from "@/lib/format";
 import ColumnPicker from "./ColumnPicker";
 import Money from "@/components/Money";
 import { downloadCsv } from "@/lib/csv";
@@ -298,7 +299,7 @@ const HOLDINGS_COLUMNS = [
 export default function Holdings({
   open, closed, diary = [], journalName = "", onRefresh, refreshing, onAckBreakeven,
   onEditTrade, onExitTrade, onDeleteTrade, onAttachChart, onRemoveChart,
-  onFixSoldSnapshots,
+  onFixSoldSnapshots, splitPlan: splitPlanRows = [], onFixSplits,
 }) {
   const [detailId, setDetailId] = useState(null);
   const [acked, setAcked] = useState([]);
@@ -328,6 +329,25 @@ export default function Holdings({
       + "? The closed trades that record the sales stay exactly as they are.")) return;
     setFixingSold(true);
     try { await onFixSoldSnapshots?.(soldFixable); } finally { setFixingSold(false); }
+  };
+
+  const [fixingSplits, setFixingSplits] = useState(false);
+  const fixSplits = async () => {
+    if (!window.confirm(
+      `Restate ${splitPlanRows.length} position${splitPlanRows.length === 1 ? "" : "s"} for the ` +
+      `splits shown? Quantities go up and prices — including stops — come down by the same ratio. ` +
+      `Nothing is deleted, and what each row becomes is listed above.`)) return;
+    setFixingSplits(true);
+    try { await onFixSplits?.(splitPlanRows); } finally { setFixingSplits(false); }
+  };
+
+  /* "10:1" reads better than "×10", and "3:2" better than "×1.5" — it is how
+     the action was announced. */
+  const ratioText = (r) => {
+    if (Number.isInteger(r)) return `${r}:1`;
+    const halves = Math.round(r * 2);
+    if (Math.abs(halves / 2 - r) < 1e-9) return `${halves}:2`;
+    return `${Math.round(r * 100) / 100}×`;
   };
 
   /**
@@ -1244,6 +1264,42 @@ export default function Holdings({
                   : p.action === "shrink"
                   ? <>— {p.held} held on {dmy(p.snapshot)}, {p.soldSince} sold since. It will show the {p.stillHeld} still held.</>
                   : <span className="ps-sold-unclear">— more sold since {dmy(p.snapshot)} ({p.soldSince}) than it held ({p.held}). Left alone: check it by hand.</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/**
+        * A SPLIT, OR A BONUS, THAT THE JOURNAL HAS NOT BEEN TOLD ABOUT.
+        *
+        * A broker's order book states the day's price and quantity. After a
+        * ten-for-one split the same holding is ten times the shares at a
+        * tenth the price, and left alone the row reads as a 94% loss with an
+        * R built on a stop ten times too far away. The figures are shown
+        * before and after, and nothing moves without a click.
+        */}
+      {splitPlanRows.length > 0 && (
+        <div className="ps-sold">
+          <div className="ps-sold-head">
+            <div>
+              <b>{splitPlanRows.length} position{splitPlanRows.length === 1 ? "" : "s"} {splitPlanRows.length === 1 ? "has" : "have"} been through a split</b>
+              <p>Your broker&apos;s file states the price and quantity of the day you
+                bought. A split — or a bonus issue, which is the same arithmetic —
+                restates both, so these rows are in old money until they are adjusted.</p>
+            </div>
+            {onFixSplits && (
+              <button className="btn sm" onClick={fixSplits} disabled={fixingSplits}>
+                {fixingSplits ? "Adjusting…" : `Adjust ${splitPlanRows.length} position${splitPlanRows.length === 1 ? "" : "s"}`}
+              </button>
+            )}
+          </div>
+          <ul>
+            {splitPlanRows.map((p) => (
+              <li key={p.id}>
+                <b>{p.symbol}</b> — {p.splits.map((x) => `${ratioText(x.ratio)} on ${dmy(x.date)}`).join(", ")}.{" "}
+                {qty(p.was.quantity)} at {p.was.entry_price} becomes{" "}
+                <b>{qty(p.quantity)} at {p.entry_price}</b>.
               </li>
             ))}
           </ul>

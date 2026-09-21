@@ -181,6 +181,53 @@ export async function fxRate(from = "USD", to = "INR") {
   return null;
 }
 
+/**
+ * The splits a stock has had since a date — and with them, bonus issues.
+ *
+ * A 1:1 bonus is arithmetically a 2:1 split, and the source reports it as
+ * one: NESTLEIND comes back as 10:1 in January 2024 and 2:1 in August 2025,
+ * TRENT as 3:2. So one feed answers both, and the journal needs no separate
+ * idea of a bonus.
+ *
+ * WHY THIS MATTERS MORE THAN IT SOUNDS. An order book states the price and
+ * quantity of the day the order filled. After a 10-for-1 split the same
+ * holding is ten times the shares at a tenth the price, and a journal that
+ * never heard about it shows Netflix bought at $1,219 against a mark of $73
+ * — a 94% loss that did not happen, and an R figure built on a stop ten
+ * times too far away.
+ *
+ * Returns [{ date: "YYYY-MM-DD", ratio }] oldest first, where ratio is what
+ * the share count was MULTIPLIED by: 10 for 10:1, 1.5 for 3:2. Empty when
+ * there were none or the source is down — a missing answer must cost the
+ * check and nothing else.
+ */
+export async function splitsFor({ symbol, exchange }, range = "5y") {
+  const ticker = yahooTicker(symbol, exchange);
+  for (const host of HOSTS) {
+    try {
+      const url = `https://${host}/v8/finance/chart/${encodeURIComponent(ticker)}` +
+                  `?interval=1d&range=${encodeURIComponent(range)}&events=split`;
+      const res = await fetch(url, { headers: BROWSER_HEADERS, cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const events = (await res.json())?.chart?.result?.[0]?.events?.splits || {};
+      return Object.values(events)
+        .map((e) => {
+          const num = Number(e?.numerator), den = Number(e?.denominator);
+          const at = Number(e?.date);
+          if (!(num > 0) || !(den > 0) || !Number.isFinite(at)) return null;
+          const d = new Date(at * 1000);
+          return {
+            date: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`,
+            ratio: num / den,
+          };
+        })
+        .filter(Boolean)
+        .sort((a, b) => (a.date < b.date ? -1 : 1));
+    } catch { /* try the other host, then say nothing happened */ }
+  }
+  return [];
+}
+
 export async function getQuotes(items, sourceName) {
   const source = SOURCES[sourceName || process.env.QUOTE_SOURCE || "yahoo"];
   if (!source) throw new Error(`Unknown quote source: ${sourceName}`);

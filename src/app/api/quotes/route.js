@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getQuotes, fxRate } from "@/lib/quotes";
+import { getQuotes, fxRate, splitsFor } from "@/lib/quotes";
 import { userFromRequest } from "@/lib/apiAuth";
 import { rateLimit, tooMany } from "@/lib/rateLimit";
 
@@ -57,6 +57,29 @@ export async function GET(req) {
     const rate = await fxRate(fx.slice(0, 3), fx.slice(3));
     return NextResponse.json({ pair: fx, rate, at: new Date().toISOString() },
       { headers: { "Cache-Control": "public, max-age=600" } });
+  }
+
+  /**
+   * ?splits=SYMBOL:EXCHANGE,… asks what corporate actions a stock has had.
+   * Same route, same auth, same rate limit — and one request whatever the
+   * list, because the check is per book rather than per symbol.
+   */
+  const splitList = (req.nextUrl.searchParams.get("splits") || "").trim();
+  if (splitList) {
+    const want = splitList.split(",").map((p) => p.trim()).filter(Boolean).slice(0, 60)
+      .map((p) => { const [symbol, exchange] = p.split(":");
+                    return { symbol: String(symbol).toUpperCase(),
+                             exchange: String(exchange || "NSE").toUpperCase() }; });
+    const out = {};
+    /* Small batches: sixty symbols at once is sixty upstream requests, and
+       the source throttles a burst before it refuses a steady stream. */
+    for (let i = 0; i < want.length; i += 6) {
+      const batch = want.slice(i, i + 6);
+      const got = await Promise.all(batch.map((it) => splitsFor(it).catch(() => [])));
+      batch.forEach((it, j) => { if (got[j]?.length) out[`${it.symbol}:${it.exchange}`] = got[j]; });
+    }
+    return NextResponse.json({ splits: out },
+      { headers: { "Cache-Control": "public, max-age=21600" } });
   }
 
   const raw = req.nextUrl.searchParams.get("s") || "";
