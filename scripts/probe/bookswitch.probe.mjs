@@ -231,6 +231,7 @@ test("benchmarks and the year label belong to the book", () => {
   ok(!/id: "nifty500", label: "Nifty 500"/.test(cd), "no hard-coded Indian list left");
 
   const pp = read("src/components/journal/PeriodPerformance.jsx");
-  ok(/regionInfo\(regionId\)\.fiscalLabel \? "Financial year" : "Calendar year"/.test(pp),
-     "an American tax year IS the calendar year; calling it FY names something it is not");
+  ok(/\{ id: "year", label: "Yearly" \}/.test(pp),
+     "Monthly, Quarterly, Yearly — true in both markets, and the rows say which year");
+  ok(!/label: "Financial year"/.test(pp), "no tab names a year a US book does not have");
 });

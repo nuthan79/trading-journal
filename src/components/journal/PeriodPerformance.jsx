@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { region as regionInfo, activeRegion } from "@/lib/regions";
 import { byPeriod } from "@/lib/calc";
 import { money, rfmt, pct, signedPct } from "@/lib/format";
 import Money from "@/components/Money";
@@ -40,13 +39,15 @@ const costNote = (charges, margin, pnl, counted = true) => {
   return `After ${what}${isFinite(pnl) ? ` — ${full(pnl + c + m)} before them` : ""}`;
 };
 
-/* "Financial year" over a January–December book names something it is not:
-   an American tax year IS the calendar year. The other two are the same in
-   every market. */
-const grains = (regionId) => [
+/* "Yearly", which is true in both markets and reads as the third of three:
+   Monthly, Quarterly, Yearly. "Financial year" named something a US book's
+   year is not, and spelling the difference out in the tab made the reader
+   decide which kind of year they were looking at before reading a figure.
+   The rows themselves still say — FY26 in India, 2026 in a US book. */
+const grains = () => [
   { id: "month", label: "Monthly" },
   { id: "quarter", label: "Quarterly" },
-  { id: "year", label: regionInfo(regionId).fiscalLabel ? "Financial year" : "Calendar year" },
+  { id: "year", label: "Yearly" },
 ];
 
 export default function PeriodPerformance({ closed, openingCapital, flows = [], all = [] }) {
@@ -163,7 +164,7 @@ export default function PeriodPerformance({ closed, openingCapital, flows = [], 
             <button data-on={byEntry ? 1 : 0} onClick={() => setBasis("entry")}>By entry</button>
           </div>
           <div className="seg">
-            {grains(activeRegion()).map((g) => (
+            {grains().map((g) => (
               <button key={g.id} data-on={grain === g.id ? 1 : 0} onClick={() => setGrain(g.id)}>
                 {g.label}
               </button>
