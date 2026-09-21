@@ -54,8 +54,8 @@ const HOLDING_COLS = [
   { key: "realisedPnl", header: "banked" },
   { key: "unrealisedPnl", header: "unrealised" },
   { key: "atR", header: "now_at_r" },
-  { key: "charges", header: "charges_so_far" },
   { key: "margin", header: "mtf_cost_so_far" },
+  { key: "charges", header: "charges_so_far" },
   { key: "broker", header: "broker" },
 ];
 
@@ -287,7 +287,7 @@ const HOLDINGS_COLUMNS = [
   { k: "netRiskR", label: "Open risk R" }, { k: "mark", label: "CMP" },
   { k: "changePct", label: "Change %" }, { k: "realisedPnl", label: "Banked" },
   { k: "unrealisedPnl", label: "Unrealised" }, { k: "atR", label: "Now at" },
-  { k: "charges", label: "Charges" }, { k: "margin", label: "MTF cost" },
+  { k: "margin", label: "MTF cost" }, { k: "charges", label: "Charges" },
 ];
 
 export default function Holdings({
@@ -1045,12 +1045,12 @@ export default function Holdings({
               {/* Their own wording here, not the shared hint: on a closed
                   trade these are the final bill, on a position still running
                   they are only what has been paid so far. */}
-              {show("charges") && th("charges", "Charges", "num",
-                "Charges on this position so far — the buy, and any sells already made. "
-                + "Selling the rest will add to it")}
               {show("margin") && th("margin", "MTF cost", "num",
                 "MTF so far on this position — interest to today, with the pledge fee. "
                 + "It grows every day you hold")}
+              {show("charges") && th("charges", "Charges", "num",
+                "Charges on this position so far — the buy, and any sells already made. "
+                + "Selling the rest will add to it")}
             </tr>
           </thead>
           <tbody>
@@ -1287,13 +1287,6 @@ export default function Holdings({
                       its buy-side charges and is still accruing interest, so
                       both figures grow until it is sold. Said in the hover
                       rather than in a longer header. */}
-                  {show("charges") && (
-                  <td className="num" style={{ fontSize: 12, color: "var(--ink2)" }}>
-                    {Number(r.charges) > 0
-                      ? <Money v={r.charges} note="Charges on this position so far — the buy, plus any sells already made. The sell still to come will add to it" />
-                      : "—"}
-                  </td>
-                  )}
                   {show("margin") && (
                   <td className="num" style={{ fontSize: 12, color: "var(--ink2)" }}>
                     {Number(r.margin) > 0
@@ -1301,6 +1294,13 @@ export default function Holdings({
                           r.marginPerDay > 0 ? `. Another ${rupee(r.marginPerDay)} a day while you hold` : ""}`} />
                       : r.interestUnknown
                       ? <span title="Interest not counted — the entry date was estimated">—</span>
+                      : "—"}
+                  </td>
+                  )}
+                  {show("charges") && (
+                  <td className="num" style={{ fontSize: 12, color: "var(--ink2)" }}>
+                    {Number(r.charges) > 0
+                      ? <Money v={r.charges} note="Charges on this position so far — the buy, plus any sells already made. The sell still to come will add to it" />
                       : "—"}
                   </td>
                   )}

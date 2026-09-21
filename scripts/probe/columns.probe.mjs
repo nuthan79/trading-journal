@@ -88,8 +88,8 @@ test("Trades: the totals row spans follow the picker, not fixed numbers", () => 
   const foot = src.slice(src.indexOf("<tfoot"), src.indexOf("</tfoot>"));
   ok(/colSpan=\{leadSpan\}/.test(foot) && /colSpan=\{trailSpan\}/.test(foot));
   ok(!/colSpan=\{\d+\}/.test(foot), "no hard-coded span is left");
-  eq(switched(foot).join(","), "pnl,r,charges,margin",
-    "the P&L, R, charges and MTF totals each hide with their columns");
+  eq(switched(foot).join(","), "pnl,r,margin,charges",
+    "the P&L, R, MTF and charges totals each hide with their columns");
 });
 
 /* ---- what is stored ------------------------------------------------ */
@@ -147,8 +147,8 @@ test("Holdings shows charges and MTF cost, sortable and exportable", () => {
   const h = read("components/journal/Holdings.jsx");
   ok(/\{show\("charges"\) && th\("charges", "Charges", "num",/.test(h), "a header");
   ok(/\{show\("margin"\) && th\("margin", "MTF cost", "num",/.test(h), "and one for MTF");
-  ok(/\{ k: "charges", label: "Charges" \}, \{ k: "margin", label: "MTF cost" \}/.test(h),
-     "both in the column picker, by the names on the headers");
+  ok(/\{ k: "margin", label: "MTF cost" \}, \{ k: "charges", label: "Charges" \}/.test(h),
+     "both in the column picker, by the names on the headers, MTF first");
   ok(/\{ key: "charges", header: "charges_so_far" \}/.test(h)
      && /\{ key: "margin", header: "mtf_cost_so_far" \}/.test(h),
      "and in the CSV, named as the running figures they are");

@@ -77,7 +77,7 @@ const TRADE_COLUMNS = [
   { k: "quantity", label: "Qty" }, { k: "exposure", label: "Size" },
   { k: "avgExitPrice", label: "Exit" }, { k: "exitPct", label: "Exit %" },
   { k: "pnl", label: "P&L" }, { k: "r", label: "R" },
-  { k: "charges", label: "Charges" }, { k: "margin", label: "MTF cost" },
+  { k: "margin", label: "MTF cost" }, { k: "charges", label: "Charges" },
   { k: "riskAmt", label: "Risk" },
   { k: "chart", label: "Chart" }, { k: "pattern", label: "Pattern" },
   { k: "distPivot", label: "Δ pivot" }, { k: "vol_pct_avg", label: "Vol %" },
@@ -90,7 +90,7 @@ const BEFORE_PNL = ["symbol", "entry_date", "exit_date", "heldDays", "entry_pric
                     "slPct", "quantity", "exposure", "avgExitPrice", "exitPct"];
 /* Between R and these sit the two cost columns, which have totals of their
    own in the footer rather than falling inside the trailing span. */
-const COSTS = ["charges", "margin"];
+const COSTS = ["margin", "charges"];   // MTF first, then charges — the order on screen
 const AFTER_COSTS = ["riskAmt", "chart", "pattern", "distPivot", "vol_pct_avg",
                  "weinstein_stage", "rs_rank", "mfe", "mae"];
 
@@ -773,8 +773,8 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
               {/* What came out of P&L on the way to that R: the trading charges
                   and, on a margin trade, what the margin cost. Both are already
                   inside the P&L beside them — these say how much of it. */}
-              {show("charges") && th("charges", "Charges", "num")}
               {show("margin") && th("margin", "MTF cost", "num")}
+              {show("charges") && th("charges", "Charges", "num")}
               {show("riskAmt") && th("riskAmt", "Risk", "num")}
               {/* The setup — what the chart looked like going in. Behind the
                   outcome because most rows have none of it recorded, and a
@@ -920,16 +920,16 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                   <td className={`num ${isFinite(t.r) ? (t.r >= 0 ? "pos" : "neg") : ""}`}
                       style={{ fontWeight: 500 }}>{isFinite(t.r) ? rfmt(t.r) : "—"}</td>
                   )}
-                  {show("charges") && (
-                  <td className="num" style={{ fontSize: 12, color: "var(--ink2)" }}>
-                    {Number(t.charges) > 0 ? <Money v={t.charges} /> : "—"}</td>
-                  )}
                   {show("margin") && (
                   <td className="num" style={{ fontSize: 12, color: "var(--ink2)" }}>
                     {Number(t.margin) > 0
                       ? <Money v={t.margin} />
                       : t.interestUnknown ? <span title="Interest not counted — the entry date was estimated">—</span>
                       : "—"}</td>
+                  )}
+                  {show("charges") && (
+                  <td className="num" style={{ fontSize: 12, color: "var(--ink2)" }}>
+                    {Number(t.charges) > 0 ? <Money v={t.charges} /> : "—"}</td>
                   )}
                   {show("riskAmt") && (
                   <td className="num" style={{ fontSize: 12 }}
@@ -1083,14 +1083,14 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                   )}
                 </td>
                 )}
-                {show("charges") && (
-                <td className="num" style={{ color: "var(--ink2)" }}>
-                  {totals.charges > 0 ? <Money v={totals.charges} /> : "—"}
-                </td>
-                )}
                 {show("margin") && (
                 <td className="num" style={{ color: "var(--ink2)" }}>
                   {totals.margin > 0 ? <Money v={totals.margin} /> : "—"}
+                </td>
+                )}
+                {show("charges") && (
+                <td className="num" style={{ color: "var(--ink2)" }}>
+                  {totals.charges > 0 ? <Money v={totals.charges} /> : "—"}
                 </td>
                 )}
                 <td colSpan={trailSpan}></td>
