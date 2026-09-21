@@ -51,18 +51,31 @@ test("a profile with no MTF columns yet falls back to the defaults", () => {
   eq(p._mtfPledge, 18); eq(p._mtfUnpledge, 18); eq(p._mtfInPnl, true);
 });
 
-test("the user's own fees are the ones charged", () => {
+/**
+ * THE PLEDGE FEES ARE NOT THE USER'S TO SET — changed deliberately on
+ * 2026-09-21, and these two checks replace the pair that pinned the opposite.
+ *
+ * They were editable in Setup for a fortnight. They are ₹18 a side at every
+ * broker in the country, so the box asked a question with one right answer
+ * and quietly accepted every wrong one: a typo there moves MTF cost, net P&L
+ * and R on every margin trade, with nothing on any screen to say why. Held
+ * here now, beside the statutory rates in charges.js, and updated centrally.
+ */
+test("the fees are the same for everyone, whatever the profile says", () => {
   const t = trade(mtfPrefs({ mtf_pledge_fee: 20, mtf_unpledge_fee: 15 }));
-  near(t.pledgeFees, 20 + 15 * 2, 1e-9);
-  near(t.realisedPnl, GROSS - CHARGES - INTEREST - 50, 0.001);
+  near(t.pledgeFees, PLEDGE_FEE + UNPLEDGE_FEE * 2, 1e-9, "the central figures, not the profile's");
+  near(t.realisedPnl, GROSS - CHARGES - INTEREST - (PLEDGE_FEE + UNPLEDGE_FEE * 2), 0.001);
   const evs = realisationEvents(t);
-  near(evs.reduce((a, e) => a + e.fees, 0), 50, 1e-9, "the split charges the same fees");
+  near(evs.reduce((a, e) => a + e.fees, 0), PLEDGE_FEE + UNPLEDGE_FEE * 2, 1e-9,
+       "and the split charges the same fees");
 });
 
-test("zero fees are allowed, and a nonsense value falls back", () => {
-  eq(mtfPrefs({ mtf_pledge_fee: 0 })._mtfPledge, 0, "a broker with no pledge fee");
-  eq(mtfPrefs({ mtf_pledge_fee: -5 })._mtfPledge, 18, "negative is not a fee");
-  eq(mtfPrefs({ mtf_pledge_fee: "abc" })._mtfPledge, 18);
+test("a profile written while they were editable is ignored, not honoured", () => {
+  eq(mtfPrefs({ mtf_pledge_fee: 0 })._mtfPledge, PLEDGE_FEE, "a stored zero no longer applies");
+  eq(mtfPrefs({ mtf_pledge_fee: -5 })._mtfPledge, PLEDGE_FEE);
+  eq(mtfPrefs({ mtf_unpledge_fee: 99 })._mtfUnpledge, UNPLEDGE_FEE);
+  /* The one MTF choice that IS a choice stays the user's. */
+  eq(mtfPrefs({ mtf_in_pnl: false })._mtfInPnl, false);
 });
 
 test("expense only: worked out and reported, taken out of nothing", () => {
@@ -126,13 +139,13 @@ test("the settings fields never reach the database", () => {
   ok(!/_mtf|\.\.\.t\b/.test(payload), "the trade payload is explicit");
 });
 
-test("Setup sends the MTF settings only when they changed", () => {
+test("Setup sends the one MTF setting there is, and only when it changed", () => {
   /* Sent every time, a Setup save would fail before migration 050 for a user
-     who only changed their account size. */
+     who only changed their account size. The two fee fields are gone — see
+     statutory.probe.mjs for why they are not the user's to set. */
   const s = read("components/journal/SettingsSheet.jsx");
-  ok(/\.\.\.\(pledge !== mtfNow\._mtfPledge \? \{ mtf_pledge_fee: pledge \} : \{\}\)/.test(s));
-  ok(/\.\.\.\(unpledge !== mtfNow\._mtfUnpledge \? \{ mtf_unpledge_fee: unpledge \} : \{\}\)/.test(s));
   ok(/\.\.\.\(inPnl !== mtfNow\._mtfInPnl \? \{ mtf_in_pnl: inPnl \} : \{\}\)/.test(s));
+  ok(!/mtf_pledge_fee|mtf_unpledge_fee/.test(s), "no fee is written from Setup any more");
 });
 
 test("an old Setup draft still opens with the MTF fields filled in", () => {
@@ -141,9 +154,9 @@ test("an old Setup draft still opens with the MTF fields filled in", () => {
     "defaults first, the draft laid over them");
 });
 
-test("a blank or negative fee in Setup keeps the fee there was", () => {
+test("there is no fee to type in wrongly any more", () => {
   const s = read("components/journal/SettingsSheet.jsx");
-  ok(/v !== "" && Number\.isFinite\(n\) && n >= 0 && n < 1000 \? n : was/.test(s), "and nothing past ₹999.99");
+  ok(!/st-fee/.test(s), "the boxes are gone, and with them every way to mistype ₹18");
 });
 
 test("migration 050 defaults to exactly what the code falls back to", () => {
@@ -151,6 +164,9 @@ test("migration 050 defaults to exactly what the code falls back to", () => {
   ok(/mtf_pledge_fee\s+numeric not null default 18/.test(sql));
   ok(/mtf_unpledge_fee numeric not null default 18/.test(sql));
   ok(/mtf_in_pnl\s+boolean not null default true/.test(sql));
+  /* The columns stay, with the same defaults — nothing writes them now, and a
+     stored value is ignored on read (see mtfPrefs), so a journal migrated
+     before this change still computes the same figures. */
   eq(PLEDGE_FEE, 18); eq(UNPLEDGE_FEE, 18);
 });
 
@@ -167,10 +183,10 @@ test("Setup: the choice is a plain question, and one word is used for it everywh
   }
 });
 
-test("Setup: the fee boxes are sized for ₹999.99", () => {
+test("the pledge fees are stated in Setup, not asked for", () => {
   const s = read("components/journal/SettingsSheet.jsx");
-  ok(/className="in mono st-fee" inputMode="decimal" maxLength=\{6\}/.test(s));
-  ok(/\.st-fee \{ max-width: 110px; \}/.test(s));
+  ok(/₹18 a side everywhere/.test(s),
+     "the user is told what they are charged and that it is kept current");
 });
 
 test("Setup: the Trades section is hidden behind a flag, not deleted", () => {

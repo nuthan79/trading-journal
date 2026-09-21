@@ -57,7 +57,40 @@ const num = (v, fallback = 0) => {
   return Number.isFinite(x) ? x : fallback;
 };
 
-export const mergeConfig = (partial) => ({ ...DEFAULT_CHARGE_CONFIG, ...(partial || {}) });
+/**
+ * The rates nobody chooses — and nobody may override.
+ *
+ * STT, the exchange transaction fees, the SEBI turnover fee, stamp duty and
+ * GST are set by the government and the exchanges. They are the same for
+ * every trader in the country, so a settings box offering to change them was
+ * an invitation to get them wrong: a user who types 0.01 for STT sees every
+ * charge and every net P&L in their journal quietly understated, and nothing
+ * on any screen would say why. They are maintained here and updated when a
+ * budget moves them.
+ *
+ * What IS the user's stays theirs: the broker plan, its brokerage, and the
+ * depository's per-sell fee — those genuinely differ from one contract note
+ * to the next.
+ */
+export const STATUTORY_KEYS = [
+  "sttPct", "exchangeNsePct", "exchangeBsePct", "sebiPct", "stampDutyPct", "gstPct",
+];
+
+const STATUTORY = Object.fromEntries(
+  STATUTORY_KEYS.map((k) => [k, DEFAULT_CHARGE_CONFIG[k]]));
+
+/**
+ * Stored config, with the statutory rates put back.
+ *
+ * The override goes LAST on purpose: profiles written before this rule carry
+ * whatever was typed into the old settings box, and reading them as-is would
+ * keep computing new charges from a number the user can no longer see or
+ * correct. Anything already computed and stored on a trade is untouched —
+ * see the note at the top of this file about why charges are never
+ * recomputed on read.
+ */
+export const mergeConfig = (partial) =>
+  ({ ...DEFAULT_CHARGE_CONFIG, ...(partial || {}), ...STATUTORY });
 
 /* ------------------------------------------------------------------ */
 /*  One leg                                                            */

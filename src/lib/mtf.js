@@ -61,8 +61,14 @@ const finiteOr = (v, d) => {
  */
 export function mtfPrefs(profile) {
   return {
-    _mtfPledge: finiteOr(profile?.mtf_pledge_fee, PLEDGE_FEE),
-    _mtfUnpledge: finiteOr(profile?.mtf_unpledge_fee, UNPLEDGE_FEE),
+    /* The depository's pledge and unpledge fees, which are the same ₹18 a
+       side at every broker in the country — so they are kept here rather than
+       asked for, like the statutory rates in charges.js. A profile written
+       while they were editable is deliberately ignored: the figure a user
+       cannot see is a figure they cannot correct. Whether MTF comes out of
+       P&L at all IS a real choice, and stays theirs. */
+    _mtfPledge: PLEDGE_FEE,
+    _mtfUnpledge: UNPLEDGE_FEE,
     _mtfInPnl: profile?.mtf_in_pnl !== false,
   };
 }

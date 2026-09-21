@@ -164,6 +164,17 @@ silently becomes "charges". The user's fees and whether to deduct MTF at all
 each trade by `mtfPrefs(profile)` in the layout; `marginInPnl`/
 `marginCounted` on the results let every screen word it truthfully.
 
+**Statutory rates are not settings.** STT, the NSE/BSE transaction fees, the
+SEBI fee, stamp duty, GST and the depository's ₹18 pledge/unpledge fees are
+the same for every trader in India, so nobody may edit them: they live in
+`charges.js` (`STATUTORY_KEYS`, put back by `mergeConfig` OVER anything a
+profile still carries) and `mtf.js` (`mtfPrefs` ignores the stored fees).
+Setup keeps only what genuinely differs — the broker plan, its brokerage, the
+DP fee, and whether MTF comes out of P&L. Six editable boxes asked a question
+with one right answer, and a mistyped STT understates every charge and every
+net P&L with nothing on screen to explain it. Rates are updated here when a
+budget moves them; charges already stored on a trade are never recomputed.
+
 **Charges are computed, not entered — except when they're not.**
 `src/lib/charges.js` computes Indian equity transaction charges (STT, exchange
 txn charges which differ NSE vs BSE, SEBI fee, stamp duty on buy leg, GST on

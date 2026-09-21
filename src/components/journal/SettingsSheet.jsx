@@ -8,15 +8,6 @@ import { mtfPrefs } from "@/lib/mtf";
 import { SHOW_SETUP_TRADES } from "@/lib/flags";
 import OwnSetups from "./OwnSetups";
 
-const STATUTORY_FIELDS = [
-  { k: "sttPct", label: "STT %", hint: "of turnover, both legs" },
-  { k: "exchangeNsePct", label: "NSE txn %", hint: "of turnover, both legs" },
-  { k: "exchangeBsePct", label: "BSE txn %", hint: "of turnover, both legs" },
-  { k: "sebiPct", label: "SEBI %", hint: "of turnover, both legs" },
-  { k: "stampDutyPct", label: "Stamp duty %", hint: "of turnover, buy leg only" },
-  { k: "gstPct", label: "GST %", hint: "on brokerage + fees" },
-];
-
 // JSON has no Infinity — the "no cap" preset would otherwise round-trip
 // through profiles.charge_config as null, and null reads back as a cap of
 // zero rather than no cap at all. A large finite number behaves identically
@@ -47,8 +38,6 @@ export default function SettingsSheet({ profile, onSave, onClose, onNavigate,
     journal_name: profile.journal_name || "",
     account_size: String(profile.account_size ?? ""),
     default_risk_pct: String(profile.default_risk_pct ?? ""),
-    mtf_pledge_fee: String(mtfNow._mtfPledge),
-    mtf_unpledge_fee: String(mtfNow._mtfUnpledge),
     mtf_in_pnl: mtfNow._mtfInPnl,
     ...(persisted?.s || {}),
   });
@@ -57,10 +46,6 @@ export default function SettingsSheet({ profile, onSave, onClose, onNavigate,
   );
   const [saving, setSaving] = useState(false);
   const set = (k) => (e) => setS((p) => ({ ...p, [k]: e.target.value }));
-  const setRate = (k) => (e) => {
-    const v = e.target.value;
-    setCfg((p) => ({ ...p, [k]: v === "" ? "" : Number(v) }));
-  };
 
   const { clear: clearDraft } = useAutosave(DRAFT_KEYS.settings, { s, cfg: forSave(cfg) });
   const closeAndClear = () => { clearDraft(); onClose(); };
@@ -80,14 +65,6 @@ export default function SettingsSheet({ profile, onSave, onClose, onNavigate,
   const submit = async () => {
     setSaving(true);
     try {
-      /* A fee is a rupee amount of zero or more; anything else keeps what was
-         there, rather than saving a blank as a free pledge. */
-      const fee = (v, was) => {
-        const n = Number(v);
-        return v !== "" && Number.isFinite(n) && n >= 0 && n < 1000 ? n : was;
-      };
-      const pledge = fee(s.mtf_pledge_fee, mtfNow._mtfPledge);
-      const unpledge = fee(s.mtf_unpledge_fee, mtfNow._mtfUnpledge);
       const inPnl = s.mtf_in_pnl !== false;
       await onSave({
         journal_name: s.journal_name.trim() || "Breakout Ledger",
@@ -95,13 +72,11 @@ export default function SettingsSheet({ profile, onSave, onClose, onNavigate,
         default_risk_pct: Number(s.default_risk_pct) || 0,
         charge_config: forSave(cfg),
         /*
-         * ONLY WHAT CHANGED. Sent every time, these three would make every
-         * Setup save fail on a database where migration 050 has not run — a
-         * user changing their account size told the save failed over a margin
-         * setting they never touched.
+         * ONLY WHAT CHANGED. Sent every time, this would make every Setup save
+         * fail on a database where migration 050 has not run — a user changing
+         * their account size told the save failed over a margin setting they
+         * never touched.
          */
-        ...(pledge !== mtfNow._mtfPledge ? { mtf_pledge_fee: pledge } : {}),
-        ...(unpledge !== mtfNow._mtfUnpledge ? { mtf_unpledge_fee: unpledge } : {}),
         ...(inPnl !== mtfNow._mtfInPnl ? { mtf_in_pnl: inPnl } : {}),
       });
       clearDraft();
@@ -137,8 +112,10 @@ export default function SettingsSheet({ profile, onSave, onClose, onNavigate,
           <div style={{ borderTop: "1px solid var(--rule)", paddingTop: 18 }}>
             <div className="eyebrow" style={{ marginBottom: 4 }}>Charges</div>
             <div className="hint" style={{ marginTop: 0, marginBottom: 12 }}>
-              Drives the auto-calculated figure in the trade form. Statutory rates apply to
-              everyone the same way; brokerage is set by your broker's plan.
+              Drives the auto-calculated figure in the trade form. Pick the plan your
+              broker charges you on. STT, GST, stamp duty and the exchange and SEBI
+              fees are the same for every trader in the country — we keep those
+              current, so there is nothing here to maintain.
             </div>
 
             <label className="f" style={{ marginBottom: 12 }}><span>Broker plan</span>
@@ -153,16 +130,14 @@ export default function SettingsSheet({ profile, onSave, onClose, onNavigate,
               </div>
             </label>
 
-            <div className="grid3" style={{ gap: 10 }}>
-              {STATUTORY_FIELDS.map((f) => (
-                <label key={f.k} className="f">
-                  <span>{f.label}</span>
-                  <input className="in mono" inputMode="decimal"
-                         value={cfg[f.k] ?? ""} onChange={setRate(f.k)} />
-                  <div className="hint">{f.hint}</div>
-                </label>
-              ))}
-            </div>
+            {/* The statutory rates were six editable boxes here until
+                2026-09-21. They are set by the government and the exchanges
+                and are identical for everyone, so the boxes asked a question
+                with one right answer and accepted every wrong one — and a
+                mistyped STT understates every charge and every net P&L in the
+                journal with nothing on screen to explain it. They live in
+                `charges.js` now; `mergeConfig` puts them back over anything a
+                profile still carries. */}
           </div>
 
           {/*
@@ -174,17 +149,12 @@ export default function SettingsSheet({ profile, onSave, onClose, onNavigate,
           <div style={{ borderTop: "1px solid var(--rule)", paddingTop: 18 }}>
             <div className="eyebrow" style={{ marginBottom: 4 }}>Margin (MTF)</div>
             <div className="hint" style={{ marginTop: 0, marginBottom: 12 }}>
-              Used on trades you mark as bought on MTF. The interest rate is set on each trade.
+              Used on trades you mark as bought on MTF. The interest rate is set on each
+              trade, since it is the one part that is yours: pledge and unpledge fees are
+              ₹18 a side everywhere and are kept current for you.
             </div>
-            <div className="grid2" style={{ gap: 12, marginBottom: 14 }}>
-              {/* Sized for the figure, not the column: a fee is at most ₹999.99. */}
-              <label className="f"><span>Pledge charge — ₹ per buy</span>
-                <input className="in mono st-fee" inputMode="decimal" maxLength={6}
-                       value={s.mtf_pledge_fee} onChange={set("mtf_pledge_fee")} /></label>
-              <label className="f"><span>Unpledge charge — ₹ per sell</span>
-                <input className="in mono st-fee" inputMode="decimal" maxLength={6}
-                       value={s.mtf_unpledge_fee} onChange={set("mtf_unpledge_fee")} /></label>
-            </div>
+            {/* Same reasoning as the statutory rates above: the depository
+                charges ₹18 to pledge and ₹18 to release, at every broker. */}
             <div className="f"><span>Deduct MTF from P&amp;L and R?</span></div>
             <div className="st-choice" role="radiogroup" aria-label="Deduct MTF from P&L and R?">
               <label>
@@ -247,7 +217,6 @@ export default function SettingsSheet({ profile, onSave, onClose, onNavigate,
       <style jsx>{`
         /* Two choices, each with the sentence that says what it does. */
         .st-choice { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
-        .st-fee { max-width: 110px; }
         .st-choice label {
           display: flex; gap: 10px; align-items: flex-start; cursor: pointer;
           border: 1px solid var(--rule); border-radius: 3px; padding: 10px 12px;
