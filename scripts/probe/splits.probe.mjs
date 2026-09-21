@@ -170,3 +170,31 @@ test("the same question is the same URL, or no cache can hit", () => {
   ok(/const splitCache = new Map\(\);/.test(q) && /SPLIT_TTL_MS/.test(q),
      "and the server remembers too, so two people holding one stock pay once");
 });
+
+/**
+ * SOLD STOCKS ARE NOT CHECKED ROUTINELY — the user's call, and the numbers
+ * back it: ten held symbols against two hundred and ninety-two once the sold
+ * ones are counted. Money already banked cannot be made more or less by a
+ * split. The one exception is a trade that opened before a split and closed
+ * after it, whose P&L is then in two different sizes of share — so that sweep
+ * is a button, not a cost on every visit.
+ */
+test("the routine check asks only about what is still held", () => {
+  const page = read("src/app/(app)/holdings/page.jsx");
+  ok(/const ask = staleKeys\(symbolsOf\(open\), symbolsOf\(open\), cache\);/.test(page),
+     "the question is the held symbols, not the whole book");
+  ok(/setSplits\(splitsFromCache\(keys, cache\)\)/.test(page),
+     "but everything already known is still shown — knowing is free, asking is not");
+});
+
+test("the sold sweep exists, on request, and caches like the rest", () => {
+  const page = read("src/app/(app)/holdings/page.jsx");
+  ok(/const sweepClosed = async \(\)/.test(page));
+  ok(/const ask = staleKeys\(keys, symbolsOf\(open\), cache\);/.test(page),
+     "pressed twice in a week, it asks once");
+  ok(/Nothing else has been through a split/.test(page), "and says so when there is nothing");
+  const h = read("src/components/journal/Holdings.jsx");
+  ok(/Also check the stocks you no longer hold/.test(h));
+  ok(/the only sold one that can still be wrong/.test(h),
+     "the page says which case this is for, rather than offering a mystery button");
+});

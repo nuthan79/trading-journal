@@ -1580,7 +1580,24 @@ export default function Holdings({
         </span>
       </div>
 
+      {/* The routine check covers what is still held — ten symbols on this
+          book against nearly three hundred once the sold ones are counted. A
+          trade that opened before a split and closed after it is the one case
+          where history can still be wrong, so it is a button rather than a
+          cost everybody pays on every visit. */}
+      {onSweepSplits && (
+        <p className="ps-sweep">
+          <button className="lk" onClick={onSweepSplits} disabled={sweepingSplits}>
+            {sweepingSplits ? "Checking…" : "Also check the stocks you no longer hold"}
+          </button>
+          {" "}— splits are checked on what you hold. A trade that opened before a
+          split and closed after it is the only sold one that can still be wrong.
+        </p>
+      )}
+
       <style jsx>{`
+        .ps-sweep { font-size: 11.5px; color: var(--ink3); margin: 12px 0 0;
+                    line-height: 1.6; max-width: 80ch; }
         .ps-head {
           display: flex; align-items: flex-end; justify-content: space-between;
           gap: 14px; flex-wrap: wrap; margin-bottom: 12px;
