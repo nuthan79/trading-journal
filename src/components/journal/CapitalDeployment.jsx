@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { indicesFor } from "@/lib/quotes";
+import { activeRegion } from "@/lib/regions";
 import { deploymentSeries, DEPLOY_BANDS } from "@/lib/deployment";
 import { money, pct, signedPct, dmy } from "@/lib/format";
 import Money from "@/components/Money";
@@ -192,15 +194,18 @@ function niceTicks(max, { target = 4, integer = false } = {}) {
 /*  Index history — fetched lazily, and entirely optional              */
 /* ------------------------------------------------------------------ */
 
-// Mirrors INDICES in quotes.js, plus "none". See the note there on why
-// MidSmallcap 400 is absent and its two halves are listed instead.
-const INDEX_CHOICES = [
-  { id: "nifty500", label: "Nifty 500" },
-  { id: "nifty50", label: "Nifty 50" },
-  { id: "midcap150", label: "Midcap 150" },
-  { id: "smallcap250", label: "Smallcap 250" },
-  { id: "none", label: "None" },
-];
+/**
+ * The benchmarks of the book being read — Nifty in India, the S&P and its
+ * neighbours in a US one. Offering Nifty 500 beside a book of US trades is
+ * a comparison against an index those trades have nothing to do with.
+ *
+ * Taken from `indicesFor` in quotes.js rather than listed again here, which
+ * is how the two got out of step: this file said it "mirrors INDICES" and
+ * then stopped doing so the day a second market existed.
+ */
+const indexChoices = (regionId) =>
+  [...indicesFor(regionId).map((i) => ({ id: i.id, label: i.label })),
+   { id: "none", label: "None" }];
 
 function useIndexHistory(index, from, to) {
   const [state, setState] = useState({ points: [], loading: false, error: null });
@@ -237,7 +242,10 @@ export default function CapitalDeployment({ all = [], accountSize = 0, flows = [
   const box = useRef(null);
   const [w, setW] = useState(900);
   const [hov, setHov] = useState(null);
-  const [index, setIndex] = useState("nifty500");
+  /* The first benchmark of the open book: Nifty 500 in India, the S&P 500 in
+     a US one. Defaulting to a fixed id left a US book asking the chart for an
+     Indian index and drawing nothing. */
+  const [index, setIndex] = useState(() => indexChoices(activeRegion())[0]?.id || "none");
   // Opens on a year of bars. "All" is the honest default for a short record
   // and a picket fence for a long one, and the long one is the case that
   // actually needs help.
@@ -311,7 +319,7 @@ export default function CapitalDeployment({ all = [], accountSize = 0, flows = [
     const mine = annualisedReturn(all, { openingCapital: accountSize, flows });
     if (!isFinite(bench.rate) || !isFinite(mine.rate)) return null;
     return { bench, mine, lead: (mine.rate - bench.rate) * 100,
-             label: INDEX_CHOICES.find((c) => c.id === index)?.label || "the index" };
+             label: indexChoices(activeRegion()).find((c) => c.id === index)?.label || "the index" };
   }, [S, idx.points, all, accountSize, flows, index]);
 
   if (!S) {
@@ -454,7 +462,7 @@ export default function CapitalDeployment({ all = [], accountSize = 0, flows = [
           </div>
         </div>
         <div className="seg">
-          {INDEX_CHOICES.map((c) => (
+          {indexChoices(activeRegion()).map((c) => (
             <button key={c.id} data-on={index === c.id ? 1 : 0} onClick={() => setIndex(c.id)}>
               {c.label}
             </button>
@@ -522,7 +530,7 @@ export default function CapitalDeployment({ all = [], accountSize = 0, flows = [
           <span><i className={`${CAP_MONEY}-sw ${CAP_MONEY}-cap`} />Capital</span>
           {idx.points.length > 0 && (
             <span><i className={`${CAP_MONEY}-sw ${CAP_MONEY}-idx`} />
-              {INDEX_CHOICES.find((c) => c.id === index)?.label}</span>
+              {indexChoices(activeRegion()).find((c) => c.id === index)?.label}</span>
           )}
           {idx.loading && <span className={`${CAP_MONEY}-dim`}>loading index…</span>}
           {idx.error && <span className={`${CAP_MONEY}-dim`}>index unavailable</span>}
@@ -626,7 +634,7 @@ export default function CapitalDeployment({ all = [], accountSize = 0, flows = [
                   off the label and set in the same weight the date uses. */}
               {hovIdx && (
                 <span className={`${CAP_MONEY}-ix`}>
-                  {INDEX_CHOICES.find((c) => c.id === index)?.label}
+                  {indexChoices(activeRegion()).find((c) => c.id === index)?.label}
                   <b>{Math.round(hovIdx.c).toLocaleString("en-IN")}</b>
                 </span>
               )}

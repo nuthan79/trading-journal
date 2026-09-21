@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { region as regionInfo, activeRegion } from "@/lib/regions";
 import { byPeriod } from "@/lib/calc";
 import { money, rfmt, pct, signedPct } from "@/lib/format";
 import Money from "@/components/Money";
@@ -39,10 +40,13 @@ const costNote = (charges, margin, pnl, counted = true) => {
   return `After ${what}${isFinite(pnl) ? ` — ${full(pnl + c + m)} before them` : ""}`;
 };
 
-const GRAINS = [
+/* "Financial year" over a January–December book names something it is not:
+   an American tax year IS the calendar year. The other two are the same in
+   every market. */
+const grains = (regionId) => [
   { id: "month", label: "Monthly" },
   { id: "quarter", label: "Quarterly" },
-  { id: "year", label: "Financial year" },
+  { id: "year", label: regionInfo(regionId).fiscalLabel ? "Financial year" : "Calendar year" },
 ];
 
 export default function PeriodPerformance({ closed, openingCapital, flows = [], all = [] }) {
@@ -159,7 +163,7 @@ export default function PeriodPerformance({ closed, openingCapital, flows = [], 
             <button data-on={byEntry ? 1 : 0} onClick={() => setBasis("entry")}>By entry</button>
           </div>
           <div className="seg">
-            {GRAINS.map((g) => (
+            {grains(activeRegion()).map((g) => (
               <button key={g.id} data-on={grain === g.id ? 1 : 0} onClick={() => setGrain(g.id)}>
                 {g.label}
               </button>

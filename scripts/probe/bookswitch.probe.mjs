@@ -218,3 +218,19 @@ test("the rate is not asked for before there is a session to ask with", () => {
   ok(/if \(!userId\) return;\s*\n\s*let live = true;/.test(s));
   ok(/\}, \[bookCurrency, homeCurrency, userId\]\);/.test(s), "and it runs once there is one");
 });
+
+/* FOUND ON THE PERFORMANCE PAGE OF A US BOOK: Nifty 500 offered as the
+   benchmark, and the year tab labelled "Financial year" over a book whose
+   year IS the calendar one. */
+test("benchmarks and the year label belong to the book", () => {
+  const cd = read("src/components/journal/CapitalDeployment.jsx");
+  ok(/const indexChoices = \(regionId\) =>/.test(cd) && /indicesFor\(regionId\)/.test(cd),
+     "taken from quotes.js, not listed again — which is how they got out of step");
+  ok(/useState\(\(\) => indexChoices\(activeRegion\(\)\)\[0\]\?\.id \|\| "none"\)/.test(cd),
+     "and the default is this book's first, not a fixed Indian id");
+  ok(!/id: "nifty500", label: "Nifty 500"/.test(cd), "no hard-coded Indian list left");
+
+  const pp = read("src/components/journal/PeriodPerformance.jsx");
+  ok(/regionInfo\(regionId\)\.fiscalLabel \? "Financial year" : "Calendar year"/.test(pp),
+     "an American tax year IS the calendar year; calling it FY names something it is not");
+});
