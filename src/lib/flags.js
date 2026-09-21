@@ -45,3 +45,16 @@ export const SHOW_CHART_DRILL = false;
    two ways in to each, and Setup is for settings. Built and working; set true
    to bring it back. */
 export const SHOW_SETUP_TRADES = false;
+
+/**
+ * The region switch — India, the US, and whatever follows.
+ *
+ * Off while the work lands in pieces. Migration 052 gives every row a region
+ * and every existing one says IN, `lib/regions.js` describes what a region
+ * decides, and nothing reads either yet. Turning this on is Phase 5: the
+ * dropdown in the top bar, and every screen filtered to one book.
+ *
+ * A REGION IS A SEPARATE BOOK — see the note in regions.js. Nothing in the
+ * app may ever total across two currencies, flag on or off.
+ */
+export const SHOW_REGIONS = false;

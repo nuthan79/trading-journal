@@ -255,9 +255,32 @@ scroll container with unbounded height never actually has anything to scroll
 (`clientHeight === scrollHeight`), so the *page* scrolls instead and the
 sticky header ends up behind the app's own sticky topbar.
 
+## Going international (in progress)
+
+**A region is a separate book.** `src/lib/regions.js` describes what a market
+decides — currency and its abbreviation ladder (₹ k/L/Cr vs $ K/M/B),
+exchanges, how a ticker is spelled for Yahoo, the fiscal year start, whether
+MTF exists there. Migration 052 puts `region` on trades, capital_flows and
+profiles, defaulting to `'IN'` — which is the truth for every row ever
+written, so there is no backfill and no ambiguity. `regionOf(row)` answers
+`IN` for a missing column, so all of this is inert until Phase 5 flips
+`SHOW_REGIONS`.
+
+**Nothing may ever total across two currencies.** Not an equity curve, not a
+net P&L, not a tile. Blending needs an FX rate on every figure, and then a
+finished Indian trade's P&L moves when the dollar does — which is false. R and
+win rate are ratios and are the honest cross-market comparison.
+
+Phases: 1 data model and regions.js (done) · 2 currency-aware `format.js`
+across 142 money call sites and 164 ₹ literals, pinned by an "India is
+unchanged" probe · 3 US symbols and quotes · 4 US charges and calendar-year
+fiscal · 5 the switch and per-region filtering · 6 US broker imports, each
+against a real file.
+
 ## Conventions
 
-- INR only, everywhere — no currency selection or USD code paths.
+- INR is the only currency in use today; USD lands with the regions work
+  above, through `regions.js` rather than through scattered conditionals.
 - Column/field names are snake_case, matching `supabase/schema.sql` exactly;
   component-local state can use camelCase but payloads sent to `db.js` must
   match schema columns.
