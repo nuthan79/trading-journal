@@ -28,8 +28,8 @@ test("the layout offers showDemo through the journal context", () => {
 
 test("the offer sits in the banner's own slot, on every screen", () => {
   ok(/SampleOffer/.test(layout), "the layout renders it");
-  ok(/\{!demo && trades\.length === 0 && \(/.test(layout),
-     "only with no sample showing and nothing of the user's own");
+  ok(/\{!demo && trades\.length === 0 && bookRegion === DEFAULT_REGION && \(/.test(layout),
+     "only with no sample showing, nothing of the user's own, and a book the sample suits");
   const i = layout.indexOf("<DemoBanner"), j = layout.indexOf("<SampleOffer");
   ok(i > 0 && j > i && layout.indexOf("{children}") > j,
      "above the screen being read, beside the banner it mirrors");

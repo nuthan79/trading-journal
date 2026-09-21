@@ -117,5 +117,5 @@ test("the first-week card offers Import only where a file can be read", () => {
   const fw = read("src/components/journal/FirstWeek.jsx");
   ok(/activeRegion\(\) === DEFAULT_REGION && \(\s*<Link href="\/import"/.test(fw),
      "a US book is not sent to a page that tells it no");
-  ok(/US broker files are not read yet/.test(fw), "and step one says what to do instead");
+  ok(/US broker files are not\s+read yet/.test(fw), "and step one says what to do instead");
 });
