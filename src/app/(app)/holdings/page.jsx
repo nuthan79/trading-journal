@@ -5,6 +5,8 @@ import Holdings from "@/components/journal/Holdings";
 import { markOpenPositions, acknowledgeBreakeven, resolveSoldSnapshots,
          listSplits, applySplitAdjustments } from "@/lib/db";
 import { splitPlan, symbolsOf } from "@/lib/splits";
+import { loadSplitCache, saveSplitCache, staleKeys, splitsFromCache,
+         mergeIntoCache } from "@/lib/splitCache";
 import { measurePaths, needsMeasuring } from "@/lib/measure";
 import { useJournal } from "../JournalContext";
 
@@ -28,9 +30,39 @@ export default function HoldingsPage() {
     let live = true;
     const keys = symbolsOf(all);
     if (!keys.length) return;
-    listSplits(keys).then((got) => { if (live) setSplits(got); });
-    return () => { live = false; };
-  }, [all]);
+
+    /* What is already known — shown at once, so a book checked yesterday
+       draws its card without waiting for anything. */
+    const cache = loadSplitCache();
+    setSplits(splitsFromCache(keys, cache));
+
+    /* And only what has gone stale: a stock still held is asked about once a
+       day, one merely traded once a week. Everything else costs nothing. */
+    const ask = staleKeys(keys, symbolsOf(open), cache);
+    if (!ask.length) return;
+
+    /* After the page is interactive. The marks on the table are what somebody
+       is waiting for; this is a background question about an event announced
+       weeks in advance, and it must never compete with them. */
+    const idle = typeof requestIdleCallback === "function"
+      ? requestIdleCallback(run, { timeout: 4000 })
+      : setTimeout(run, 1200);
+
+    function run() {
+      listSplits(ask).then((got) => {
+        if (!live) return;
+        const next = mergeIntoCache(cache, ask, got);
+        saveSplitCache(next);
+        setSplits(splitsFromCache(keys, next));
+      });
+    }
+
+    return () => {
+      live = false;
+      if (typeof cancelIdleCallback === "function") cancelIdleCallback(idle);
+      else clearTimeout(idle);
+    };
+  }, [all, open]);
 
   const splitsDuePlan = useMemo(() => splitPlan(all, splits), [all, splits]);
 

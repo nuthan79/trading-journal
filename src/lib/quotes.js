@@ -201,8 +201,17 @@ export async function fxRate(from = "USD", to = "INR") {
  * there were none or the source is down — a missing answer must cost the
  * check and nothing else.
  */
+const splitCache = new Map();
+const SPLIT_TTL_MS = 12 * 60 * 60 * 1000;
+
 export async function splitsFor({ symbol, exchange }, range = "5y") {
   const ticker = yahooTicker(symbol, exchange);
+  /* Held for half a day on the server as well as in the browser: one cold
+     book is three hundred lookups, and two people holding the same stock
+     should not each pay for it. A corporate action is announced weeks ahead
+     of the day it takes effect, so half a day late is not late. */
+  const hit = splitCache.get(ticker);
+  if (hit && Date.now() - hit.at < SPLIT_TTL_MS) return hit.splits;
   for (const host of HOSTS) {
     try {
       const url = `https://${host}/v8/finance/chart/${encodeURIComponent(ticker)}` +
@@ -210,7 +219,7 @@ export async function splitsFor({ symbol, exchange }, range = "5y") {
       const res = await fetch(url, { headers: BROWSER_HEADERS, cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const events = (await res.json())?.chart?.result?.[0]?.events?.splits || {};
-      return Object.values(events)
+      const splits = Object.values(events)
         .map((e) => {
           const num = Number(e?.numerator), den = Number(e?.denominator);
           const at = Number(e?.date);
@@ -223,6 +232,8 @@ export async function splitsFor({ symbol, exchange }, range = "5y") {
         })
         .filter(Boolean)
         .sort((a, b) => (a.date < b.date ? -1 : 1));
+      splitCache.set(ticker, { at: Date.now(), splits });
+      return splits;
     } catch { /* try the other host, then say nothing happened */ }
   }
   return [];

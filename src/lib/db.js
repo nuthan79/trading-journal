@@ -1722,9 +1722,13 @@ export async function listRegionAccess() {
 export async function listSplits(keys = []) {
   if (!keys.length) return {};
   const out = {};
-  for (let i = 0; i < keys.length; i += 60) {
+  /* Sorted, so the same question is the same URL — unsorted, the browser's
+     six-hour cache missed every time the trades came back in a different
+     order, which is most reloads. */
+  const asked = [...keys].sort();
+  for (let i = 0; i < asked.length; i += 60) {
     try {
-      const res = await apiFetch(`/api/quotes?splits=${encodeURIComponent(keys.slice(i, i + 60).join(","))}`);
+      const res = await apiFetch(`/api/quotes?splits=${encodeURIComponent(asked.slice(i, i + 60).join(","))}`);
       if (!res.ok) continue;
       Object.assign(out, (await res.json())?.splits || {});
     } catch { /* a missing answer costs the check and nothing else */ }

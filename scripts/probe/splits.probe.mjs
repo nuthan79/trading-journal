@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, ok, eq, near } from "./harness.mjs";
 import { splitsDue, adjustForSplits, splitPlan, symbolsOf } from "@/lib/splits";
+import { staleKeys, mergeIntoCache, TTL_HELD, TTL_CLOSED } from "@/lib/splitCache";
 
 const ROOT = path.resolve(fileURLToPath(new URL("../../", import.meta.url)));
 const read = (p) => readFileSync(path.join(ROOT, p), "utf8");
@@ -115,4 +116,57 @@ test("the write marks the trade last, and the card asks first", () => {
   const h = read("src/components/journal/Holdings.jsx");
   ok(/window\.confirm\(/.test(h) && /Quantities go up and prices — including stops — come down/.test(h));
   ok(/becomes\{" "\}/.test(h), "and the card shows what each row would become");
+});
+
+/**
+ * THE CHECK MUST NOT COST THE PAGE ANYTHING.
+ *
+ * A book of 297 listings is 297 upstream lookups at ~370ms, six at a time —
+ * about eighteen seconds of somebody's quota for an answer that changes a
+ * few times a year. It never blocked the table, but repeating it on every
+ * visit to Holdings is waste, and waste is what makes an app feel slow.
+ */
+test("an answer is remembered per symbol, including the empty one", () => {
+  const now = 1_700_000_000_000;
+  const cache = mergeIntoCache({}, ["NFLX:NASDAQ", "WFC:NYSE"],
+                               { "NFLX:NASDAQ": [{ date: "2025-11-17", ratio: 10 }] }, now);
+  eq(cache["NFLX:NASDAQ"].splits.length, 1);
+  eq(cache["WFC:NYSE"].splits.length, 0, "a stock that never split is the common case");
+  eq(staleKeys(["NFLX:NASDAQ", "WFC:NYSE"], [], cache, now + 1000).length, 0,
+     "and knowing that must cost nothing to know twice");
+});
+
+test("a held stock is asked about daily, a closed one weekly", () => {
+  const now = 1_700_000_000_000;
+  const cache = mergeIntoCache({}, ["A:NSE", "B:NSE"], {}, now);
+  const twoDays = now + 2 * 24 * 60 * 60 * 1000;
+  eq(staleKeys(["A:NSE", "B:NSE"], ["A:NSE"], cache, twoDays).join(), "A:NSE",
+     "the one on screen is re-checked; the one in history waits");
+  const eightDays = now + 8 * 24 * 60 * 60 * 1000;
+  eq(staleKeys(["A:NSE", "B:NSE"], ["A:NSE"], cache, eightDays).join(), "A:NSE,B:NSE");
+  eq(TTL_HELD < TTL_CLOSED, true);
+});
+
+test("an entry with no timestamp is unknown, not fresh", () => {
+  eq(staleKeys(["A:NSE"], [], { "A:NSE": { splits: [] } }).join(), "A:NSE");
+  eq(staleKeys(["A:NSE"], [], {}).join(), "A:NSE");
+});
+
+test("the page shows what it knows first, and asks in idle time", () => {
+  const page = read("src/app/(app)/holdings/page.jsx");
+  ok(/setSplits\(splitsFromCache\(keys, cache\)\);/.test(page),
+     "a book checked yesterday draws its card without waiting for anything");
+  ok(/const ask = staleKeys\(keys, symbolsOf\(open\), cache\);/.test(page));
+  ok(/if \(!ask\.length\) return;/.test(page), "nothing stale, nothing asked");
+  ok(/requestIdleCallback\(run, \{ timeout: 4000 \}\)/.test(page),
+     "and never in competition with the marks somebody is actually waiting for");
+});
+
+test("the same question is the same URL, or no cache can hit", () => {
+  const db = read("src/lib/db.js");
+  ok(/const asked = \[\.\.\.keys\]\.sort\(\);/.test(db),
+     "unsorted, the six-hour browser cache missed on every reload");
+  const q = read("src/lib/quotes.js");
+  ok(/const splitCache = new Map\(\);/.test(q) && /SPLIT_TTL_MS/.test(q),
+     "and the server remembers too, so two people holding one stock pay once");
 });
