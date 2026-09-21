@@ -108,3 +108,41 @@ test("the migration carries its own grant and rollback lines", () => {
   ok(/drop policy if exists trades_region_entitled on public\.trades;/.test(s),
      "and there is a way back if a policy ever blocks something it should not");
 });
+
+/**
+ * FOUND IN USE: opening a market you had never bought gave an empty journal
+ * under two red warnings. Every screen said a version of "there is nothing
+ * here", and the impression was of an app that had broken rather than of
+ * something worth having.
+ */
+test("a locked, empty book is an offer — not an empty journal", () => {
+  const layout = read("src/app/(app)/layout.jsx");
+  ok(/const showOffer = SHOW_REGIONS && !canWriteHere && emptyHere;/.test(layout));
+  ok(/showOffer\s*\n?\s*\? <RegionOffer/.test(layout), "the offer replaces the screens");
+  const offer = read("src/components/journal/RegionOffer.jsx");
+  ok(/is not on your account yet/.test(offer) && /Ask for access/.test(offer),
+     "it says what the market is and how to get it");
+});
+
+test("but a lapsed book with trades in it still opens", () => {
+  const layout = read("src/app/(app)/layout.jsx");
+  ok(/!canWriteHere && !emptyHere && \(/.test(layout),
+     "reads are kept where there is something to read — the whole point of the rule");
+  const offer = read("src/components/journal/RegionOffer.jsx");
+  ok(/Renew it and it opens\s*\n?\s*exactly as it was/.test(offer),
+     "and an expired one with nothing in it says renewal restores it");
+});
+
+test("a book you cannot write in is not asked to be funded", () => {
+  const layout = read("src/app/(app)/layout.jsx");
+  ok(/\{unfunded && canWriteHere && \(/.test(layout),
+     "configuring something you have no way to use is noise");
+});
+
+test("every market still appears in the switch", () => {
+  /* A market nobody can see is a market nobody asks for — the reason the
+     lock is shown rather than the row hidden. */
+  const rs = read("src/components/journal/RegionSwitch.jsx");
+  ok(/A MARKET YOU CANNOT WRITE IN IS STILL SHOWN/.test(rs));
+  ok(!/state === "locked"[^}]*return null/.test(rs), "never filtered out of the list");
+});

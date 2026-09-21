@@ -33,6 +33,7 @@ import { buildDemo } from "@/lib/demo";
 import DemoBanner from "@/components/journal/DemoBanner";
 import RegionSwitch from "@/components/journal/RegionSwitch";
 import CurrencyView from "@/components/journal/CurrencyView";
+import RegionOffer from "@/components/journal/RegionOffer";
 import SampleOffer from "@/components/journal/SampleOffer";
 import Landing from "@/components/Landing";
 import Wordmark from "@/components/Wordmark";
@@ -451,6 +452,16 @@ export default function AppLayout({ children }) {
   /* Open, expired, or never granted — the three states worth telling apart. */
   const book = accessState(access, bookRegion);
   const canWriteHere = canWrite(access, bookRegion);
+  /**
+   * A LOCKED BOOK WITH NOTHING IN IT IS AN OFFER, NOT A JOURNAL.
+   *
+   * Entering one showed an empty page under two red warnings, which reads as
+   * a broken app rather than something to buy. Somebody whose access LAPSED
+   * is a different case — they have trades in there worth reading, and that
+   * is what "writes blocked, reads kept" was written for.
+   */
+  const emptyHere = trades.length === 0;
+  const showOffer = SHOW_REGIONS && !canWriteHere && emptyHere;
 
   /* Each book is funded separately — see regionSettings. India keeps the
      columns it always had, so nothing about an Indian journal moves. */
@@ -1175,7 +1186,9 @@ export default function AppLayout({ children }) {
               the market quotes. R is unaffected either way: it is a ratio.
             </div>
           )}
-          {unfunded && (
+          {/* Not in a book you cannot write in: it asks you to configure
+              something you have no way to use. */}
+          {unfunded && canWriteHere && (
             <div className="warn" style={{ marginTop: 16 }}>
               <b>This book has no account size yet.</b>{" "}
               Risk percentages and position sizing are assuming{" "}
@@ -1183,7 +1196,8 @@ export default function AppLayout({ children }) {
               <button className="lk" onClick={() => setShowSettings(true)}>Setup</button>.
             </div>
           )}
-          {SHOW_REGIONS && !canWriteHere && (
+          {/* Lapsed, with a book behind it: one line, and in they go. */}
+          {SHOW_REGIONS && !canWriteHere && !emptyHere && (
             <div className="warn" style={{ marginTop: 16 }}>
               <b>{regionInfo(bookRegion).label} is read-only on your account.</b>{" "}
               {book.state === "expired"
@@ -1205,7 +1219,10 @@ export default function AppLayout({ children }) {
               <SampleOffer onShow={showDemo} />
             </div>
           )}
-          {children}
+          {showOffer
+            ? <RegionOffer region={bookRegion} state={book.state}
+                           onBack={() => switchRegion(DEFAULT_REGION)} />
+            : children}
         </div>
 
         {showForm && (

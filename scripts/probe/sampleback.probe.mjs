@@ -31,7 +31,9 @@ test("the offer sits in the banner's own slot, on every screen", () => {
   ok(/\{!demo && trades\.length === 0 && bookRegion === DEFAULT_REGION && \(/.test(layout),
      "only with no sample showing, nothing of the user's own, and a book the sample suits");
   const i = layout.indexOf("<DemoBanner"), j = layout.indexOf("<SampleOffer");
-  ok(i > 0 && j > i && layout.indexOf("{children}") > j,
+  /* The screen itself renders last. It is written `: children}` now, since a
+     market you do not hold shows an offer in its place — see entitlement. */
+  ok(i > 0 && j > i && layout.indexOf(": children}") > j,
      "above the screen being read, beside the banner it mirrors");
 });
 
