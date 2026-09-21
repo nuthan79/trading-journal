@@ -1581,14 +1581,6 @@ export default function Holdings({
       </div>
 
       <style jsx>{`
-        /* Under the price, quiet enough that a row without one does not look
-           like it is missing something. It fires on about a fifth of rows, so
-           it has to read as a remark rather than as a column that happens to
-           be blank. */
-        .hd-dayend {
-          display: block; font-size: 10px; margin-top: 1px;
-          letter-spacing: 0.01em; font-weight: 500; opacity: 0.9;
-        }
         .ps-head {
           display: flex; align-items: flex-end; justify-content: space-between;
           gap: 14px; flex-wrap: wrap; margin-bottom: 12px;
@@ -1804,6 +1796,16 @@ export default function Holdings({
            it. Global, because these rows are drawn by lotRow/groupRow rather
            than by this component's own JSX — see the styled-jsx note in
            CLAUDE.md. */
+        /* GLOBAL, because the row that carries it is drawn by the lotRow
+           function rather than by this component's own JSX — scoped, the rule
+           stopped applying the day the rows moved into a function, and "at
+           high" went back to sitting beside the price instead of under it.
+           See the styled-jsx note in CLAUDE.md. Note also: no backticks in a
+           comment inside a styled-jsx template, which ends the string. */
+        .hd-dayend {
+          display: block; font-size: 10px; margin-top: 1px;
+          letter-spacing: 0.01em; font-weight: 500; opacity: 0.9;
+        }
         .ps-group { background: var(--bg); }
         .ps-group td { font-weight: 500; }
         .ps-lots { font-style: normal; font-size: 10.5px; color: var(--ink3);

@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { test, eq } from "./harness.mjs";
+import { test, eq, ok } from "./harness.mjs";
 
 /**
  * A BACKTICK INSIDE A styled-jsx BLOCK ENDS THE TEMPLATE LITERAL.
@@ -51,4 +51,35 @@ test("no backtick inside a styled-jsx block", () => {
 
   eq(offenders.length, 0,
      `a backtick here ends the template literal and the file stops parsing: ${offenders.join(", ")}`);
+});
+
+/**
+ * A RULE THE ROW RENDERERS NEED MUST BE GLOBAL.
+ *
+ * Holdings draws its rows from `lotRow` and `groupRow` so a stock bought
+ * several times can collapse into one line. Scoped rules stopped reaching
+ * those rows the day they moved into functions, and "at high" went back to
+ * sitting beside the price instead of under it — silently, because a missing
+ * rule breaks no build and throws nothing.
+ */
+test("Holdings: every class its row renderers use is styled globally", () => {
+  const src = readFileSync(path.join(ROOT, "components/journal/Holdings.jsx"), "utf8");
+  const from = src.indexOf("const groupRow = ");
+  const to = src.indexOf('  return (\n    <div className="sec">');
+  const renderers = src.slice(from, to);
+
+  const scopedAt = src.indexOf("<style jsx>{`");
+  const scoped = src.slice(scopedAt, src.indexOf("`}</style>", scopedAt));
+
+  const names = new Set();
+  for (const m of renderers.matchAll(/className=(?:"([^"]+)"|\{`([^`]+)`)/g)) {
+    for (const part of String(m[1] || m[2]).split(/[\s${}]+/)) {
+      if (/^[a-z][\w-]*$/.test(part)) names.add(part);
+    }
+  }
+  ok(names.size > 5, "the renderers do use classes");
+  for (const n of names) {
+    ok(!new RegExp(`\\.${n}\\b`).test(scoped),
+       `.${n} is in the SCOPED block but is used by a row renderer — move it to <style jsx global>`);
+  }
 });
