@@ -295,7 +295,7 @@ export default function AppLayout({ children }) {
   const [loading, setLoading] = useState(true);
   const [allTrades, setAllTrades] = useState([]);
   const [exitsByTrade, setExitsByTrade] = useState({});
-  const [diary, setDiary] = useState([]);
+  const [allDiary, setAllDiary] = useState([]);
   const [allFlows, setAllFlows] = useState([]);
   /* Which markets this user may write in. Empty is the normal answer: India
      is free and needs no row. The real lock is the policy in migration 053 —
@@ -375,7 +375,7 @@ export default function AppLayout({ children }) {
           listRegionAccess(),
         ]);
         setAllTrades(t);
-        setDiary(d);
+        setAllDiary(d);
         setAllFlows(fl);
         setExitsByTrade(ex);
         setFilters(sv);
@@ -415,6 +415,11 @@ export default function AppLayout({ children }) {
     () => allTrades.filter((t) => regionOf(t) === bookRegion), [allTrades, bookRegion]);
   const flows = useMemo(
     () => allFlows.filter((f) => regionOf(f) === bookRegion), [allFlows, bookRegion]);
+  /* The diary belongs to a book as well — an entry is about a trade, and a
+     trade is in one market. Shared, it ticked "write one diary entry" in a
+     brand new US book on the strength of work done in the Indian one. */
+  const diary = useMemo(
+    () => allDiary.filter((d) => regionOf(d) === bookRegion), [allDiary, bookRegion]);
 
   /**
    * WHICH BOOK IS BEING READ, told to the formatters once.
@@ -684,7 +689,7 @@ export default function AppLayout({ children }) {
             emotions: [],
             body: "",
           });
-          setDiary((prev) => [entry, ...prev]
+          setAllDiary((prev) => [entry, ...prev]
             .sort((a, b) => (a.entry_date < b.entry_date ? 1 : -1)));
           chartSaved = true;
         } catch (e) {
@@ -741,8 +746,12 @@ export default function AppLayout({ children }) {
 
   const saveDiaryEntry = async (entry, imageFile) => {
     try {
-      const saved = await dbSaveDiary(entry, imageFile);
-      setDiary((prev) => {
+      /* Into the book it was written in — sent only when it is not the
+         default, so a save still works before migration 055. */
+      const saved = await dbSaveDiary(
+        bookRegion === DEFAULT_REGION ? entry : { ...entry, region: bookRegion },
+        imageFile);
+      setAllDiary((prev) => {
         const exists = prev.some((x) => x.id === saved.id);
         const next = exists ? prev.map((x) => (x.id === saved.id ? saved : x)) : [saved, ...prev];
         return [...next].sort((a, b) => (a.entry_date < b.entry_date ? 1 : -1));
@@ -758,7 +767,7 @@ export default function AppLayout({ children }) {
     if (!window.confirm("Delete this entry? This can't be undone.")) return;
     try {
       await dbDeleteDiary(entry);
-      setDiary((prev) => prev.filter((x) => x.id !== entry.id));
+      setAllDiary((prev) => prev.filter((x) => x.id !== entry.id));
       say("Entry removed.");
     } catch (e) {
       say(e.message || "Could not delete the entry.");
@@ -784,11 +793,11 @@ export default function AppLayout({ children }) {
     try {
       if (hasWords) {
         const saved = await dbSaveDiary({ ...entry, image_path: null });
-        setDiary((prev) => prev.map((x) => (x.id === saved.id ? saved : x)));
+        setAllDiary((prev) => prev.map((x) => (x.id === saved.id ? saved : x)));
         say("Chart removed — the note is still there.");
       } else {
         await dbDeleteDiary(entry);
-        setDiary((prev) => prev.filter((x) => x.id !== entry.id));
+        setAllDiary((prev) => prev.filter((x) => x.id !== entry.id));
         say("Chart removed.");
       }
     } catch (e) {

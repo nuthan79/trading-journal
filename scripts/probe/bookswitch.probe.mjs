@@ -139,3 +139,22 @@ test("every venue the app offers is one the database allows", () => {
   ok(/price_bars_exchange_check/.test(sql),
      "and the bars table too, or the history behind breakeven marks fails in the background");
 });
+
+/**
+ * FOUND IN USE, on the first morning of a US book: "Write one diary entry"
+ * was already ticked, on the strength of entries written beside Indian
+ * trades. A new book that congratulates you for another book's work is
+ * telling you something false on the first screen you see.
+ */
+test("the diary belongs to a book, like everything else", () => {
+  const s = layout();
+  ok(/const diary = useMemo\(\s*\n?\s*\(\) => allDiary\.filter\(\(d\) => regionOf\(d\) === bookRegion\)/.test(s),
+     "entries are filtered to the open book");
+  ok(/bookRegion === DEFAULT_REGION \? entry : \{ \.\.\.entry, region: bookRegion \}/.test(s),
+     "and a new entry is written into the book it was written in");
+  ok(/ownDiaryCount: diary\.length/.test(s),
+     "so the first-week card counts this book's entries, not every book's");
+  const sql = read("supabase/055_diary_region.sql");
+  ok(/add column if not exists region text not null default 'IN'/.test(sql),
+     "every existing entry is Indian, which is what they were");
+});
