@@ -28,7 +28,10 @@ export default function HoldingsPage() {
   const [splits, setSplits] = useState({});
   useEffect(() => {
     let live = true;
-    const keys = symbolsOf(all);
+    /* WHAT YOU HOLD, AND NOTHING ELSE. A sold position's figures are settled
+       and a split cannot make banked money more or less; checking the rest of
+       the book was 292 symbols against 10, for rows nobody is reading. */
+    const keys = symbolsOf(open);
     if (!keys.length) return;
 
     /* What is already known — shown at once, so a book checked yesterday
@@ -48,7 +51,7 @@ export default function HoldingsPage() {
      * different sizes of share — so the sweep over sold stocks is a button
      * below the table rather than something paid for on every visit.
      */
-    const ask = staleKeys(symbolsOf(open), symbolsOf(open), cache);
+    const ask = staleKeys(keys, keys, cache);
     if (!ask.length) return;
 
     /* After the page is interactive. The marks on the table are what somebody
@@ -72,7 +75,7 @@ export default function HoldingsPage() {
       if (typeof cancelIdleCallback === "function") cancelIdleCallback(idle);
       else clearTimeout(idle);
     };
-  }, [all, open]);
+  }, [open]);
 
   /**
    * The candidates, and then the proof.
@@ -83,7 +86,7 @@ export default function HoldingsPage() {
    * divides the price by the same number — the P&L is unchanged, so the one
    * figure anybody would check it with is the one that cannot tell.
    */
-  const candidates = useMemo(() => splitPlan(all, splits), [all, splits]);
+  const candidates = useMemo(() => splitPlan(open, splits), [open, splits]);
   const [closes, setCloses] = useState({});
   useEffect(() => {
     let live = true;
@@ -98,34 +101,6 @@ export default function HoldingsPage() {
      card, and left exactly as it is. */
   const splitsDuePlan = useMemo(() => checked.filter((p) => p.verdict === "pre-split"), [checked]);
   const splitsUnsure = useMemo(() => checked.filter((p) => p.verdict !== "pre-split"), [checked]);
-
-  /**
-   * The sweep over stocks no longer held, on request.
-   *
-   * Asked for by somebody who wants the record checked rather than paid for
-   * by everybody who opens this page. Cached the same way, so it is answered
-   * once a week at most even if the button is pressed twice.
-   */
-  const [sweeping, setSweeping] = useState(false);
-  const sweepClosed = async () => {
-    setSweeping(true);
-    try {
-      const keys = symbolsOf(all);
-      const cache = loadSplitCache();
-      const ask = staleKeys(keys, symbolsOf(open), cache);
-      const got = ask.length ? await listSplits(ask) : {};
-      const next = mergeIntoCache(cache, ask, got);
-      saveSplitCache(next);
-      const found = splitPlan(all, splitsFromCache(keys, next));
-      setSplits(splitsFromCache(keys, next));
-      say(found.length
-        ? `${found.length} position${found.length === 1 ? "" : "s"} need restating — see the card above.`
-        : "Nothing else has been through a split.");
-    } catch (e) {
-      say(e.message || "Could not check the closed trades.");
-    }
-    setSweeping(false);
-  };
 
   const fixSplits = async (plan) => {
     try {
@@ -209,8 +184,6 @@ export default function HoldingsPage() {
       splitPlan={splitsDuePlan}
       splitsUnsure={splitsUnsure}
       onFixSplits={fixSplits}
-      onSweepSplits={sweepClosed}
-      sweepingSplits={sweeping}
 journalName={profile?.journal_name}
             open={open}
       closed={closed}

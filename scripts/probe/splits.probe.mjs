@@ -157,7 +157,7 @@ test("the page shows what it knows first, and asks in idle time", () => {
   const page = read("src/app/(app)/holdings/page.jsx");
   ok(/setSplits\(splitsFromCache\(keys, cache\)\);/.test(page),
      "a book checked yesterday draws its card without waiting for anything");
-  ok(/const ask = staleKeys\(keys, symbolsOf\(open\), cache\);/.test(page));
+  ok(/const ask = staleKeys\(keys, keys, cache\);/.test(page));
   ok(/if \(!ask\.length\) return;/.test(page), "nothing stale, nothing asked");
   ok(/requestIdleCallback\(run, \{ timeout: 4000 \}\)/.test(page),
      "and never in competition with the marks somebody is actually waiting for");
@@ -170,34 +170,6 @@ test("the same question is the same URL, or no cache can hit", () => {
   const q = read("src/lib/quotes.js");
   ok(/const splitCache = new Map\(\);/.test(q) && /SPLIT_TTL_MS/.test(q),
      "and the server remembers too, so two people holding one stock pay once");
-});
-
-/**
- * SOLD STOCKS ARE NOT CHECKED ROUTINELY — the user's call, and the numbers
- * back it: ten held symbols against two hundred and ninety-two once the sold
- * ones are counted. Money already banked cannot be made more or less by a
- * split. The one exception is a trade that opened before a split and closed
- * after it, whose P&L is then in two different sizes of share — so that sweep
- * is a button, not a cost on every visit.
- */
-test("the routine check asks only about what is still held", () => {
-  const page = read("src/app/(app)/holdings/page.jsx");
-  ok(/const ask = staleKeys\(symbolsOf\(open\), symbolsOf\(open\), cache\);/.test(page),
-     "the question is the held symbols, not the whole book");
-  ok(/setSplits\(splitsFromCache\(keys, cache\)\)/.test(page),
-     "but everything already known is still shown — knowing is free, asking is not");
-});
-
-test("the sold sweep exists, on request, and caches like the rest", () => {
-  const page = read("src/app/(app)/holdings/page.jsx");
-  ok(/const sweepClosed = async \(\)/.test(page));
-  ok(/const ask = staleKeys\(keys, symbolsOf\(open\), cache\);/.test(page),
-     "pressed twice in a week, it asks once");
-  ok(/Nothing else has been through a split/.test(page), "and says so when there is nothing");
-  const h = read("src/components/journal/Holdings.jsx");
-  ok(/Also check the stocks you no longer hold/.test(h));
-  ok(/the only sold one that can still be wrong/.test(h),
-     "the page says which case this is for, rather than offering a mystery button");
 });
 
 /**
@@ -251,7 +223,7 @@ test("only what the market confirms is offered", () => {
   const h = read("src/components/journal/Holdings.jsx");
   ok(/\{onFixSplits && splitPlanRows\.length > 0 && \(/.test(h),
      "no button when there is nothing proven to press it for");
-  ok(/left alone\./.test(h), "the card says so on the row itself");
+  ok(/left alone —/.test(h), "and the card says so, in one line");
 });
 
 test("the proof rides on the row, so it can be read before the click", () => {
@@ -259,4 +231,28 @@ test("the proof rides on the row, so it can be read before the click", () => {
   ok(/1219\.69/.test(p.why) && /121\.90/.test(p.why),
      "both numbers, so somebody can check it against their broker");
   eq(p.close, 121.903);
+});
+
+/**
+ * SPLITS ARE ABOUT WHAT YOU HOLD.
+ *
+ * A sold position's figures are settled: a split cannot make banked money
+ * more or less, and checking the rest of the book was 292 symbols against 10
+ * for rows nobody is reading. Simpler, and the simplicity is the point —
+ * every extra thing this checks is another thing that can be wrong.
+ */
+test("only open positions are checked, and only their symbols asked about", () => {
+  const page = read("src/app/(app)/holdings/page.jsx");
+  ok(/const keys = symbolsOf\(open\);/.test(page), "the question is what you hold");
+  ok(/splitPlan\(open, splits\)/.test(page), "and so is the plan");
+  ok(!/symbolsOf\(all\)/.test(page), "the whole book is never swept");
+  ok(!/sweepClosed/.test(page), "and there is no button offering to");
+  const h = read("src/components/journal/Holdings.jsx");
+  ok(!/Also check the stocks you no longer hold/.test(h));
+});
+
+test("what the price could not confirm is one line, not a list", () => {
+  const h = read("src/components/journal/Holdings.jsx");
+  ok(/\{splitsUnsure\.length\} other/.test(h), "said once, so the count still adds up");
+  ok(/nothing is offered/.test(h));
 });

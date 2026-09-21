@@ -58,11 +58,11 @@ test("every callback a screen renders is a prop it takes or a name it defines", 
   }
 });
 
-test("Holdings takes the two the split sweep needs", () => {
+test("Holdings takes the props the split card needs", () => {
   const src = read("components/journal/Holdings.jsx");
   const at = src.indexOf("export default function");
   const sig = src.slice(at, src.indexOf(") {", at));
-  for (const p of ["onSweepSplits", "sweepingSplits", "onFixSplits", "splitPlan"]) {
+  for (const p of ["onFixSplits", "splitPlan", "splitsUnsure"]) {
     ok(new RegExp(`\\b${p}\\b`).test(sig), `Holdings does not take ${p}`);
   }
 });

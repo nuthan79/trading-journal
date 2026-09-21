@@ -300,7 +300,7 @@ export default function Holdings({
   open, closed, diary = [], journalName = "", onRefresh, refreshing, onAckBreakeven,
   onEditTrade, onExitTrade, onDeleteTrade, onAttachChart, onRemoveChart,
   onFixSoldSnapshots, splitPlan: splitPlanRows = [], onFixSplits,
-  onSweepSplits, sweepingSplits = false, splitsUnsure = [],
+  splitsUnsure = [],
 }) {
   const [detailId, setDetailId] = useState(null);
   const [acked, setAcked] = useState([]);
@@ -1308,12 +1308,15 @@ export default function Holdings({
                 {p.why && <i className="ps-why"> {p.why}</i>}
               </li>
             ))}
-            {splitsUnsure.map((p) => (
-              <li key={p.id} className="ps-unsure">
-                <b>{p.symbol}</b> — left alone.{" "}
-                <i className="ps-why">{p.why}</i>
+            {splitsUnsure.length > 0 && (
+              /* One line, not a list: these are rows the price on the day did
+                 not confirm, and there is nothing for anybody to do about
+                 them. Said once so the count still adds up. */
+              <li className="ps-unsure">
+                {splitsUnsure.length} other{splitsUnsure.length === 1 ? "" : "s"} left alone —
+                the price on the day did not confirm a split, so nothing is offered.
               </li>
-            ))}
+            )}
           </ul>
         </div>
       )}
@@ -1591,21 +1594,6 @@ export default function Holdings({
           Rocket and arrow record what already happened. Neither is advice.
         </span>
       </div>
-
-      {/* The routine check covers what is still held — ten symbols on this
-          book against nearly three hundred once the sold ones are counted. A
-          trade that opened before a split and closed after it is the one case
-          where history can still be wrong, so it is a button rather than a
-          cost everybody pays on every visit. */}
-      {onSweepSplits && (
-        <p className="ps-sweep">
-          <button className="lk" onClick={onSweepSplits} disabled={sweepingSplits}>
-            {sweepingSplits ? "Checking…" : "Also check the stocks you no longer hold"}
-          </button>
-          {" "}— splits are checked on what you hold. A trade that opened before a
-          split and closed after it is the only sold one that can still be wrong.
-        </p>
-      )}
 
       <style jsx>{`
         .ps-sweep { font-size: 11.5px; color: var(--ink3); margin: 12px 0 0;
