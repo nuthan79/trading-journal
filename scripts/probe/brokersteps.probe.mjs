@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, ok, eq } from "./harness.mjs";
-import { BROKER_STEPS } from "@/lib/brokerSteps";
+import { BROKER_STEPS, stepsForRegion } from "@/lib/brokerSteps";
 
 const SRC = path.resolve(fileURLToPath(new URL("../../src", import.meta.url)));
 const read = (p) => readFileSync(path.join(SRC, p), "utf8");
@@ -48,6 +48,43 @@ test("the steps say where they came from, and when", () => {
 
 test("the import screen shows one broker's steps at a time", () => {
   const s = read("components/ImportTrades.jsx");
-  ok(/BROKER_STEPS\.find\(\(b\) => b\.id === stepsFor\)/.test(s));
+  /* Now filtered to the open book first — see the tests at the end. */
+  ok(/bookSteps\.find\(\(b\) => b\.id === stepsFor\)/.test(s));
   ok(/role="tablist"/.test(s));
+});
+
+/**
+ * THE TABS FOLLOW THE BOOK. A US book listed Zerodha, ICICI Direct, Groww and
+ * Dhan — steps for finding files it refuses to import — and an Indian one
+ * listed Stockal and INDmoney. A tab that sends somebody to a report they
+ * cannot use is worse than no tab.
+ */
+test("every steps entry names its market, and matches its adapter", () => {
+  const brokers = read("lib/brokers/index.js");
+  for (const b of BROKER_STEPS) {
+    ok(b.region === "IN" || b.region === "US", `${b.id} says which market it is`);
+    if (b.region === "US") {
+      /* The adapter must agree, or the screen offers steps for a file the
+         importer then refuses. */
+      const adapter = read(`lib/brokers/${b.id}.js`);
+      ok(/export const region = "US";/.test(adapter), `${b.id}'s adapter says US too`);
+    }
+  }
+  ok(/stockal, indmoney/.test(brokers));
+});
+
+test("a book is shown its own brokers and no others", () => {
+  eq(stepsForRegion("US").map((b) => b.id).join(","), "stockal,indmoney");
+  const india = stepsForRegion("IN").map((b) => b.id);
+  ok(india.includes("zerodha") && india.includes("dhan"));
+  ok(!india.includes("stockal") && !india.includes("indmoney"));
+  eq(stepsForRegion().map((b) => b.id).join(","), india.join(","), "no market named means India");
+});
+
+test("the screen opens on a broker that is actually listed", () => {
+  const src = read("components/ImportTrades.jsx");
+  ok(/const bookSteps = stepsForRegion\(bookRegion\);/.test(src));
+  ok(/bookSteps\.find\(\(b\) => b\.id === stepsFor\) \|\| bookSteps\[0\]/.test(src),
+     "a fixed \"zerodha\" default showed Indian steps in a US book");
+  ok(!/BROKER_STEPS\.map/.test(src), "and the full list is never rendered");
 });

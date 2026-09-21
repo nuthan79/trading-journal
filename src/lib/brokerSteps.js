@@ -20,11 +20,22 @@
  * ONE ENTRY PER FILE THE IMPORTER ACTUALLY READS — see brokers/*.js. Each says
  * what the file is FOR in the user's words (closed trades, what you hold now),
  * because the report names are the broker's, not theirs.
+ *
+ * EACH ENTRY NAMES ITS MARKET, and the screen shows only the open book's.
+ * Zerodha beside a US book is noise at best — its file is refused there — and
+ * Stockal beside an Indian one is the same in reverse. `region` here must
+ * match `region` on the adapter in brokers/*.js: the tab that tells somebody
+ * where to find a file they cannot import is worse than no tab.
+ *
+ * A broker offering BOTH markets (Dhan does now) gets a SECOND entry when its
+ * US adapter exists, named for that market — never one entry claiming both,
+ * because the two files are different reports with different columns.
  */
 export const BROKER_STEPS = [
   {
     id: "stockal",
-    label: "Stockal (US)",
+    label: "Stockal",
+    region: "US",
     files: [
       {
         what: "Closed trades and what you hold",
@@ -40,7 +51,8 @@ export const BROKER_STEPS = [
   },
   {
     id: "indmoney",
-    label: "INDmoney (US)",
+    label: "INDmoney",
+    region: "US",
     files: [
       {
         what: "Every buy and sell",
@@ -57,6 +69,7 @@ export const BROKER_STEPS = [
 
   {
     id: "zerodha",
+    region: "IN",
     label: "Zerodha",
     files: [
       {
@@ -94,6 +107,7 @@ export const BROKER_STEPS = [
   },
   {
     id: "icicidirect",
+    region: "IN",
     label: "ICICI Direct",
     files: [
       {
@@ -110,6 +124,7 @@ export const BROKER_STEPS = [
   },
   {
     id: "groww",
+    region: "IN",
     label: "Groww",
     files: [
       {
@@ -127,6 +142,7 @@ export const BROKER_STEPS = [
   },
   {
     id: "dhan",
+    region: "IN",
     label: "Dhan",
     files: [
       {
@@ -142,3 +158,7 @@ export const BROKER_STEPS = [
     ],
   },
 ];
+
+/** The entries for one book. Nothing else is offered — see the note above. */
+export const stepsForRegion = (regionId = "IN") =>
+  BROKER_STEPS.filter((b) => (b.region || "IN") === (regionId || "IN"));

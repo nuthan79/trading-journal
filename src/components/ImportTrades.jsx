@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Upload, Check, AlertTriangle, X, FileSpreadsheet } from "lucide-react";
 import { detectBroker, brokerNames, assembleImport, kindOf, wrongReportHint,
          regionOfBroker } from "@/lib/brokers";
-import { BROKER_STEPS } from "@/lib/brokerSteps";
+import { stepsForRegion } from "@/lib/brokerSteps";
 import { resolveSymbols } from "@/lib/isin";
 import * as zerodha from "@/lib/brokers/zerodha";
 import * as zerodhaHoldings from "@/lib/brokers/zerodha-holdings";
@@ -212,7 +212,11 @@ export default function ImportTrades({
   const [broker, setBroker] = useState(null);
   /* Which broker's steps are showing under the drop zone. Zerodha first
      because it is where most files here come from. */
-  const [stepsFor, setStepsFor] = useState("zerodha");
+  /* Only this book's brokers, and the first of them open — "zerodha" as a
+     fixed default left a US book showing Indian steps for a file it refuses. */
+  const bookSteps = stepsForRegion(bookRegion);
+  const [stepsFor, setStepsFor] = useState(null);
+  const stepsShown = bookSteps.find((b) => b.id === stepsFor) || bookSteps[0] || null;
   // A tax report has no stops, so without one every R figure stays blank and a
   // freshly imported journal looks broken. Assuming a single percentage is the
   // difference between a page of dashes and something you can read — as long
@@ -865,16 +869,16 @@ export default function ImportTrades({
           <div className="im-where-head">
             <span className="eyebrow">Where to find your file</span>
             <div className="seg" role="tablist" aria-label="Broker">
-              {BROKER_STEPS.map((b) => (
-                <button key={b.id} type="button" role="tab" aria-selected={stepsFor === b.id}
-                        data-on={stepsFor === b.id ? 1 : 0} onClick={() => setStepsFor(b.id)}>
+              {bookSteps.map((b) => (
+                <button key={b.id} type="button" role="tab" aria-selected={stepsShown?.id === b.id}
+                        data-on={stepsShown?.id === b.id ? 1 : 0} onClick={() => setStepsFor(b.id)}>
                   {b.label}
                 </button>
               ))}
             </div>
           </div>
           <div className="im-where-files">
-            {(BROKER_STEPS.find((b) => b.id === stepsFor) || BROKER_STEPS[0]).files.map((f) => (
+            {(stepsShown?.files || []).map((f) => (
               <div key={f.name} className="im-file-steps">
                 <div className="im-file-what">{f.what}</div>
                 <div className="im-file-name">{f.name}</div>
