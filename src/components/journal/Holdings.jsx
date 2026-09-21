@@ -300,6 +300,7 @@ export default function Holdings({
   open, closed, diary = [], journalName = "", onRefresh, refreshing, onAckBreakeven,
   onEditTrade, onExitTrade, onDeleteTrade, onAttachChart, onRemoveChart,
   onFixSoldSnapshots, splitPlan: splitPlanRows = [], onFixSplits,
+  onSweepSplits, sweepingSplits = false,
 }) {
   const [detailId, setDetailId] = useState(null);
   const [acked, setAcked] = useState([]);
