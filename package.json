@@ -9,7 +9,8 @@
     "symbols": "node scripts/build-symbols.mjs",
     "probe": "node --import ./scripts/probe/register.mjs scripts/probe.mjs",
     "probe:tz": "TZ=America/New_York node --import ./scripts/probe/register.mjs scripts/probe.mjs",
-    "admin": "node scripts/admin/server.mjs"
+    "admin": "node scripts/admin/server.mjs",
+    "symbols:us": "node scripts/build-symbols-us.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { X } from "lucide-react";
+import { activeRegion, DEFAULT_REGION } from "@/lib/regions";
 
 /**
  * Type three characters, pick a stock.
@@ -19,18 +20,31 @@ import { X } from "lucide-react";
  * one, which reads as a form that has stopped working for no stated reason.
  */
 
-let LIST = null;
-let LOADING = null;
+/**
+ * One file per book, fetched once and kept.
+ *
+ * An Indian trader should not download eleven thousand US tickers to type
+ * three characters of RELIANCE, and a US trader should not download the NSE
+ * and BSE to type AAPL — so the lists are separate files and only the open
+ * book's is ever requested. Cached per region rather than in one variable,
+ * because switching back and forth must not re-download either.
+ */
+const FILES = { IN: "/symbols.json", US: "/symbols.us.json" };
+const LISTS = new Map();
+const LOADING = new Map();
 
-async function loadSymbols() {
-  if (LIST) return LIST;
-  if (!LOADING) {
-    LOADING = fetch("/symbols.json")
+async function loadSymbols(regionId = DEFAULT_REGION) {
+  const id = FILES[regionId] ? regionId : DEFAULT_REGION;
+  if (LISTS.has(id)) return LISTS.get(id);
+  if (!LOADING.has(id)) {
+    LOADING.set(id, fetch(FILES[id])
       .then((r) => r.json())
-      .then((d) => (LIST = d))
-      .catch(() => (LIST = []));
+      /* A missing or unbuilt file is an empty list, not a broken form: the
+         box still takes a symbol typed in full. */
+      .then((d) => { LISTS.set(id, d); return d; })
+      .catch(() => { LISTS.set(id, []); return []; }));
   }
-  return LOADING;
+  return LOADING.get(id);
 }
 
 /** Rank matches so that a symbol prefix beats a name prefix beats a substring. */
@@ -79,7 +93,10 @@ export default function SymbolSearch({ value, exchange, onPick, autoFocus }) {
   const boxRef = useRef(null);
   const inputRef = useRef(null);
 
-  useEffect(() => { loadSymbols().then(setList); }, []);
+  /* The open book's list. `activeRegion()` is IN for every user today, and
+     the layout sets it before anything renders. */
+  const regionId = activeRegion();
+  useEffect(() => { loadSymbols(regionId).then(setList); }, [regionId]);
   useEffect(() => { setQ(value || ""); }, [value]);
 
   useEffect(() => {

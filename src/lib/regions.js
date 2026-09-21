@@ -71,6 +71,7 @@ export const REGIONS = [
 
 export const DEFAULT_REGION = "IN";
 
+
 const BY_ID = new Map(REGIONS.map((r) => [r.id, r]));
 
 /** The region's description, or India's — never undefined. */
@@ -91,6 +92,24 @@ export const regionOf = (row) => {
 
 /** The region this user last had selected. */
 export const currentRegion = (profile) => regionOf(profile);
+
+/**
+ * WHICH BOOK IS OPEN, held in one place.
+ *
+ * Set once by the app layout from the profile, and read by everything that
+ * has to know: the money formatters, the symbol list the autocomplete
+ * downloads, the ticker a quote is asked for. Threading it through instead
+ * would be an argument in 142 formatting calls, and a missed one prints
+ * dollars with a rupee sign — the failure you cannot see in a screenshot.
+ * A region is a separate book, so everything on screen at one moment shares
+ * an answer, which is what makes a single value correct rather than lazy.
+ *
+ * It lives HERE rather than in format.js because it is not a formatting
+ * concern: the symbol search and the quote source ask the same question.
+ */
+let active = DEFAULT_REGION;
+export function setActiveRegion(id) { active = regionOf({ region: id }); }
+export const activeRegion = () => active;
 
 /** Is this a market where a stock can be bought on margin funding? */
 export const hasMtf = (id) => region(id).hasMtf;

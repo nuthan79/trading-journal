@@ -14,6 +14,8 @@ images). Everything is measured in **R** (P&L ÷ risk taken on the trade), so a
 ```bash
 npm run dev       # http://localhost:3000
 npm run build     # production build — run this before committing any change
+npm run symbols:us # rebuild public/symbols.us.json from Nasdaq Trader's own
+                   # directory (nasdaqlisted + otherlisted). Same shrink guard.
 npm run symbols   # rebuild public/symbols.json — NSE and BSE both download
                    # automatically. Refuses to write a file >10% smaller than
                    # the existing one; pass --force only if it really shrank.
@@ -281,10 +283,19 @@ all follow it; `rupee()` stays for India's own subject matter — statutory
 rates, broker presets, the ₹18 pledge fee, the learn pages. Ladders live in
 `LADDERS`: k/L/Cr/Lakh Cr for India, K/M/B/T for the US.
 
+**One symbol file per book, one ticker spelling per venue.** `symbols.json` is
+NSE+BSE, `symbols.us.json` is 11k US listings; `SymbolSearch` fetches only the
+open book's. `yahooTicker(symbol, exchange)` in quotes.js is the single place a
+pair becomes the string Yahoo answers to: a venue suffix in India, bare in the
+US — and a US share class takes a DASH (BRK-B answers, BRK.B is a 404, which
+would surface only as a holding that never prices). `indicesFor(region)` keeps
+the benchmarks apart; an unknown exchange still means India.
+
 Phases: 1 data model and regions.js (done) · 2 currency-aware `format.js`
 (done; `currency.probe.mjs` pins India's exact strings) · 3 US symbols and
-quotes · 4 US charges and calendar-year fiscal · 5 the switch and per-region
-filtering · 6 US broker imports, each against a real file.
+quotes (done; `usmarket.probe.mjs`) · 4 US charges and calendar-year fiscal ·
+5 the switch and per-region filtering · 6 US broker imports, each against a
+real file.
 
 ## Conventions
 

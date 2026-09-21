@@ -23,13 +23,12 @@
  * thing that is true in the code and false in every reader's head, so the
  * currency-following one is called `money()` and the rupee one kept its name.
  */
-import { regionOf, region as regionInfo, DEFAULT_REGION } from "./regions";
+import { region as regionInfo, activeRegion, setActiveRegion } from "./regions";
 
-let active = DEFAULT_REGION;
-
-/** Set once, by the app layout, from the user's profile. */
-export function setActiveRegion(id) { active = regionOf({ region: id }); }
-export const activeRegion = () => active;
+/* The open book lives in regions.js — the symbol search and the quote source
+   ask it the same question. Re-exported here because every caller that
+   formats money imports from this file. */
+export { setActiveRegion, activeRegion };
 
 /**
  * The ladders. India goes thousand → lakh → crore → lakh crore; the US goes
@@ -52,7 +51,7 @@ const LADDERS = {
 };
 
 const styleOf = (id) => {
-  const r = regionInfo(id || active);
+  const r = regionInfo(id || activeRegion());
   return { locale: r.locale, sign: r.sign, ladder: LADDERS[r.tiers] || LADDERS.lakhCrore };
 };
 

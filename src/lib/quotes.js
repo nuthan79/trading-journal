@@ -20,7 +20,31 @@ import { YAHOO_HOSTS, BROWSER_HEADERS, rangeCovering } from "./yahoo";
  * That is why a cached serverless fetch is enough and a WebSocket is not.
  */
 
-const YAHOO_SUFFIX = { NSE: ".NS", BSE: ".BO" };
+/**
+ * How a region spells a ticker for Yahoo.
+ *
+ * India needs a venue suffix — RELIANCE.NS, RELIANCE.BO — and the US needs
+ * none: AAPL is AAPL. The exchanges themselves are listed in lib/regions.js;
+ * this is the one place that turns a (symbol, exchange) pair into the string
+ * the quote source answers to.
+ *
+ * THE DOT IS THE TRAP. The US exchanges publish share classes with a dot —
+ * BRK.A, BRK.B — and Yahoo spells them with a dash. Asked for BRK.B it
+ * returns 404, which surfaces as a holding that simply never prices, with
+ * nothing to say why. Measured: BRK-B answers, BRK.B does not.
+ */
+const YAHOO_SUFFIX = { NSE: ".NS", BSE: ".BO",
+                       NASDAQ: "", NYSE: "", AMEX: "", ARCA: "", BATS: "", IEXG: "" };
+
+export function yahooTicker(symbol, exchange) {
+  const raw = String(symbol || "").trim().toUpperCase();
+  const venue = String(exchange || "").trim().toUpperCase();
+  const suffix = YAHOO_SUFFIX[venue];
+  /* An unknown exchange keeps the old behaviour — India, which is every row
+     written before regions existed. */
+  if (suffix === undefined) return raw + ".NS";
+  return (suffix ? raw : raw.replace(/\./g, "-")) + suffix;
+}
 
 
 /* ------------------------------------------------------------------ */
@@ -38,7 +62,7 @@ const YAHOO_SUFFIX = { NSE: ".NS", BSE: ".BO" };
 const HOSTS = YAHOO_HOSTS;
 
 async function yahooOne({ symbol, exchange }) {
-  const ticker = symbol + (YAHOO_SUFFIX[exchange] || ".NS");
+  const ticker = yahooTicker(symbol, exchange);
   let lastErr;
 
   // query1 occasionally throttles where query2 does not, so try both.
@@ -191,11 +215,20 @@ export async function getQuotes(items, sourceName) {
  * to test it against.
  */
 export const INDICES = [
-  { id: "nifty500", ticker: "^CRSLDX", label: "Nifty 500" },
-  { id: "nifty50", ticker: "^NSEI", label: "Nifty 50" },
-  { id: "midcap150", ticker: "NIFTYMIDCAP150.NS", label: "Midcap 150" },
-  { id: "smallcap250", ticker: "NIFTYSMLCAP250.NS", label: "Smallcap 250" },
+  { id: "nifty500", ticker: "^CRSLDX", label: "Nifty 500", region: "IN" },
+  { id: "nifty50", ticker: "^NSEI", label: "Nifty 50", region: "IN" },
+  { id: "midcap150", ticker: "NIFTYMIDCAP150.NS", label: "Midcap 150", region: "IN" },
+  { id: "smallcap250", ticker: "NIFTYSMLCAP250.NS", label: "Smallcap 250", region: "IN" },
+  /* The US set, checked against Yahoo the same way: each returns a live level
+     AND real history, which is the test the Midcap Smallcap 400 failed. */
+  { id: "sp500", ticker: "^GSPC", label: "S&P 500", region: "US" },
+  { id: "nasdaq100", ticker: "^NDX", label: "Nasdaq 100", region: "US" },
+  { id: "russell2000", ticker: "^RUT", label: "Russell 2000", region: "US" },
 ];
+
+/** The indices of one book. Defaults to India, like everything else here. */
+export const indicesFor = (regionId = "IN") =>
+  INDICES.filter((i) => i.region === (regionId || "IN"));
 
 const histCache = new Map();
 const HIST_TTL_MS = 6 * 60 * 60 * 1000;
