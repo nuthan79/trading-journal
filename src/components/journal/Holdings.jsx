@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { RefreshCw, Flag, Rocket, CornerDownRight, Download } from "lucide-react";
+import { Fragment, useMemo, useState } from "react";
+import { RefreshCw, Flag, Rocket, CornerDownRight, Download, ChevronRight } from "lucide-react";
 import { money, rfmt, pct, signedPct, moneyParts, currencySign, exportFilename,
          monthShort, dmy } from "@/lib/format";
 import { COLUMN_HINTS } from "@/lib/columns";
 import { hasMtf, activeRegion } from "@/lib/regions";
 import { useColumnPrefs } from "@/lib/useColumnPrefs";
+import Qty from "@/components/Qty";
 import ColumnPicker from "./ColumnPicker";
 import Money from "@/components/Money";
 import { downloadCsv } from "@/lib/csv";
@@ -803,6 +804,380 @@ export default function Holdings({
     );
   };
 
+  /**
+   * One buy. The row this table has always drawn, lifted into a function so a
+   * stock bought several times can draw the same rows under its own summary.
+   */
+  /**
+   * The buys of one stock, gathered.
+   *
+   * WHAT AN AGGREGATE MAY HONESTLY SAY. Quantity, what it cost and what it is
+   * worth all add up. The average entry is the money divided by the shares —
+   * the price the whole holding was paid at, which is the figure a broker
+   * shows and the one somebody means by "my average". Open risk adds up only
+   * while every buy has a stop; one without leaves the total unknowable, and
+   * a number that silently drops a stopless lot would understate the risk.
+   *
+   * WHAT IT MAY NOT. R, days held, the breakeven flags and the excursion
+   * badges belong to a buy and to no group of them — a lot bought in April
+   * and one bought last week have different stops and different R. Those stay
+   * one level down, on the rows this expands into.
+   */
+  const grouped = useMemo(() => {
+    const by = new Map();
+    rows.forEach((r, index) => {
+      const key = String(r.symbol || "").toUpperCase();
+      const g = by.get(key) || { symbol: r.symbol, exchange: r.exchange, lots: [], index };
+      g.lots.push(r);
+      by.set(key, g);
+    });
+    return [...by.values()].map((g) => {
+      const qty = g.lots.reduce((a, r) => a + (Number(r.qtyOpen) || 0), 0);
+      const buyValue = g.lots.reduce((a, r) => a + (Number(r.buyValue) || 0), 0);
+      const everyStop = g.lots.every((r) => !r.unknownRisk);
+      return {
+        ...g,
+        qtyOpen: qty,
+        buyValue,
+        entry_price: qty > 0 ? buyValue / qty : NaN,
+        mark: g.lots.find((r) => isFinite(r.mark))?.mark,
+        liveExposure: g.lots.reduce((a, r) => a + (Number(r.liveExposure) || 0), 0),
+        unrealisedPnl: g.lots.reduce((a, r) => a + (Number(r.unrealisedPnl) || 0), 0),
+        realisedPnl: g.lots.reduce((a, r) => a + (Number(r.realisedPnl) || 0), 0),
+        charges: g.lots.reduce((a, r) => a + (Number(r.charges) || 0), 0),
+        margin: g.lots.reduce((a, r) => a + (Number(r.margin) || 0), 0),
+        openRiskAmt: everyStop
+          ? g.lots.reduce((a, r) => a + (r.riskFree ? 0 : Math.abs(Number(r.openRiskAmt) || 0)), 0)
+          : NaN,
+        everyStop,
+        days: Math.max(...g.lots.map((r) => Number(r.days) || 0)),
+      };
+    });
+  }, [rows]);
+
+  const [expanded, setExpanded] = useState([]);
+  const toggleGroup = (symbol) =>
+    setExpanded((prev) => (prev.includes(symbol) ? prev.filter((s) => s !== symbol) : [...prev, symbol]));
+
+  /** The summary line for a stock bought more than once. */
+  const groupRow = (g, open) => {
+    const changePct = isFinite(g.mark) && isFinite(g.entry_price) && g.entry_price > 0
+      ? ((g.mark - g.entry_price) / g.entry_price) * 100 : NaN;
+    return (
+      <tr key={`s-${g.symbol}`} className="ps-group" data-open={open ? 1 : 0}>
+        <td className="num ps-dim fz">
+          <button className="ps-chev" onClick={() => toggleGroup(g.symbol)}
+                  aria-expanded={open}
+                  title={open ? "Hide the buys" : `Show the ${g.lots.length} buys behind this`}>
+            <ChevronRight size={13} />
+          </button>
+        </td>
+        <td className="fz2 fz-last">
+          <button className="ps-sym" onClick={() => toggleGroup(g.symbol)} title={`${g.lots.length} buys`}>
+            <b className="disp">{g.symbol}</b>
+          </button>
+          <span className="ps-dim"> {g.exchange}</span>
+          <i className="ps-lots">{g.lots.length} buys</i>
+        </td>
+        {show("entry_date") && <td className="ps-dim fz">—</td>}
+        {show("days") && <td className="num ps-dim">{isFinite(g.days) ? `${g.days}` : "—"}</td>}
+        {show("qtyOpen") && <td className="num"><Qty v={g.qtyOpen} /></td>}
+        {show("openPct") && <td className="num ps-dim">—</td>}
+        {show("entry_price") && (
+          <td className="num" title="The whole holding's average: what it cost, divided by the shares">
+            {isFinite(g.entry_price) ? g.entry_price.toFixed(2) : "—"}
+          </td>
+        )}
+        {show("stop") && <td className="num ps-dim">—</td>}
+        {show("slPct") && <td className="num ps-dim">—</td>}
+        {show("toStop") && <td className="num ps-dim">—</td>}
+        {show("buyValue") && <td className="num"><Money v={g.buyValue} note="What every buy of this stock still held cost" /></td>}
+        {show("openRiskAmt") && (
+          <td className={`num ${g.everyStop ? "neg" : "ps-dim"}`}
+              title={g.everyStop ? undefined : "One of these buys has no stop, so the total risk cannot be added up"}>
+            {g.everyStop ? money(-Math.abs(g.openRiskAmt)) : "—"}
+          </td>
+        )}
+        {show("netRiskR") && <td className="num ps-dim">—</td>}
+        {show("mark") && <td className="num">{isFinite(g.mark) ? g.mark.toFixed(2) : "—"}</td>}
+        {show("changePct") && (
+          <td className={`num ${changePct >= 0 ? "pos" : "neg"}`}>
+            {isFinite(changePct) ? signedPct(changePct) : "—"}
+          </td>
+        )}
+        {show("realisedPnl") && <td className="num ps-dim">{g.realisedPnl ? <Money v={g.realisedPnl} /> : "—"}</td>}
+        {show("unrealisedPnl") && (
+          <td className={`num ${g.unrealisedPnl >= 0 ? "pos" : "neg"}`} style={{ fontWeight: 500 }}>
+            {isFinite(g.unrealisedPnl) ? money(g.unrealisedPnl) : "—"}
+          </td>
+        )}
+        {show("atR") && (
+          <td className="num ps-dim"
+              title="R belongs to a buy: each of these has its own stop, so the group has no single R">—</td>
+        )}
+        {show("margin") && <td className="num ps-dim">{g.margin > 0 ? <Money v={g.margin} /> : "—"}</td>}
+        {show("charges") && <td className="num ps-dim">{g.charges > 0 ? <Money v={g.charges} /> : "—"}</td>}
+      </tr>
+    );
+  };
+
+  const lotRow = (r, i, nested = false) => {
+              const riskFree = r.riskFree;
+              // The reminder has been put down. Held here as well as in the
+              // row so the flag turns hollow on the click rather than on the
+              // reload that follows it.
+              const ackd = !!r.breakeven_ack_at || acked.includes(r.id);
+              return (
+                <tr key={r.id} data-alert={r.breached ? 1 : 0} data-nested={nested ? 1 : 0}>
+                  <td className="num ps-dim fz">{nested ? "" : i + 1}</td>
+                  <td className="fz2 fz-last">
+                    <button className="ps-sym" onClick={() => setDetailId(r.id)}
+                            title={`Open ${r.symbol}`}>
+                      <b className="disp">{r.symbol}</b>
+                    </button>
+                    <span className="ps-dim"> {r.exchange}</span>
+                    {flagged.has(r.id) && (
+                      <BreakevenFlag c={flagged.get(r.id)} busy={busyId === r.id}
+                                     onAck={ackBreakeven} />
+                    )}
+                    {/* The hollow flag: solid means act, outline means dealt
+                        with. It used to appear by accident — clicking the
+                        solid one wrote entry into the stop, which made the
+                        position read as risk-free, which drew this. Take the
+                        stop-writing away and the outline vanished with it, and
+                        a two-state design quietly became one. Now it is drawn
+                        for the two things that actually mean "nothing more to
+                        do here", and says which. */}
+                    {/* A mark the price has since gone back through is drawn in the
+                        short colour, with the reason — it no longer takes the
+                        position off the dial, and the row should not look settled. */}
+                    {!flagged.has(r.id) && (ackd || riskFree) && (
+                      <span className={`ps-flag done${r.breakevenBroken ? " broken" : ""}`}
+                            title={r.breakevenBroken
+                              ? "You marked this stop at breakeven, but the price has been below entry since — "
+                                + "a stop at entry would have sold it. Counting the risk to your recorded stop "
+                                + "again. Check the stop at your broker."
+                              : ackd
+                              ? "Stop moved to breakeven at your broker, so this no longer counts towards "
+                                + "open risk or the dial. Your recorded stop, and every R measured from it, is unchanged."
+                              : "Risk-free — enough is banked that this position can no longer lose overall"}>
+                        <Flag size={11} />
+                      </span>
+                    )}
+                    {/**
+                      * Two badges read off the measured path, not off the mark.
+                      *
+                      * The breakeven flag beside them is a LIVE reading — it
+                      * asks where price is now — and these are the opposite:
+                      * facts about what this position already did, which stay
+                      * true on a day the stock is down. That difference is the
+                      * whole point of storing the path. A trade that ran to 3R
+                      * in its first week and has since come back shows no live
+                      * flag at all, and used to leave no trace anywhere.
+                      */}
+                    {r.is_power && (
+                      <span className="ps-badge ps-badge-power"
+                            title={`Closed at or past ${POWER_R}R within ${POWER_DAYS} sessions of `
+                              + `entry — the move a breakout is bought for. Measured on daily `
+                              + `closes, so it is a price this actually finished a day at.`}>
+                        <Rocket size={11} />
+                      </span>
+                    )}
+                    {/* Was free, and is not any more. The only badge here that
+                        needs both halves: the path says it got in front, the
+                        mark says where it is now. */}
+                    {r.became_free_on && isFinite(r.atR) && r.atR < 0 && (
+                      <span className="ps-badge ps-badge-back"
+                            title={`Closed past ${FREE_AT_R}R on ${r.became_free_on} and is now back `
+                              + `below what you paid. Nothing here says what to do about it — it is `
+                              + `the fact the journal could never see before.`}>
+                        <CornerDownRight size={11} />
+                      </span>
+                    )}
+                    {r.status === "partial" && <span className="ps-tag">part sold</span>}
+                  </td>
+                  {show("entry_date") && (
+                  <td className="mono ps-dim">
+                    {r.entry_date}
+                    {/* A holdings file carries no purchase date, so the import
+                        had to put one in. Marked here because this table is
+                        where those positions land, and an unmarked guess is
+                        indistinguishable from a date somebody checked. The
+                        days column beside it already reads "—" for these. */}
+                    {r.entry_date_source === "assumed" && (
+                      <span className="ps-assumed" title={
+                        "Assumed — your holdings file didn't say when you bought this. " +
+                        "Nothing counts it as a holding period until you correct it; " +
+                        "open the trade and set the real date."
+                      }>assumed</span>
+                    )}
+                  </td>
+                  )}
+                  {show("days") && (
+                  <td className="num ps-dim">{isFinite(r.days) ? r.days : "—"}</td>
+                  )}
+                  {show("qtyOpen") && (
+                  /* Fractional shares came with the US book — nine decimals of
+                     a Netflix position is noise in a column of round numbers,
+                     and every digit is still in the hover. */
+                  <td className="num"><Qty v={r.qtyOpen} /></td>
+                  )}
+                  {show("openPct") && (
+                  <td className="num">
+                    {/* A bar rather than only a number: how much of the position
+                        is still on is easier to scan than to read. */}
+                    <div className="ps-openpct">
+                      <span>{isFinite(r.openPct) ? `${r.openPct.toFixed(0)}%` : "—"}</span>
+                      <i style={{ width: `${Math.min(100, Math.max(0, r.openPct || 0))}%` }} />
+                    </div>
+                  </td>
+                  )}
+                  {show("entry_price") && (
+                  <td className="num">{Number(r.entry_price).toFixed(2)}</td>
+                  )}
+                  {/* Marked assumed here as it is on the trade sheet, and for a
+                      sharper reason: this screen already prints ASSUMED beside
+                      the entry date two columns to the left. Both values come
+                      from the same import and are equally invented, so marking
+                      one and not the other reads as a statement that the stop
+                      IS yours — the exact belief the flag exists to prevent.
+                      Every R on the row follows from this number. */}
+                  {show("stop") && (
+                  <td className={`num ${r.stopAboveEntry ? "ps-locked" : ""}`}
+                      title={r.stop_source === "assumed"
+                        ? "Assumed at import, not a stop you set — every R on this row follows from it"
+                        : r.stopAboveEntry
+                        ? "Stop is past entry — this position can no longer lose"
+                        : undefined}>
+                    {isFinite(r.stop) ? r.stop.toFixed(2) : "—"}
+                    {r.stop_source === "assumed" && isFinite(r.stop) && (
+                      <span className="ps-assumed">assumed</span>
+                    )}
+                  </td>
+                  )}
+                  {show("slPct") && (
+                  <td className="num ps-dim">{isFinite(r.slPct) ? pct(r.slPct) : "—"}</td>
+                  )}
+                  {show("toStop") && (
+                  <td className="num ps-tostop"
+                      data-state={r.breached ? "breached" : r.stopAboveEntry ? "locked" : "live"}
+                      title={r.breached
+                        ? "CMP is through the stop — this should already be out"
+                        : r.stopAboveEntry
+                        ? "Stop is past entry, so what's left can only be given back, not lost"
+                        : undefined}>
+                    {!isFinite(r.toStop) ? "—"
+                      : r.breached ? "breached"
+                      : r.stopAboveEntry ? `locked ${pct(Math.abs(r.toStop))}`
+                      : pct(Math.abs(r.toStop))}
+                  </td>
+                  )}
+                  {show("buyValue") && (
+                  <td className="num">
+                    <Money v={r.buyValue}
+                           note="What the shares still held cost — entry price × open quantity" /></td>
+                  )}
+                  {/* A dash, not a zero, when no stop was ever recorded. "0"
+                      here is a measurement saying there is nothing to lose;
+                      the dash says nobody has told us. The column already uses
+                      "—" for every other figure it cannot compute. */}
+                  {show("openRiskAmt") && (
+                  <td className={`num ${r.unknownRisk ? "ps-dim" : riskFree ? "ps-dim" : "neg"}`}
+                      title={r.unknownRisk
+                        ? "No stop recorded, so there is no risk figure — not a risk of zero. Set a stop and this fills in."
+                        : undefined}>
+                    {r.unknownRisk ? "—" : riskFree ? "0" : money(-Math.abs(r.openRiskAmt))}
+                  </td>
+                  )}
+                  {show("netRiskR") && (
+                  <td className="num">
+                    {/* Same distinction as the rupee column, and the bar is
+                        drawn at zero width either way — but "0.00R" claims a
+                        measurement the journal does not have. */}
+                    <div className="ps-riskbar" data-free={riskFree ? 1 : 0}>
+                      <span className="mono">
+                        {r.unknownRisk ? "—"
+                          : riskFree ? "0.00R"
+                          : `−${Math.abs(r.netRiskR ?? 0).toFixed(2)}R`}
+                      </span>
+                      <i style={{
+                        width: `${Math.min(100, (Math.abs(r.netRiskR || 0) / RISK_WARN_R) * 100)}%`,
+                      }} />
+                    </div>
+                  </td>
+                  )}
+                  {/* The mark, and — only when it is near an end of the day's
+                      range — where in that day it landed. Under the price
+                      rather than beside the symbol, because it is a fact
+                      about this number and the association should not need
+                      explaining. Lowercase like `breached` in the To stop
+                      column, which is the same kind of remark. */}
+                  {show("mark") && (
+                  <td className="num">
+                    {isFinite(r.mark) ? Number(r.mark).toFixed(2) : "—"}
+                    {r.dayEnd && (
+                      <span className={`hd-dayend ${r.dayEnd === "high" ? "pos" : "neg"}`}
+                            title={`Today's range ${Number(r.dayLow).toFixed(2)}–`
+                              + `${Number(r.dayHigh).toFixed(2)}. `
+                              + (r.dayEnd === "high"
+                                ? "Price is in the top fifth of it — demand held into the close."
+                                : "Price is in the bottom fifth of it — the day's gain was given back.")
+                              + " As fresh as the last price fetch, so before the first Refresh"
+                              + " of a session this describes the previous one."}>
+                        {r.dayEnd === "high" ? "at high" : "at low"}
+                      </span>
+                    )}
+                  </td>
+                  )}
+                  {show("changePct") && (
+                  <td className={`num ${r.changePct >= 0 ? "pos" : "neg"}`}>
+                    {isFinite(r.changePct) ? signedPct(r.changePct) : "—"}
+                  </td>
+                  )}
+                  {show("realisedPnl") && (
+                  <td className={`num ${r.realisedPnl >= 0 ? "pos" : "neg"}`}>
+                    {isFinite(r.realisedPnl) && r.qtyExited > 0 ? money(r.realisedPnl) : <span className="ps-dim">—</span>}
+                  </td>
+                  )}
+                  {show("unrealisedPnl") && (
+                  <td className={`num ${r.unrealisedPnl >= 0 ? "pos" : "neg"}`} style={{ fontWeight: 500 }}>
+                    {isFinite(r.unrealisedPnl) ? money(r.unrealisedPnl) : "—"}
+                  </td>
+                  )}
+                  {show("atR") && (
+                  <td className={`num ${r.atR >= 0 ? "pos" : "neg"}`}
+                      title={"Where price stands against this trade's 1R. It does not change when "
+                        + "you sell part of the position — sell a third at 6R and this still reads "
+                        + "6R, then follows the price from there. The rupee column beside it is "
+                        + "what the shares you still hold are worth."}>
+                    {isFinite(r.atR) ? rfmt(r.atR) : "—"}
+                  </td>
+                  )}
+                  {/* SO FAR, not in total: a position still running has paid
+                      its buy-side charges and is still accruing interest, so
+                      both figures grow until it is sold. Said in the hover
+                      rather than in a longer header. */}
+                  {show("margin") && (
+                  <td className="num" style={{ fontSize: 12, color: "var(--ink2)" }}>
+                    {Number(r.margin) > 0
+                      ? <Money v={r.margin} note={`MTF so far — interest to today with the pledge fee${
+                          r.marginPerDay > 0 ? `. Another ${money(r.marginPerDay)} a day while you hold` : ""}`} />
+                      : r.interestUnknown
+                      ? <span title="Interest not counted — the entry date was estimated">—</span>
+                      : "—"}
+                  </td>
+                  )}
+                  {show("charges") && (
+                  <td className="num" style={{ fontSize: 12, color: "var(--ink2)" }}>
+                    {Number(r.charges) > 0
+                      ? <Money v={r.charges} note="Charges on this position so far — the buy, plus any sells already made. The sell still to come will add to it" />
+                      : "—"}
+                  </td>
+                  )}
+                </tr>
+    );
+  };
+
   return (
     <div className="sec">
       <div className="ps-head">
@@ -1062,257 +1437,28 @@ export default function Holdings({
             </tr>
           </thead>
           <tbody>
-            {rows.map((r, i) => {
-              const riskFree = r.riskFree;
-              // The reminder has been put down. Held here as well as in the
-              // row so the flag turns hollow on the click rather than on the
-              // reload that follows it.
-              const ackd = !!r.breakeven_ack_at || acked.includes(r.id);
+            {grouped.map((g) => {
+              /**
+               * ONE ROW PER STOCK, opened to show the buys behind it.
+               *
+               * A position built a month at a time is a dozen rows of the same
+               * name, and the table stops answering the question anybody
+               * actually has — how much Apple do I own, and what is it doing.
+               * So a stock bought more than once shows as itself: total
+               * quantity, the average it was paid at, and what the whole
+               * holding is worth. The buys are still there, one click down,
+               * because that is where the dates, stops and R of each one live.
+               *
+               * A stock bought once looks exactly as it always did — no
+               * chevron, no summary, nothing to open.
+               */
+              if (g.lots.length === 1) return lotRow(g.lots[0], g.index);
+              const open = expanded.includes(g.symbol);
               return (
-                <tr key={r.id} data-alert={r.breached ? 1 : 0}>
-                  <td className="num ps-dim fz">{i + 1}</td>
-                  <td className="fz2 fz-last">
-                    <button className="ps-sym" onClick={() => setDetailId(r.id)}
-                            title={`Open ${r.symbol}`}>
-                      <b className="disp">{r.symbol}</b>
-                    </button>
-                    <span className="ps-dim"> {r.exchange}</span>
-                    {flagged.has(r.id) && (
-                      <BreakevenFlag c={flagged.get(r.id)} busy={busyId === r.id}
-                                     onAck={ackBreakeven} />
-                    )}
-                    {/* The hollow flag: solid means act, outline means dealt
-                        with. It used to appear by accident — clicking the
-                        solid one wrote entry into the stop, which made the
-                        position read as risk-free, which drew this. Take the
-                        stop-writing away and the outline vanished with it, and
-                        a two-state design quietly became one. Now it is drawn
-                        for the two things that actually mean "nothing more to
-                        do here", and says which. */}
-                    {/* A mark the price has since gone back through is drawn in the
-                        short colour, with the reason — it no longer takes the
-                        position off the dial, and the row should not look settled. */}
-                    {!flagged.has(r.id) && (ackd || riskFree) && (
-                      <span className={`ps-flag done${r.breakevenBroken ? " broken" : ""}`}
-                            title={r.breakevenBroken
-                              ? "You marked this stop at breakeven, but the price has been below entry since — "
-                                + "a stop at entry would have sold it. Counting the risk to your recorded stop "
-                                + "again. Check the stop at your broker."
-                              : ackd
-                              ? "Stop moved to breakeven at your broker, so this no longer counts towards "
-                                + "open risk or the dial. Your recorded stop, and every R measured from it, is unchanged."
-                              : "Risk-free — enough is banked that this position can no longer lose overall"}>
-                        <Flag size={11} />
-                      </span>
-                    )}
-                    {/**
-                      * Two badges read off the measured path, not off the mark.
-                      *
-                      * The breakeven flag beside them is a LIVE reading — it
-                      * asks where price is now — and these are the opposite:
-                      * facts about what this position already did, which stay
-                      * true on a day the stock is down. That difference is the
-                      * whole point of storing the path. A trade that ran to 3R
-                      * in its first week and has since come back shows no live
-                      * flag at all, and used to leave no trace anywhere.
-                      */}
-                    {r.is_power && (
-                      <span className="ps-badge ps-badge-power"
-                            title={`Closed at or past ${POWER_R}R within ${POWER_DAYS} sessions of `
-                              + `entry — the move a breakout is bought for. Measured on daily `
-                              + `closes, so it is a price this actually finished a day at.`}>
-                        <Rocket size={11} />
-                      </span>
-                    )}
-                    {/* Was free, and is not any more. The only badge here that
-                        needs both halves: the path says it got in front, the
-                        mark says where it is now. */}
-                    {r.became_free_on && isFinite(r.atR) && r.atR < 0 && (
-                      <span className="ps-badge ps-badge-back"
-                            title={`Closed past ${FREE_AT_R}R on ${r.became_free_on} and is now back `
-                              + `below what you paid. Nothing here says what to do about it — it is `
-                              + `the fact the journal could never see before.`}>
-                        <CornerDownRight size={11} />
-                      </span>
-                    )}
-                    {r.status === "partial" && <span className="ps-tag">part sold</span>}
-                  </td>
-                  {show("entry_date") && (
-                  <td className="mono ps-dim">
-                    {r.entry_date}
-                    {/* A holdings file carries no purchase date, so the import
-                        had to put one in. Marked here because this table is
-                        where those positions land, and an unmarked guess is
-                        indistinguishable from a date somebody checked. The
-                        days column beside it already reads "—" for these. */}
-                    {r.entry_date_source === "assumed" && (
-                      <span className="ps-assumed" title={
-                        "Assumed — your holdings file didn't say when you bought this. " +
-                        "Nothing counts it as a holding period until you correct it; " +
-                        "open the trade and set the real date."
-                      }>assumed</span>
-                    )}
-                  </td>
-                  )}
-                  {show("days") && (
-                  <td className="num ps-dim">{isFinite(r.days) ? r.days : "—"}</td>
-                  )}
-                  {show("qtyOpen") && (
-                  <td className="num">{r.qtyOpen}</td>
-                  )}
-                  {show("openPct") && (
-                  <td className="num">
-                    {/* A bar rather than only a number: how much of the position
-                        is still on is easier to scan than to read. */}
-                    <div className="ps-openpct">
-                      <span>{isFinite(r.openPct) ? `${r.openPct.toFixed(0)}%` : "—"}</span>
-                      <i style={{ width: `${Math.min(100, Math.max(0, r.openPct || 0))}%` }} />
-                    </div>
-                  </td>
-                  )}
-                  {show("entry_price") && (
-                  <td className="num">{Number(r.entry_price).toFixed(2)}</td>
-                  )}
-                  {/* Marked assumed here as it is on the trade sheet, and for a
-                      sharper reason: this screen already prints ASSUMED beside
-                      the entry date two columns to the left. Both values come
-                      from the same import and are equally invented, so marking
-                      one and not the other reads as a statement that the stop
-                      IS yours — the exact belief the flag exists to prevent.
-                      Every R on the row follows from this number. */}
-                  {show("stop") && (
-                  <td className={`num ${r.stopAboveEntry ? "ps-locked" : ""}`}
-                      title={r.stop_source === "assumed"
-                        ? "Assumed at import, not a stop you set — every R on this row follows from it"
-                        : r.stopAboveEntry
-                        ? "Stop is past entry — this position can no longer lose"
-                        : undefined}>
-                    {isFinite(r.stop) ? r.stop.toFixed(2) : "—"}
-                    {r.stop_source === "assumed" && isFinite(r.stop) && (
-                      <span className="ps-assumed">assumed</span>
-                    )}
-                  </td>
-                  )}
-                  {show("slPct") && (
-                  <td className="num ps-dim">{isFinite(r.slPct) ? pct(r.slPct) : "—"}</td>
-                  )}
-                  {show("toStop") && (
-                  <td className="num ps-tostop"
-                      data-state={r.breached ? "breached" : r.stopAboveEntry ? "locked" : "live"}
-                      title={r.breached
-                        ? "CMP is through the stop — this should already be out"
-                        : r.stopAboveEntry
-                        ? "Stop is past entry, so what's left can only be given back, not lost"
-                        : undefined}>
-                    {!isFinite(r.toStop) ? "—"
-                      : r.breached ? "breached"
-                      : r.stopAboveEntry ? `locked ${pct(Math.abs(r.toStop))}`
-                      : pct(Math.abs(r.toStop))}
-                  </td>
-                  )}
-                  {show("buyValue") && (
-                  <td className="num">
-                    <Money v={r.buyValue}
-                           note="What the shares still held cost — entry price × open quantity" /></td>
-                  )}
-                  {/* A dash, not a zero, when no stop was ever recorded. "0"
-                      here is a measurement saying there is nothing to lose;
-                      the dash says nobody has told us. The column already uses
-                      "—" for every other figure it cannot compute. */}
-                  {show("openRiskAmt") && (
-                  <td className={`num ${r.unknownRisk ? "ps-dim" : riskFree ? "ps-dim" : "neg"}`}
-                      title={r.unknownRisk
-                        ? "No stop recorded, so there is no risk figure — not a risk of zero. Set a stop and this fills in."
-                        : undefined}>
-                    {r.unknownRisk ? "—" : riskFree ? "0" : money(-Math.abs(r.openRiskAmt))}
-                  </td>
-                  )}
-                  {show("netRiskR") && (
-                  <td className="num">
-                    {/* Same distinction as the rupee column, and the bar is
-                        drawn at zero width either way — but "0.00R" claims a
-                        measurement the journal does not have. */}
-                    <div className="ps-riskbar" data-free={riskFree ? 1 : 0}>
-                      <span className="mono">
-                        {r.unknownRisk ? "—"
-                          : riskFree ? "0.00R"
-                          : `−${Math.abs(r.netRiskR ?? 0).toFixed(2)}R`}
-                      </span>
-                      <i style={{
-                        width: `${Math.min(100, (Math.abs(r.netRiskR || 0) / RISK_WARN_R) * 100)}%`,
-                      }} />
-                    </div>
-                  </td>
-                  )}
-                  {/* The mark, and — only when it is near an end of the day's
-                      range — where in that day it landed. Under the price
-                      rather than beside the symbol, because it is a fact
-                      about this number and the association should not need
-                      explaining. Lowercase like `breached` in the To stop
-                      column, which is the same kind of remark. */}
-                  {show("mark") && (
-                  <td className="num">
-                    {isFinite(r.mark) ? Number(r.mark).toFixed(2) : "—"}
-                    {r.dayEnd && (
-                      <span className={`hd-dayend ${r.dayEnd === "high" ? "pos" : "neg"}`}
-                            title={`Today's range ${Number(r.dayLow).toFixed(2)}–`
-                              + `${Number(r.dayHigh).toFixed(2)}. `
-                              + (r.dayEnd === "high"
-                                ? "Price is in the top fifth of it — demand held into the close."
-                                : "Price is in the bottom fifth of it — the day's gain was given back.")
-                              + " As fresh as the last price fetch, so before the first Refresh"
-                              + " of a session this describes the previous one."}>
-                        {r.dayEnd === "high" ? "at high" : "at low"}
-                      </span>
-                    )}
-                  </td>
-                  )}
-                  {show("changePct") && (
-                  <td className={`num ${r.changePct >= 0 ? "pos" : "neg"}`}>
-                    {isFinite(r.changePct) ? signedPct(r.changePct) : "—"}
-                  </td>
-                  )}
-                  {show("realisedPnl") && (
-                  <td className={`num ${r.realisedPnl >= 0 ? "pos" : "neg"}`}>
-                    {isFinite(r.realisedPnl) && r.qtyExited > 0 ? money(r.realisedPnl) : <span className="ps-dim">—</span>}
-                  </td>
-                  )}
-                  {show("unrealisedPnl") && (
-                  <td className={`num ${r.unrealisedPnl >= 0 ? "pos" : "neg"}`} style={{ fontWeight: 500 }}>
-                    {isFinite(r.unrealisedPnl) ? money(r.unrealisedPnl) : "—"}
-                  </td>
-                  )}
-                  {show("atR") && (
-                  <td className={`num ${r.atR >= 0 ? "pos" : "neg"}`}
-                      title={"Where price stands against this trade's 1R. It does not change when "
-                        + "you sell part of the position — sell a third at 6R and this still reads "
-                        + "6R, then follows the price from there. The rupee column beside it is "
-                        + "what the shares you still hold are worth."}>
-                    {isFinite(r.atR) ? rfmt(r.atR) : "—"}
-                  </td>
-                  )}
-                  {/* SO FAR, not in total: a position still running has paid
-                      its buy-side charges and is still accruing interest, so
-                      both figures grow until it is sold. Said in the hover
-                      rather than in a longer header. */}
-                  {show("margin") && (
-                  <td className="num" style={{ fontSize: 12, color: "var(--ink2)" }}>
-                    {Number(r.margin) > 0
-                      ? <Money v={r.margin} note={`MTF so far — interest to today with the pledge fee${
-                          r.marginPerDay > 0 ? `. Another ${money(r.marginPerDay)} a day while you hold` : ""}`} />
-                      : r.interestUnknown
-                      ? <span title="Interest not counted — the entry date was estimated">—</span>
-                      : "—"}
-                  </td>
-                  )}
-                  {show("charges") && (
-                  <td className="num" style={{ fontSize: 12, color: "var(--ink2)" }}>
-                    {Number(r.charges) > 0
-                      ? <Money v={r.charges} note="Charges on this position so far — the buy, plus any sells already made. The sell still to come will add to it" />
-                      : "—"}
-                  </td>
-                  )}
-                </tr>
+                <Fragment key={`g-${g.symbol}`}>
+                  {groupRow(g, open)}
+                  {open && g.lots.map((r, i) => lotRow(r, i, true))}
+                </Fragment>
               );
             })}
           </tbody>
@@ -1597,6 +1743,23 @@ export default function Holdings({
            taking one of its own, so it stays a quieter version of whichever
            tone the figure is wearing instead of turning grey on a red total. */
         .ps-dec { font-size: 0.68em; opacity: 0.55; }
+
+        /* A stock bought more than once: its summary line, and the buys under
+           it. Global, because these rows are drawn by lotRow/groupRow rather
+           than by this component's own JSX — see the styled-jsx note in
+           CLAUDE.md. */
+        .ps-group { background: var(--bg); }
+        .ps-group td { font-weight: 500; }
+        .ps-lots { font-style: normal; font-size: 10.5px; color: var(--ink3);
+                   border: 1px solid var(--rule); border-radius: 2px;
+                   padding: 1px 5px; margin-left: 7px; white-space: nowrap; }
+        .ps-chev { background: none; border: 0; cursor: pointer; padding: 0;
+                   color: var(--ink3); display: inline-flex; }
+        .ps-chev svg { transition: transform .12s ease; }
+        .ps-group[data-open="1"] .ps-chev svg { transform: rotate(90deg); }
+        tr[data-nested="1"] td:nth-child(2) { padding-left: 26px; }
+        tr[data-nested="1"] td { color: var(--ink2); }
+        .qty { font-variant-numeric: tabular-nums; }
         /* Tabular figures so the five totals line up as a row of balances.
            The strip is monospaced already; this also pins the foot line, which
            carries the same numbers one size down. */

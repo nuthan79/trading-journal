@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, ok, eq } from "./harness.mjs";
+import { qty } from "@/lib/format";
 import { loadHidden, serializeHidden } from "@/lib/columnPrefs";
 
 const SRC = path.resolve(fileURLToPath(new URL("../../src", import.meta.url)));
@@ -18,12 +19,22 @@ const read = (p) => readFileSync(path.join(SRC, p), "utf8");
  * same columns in the same order.
  */
 
+/**
+ * `body` is WHERE THE CELLS ARE, which is no longer always inside <tbody>:
+ * Holdings draws a row from `lotRow`, so a stock bought several times can
+ * draw the same rows under one summary. The cells moved; the invariant did
+ * not, so the slice follows them.
+ */
 const parts = (file) => {
   const src = read(file);
+  const rowFn = src.indexOf("const lotRow = ");
   return {
     src,
     head: src.slice(src.indexOf("<thead"), src.indexOf("</thead>")),
-    body: src.slice(src.indexOf("<tbody"), src.indexOf("</tbody>")),
+    body: rowFn >= 0
+      ? src.slice(rowFn, src.indexOf("const grouped = ") > rowFn
+          ? src.indexOf("const grouped = ") : src.indexOf("</tbody>"))
+      : src.slice(src.indexOf("<tbody"), src.indexOf("</tbody>")),
   };
 };
 const switched = (part) => [...part.matchAll(/show\("([^"]+)"\)/g)].map((m) => m[1]);
@@ -40,7 +51,20 @@ for (const [file, table, list] of [
     const { src, head, body } = parts(file);
     const picker = listed(src, list);
     eq(switched(head).join(","), picker.join(","), "headers switched = the picker's list");
-    eq(switched(body).join(","), picker.join(","), "and every one of their cells, in order");
+    /**
+     * Holdings draws TWO kinds of row — a stock's summary and each buy under
+     * it — and both must line up with the same header, or a column of one
+     * reads under the heading of another. So every renderer in the slice is
+     * checked against the picker independently.
+     */
+    const cells = switched(body);
+    const n = picker.length;
+    ok(cells.length % n === 0 && cells.length > 0,
+       `${table}: ${cells.length} cells is not a whole number of rows of ${n}`);
+    for (let i = 0; i < cells.length; i += n) {
+      eq(cells.slice(i, i + n).join(","), picker.join(","),
+         `${table}: row renderer ${i / n + 1} does not follow the header`);
+    }
   });
 
   test(`${table}: the symbol cannot be hidden`, () => {
@@ -168,4 +192,41 @@ test("MTF cost stays silent rather than guessing on an estimated date", () => {
   const h = read("components/journal/Holdings.jsx");
   ok(/r\.interestUnknown/.test(h),
      "an assumed entry date cannot produce a day count, so it shows a dash");
+});
+
+/**
+ * ONE ROW PER STOCK, OPENED TO SHOW THE BUYS BEHIND IT.
+ *
+ * Reported from a real US book: thirteen holdings, five of them the same five
+ * names bought twice. Somebody adding to Apple monthly ends the year with
+ * twelve rows of Apple, and the table stops answering the only question it is
+ * for — how much do I hold, and what is it doing.
+ */
+test("Holdings groups a stock bought more than once", () => {
+  const h = read("components/journal/Holdings.jsx");
+  ok(/const grouped = useMemo\(/.test(h), "the buys of one stock are gathered");
+  ok(/if \(g\.lots\.length === 1\) return lotRow\(g\.lots\[0\], g\.index\);/.test(h),
+     "a stock bought once looks exactly as it always did");
+  ok(/\{open && g\.lots\.map\(\(r, i\) => lotRow\(r, i, true\)\)\}/.test(h),
+     "and the buys are one click down, where their dates, stops and R live");
+});
+
+test("the summary adds up only what may honestly be added", () => {
+  const h = read("components/journal/Holdings.jsx");
+  ok(/entry_price: qty > 0 \? buyValue \/ qty : NaN/.test(h),
+     "the average is the money over the shares — what a broker calls your average");
+  ok(/everyStop\s*\n?\s*\? g\.lots\.reduce/.test(h),
+     "open risk adds up only while every buy has a stop");
+  ok(/R belongs to a buy/.test(h), "and R is left to the rows, where the stops are");
+});
+
+test("a fractional share is written like a number, not a serial", () => {
+  const f = read("lib/format.js");
+  ok(/export function qty\(/.test(f));
+  eq(qty(2), "2", "a whole number stays whole");
+  eq(qty(1.18999907), "1.19");
+  eq(qty(0.126704534), "0.1267", "four decimals is past where another one changes anything");
+  eq(qty(null), "—");
+  const q = read("components/Qty.jsx");
+  ok(/title=\{short !== full \? full : undefined\}/.test(q), "and every digit is in the hover");
 });

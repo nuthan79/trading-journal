@@ -419,3 +419,27 @@ export function describeAnnualised(a) {
         + ". No deposits or withdrawals recorded, so this is also the XIRR",
   };
 }
+
+/**
+ * A share count, written the way a person would.
+ *
+ * FRACTIONAL SHARES ARRIVED WITH THE US BOOK: 0.126704534 of Netflix is a
+ * real line in a real broker file, and printed in full it is nine digits of
+ * noise in a column of round numbers. Four decimals is past the point where
+ * another one changes any figure on the screen, and trailing zeros go — so
+ * 2 stays "2", 1.19 stays "1.19", and 0.126704534 becomes "0.1267".
+ *
+ * THE EXACT COUNT IS NEVER LOST: `<Qty>` puts every digit in the hover, the
+ * same way money does. Nothing here rounds a stored value — this is how it is
+ * written, not what it is.
+ */
+export function qty(v) {
+  if (v == null || !isFinite(v)) return "—";
+  const a = Math.abs(v);
+  if (Number.isInteger(v)) return String(v);
+  const dp = a < 1 ? 4 : a < 1000 ? 4 : 2;
+  return String(Number(v.toFixed(dp)));
+}
+
+/** Every digit of it, for the hover. */
+export const qtyExact = (v) => (v == null || !isFinite(v) ? "—" : String(v));
