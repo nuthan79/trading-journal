@@ -291,11 +291,22 @@ US — and a US share class takes a DASH (BRK-B answers, BRK.B is a 404, which
 would surface only as a holding that never prices). `indicesFor(region)` keeps
 the benchmarks apart; an unknown exchange still means India.
 
+**US costs are dated rate tables, not constants.** `SEC_FEE_RATES` and
+`TAF_RATES` in charges.js are read by the date of the leg, newest entry on or
+before it — because both change on announced dates and a sale is charged at
+the rate in force when it happened. Two entries are zero and both are real
+(the SEC rate sat at $0.00/million for the first half of FY2026; FINRA paused
+TAF for Oct–Dec 2026), which is the whole reason for the shape. Both fees are
+SELL-side only. `legCharges` picks the country from an explicit `region` or
+from the venue, India otherwise, and returns ONE shape with the other
+country's lines at zero. The fiscal year comes from `regions.fiscalStartMonth`
+through the open book: April/FY26 in India, January/2026 in the US.
+
 Phases: 1 data model and regions.js (done) · 2 currency-aware `format.js`
 (done; `currency.probe.mjs` pins India's exact strings) · 3 US symbols and
-quotes (done; `usmarket.probe.mjs`) · 4 US charges and calendar-year fiscal ·
-5 the switch and per-region filtering · 6 US broker imports, each against a
-real file.
+quotes (done; `usmarket.probe.mjs`) · 4 US charges and calendar-year fiscal
+(done; `uscharges.probe.mjs`) · 5 the switch and per-region filtering ·
+6 US broker imports, each against a real file.
 
 ## Conventions
 

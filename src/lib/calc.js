@@ -4,6 +4,7 @@
  */
 
 import { bankedEvents } from "./positions";
+import { region as regionInfo, activeRegion } from "./regions";
 import { MONTHS } from "./format";
 
 const n = (v) => (v === "" || v == null ? NaN : Number(v));
@@ -568,7 +569,18 @@ export function equityCurve(closed, { openingCapital = 0, flows = [] } = {}) {
   };
 }
 
-/* -------------------- Indian financial year helpers ------------------ */
+/* ------------------ financial year helpers, per region ---------------- */
+
+/**
+ * WHERE THE YEAR STARTS depends on the book being read: April in India,
+ * January in the US. Taken from lib/regions.js rather than hard-coded here,
+ * and read through the open book so a caller does not have to pass it —
+ * a region is a separate book, so everything being grouped at one moment
+ * belongs to the same one.
+ *
+ * India's answers are unchanged to the character: FY26 still runs April to
+ * March and still labels itself FY26, and a probe holds each of those.
+ */
 
 /**
  * THE YEAR AND MONTH, READ WITHOUT A TIMEZONE.
@@ -595,21 +607,30 @@ function ymOf(date) {
   return { y: d.getFullYear(), m: d.getMonth() + 1 };
 }
 
-/** FY starts in April. Returns the calendar year the FY began in. */
+const fiscal = () => regionInfo(activeRegion());
+
+/** The calendar year the fiscal year began in. April in India, January in the US. */
 export function fyStartYear(date) {
   const { y, m } = ymOf(date);
-  return m >= 4 ? y : y - 1;
+  return m >= fiscal().fiscalStartMonth ? y : y - 1;
 }
 
-/** Q1 = Apr–Jun, Q2 = Jul–Sep, Q3 = Oct–Dec, Q4 = Jan–Mar. */
+/** India: Q1 = Apr–Jun … Q4 = Jan–Mar. The US: the calendar quarters. */
 export function fyQuarter(date) {
   const { m } = ymOf(date);
-  return Math.floor(((m - 1 + 9) % 12) / 3) + 1;
+  const start = fiscal().fiscalStartMonth;
+  return Math.floor(((m - start + 12) % 12) / 3) + 1;
 }
 
+/**
+ * India writes FY26 for the year ending March 2026. An American writes 2026,
+ * and "FY26" beside a January–December year would be actively misleading —
+ * it reads as a fiscal year that is not the calendar one.
+ */
 export const fyLabel = (date) => {
   const y = fyStartYear(date);
-  return `FY${String(y + 1).slice(2)}`;
+  const r = fiscal();
+  return r.fiscalLabel ? `${r.fiscalLabel}${String(y + 1).slice(2)}` : String(y);
 };
 
 export const quarterLabel = (date) => `${fyLabel(date)} Q${fyQuarter(date)}`;
@@ -649,7 +670,7 @@ function periodStartOf(dateStr, grain) {
   const mi = m - 1;
   if (grain === "month") return new Date(y, mi, 1);
   if (grain === "quarter") return new Date(y, Math.floor(mi / 3) * 3, 1);
-  return new Date(fyStartYear(dateStr), 3, 1);    // financial year: 1 April
+  return new Date(fyStartYear(dateStr), fiscal().fiscalStartMonth - 1, 1);
 }
 
 /**
