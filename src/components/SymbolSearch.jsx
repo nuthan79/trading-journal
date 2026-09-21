@@ -87,7 +87,11 @@ function exact(list, text) {
 
 export default function SymbolSearch({ value, exchange, onPick, autoFocus }) {
   const [q, setQ] = useState(value || "");
-  const [list, setList] = useState(LIST || []);
+  /* Whatever is already cached for this book, so a second trade form opens
+     with the list in hand rather than blank for a frame. Read through the
+     map: `LIST` was a single variable until the US file arrived beside the
+     Indian one, and the leftover reference crashed every form that opened. */
+  const [list, setList] = useState(() => LISTS.get(activeRegion()) || []);
   const [open, setOpen] = useState(false);
   const [hi, setHi] = useState(0);
   const boxRef = useRef(null);

@@ -80,3 +80,35 @@ test("the builder refuses to replace a good list with a broken one", () => {
      "the same rule the Indian builder learned the hard way");
   ok(/--force/.test(src), "with a way out for a list that really did shrink");
 });
+
+/**
+ * CRASHED EVERY TRADE FORM. `LIST` was one cached array until the US file
+ * arrived beside the Indian one and it became a map keyed by region; one
+ * reference was left behind, and "LIST is not defined" took down the whole
+ * app the moment New trade was pressed. Probes read source here because
+ * there is no JSX compiler — so read it for the thing that actually broke.
+ */
+/* Comments talk ABOUT the old name, so they are stripped before this looks —
+   otherwise the note explaining the bug reports the bug. */
+const code = (src) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+
+test("the symbol search has no reference to the list it no longer has", () => {
+  const src = code(read("src/components/SymbolSearch.jsx"));
+  ok(!/\bLIST\b(?!S)/.test(src), "every LIST is now LISTS, keyed by book");
+  ok(/LISTS\.get\(activeRegion\(\)\)/.test(src), "and the cached list is read per region");
+});
+
+/* Nothing in the app may reference a name it does not define — the class of
+   bug that only shows when a component is first rendered, which for a form
+   means the first time a user presses the button. */
+test("no client component reads an undefined top-level name", () => {
+  for (const f of ["src/components/SymbolSearch.jsx", "src/components/Money.jsx",
+                   "src/components/journal/RegionSwitch.jsx", "src/components/journal/TradeForm.jsx"]) {
+    const src = code(read(f));
+    for (const name of ["LIST", "LOADING_LIST", "SYMBOLS"]) {
+      const used = new RegExp(`(?<![A-Za-z_])${name}(?![A-Za-z_0-9])`).test(src);
+      const defined = new RegExp(`(const|let|var|function)\\\\s+${name}\\\\b`).test(src);
+      ok(!used || defined, `${f} uses ${name} without defining it`);
+    }
+  }
+});
