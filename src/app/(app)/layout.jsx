@@ -12,7 +12,7 @@ import {
   markOpenPositions, signInWithPassword, signOut,
   signUpWithPassword, signInWithGoogle,
   sendPasswordReset, avatarUrl, trackVisit, setAnalyticsFlag, setDemoPinned,
-  listRegionAccess } from "@/lib/db";
+  listRegionAccess, fxRate as dbFxRate } from "@/lib/db";
 import { stats } from "@/lib/calc";
 import { setActiveRegion, money, setDisplayCurrency } from "@/lib/format";
 import { currentRegion, regionOf, regionSettings, region as regionInfo,
@@ -572,8 +572,7 @@ export default function AppLayout({ children }) {
   useEffect(() => {
     if (bookCurrency === homeCurrency) { setFx(null); return; }
     let live = true;
-    fetch(`/api/quotes?fx=${bookCurrency}${homeCurrency}`)
-      .then((r) => r.json())
+    dbFxRate(`${bookCurrency}${homeCurrency}`)
       .then((d) => { if (live && d?.rate > 0) setFx(d); })
       .catch(() => { /* the dollars are the real figures; they are still there */ });
     return () => { live = false; };

@@ -63,6 +63,28 @@ export async function apiFetch(path, init = {}) {
 }
 
 /**
+ * Today's rate between two currencies, for reading one book in another.
+ *
+ * Through `apiFetch` like every other call to this app's own routes: the
+ * session lives in localStorage, so a plain fetch arrives unauthenticated and
+ * the quotes route — correctly — refuses it. That is exactly how this failed
+ * the first time: the toggle sat disabled saying the rate could not be
+ * fetched, which was true and entirely self-inflicted.
+ *
+ * Null on any failure. A missing rate costs the conversion and nothing else.
+ */
+export async function fxRate(pair) {
+  try {
+    const res = await apiFetch(`/api/quotes?fx=${encodeURIComponent(pair)}`);
+    if (!res.ok) return null;
+    const d = await res.json();
+    return d?.rate > 0 ? d : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * PostgREST caps a select at `max-rows` — 1000 on Supabase by default — and
  * says nothing when it truncates. A journal of 1200 trades simply appeared to
  * lose the oldest 200, and worse things happened quietly: exit tranches past

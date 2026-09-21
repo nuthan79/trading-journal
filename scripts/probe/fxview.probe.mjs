@@ -92,3 +92,15 @@ test("IBKR is offered, and its tiered plan is charged correctly", () => {
   near(at(200, 10), 0.35, 1e-9, "the floor on a small order");
   near(at(0.2, 100), 0.2, 1e-9, "and the 1% ceiling on a cheap one, which the floor would breach");
 });
+
+/* THE TOGGLE ARRIVED DISABLED, saying the rate could not be fetched — which
+   was true: the quotes route requires a signed-in caller, the session lives
+   in localStorage, and a plain fetch() carries no token. */
+test("the rate is fetched the way every other call to our own API is", () => {
+  const db = read("src/lib/db.js");
+  ok(/export async function fxRate/.test(db), "it belongs beside the other reads");
+  ok(/apiFetch\(`\/api\/quotes\?fx=/.test(db), "through the helper that attaches the token");
+  const layout = read("src/app/(app)/layout.jsx");
+  ok(/dbFxRate\(`\$\{bookCurrency\}\$\{homeCurrency\}`\)/.test(layout));
+  ok(!/fetch\(`\/api\/quotes\?fx=/.test(layout), "never a bare fetch to an authenticated route");
+});
