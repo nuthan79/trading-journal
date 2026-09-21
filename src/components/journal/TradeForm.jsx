@@ -13,7 +13,7 @@ import {
   ENTRY_EMOTIONS, EXIT_EMOTIONS,
 } from "@/lib/constants";
 import { patternOptions } from "@/lib/patterns";
-import { region as regionInfo, activeRegion } from "@/lib/regions";
+import { region as regionInfo, activeRegion, hasMtf } from "@/lib/regions";
 
 const defaultExchange = () => regionInfo(activeRegion()).defaultExchange;
 import { resolveTradingViewChart } from "@/lib/charts";
@@ -837,6 +837,11 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
               * every day it is held, and the numbers below put that in the
               * units the rest of the journal uses — rupees, and R.
               */}
+            {/* Margin funding is an Indian broker product — pledged shares,
+                a per-lakh daily rate, a fee each way. US margin is an interest
+                rate on a balance, a different model, so the section is absent
+                in that book rather than sitting there inapplicable. */}
+            {hasMtf(activeRegion()) && (<>
             <button type="button" className="tf-fold" aria-expanded={mtfOpen}
                     onClick={() => setMtfOpen(!mtfOpen)}>
               <ChevronDown size={14} className="tf-fold-chev" data-open={mtfOpen ? 1 : 0} />
@@ -944,6 +949,7 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                 )}
               </div>
             )}
+            </>)}
 
             {/*
               * THE SETUP, FOLDED. One section rather than three fields in the

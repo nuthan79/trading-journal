@@ -14,7 +14,7 @@ import {
   sendPasswordReset, avatarUrl, trackVisit, setAnalyticsFlag, setDemoPinned,
   listRegionAccess } from "@/lib/db";
 import { stats } from "@/lib/calc";
-import { setActiveRegion } from "@/lib/format";
+import { setActiveRegion, money } from "@/lib/format";
 import { currentRegion, regionOf, regionSettings, region as regionInfo,
          REGIONS, DEFAULT_REGION } from "@/lib/regions";
 import { SHOW_REGIONS } from "@/lib/flags";
@@ -439,7 +439,18 @@ export default function AppLayout({ children }) {
 
   /* Each book is funded separately — see regionSettings. India keeps the
      columns it always had, so nothing about an Indian journal moves. */
-  const accountSize = regionSettings(profile, bookRegion).account_size || 1000000;
+  /**
+   * What this book is funded with.
+   *
+   * The fallback exists so nothing divides by zero, and it is an INDIAN
+   * default — ₹10,00,000. In a second book that has never been funded it
+   * quietly became "$1,000,000", which turned a real ₹200 risk into 0.02% of
+   * an account that does not exist. So the figure is still used, and the book
+   * says out loud that it is a placeholder until somebody sets one.
+   */
+  const bookFunds = regionSettings(profile, bookRegion).account_size;
+  const accountSize = bookFunds || 1000000;
+  const unfunded = SHOW_REGIONS && bookRegion !== DEFAULT_REGION && !(bookFunds > 0);
 
   /**
    * Switching books.
@@ -1115,6 +1126,14 @@ export default function AppLayout({ children }) {
           {/* A market this account may read and not write. Said once, above
               whichever screen is open, rather than discovered at the Save
               button — which is where the database would say it. */}
+          {unfunded && (
+            <div className="warn" style={{ marginTop: 16 }}>
+              <b>This book has no account size yet.</b>{" "}
+              Risk percentages and position sizing are assuming{" "}
+              {money(accountSize)} until you set one in{" "}
+              <button className="lk" onClick={() => setShowSettings(true)}>Setup</button>.
+            </div>
+          )}
           {SHOW_REGIONS && !canWriteHere && (
             <div className="warn" style={{ marginTop: 16 }}>
               <b>{regionInfo(bookRegion).label} is read-only on your account.</b>{" "}

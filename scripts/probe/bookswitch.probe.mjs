@@ -158,3 +158,22 @@ test("the diary belongs to a book, like everything else", () => {
   ok(/add column if not exists region text not null default 'IN'/.test(sql),
      "every existing entry is Indian, which is what they were");
 });
+
+/* FOUND WHILE TESTING A US BOOK: three things that still spoke Indian. */
+test("a US trade form offers no MTF and no Indian tickers", () => {
+  const form = read("src/components/journal/TradeForm.jsx");
+  ok(/\{hasMtf\(activeRegion\(\)\) && \(<>/.test(form),
+     "margin funding is an Indian product; the section is absent, not empty");
+  const search = read("src/components/SymbolSearch.jsx");
+  ok(/regionId === "US"\s*\n?\s*\? "Type 3 letters — AAPL, MSFT, NVDA"/.test(search),
+     "and the examples are of the market being traded");
+});
+
+test("an unfunded book says so instead of assuming a million", () => {
+  const s = layout();
+  ok(/const unfunded = SHOW_REGIONS && bookRegion !== DEFAULT_REGION && !\(bookFunds > 0\)/.test(s),
+     "a second book that was never funded is the case");
+  ok(/This book has no account size yet/.test(s));
+  ok(/const accountSize = bookFunds \|\| 1000000;/.test(s),
+     "the fallback stays, so nothing divides by zero — it is just no longer silent");
+});

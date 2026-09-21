@@ -154,7 +154,12 @@ export default function SymbolSearch({ value, exchange, onPick, autoFocus }) {
         className="in ss-in"
         autoFocus={autoFocus}
         value={q}
-        placeholder="Type 3 letters — TATA, RELI, HDFC"
+        /* The examples are of the market being traded: offering TATA to
+           somebody buying Apple is a small thing that says the app has not
+           noticed where they are. */
+        placeholder={regionId === "US"
+          ? "Type 3 letters — AAPL, MSFT, NVDA"
+          : "Type 3 letters — TATA, RELI, HDFC"}
         autoComplete="off"
         spellCheck={false}
         onChange={(e) => type(e.target.value.toUpperCase())}

@@ -706,3 +706,10 @@ a .wm-lock, .wm-lock a { text-decoration: none; }
   width: 1px; align-self: stretch; background: var(--rule);
   margin: 2px 2px; flex: none;
 }
+
+/* A button that reads as a link — used where a sentence offers an action the
+   page can perform itself, rather than a place to navigate to. */
+.lk { background: none; border: 0; padding: 0; font: inherit; cursor: pointer;
+      color: var(--brass); font-weight: 600; text-decoration: underline;
+      text-underline-offset: 2px; }
+.lk:hover { color: var(--ink); }
