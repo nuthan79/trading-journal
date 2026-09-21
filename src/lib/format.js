@@ -23,12 +23,33 @@
  * thing that is true in the code and false in every reader's head, so the
  * currency-following one is called `money()` and the rupee one kept its name.
  */
-import { region as regionInfo, activeRegion, setActiveRegion } from "./regions";
+import { region as regionInfo, activeRegion, setActiveRegion, REGIONS } from "./regions";
 
 /* The open book lives in regions.js — the symbol search and the quote source
    ask it the same question. Re-exported here because every caller that
    formats money imports from this file. */
 export { setActiveRegion, activeRegion };
+
+/**
+ * READING A BOOK IN ANOTHER CURRENCY, which is not the same as blending two.
+ *
+ * An Indian trader with a US book thinks in rupees, and "$1.4K unrealised"
+ * takes a beat to land. So the figures of ONE book may be RENDERED in another
+ * currency at one stated rate. Nothing is summed across books, no stored
+ * figure changes, and R is untouched — it is a ratio and has no currency.
+ *
+ * WHAT IT CANNOT BE. It is today's rate applied to every figure, including a
+ * trade closed last March at a different one. So it answers "what is this
+ * worth to me today" and not "what did it make in rupees", and every screen
+ * that shows it says which rate it used. Dollars remain the book's real
+ * figures and are one click away.
+ */
+let display = null;   // { currency, rate, at } or null for the book's own
+
+export function setDisplayCurrency(next) {
+  display = next && next.rate > 0 ? next : null;
+}
+export const displayCurrency = () => display;
 
 /**
  * The ladders. India goes thousand → lakh → crore → lakh crore; the US goes
@@ -52,14 +73,32 @@ const LADDERS = {
 
 const styleOf = (id) => {
   const r = regionInfo(id || activeRegion());
-  return { locale: r.locale, sign: r.sign, ladder: LADDERS[r.tiers] || LADDERS.lakhCrore };
+  /* An explicit region always wins: `rupee()` and anything asking for a
+     particular book must not be re-rendered by a display preference. */
+  if (!id && display) {
+    const as = REGIONS.find((x) => x.currency === display.currency) || r;
+    return { locale: as.locale, sign: as.sign,
+             ladder: LADDERS[as.tiers] || LADDERS.lakhCrore, rate: display.rate };
+  }
+  return { locale: r.locale, sign: r.sign, ladder: LADDERS[r.tiers] || LADDERS.lakhCrore, rate: 1 };
+};
+
+/** The sign a figure would be written with right now — book, or display. */
+export const currencySign = (region) => styleOf(region).sign;
+
+/* Every formatter converts through this one line, so a figure and its own
+   hover can never disagree about which currency they are in. */
+const shown = (v, id) => {
+  const rate = styleOf(id).rate;
+  return rate && rate !== 1 ? v * rate : v;
 };
 
 export function amount(v, { compact = true, decimals = 2, region } = {}) {
   if (v == null || !isFinite(v)) return "—";
   const { locale, ladder } = styleOf(region);
-  const neg = v < 0;
-  const a = Math.abs(v);
+  const converted = shown(v, region);
+  const neg = converted < 0;
+  const a = Math.abs(converted);
   let out;
 
   const tier = compact && a >= 1e3 ? ladder.find((t) => a < t.at) : null;
@@ -145,15 +184,16 @@ export const rupee = (v, opts) =>
  */
 export function moneyParts(v, { region } = {}) {
   if (v == null || !isFinite(v)) return null;
+  const converted = shown(v, region);
   const s = new Intl.NumberFormat(styleOf(region).locale, {
     minimumFractionDigits: 2, maximumFractionDigits: 2,
-  }).format(Math.abs(v));
+  }).format(Math.abs(converted));
   const cut = s.lastIndexOf(".");
   return {
-    neg: v < 0,
+    neg: converted < 0,
     /* The minus is the typographic one used everywhere else here, not a
        hyphen — it is the width of a digit, so a column of these stays aligned. */
-    sign: v < 0 ? "−" : "",
+    sign: converted < 0 ? "−" : "",
     int: cut < 0 ? s : s.slice(0, cut),
     dec: cut < 0 ? "00" : s.slice(cut + 1),
   };
@@ -174,13 +214,14 @@ export function moneyParts(v, { region } = {}) {
 export function exact(v, { region } = {}) {
   if (v == null || !isFinite(v)) return "—";
   const { locale, sign } = styleOf(region);
-  const a = Math.abs(v);
+  const converted = shown(v, region);
+  const a = Math.abs(converted);
   const s = new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(a);
   /* SIGN INSIDE THE RUPEE, matching `rupee()` — "₹−23,800" under a cell
      reading "₹−23.8k". `moneyParts` writes it the other way round, and a
      tooltip that reorders the two characters of the figure it is expanding
      reads for a moment like a different number. */
-  return `${sign}${v < 0 ? "−" : ""}${s}`;
+  return `${sign}${converted < 0 ? "−" : ""}${s}`;
 }
 
 /**

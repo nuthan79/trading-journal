@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Plus, Pencil, Trash2, Download, Image as ImageIcon, X, Check, Flag, Upload } from "lucide-react";
 import { money, rfmt, pct, signedPct, exportFilename, dmy } from "@/lib/format";
 import { excursion } from "@/lib/path";
+import { hasMtf, activeRegion } from "@/lib/regions";
 import { COLUMN_HINTS } from "@/lib/columns";
 import { useColumnPrefs } from "@/lib/useColumnPrefs";
 import ColumnPicker from "./ColumnPicker";
@@ -122,7 +123,16 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
   const colPrefs = useColumnPrefs("trades", {
     defaults: all.some((t) => Number(t.mtf_leverage) > 1) ? [] : ["margin"],
   });
-  const show = colPrefs.show;
+  /**
+   * MTF DOES NOT EXIST IN EVERY MARKET, so its column does not either.
+   *
+   * Hidden through `show` rather than by deleting the cells: the header, the
+   * cell, the footer total and the span arithmetic all ask the same question,
+   * and a column removed in four places is a column removed in three of them
+   * eventually.
+   */
+  const mtfHere = hasMtf(activeRegion());
+  const show = (k) => (k === "margin" && !mtfHere ? false : colPrefs.show(k));
   const leadSpan = BEFORE_PNL.filter(show).length;
   const trailSpan = AFTER_COSTS.filter(show).length + 1;   // + the edit/delete column
 
@@ -714,7 +724,8 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
               the tooltip rather than on the button: "CSV · 27" reads as a
               debug readout next to a row of plain word buttons, and the count
               is already stated twice on this screen. */}
-          <ColumnPicker columns={TRADE_COLUMNS} prefs={colPrefs} />
+          <ColumnPicker columns={TRADE_COLUMNS.filter((c) => mtfHere || c.k !== "margin")}
+                        prefs={colPrefs} />
           <button className="btn ghost sm" title={`Download the ${rows.length} trade${
                     rows.length === 1 ? "" : "s"} shown, as ${exportFilename(viewLabel, { prefix: journalName })}`}
                   onClick={() => exportCsv(rows, viewLabel, journalName)}>

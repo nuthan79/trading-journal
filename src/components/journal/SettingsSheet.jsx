@@ -9,6 +9,7 @@ import { SHOW_SETUP_TRADES } from "@/lib/flags";
 import OwnSetups from "./OwnSetups";
 import { regionSettings, regionSettingsPatch, hasMtf, region as regionInfo,
          DEFAULT_REGION } from "@/lib/regions";
+import { rupee } from "@/lib/format";
 
 // JSON has no Infinity — the "no cap" preset would otherwise round-trip
 // through profiles.charge_config as null, and null reads back as a cap of
@@ -29,7 +30,7 @@ const fromDraftCfg = (cfg) => ({
 
 export default function SettingsSheet({ profile, onSave, onClose, onNavigate,
                                        needStopsCount = 0, trades = [], onProfileChange,
-                                       bookRegion = DEFAULT_REGION }) {
+                                       bookRegion = DEFAULT_REGION, rate = 0 }) {
   const persisted = loadDraft(DRAFT_KEYS.settings);
 
   /* Each book is funded separately: the account size and risk % belong to the
@@ -120,7 +121,10 @@ export default function SettingsSheet({ profile, onSave, onClose, onNavigate,
                    value={s.journal_name} onChange={set("journal_name")} /></label>
 
           <div className="grid2" style={{ gap: 12 }}>
-            <label className="f"><span>Account size — ₹</span>
+            {/* The sign of the book being funded. "Account size — ₹" over a
+                US book was the whole bug: the field is dollars and the label
+                said otherwise. */}
+            <label className="f"><span>Account size — {book.sign}</span>
               <input className="in" inputMode="numeric" value={s.account_size} onChange={set("account_size")} /></label>
             <label className="f"><span>Default risk per trade %</span>
               <input className="in" inputMode="decimal" value={s.default_risk_pct} onChange={set("default_risk_pct")} /></label>
@@ -128,6 +132,13 @@ export default function SettingsSheet({ profile, onSave, onClose, onNavigate,
           <div className="hint" style={{ marginTop: -8 }}>
             Used to pre-fill the position sizer. Risk % on each trade is always computed
             against this account size.
+            {/* An Indian trader funding a US book thinks in rupees, so the
+                equivalent is stated rather than left to be worked out. One
+                rate, today's, and it says so. */}
+            {book.currency !== "INR" && rate > 0 && Number(s.account_size) > 0 && (
+              <> Roughly {rupee(Number(s.account_size) * rate, { region: "IN" })} at
+                today&apos;s rate, ₹{rate.toFixed(2)} to the {book.currency === "USD" ? "dollar" : book.currency}.</>
+            )}
           </div>
 
           <div style={{ borderTop: "1px solid var(--rule)", paddingTop: 18 }}>

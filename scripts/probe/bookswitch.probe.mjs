@@ -177,3 +177,25 @@ test("an unfunded book says so instead of assuming a million", () => {
   ok(/const accountSize = bookFunds \|\| 1000000;/.test(s),
      "the fallback stays, so nothing divides by zero — it is just no longer silent");
 });
+
+/* REPORTED IN USE: the MTF column stood in both tables of a US book, always
+   a dash, because only the trade form's section had been hidden. */
+test("MTF has no column in a market without margin funding", () => {
+  for (const f of ["src/components/journal/Trades.jsx", "src/components/journal/Holdings.jsx"]) {
+    const src = read(f);
+    ok(/const mtfHere = hasMtf\(activeRegion\(\)\);/.test(src), `${f} asks the market`);
+    ok(/const show = \(k\) => \(k === "margin" && !mtfHere \? false : colPrefs\.show\(k\)\);/.test(src),
+       `${f} hides it through show(), so header, cell and spans agree`);
+    ok(/mtfHere \|\| c\.k !== "margin"/.test(src), `${f} drops it from the picker too`);
+  }
+  ok(/HOLDING_COLS\.filter\(\(c\) => mtfHere \|\| c\.key !== "margin"\)/.test(
+       read("src/components/journal/Holdings.jsx")), "and from the CSV");
+});
+
+/* ALSO REPORTED: "Today ₹177.00" on a US book. That figure is split into
+   parts so the paise can be set smaller, and wrote its own rupee sign. */
+test("the one figure that writes its own sign asks which currency", () => {
+  const h = read("src/components/journal/Holdings.jsx");
+  ok(/\{p\.sign\}\{currencySign\(\)\}\{p\.int\}/.test(h));
+  ok(!/\{p\.sign\}₹/.test(h), "no hard-coded rupee left in it");
+});

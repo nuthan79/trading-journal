@@ -14,7 +14,7 @@ import {
   sendPasswordReset, avatarUrl, trackVisit, setAnalyticsFlag, setDemoPinned,
   listRegionAccess } from "@/lib/db";
 import { stats } from "@/lib/calc";
-import { setActiveRegion, money } from "@/lib/format";
+import { setActiveRegion, money, setDisplayCurrency } from "@/lib/format";
 import { currentRegion, regionOf, regionSettings, region as regionInfo,
          REGIONS, DEFAULT_REGION } from "@/lib/regions";
 import { SHOW_REGIONS } from "@/lib/flags";
@@ -32,6 +32,7 @@ import { isPreset, presetIndex, presetDataUri } from "@/lib/avatars";
 import { buildDemo } from "@/lib/demo";
 import DemoBanner from "@/components/journal/DemoBanner";
 import RegionSwitch from "@/components/journal/RegionSwitch";
+import CurrencyView from "@/components/journal/CurrencyView";
 import SampleOffer from "@/components/journal/SampleOffer";
 import Landing from "@/components/Landing";
 import Wordmark from "@/components/Wordmark";
@@ -433,6 +434,20 @@ export default function AppLayout({ children }) {
    */
   setActiveRegion(bookRegion);
 
+  /**
+   * READING A BOOK IN THE OTHER CURRENCY. Dollars are what a US book made and
+   * stay the default; an Indian trader can read the same figures in rupees at
+   * today's rate. Per browser, not per profile — it is how you like to read,
+   * not a fact about the account. Set during render, like the region, so the
+   * first figure drawn already knows.
+   */
+  const [showAs, setShowAs] = useState(null);
+  const [fx, setFx] = useState(null);
+  const homeCurrency = regionInfo(DEFAULT_REGION).currency;
+  const bookCurrency = regionInfo(bookRegion).currency;
+  const inHome = showAs === homeCurrency && bookCurrency !== homeCurrency && fx?.rate > 0;
+  setDisplayCurrency(inHome ? { currency: homeCurrency, rate: fx.rate } : null);
+
   /* Open, expired, or never granted — the three states worth telling apart. */
   const book = accessState(access, bookRegion);
   const canWriteHere = canWrite(access, bookRegion);
@@ -544,6 +559,25 @@ export default function AppLayout({ children }) {
      trade. Defaults when the profile has none, so nothing changes until the
      user changes it, and nothing breaks before migration 050. */
 
+
+  useEffect(() => {
+    try { setShowAs(localStorage.getItem("ledgerr:show-as") || null); } catch { /* private mode */ }
+  }, []);
+  const chooseCurrency = (c) => {
+    setShowAs(c);
+    try { localStorage.setItem("ledgerr:show-as", c); } catch { /* nothing to lose */ }
+  };
+  /* Fetched once per book, and not at all for an Indian one — there is
+     nothing to convert. A failure costs the conversion and nothing else. */
+  useEffect(() => {
+    if (bookCurrency === homeCurrency) { setFx(null); return; }
+    let live = true;
+    fetch(`/api/quotes?fx=${bookCurrency}${homeCurrency}`)
+      .then((r) => r.json())
+      .then((d) => { if (live && d?.rate > 0) setFx(d); })
+      .catch(() => { /* the dollars are the real figures; they are still there */ });
+    return () => { live = false; };
+  }, [bookCurrency, homeCurrency]);
 
   const mtf = useMemo(() => mtfPrefs(profile),
     [profile?.mtf_pledge_fee, profile?.mtf_unpledge_fee, profile?.mtf_in_pnl]);
@@ -1093,6 +1127,10 @@ export default function AppLayout({ children }) {
                 <RegionSwitch value={bookRegion} onChange={switchRegion}
                               markets={accessFor(access, REGIONS)} />
               )}
+              {SHOW_REGIONS && (
+                <CurrencyView book={bookRegion} value={showAs} rate={fx?.rate}
+                              at={fx?.at} onChange={chooseCurrency} />
+              )}
               <button className="btn" onClick={openNewTrade}>
                 <Plus size={14} />New trade
               </button>
@@ -1126,6 +1164,13 @@ export default function AppLayout({ children }) {
           {/* A market this account may read and not write. Said once, above
               whichever screen is open, rather than discovered at the Save
               button — which is where the database would say it. */}
+          {inHome && (
+            <div className="hint" style={{ marginTop: 14 }}>
+              Shown in rupees at today&apos;s rate, ₹{fx.rate.toFixed(2)} to the dollar —
+              what this book is worth to you now, not what each trade made at the time.
+              R is unaffected: it is a ratio.
+            </div>
+          )}
           {unfunded && (
             <div className="warn" style={{ marginTop: 16 }}>
               <b>This book has no account size yet.</b>{" "}
@@ -1191,6 +1236,7 @@ export default function AppLayout({ children }) {
             trades={trades}
             onProfileChange={setProfile}
             bookRegion={bookRegion}
+            rate={fx?.rate || 0}
             onNavigate={(href) => { setShowSettings(false); router.push(href); }}
           />
         )}

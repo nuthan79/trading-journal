@@ -90,9 +90,25 @@ export const DEFAULT_US_CHARGE_CONFIG = {
   commissionPerShare: 0.005,  // $ per share, for the tiered brokers
   commissionMin: 1,           // $ floor on a per-share commission
   commissionCap: 1e15,        // a large finite sentinel, never Infinity — see forSave()
+  commissionCapPct: 0,        // % of the trade value; 0 means no such ceiling
 };
 
+/**
+ * IBKR IS FIRST because it is how most non-US traders reach the US market at
+ * all — the others on this list barely open accounts outside the country.
+ *
+ * Its two plans are genuinely different bills. Lite is zero commission on US
+ * stocks; Pro is tiered per share with a floor AND a ceiling expressed as a
+ * share of the trade value, which is why `commissionCapPct` exists: on a
+ * hundred shares of a $2 stock, a per-share minimum would otherwise charge
+ * more than one percent of the whole trade.
+ */
 export const US_BROKER_PRESETS = {
+  "IBKR Lite — zero commission": { commissionModel: "zero" },
+  "IBKR Pro — $0.0035/share, $0.35 min": {
+    commissionModel: "perShare", commissionPerShare: 0.0035,
+    commissionMin: 0.35, commissionCap: 1e15, commissionCapPct: 1,
+  },
   "Zero commission (Schwab, Fidelity, Robinhood)": { commissionModel: "zero" },
   "Per share $0.005, $1 minimum": {
     commissionModel: "perShare", commissionPerShare: 0.005, commissionMin: 1, commissionCap: 1e15,
@@ -197,10 +213,14 @@ function legChargesUS({ leg, price, quantity, date }, config) {
   /* The user's own plan — commission is the one US cost that is theirs. The
      two regulatory fees are not, and are not in the config at all. */
   const cfg = mergeUsConfig(config);
+  /* The ceiling is whichever is smaller: a rupee-style absolute cap, or the
+     percentage-of-trade-value one IBKR Pro applies. */
+  const pctCap = num(cfg.commissionCapPct) > 0
+    ? (turnover * num(cfg.commissionCapPct)) / 100 : Infinity;
   const commission = cfg.commissionModel === "flat" ? num(cfg.commissionFlat)
     : cfg.commissionModel === "perShare"
       ? Math.min(Math.max(qty * num(cfg.commissionPerShare), num(cfg.commissionMin)),
-                 num(cfg.commissionCap, 1e15))
+                 num(cfg.commissionCap, 1e15), pctCap)
       : 0;
 
   const sec = rateOn(SEC_FEE_RATES, date);

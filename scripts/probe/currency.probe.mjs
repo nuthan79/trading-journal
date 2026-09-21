@@ -91,6 +91,11 @@ test("the journal's own screens print the book's currency, not a fixed one", () 
      adding to that list is a decision rather than a habit. */
   const ALWAYS_INDIA = new Set([
     "ExpectancyCalculator.jsx",   // public SEO tool, written about Indian trading
+    /* Setup states the rupee equivalent of a foreign account size, on purpose
+       and with the rate beside it — the one place a rupee figure belongs in a
+       US book. It asks for region "IN" explicitly, which is what rupee() is
+       for. */
+    "SettingsSheet.jsx",
   ]);
   const dirs = ["src/components/journal", "src/components"];
   for (const dir of dirs) {

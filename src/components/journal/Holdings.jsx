@@ -2,9 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { RefreshCw, Flag, Rocket, CornerDownRight, Download } from "lucide-react";
-import { money, rfmt, pct, signedPct, moneyParts, exportFilename,
+import { money, rfmt, pct, signedPct, moneyParts, currencySign, exportFilename,
          monthShort, dmy } from "@/lib/format";
 import { COLUMN_HINTS } from "@/lib/columns";
+import { hasMtf, activeRegion } from "@/lib/regions";
 import { useColumnPrefs } from "@/lib/useColumnPrefs";
 import ColumnPicker from "./ColumnPicker";
 import Money from "@/components/Money";
@@ -107,7 +108,10 @@ function ToTheRupee({ v }) {
   const p = moneyParts(v);
   if (!p) return "—";
   return (
-    <>{p.sign}₹{p.int}<span className="ps-dec">.{p.dec}</span></>
+    /* The sign of the book being read, not a rupee — this is the one figure
+       here that writes its own, because it is split into parts so the paise
+       can be set smaller. In a US book it was printing ₹ over dollars. */
+    <>{p.sign}{currencySign()}{p.int}<span className="ps-dec">.{p.dec}</span></>
   );
 }
 
@@ -337,7 +341,10 @@ export default function Holdings({
     defaults: [...BEYOND_ESSENTIALS],
     legacyKey: "ledgerr:holdings-columns",
   });
-  const show = colPrefs.show;
+  /* Same as Trades: a market without margin funding has no MTF column, and
+     hiding it in one place keeps the header, the cell and the CSV in step. */
+  const mtfHere = hasMtf(activeRegion());
+  const show = (k) => (k === "margin" && !mtfHere ? false : colPrefs.show(k));
 
   const rows = useMemo(() => {
     return open
@@ -821,7 +828,7 @@ export default function Holdings({
             <button className="btn ghost sm" disabled={!rows.length}
                     title={`Download the ${rows.length} holding${rows.length === 1 ? "" : "s"}
                             shown, in this order, as ${exportFilename("holdings", { prefix: journalName })}`}
-                    onClick={() => downloadCsv(rows, HOLDING_COLS, exportFilename("holdings", { prefix: journalName }))}>
+                    onClick={() => downloadCsv(rows, HOLDING_COLS.filter((c) => mtfHere || c.key !== "margin"), exportFilename("holdings", { prefix: journalName }))}>
               <Download size={13} />CSV
             </button>
           )}
@@ -1015,7 +1022,8 @@ export default function Holdings({
       </div>
 
       <div style={{ display: "flex", justifyContent: "flex-end", margin: "0 0 8px" }}>
-        <ColumnPicker columns={HOLDINGS_COLUMNS} prefs={colPrefs} resetLabel="Essentials" />
+        <ColumnPicker columns={HOLDINGS_COLUMNS.filter((c) => mtfHere || c.k !== "margin")}
+                      prefs={colPrefs} resetLabel="Essentials" />
       </div>
 
       <div className="card scroll ps-table">

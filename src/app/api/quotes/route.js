@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getQuotes } from "@/lib/quotes";
+import { getQuotes, fxRate } from "@/lib/quotes";
 import { userFromRequest } from "@/lib/apiAuth";
 import { rateLimit, tooMany } from "@/lib/rateLimit";
 
@@ -45,6 +45,18 @@ export async function GET(req) {
     return tooMany(gate.retryAfter,
       "Too many price refreshes. Prices are cached for a minute anyway, so " +
       "waiting costs you nothing.");
+  }
+
+  /**
+   * ?fx=USDINR asks for the exchange rate instead of quotes — the same seam,
+   * the same rate limit, the same auth. A separate route would be a second
+   * place for the upstream to be named.
+   */
+  const fx = (req.nextUrl.searchParams.get("fx") || "").toUpperCase();
+  if (/^[A-Z]{6}$/.test(fx)) {
+    const rate = await fxRate(fx.slice(0, 3), fx.slice(3));
+    return NextResponse.json({ pair: fx, rate, at: new Date().toISOString() },
+      { headers: { "Cache-Control": "public, max-age=600" } });
   }
 
   const raw = req.nextUrl.searchParams.get("s") || "";

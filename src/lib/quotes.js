@@ -153,6 +153,34 @@ const SOURCES = { yahoo: fromYahoo, broker: fromBroker };
 const cache = new Map();
 const TTL_MS = 60_000;
 
+/**
+ * What one unit of `from` is worth in `to`, from the same source as the
+ * quotes — Yahoo spells a pair "USDINR=X".
+ *
+ * ONE RATE, TODAY'S. Used only to show a US book's figures in rupees for
+ * somebody who thinks in them, never to blend two books into one total. A
+ * trade that made $500 made $500 whatever the rupee does; this answers the
+ * different question "what is that worth to me today", and every screen that
+ * uses it says so.
+ *
+ * Null when the source is down. A missing rate must cost the conversion and
+ * nothing else — the dollars are the real figures and are always there.
+ */
+export async function fxRate(from = "USD", to = "INR") {
+  if (from === to) return 1;
+  for (const host of HOSTS) {
+    try {
+      const url = `https://${host}/v8/finance/chart/${from}${to}=X?interval=1d&range=1d`;
+      const res = await fetch(url, { headers: BROWSER_HEADERS, cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const meta = (await res.json())?.chart?.result?.[0]?.meta;
+      const rate = meta?.regularMarketPrice ?? meta?.previousClose ?? null;
+      if (rate > 0) return rate;
+    } catch { /* try the other host, then give up quietly */ }
+  }
+  return null;
+}
+
 export async function getQuotes(items, sourceName) {
   const source = SOURCES[sourceName || process.env.QUOTE_SOURCE || "yahoo"];
   if (!source) throw new Error(`Unknown quote source: ${sourceName}`);
