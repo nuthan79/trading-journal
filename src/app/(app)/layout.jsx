@@ -1118,7 +1118,12 @@ export default function AppLayout({ children }) {
               every screen below is an explanation of its own emptiness. Same
               slot on purpose — whichever tab they are reading is the one that
               has to offer the way out. */}
-          {!demo && trades.length === 0 && (
+          {/* India only, like the sample itself. Offered in a US book it was a
+              button that did nothing: `demoOn` refuses to deal Indian stocks
+              into a US journal, so the click was answered by silence — the
+              worst possible answer, because it reads as an app that is
+              broken rather than one that is empty. */}
+          {!demo && trades.length === 0 && bookRegion === DEFAULT_REGION && (
             <div style={{ paddingTop: 16 }}>
               <SampleOffer onShow={showDemo} />
             </div>

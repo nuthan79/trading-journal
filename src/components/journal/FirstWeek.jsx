@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Check, Upload, Plus, X } from "lucide-react";
 import { firstWeek } from "@/lib/firstweek";
+import { activeRegion, DEFAULT_REGION } from "@/lib/regions";
 
 /**
  * Three steps for a new journal, on the Dashboard, until they are done.
@@ -59,11 +60,19 @@ export default function FirstWeek({ trades, needStops, assumedStops, diary,
           <span className="fw-mark">{s1.done ? <Check size={13} /> : "1"}</span>
           <div>
             <b>Bring in your trades</b>
-            <p>Import a year from your broker&apos;s tax P&amp;L, or log one trade you
-              still remember clearly.</p>
+            <p>{activeRegion() === DEFAULT_REGION
+              ? <>Import a year from your broker&apos;s tax P&amp;L, or log one trade you
+                still remember clearly.</>
+              : <>Log one trade you still remember clearly. US broker files are not
+                read yet — they are being added one broker at a time.</>}</p>
             {!s1.done && (
               <div className="fw-acts">
-                <Link href="/import" className="btn sm"><Upload size={12} />Import</Link>
+                {/* Import reads Indian broker reports and says so in a US book,
+                    so offering it there sends somebody to a page that cannot
+                    help them. The other way in works in either market. */}
+                {activeRegion() === DEFAULT_REGION && (
+                  <Link href="/import" className="btn sm"><Upload size={12} />Import</Link>
+                )}
                 <button className="btn ghost sm" onClick={onNewTrade}><Plus size={12} />Log a trade</button>
               </div>
             )}

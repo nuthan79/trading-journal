@@ -100,3 +100,22 @@ test("a new trade opens on the book's own exchange", () => {
   ok(/exchange: defaultExchange\(\)/.test(form));
   ok(/regionInfo\(activeRegion\(\)\)\.defaultExchange/.test(form), "NSE in India, NASDAQ in a US book");
 });
+
+/* FOUND IN USE: the sample offer appeared in a US book, and clicking it did
+   nothing — `demoOn` refuses to deal Indian stocks into a US journal, so the
+   button was answered by silence. A dead control reads as a broken app. */
+test("the sample is offered only where it can actually be shown", () => {
+  const s = layout();
+  ok(/\{!demo && trades\.length === 0 && bookRegion === DEFAULT_REGION && \(/.test(s),
+     "the offer and the sample agree about which books they belong to");
+  const offerAt = s.indexOf("<SampleOffer");
+  const demoAt = s.indexOf("const demoOn = !!profile && bookRegion === DEFAULT_REGION");
+  ok(offerAt > 0 && demoAt > 0, "both conditions exist");
+});
+
+test("the first-week card offers Import only where a file can be read", () => {
+  const fw = read("src/components/journal/FirstWeek.jsx");
+  ok(/activeRegion\(\) === DEFAULT_REGION && \(\s*<Link href="\/import"/.test(fw),
+     "a US book is not sent to a page that tells it no");
+  ok(/US broker files are not read yet/.test(fw), "and step one says what to do instead");
+});
