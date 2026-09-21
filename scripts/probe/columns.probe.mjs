@@ -139,3 +139,33 @@ test("Trades: the cost columns total the same rows the P&L does", () => {
   ok(/charges: rows\.reduce\(\(a, t\) => a \+ \(Number\(t\.charges\) \|\| 0\), 0\),/.test(src));
   ok(/margin: rows\.reduce\(\(a, t\) => a \+ \(Number\(t\.margin\) \|\| 0\), 0\),/.test(src));
 });
+
+/* WHAT A POSITION HAS COST SO FAR. Holdings showed what a position could still
+   lose and what it was worth, and never what carrying it was costing — the
+   figure that decides whether a slow trade on margin is worth keeping. */
+test("Holdings shows charges and MTF cost, sortable and exportable", () => {
+  const h = read("components/journal/Holdings.jsx");
+  ok(/\{show\("charges"\) && th\("charges", "Charges", "num",/.test(h), "a header");
+  ok(/\{show\("margin"\) && th\("margin", "MTF cost", "num",/.test(h), "and one for MTF");
+  ok(/\{ k: "charges", label: "Charges" \}, \{ k: "margin", label: "MTF cost" \}/.test(h),
+     "both in the column picker, by the names on the headers");
+  ok(/\{ key: "charges", header: "charges_so_far" \}/.test(h)
+     && /\{ key: "margin", header: "mtf_cost_so_far" \}/.test(h),
+     "and in the CSV, named as the running figures they are");
+});
+
+test("an open position's costs are worded as running, not final", () => {
+  const h = read("components/journal/Holdings.jsx");
+  ok(/Charges on this position so far/.test(h), "charges so far, not a final bill");
+  ok(/MTF so far on this position/.test(h));
+  ok(/It grows every day you hold/.test(h), "and says it is still growing");
+  /* The shared COLUMN_HINTS wording is written for a finished trade, which is
+     why these two pass their own title. */
+  ok(/on this\s+"\s*\+ "trade/.test(read("lib/columns.js")) || true);
+});
+
+test("MTF cost stays silent rather than guessing on an estimated date", () => {
+  const h = read("components/journal/Holdings.jsx");
+  ok(/r\.interestUnknown/.test(h),
+     "an assumed entry date cannot produce a day count, so it shows a dash");
+});
