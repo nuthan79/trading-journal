@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Holdings from "@/components/journal/Holdings";
 import { markOpenPositions, acknowledgeBreakeven, resolveSoldSnapshots,
-         listSplits, applySplitAdjustments } from "@/lib/db";
-import { splitPlan, symbolsOf } from "@/lib/splits";
+         listSplits, listClosesOn, applySplitAdjustments } from "@/lib/db";
+import { splitPlan, symbolsOf, verifySplitPlan, priceKeysFor } from "@/lib/splits";
 import { loadSplitCache, saveSplitCache, staleKeys, splitsFromCache,
          mergeIntoCache } from "@/lib/splitCache";
 import { measurePaths, needsMeasuring } from "@/lib/measure";
@@ -74,7 +74,30 @@ export default function HoldingsPage() {
     };
   }, [all, open]);
 
-  const splitsDuePlan = useMemo(() => splitPlan(all, splits), [all, splits]);
+  /**
+   * The candidates, and then the proof.
+   *
+   * The dates say a split happened while these were held; only the price on
+   * the day they were bought says whether the row is still in old shares.
+   * Adjusting one that a broker already adjusted multiplies the quantity and
+   * divides the price by the same number — the P&L is unchanged, so the one
+   * figure anybody would check it with is the one that cannot tell.
+   */
+  const candidates = useMemo(() => splitPlan(all, splits), [all, splits]);
+  const [closes, setCloses] = useState({});
+  useEffect(() => {
+    let live = true;
+    const keys = priceKeysFor(candidates);
+    if (!keys.length) { setCloses({}); return; }
+    listClosesOn(keys).then((got) => { if (live) setCloses(got); });
+    return () => { live = false; };
+  }, [candidates]);
+
+  const checked = useMemo(() => verifySplitPlan(candidates, closes), [candidates, closes]);
+  /* Only what the market confirms is offered. The rest is reported on the
+     card, and left exactly as it is. */
+  const splitsDuePlan = useMemo(() => checked.filter((p) => p.verdict === "pre-split"), [checked]);
+  const splitsUnsure = useMemo(() => checked.filter((p) => p.verdict !== "pre-split"), [checked]);
 
   /**
    * The sweep over stocks no longer held, on request.
@@ -184,6 +207,7 @@ export default function HoldingsPage() {
     <Holdings
       onFixSoldSnapshots={fixSoldSnapshots}
       splitPlan={splitsDuePlan}
+      splitsUnsure={splitsUnsure}
       onFixSplits={fixSplits}
       onSweepSplits={sweepClosed}
       sweepingSplits={sweeping}

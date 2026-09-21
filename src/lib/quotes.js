@@ -204,39 +204,72 @@ export async function fxRate(from = "USD", to = "INR") {
 const splitCache = new Map();
 const SPLIT_TTL_MS = 12 * 60 * 60 * 1000;
 
-export async function splitsFor({ symbol, exchange }, range = "5y") {
+/**
+ * The daily chart behind both the splits and the closes, fetched once.
+ *
+ * The same response carries the split events and the price history, and the
+ * history is what proves whether a row is in old money or new: Yahoo restates
+ * closes after a split, so a close is always in TODAY's shares.
+ */
+async function chartFor({ symbol, exchange }, range = "5y") {
   const ticker = yahooTicker(symbol, exchange);
-  /* Held for half a day on the server as well as in the browser: one cold
-     book is three hundred lookups, and two people holding the same stock
-     should not each pay for it. A corporate action is announced weeks ahead
-     of the day it takes effect, so half a day late is not late. */
   const hit = splitCache.get(ticker);
-  if (hit && Date.now() - hit.at < SPLIT_TTL_MS) return hit.splits;
+  if (hit && Date.now() - hit.at < SPLIT_TTL_MS) return hit;
+
   for (const host of HOSTS) {
     try {
       const url = `https://${host}/v8/finance/chart/${encodeURIComponent(ticker)}` +
                   `?interval=1d&range=${encodeURIComponent(range)}&events=split`;
       const res = await fetch(url, { headers: BROWSER_HEADERS, cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const events = (await res.json())?.chart?.result?.[0]?.events?.splits || {};
+      const r = (await res.json())?.chart?.result?.[0];
+      const stamps = r?.timestamp || [];
+      const closes = r?.indicators?.quote?.[0]?.close || [];
+      const day = (t) => {
+        const d = new Date(t * 1000);
+        return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+      };
+      const events = r?.events?.splits || {};
       const splits = Object.values(events)
         .map((e) => {
-          const num = Number(e?.numerator), den = Number(e?.denominator);
-          const at = Number(e?.date);
+          const num = Number(e?.numerator), den = Number(e?.denominator), at = Number(e?.date);
           if (!(num > 0) || !(den > 0) || !Number.isFinite(at)) return null;
-          const d = new Date(at * 1000);
-          return {
-            date: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`,
-            ratio: num / den,
-          };
+          return { date: day(at), ratio: num / den };
         })
         .filter(Boolean)
         .sort((a, b) => (a.date < b.date ? -1 : 1));
-      splitCache.set(ticker, { at: Date.now(), splits });
-      return splits;
-    } catch { /* try the other host, then say nothing happened */ }
+      const series = stamps.map((t, i) => ({ d: day(t), c: Number(closes[i]) }))
+        .filter((x) => Number.isFinite(x.c));
+      const out = { at: Date.now(), splits, series };
+      splitCache.set(ticker, out);
+      return out;
+    } catch { /* try the other host */ }
   }
-  return [];
+  return { at: 0, splits: [], series: [] };
+}
+
+/**
+ * The close on a day, or the last one before it — in today's shares.
+ *
+ * WHAT IT IS FOR. A split adjustment must not be offered to a row that is
+ * already in post-split terms: applying it again multiplies the shares and
+ * divides the price by the same number, so the P&L is unchanged and the
+ * position is nonsense. Comparing the recorded entry price against what the
+ * stock actually cost that day is the only way to tell the two apart, and it
+ * is the one check the dates cannot do.
+ */
+export async function closeOn({ symbol, exchange, date }, range = "5y") {
+  const { series } = await chartFor({ symbol, exchange }, range);
+  if (!series.length || !date) return null;
+  let found = null;
+  for (const p of series) {
+    if (p.d <= date) found = p; else break;
+  }
+  return found ? found.c : series[0].c;
+}
+
+export async function splitsFor(item, range = "5y") {
+  return (await chartFor(item, range)).splits;
 }
 
 export async function getQuotes(items, sourceName) {

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getQuotes, fxRate, splitsFor } from "@/lib/quotes";
+import { getQuotes, fxRate, splitsFor, closeOn } from "@/lib/quotes";
 import { userFromRequest } from "@/lib/apiAuth";
 import { rateLimit, tooMany } from "@/lib/rateLimit";
 
@@ -79,6 +79,30 @@ export async function GET(req) {
       batch.forEach((it, j) => { if (got[j]?.length) out[`${it.symbol}:${it.exchange}`] = got[j]; });
     }
     return NextResponse.json({ splits: out },
+      { headers: { "Cache-Control": "public, max-age=21600" } });
+  }
+
+  /**
+   * ?close=SYMBOL:EXCHANGE:YYYY-MM-DD,… — what a stock closed at on a day.
+   *
+   * Asked only about the handful of rows a split might have caught, to prove
+   * whether each is still in old shares before anything is offered. It reads
+   * the same cached chart the split events came from, so it usually costs
+   * nothing at all.
+   */
+  const closeList = (req.nextUrl.searchParams.get("close") || "").trim();
+  if (closeList) {
+    const want = closeList.split(",").map((p) => p.trim()).filter(Boolean).slice(0, 40)
+      .map((p) => { const [symbol, exchange, date] = p.split(":");
+                    return { symbol: String(symbol).toUpperCase(),
+                             exchange: String(exchange || "NSE").toUpperCase(), date }; });
+    const out = {};
+    for (let i = 0; i < want.length; i += 6) {
+      const batch = want.slice(i, i + 6);
+      const got = await Promise.all(batch.map((it) => closeOn(it).catch(() => null)));
+      batch.forEach((it, j) => { if (got[j] > 0) out[`${it.symbol}:${it.exchange}`] = got[j]; });
+    }
+    return NextResponse.json({ closes: out },
       { headers: { "Cache-Control": "public, max-age=21600" } });
   }
 

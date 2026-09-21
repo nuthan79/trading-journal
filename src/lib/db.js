@@ -1743,6 +1743,23 @@ export async function listSplits(keys = []) {
  * last of all: if the tranches fail, the trade must not be left claiming it
  * has been adjusted, because the next pass would then skip it forever.
  */
+/**
+ * What those stocks closed at on the days they were bought.
+ *
+ * The proof behind a split adjustment — see verifySplitPlan. A handful of
+ * rows at a time, because only the candidates need checking.
+ */
+export async function listClosesOn(keys = []) {
+  if (!keys.length) return {};
+  try {
+    const res = await apiFetch(`/api/quotes?close=${encodeURIComponent([...keys].sort().join(","))}`);
+    if (!res.ok) return {};
+    return (await res.json())?.closes || {};
+  } catch {
+    return {};
+  }
+}
+
 export async function applySplitAdjustments(plan = []) {
   let done = 0;
   for (const p of plan) {

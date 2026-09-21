@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, ok, eq, near } from "./harness.mjs";
-import { splitsDue, adjustForSplits, splitPlan, symbolsOf } from "@/lib/splits";
+import { splitsDue, adjustForSplits, splitPlan, symbolsOf,
+         verifySplitPlan, priceKeysFor } from "@/lib/splits";
 import { staleKeys, mergeIntoCache, TTL_HELD, TTL_CLOSED } from "@/lib/splitCache";
 
 const ROOT = path.resolve(fileURLToPath(new URL("../../", import.meta.url)));
@@ -197,4 +198,65 @@ test("the sold sweep exists, on request, and caches like the rest", () => {
   ok(/Also check the stocks you no longer hold/.test(h));
   ok(/the only sold one that can still be wrong/.test(h),
      "the page says which case this is for, rather than offering a mystery button");
+});
+
+/**
+ * THE CHECK THAT STOPS A FIX BECOMING A CORRUPTION.
+ *
+ * Applying an adjustment twice multiplies the quantity and divides the price
+ * by the same number — so the P&L is IDENTICAL and the position is nonsense:
+ *
+ *   bought 1 at 1200, sold 10 at 130   →  P&L +100
+ *   adjusted once:  10 at 120          →  P&L +100   right
+ *   adjusted twice: 100 at 12          →  P&L +100   nonsense
+ *
+ * The one figure anybody would check it with cannot tell. `split_adjusted_to`
+ * stops the app doing it twice; it cannot know a broker's file arrived
+ * already adjusted, and Stockal's own notes say theirs sometimes is. So the
+ * price on the day the position was bought is the proof.
+ */
+const NFLX_CAND = {
+  id: "t1", symbol: "NFLX", exchange: "NASDAQ", entryDate: "2025-10-13",
+  factor: 10, splits: [{ date: "2025-11-17", ratio: 10 }],
+  quantity: 1.267, entry_price: 121.97,
+  was: { quantity: 0.126704534, entry_price: 1219.69 },
+};
+
+test("a row in old money is confirmed by the price on the day", () => {
+  /* Measured: NFLX closed at 121.90 on 13 October 2025 — ten times apart
+     from the 1219.69 the order book recorded. */
+  const [p] = verifySplitPlan([NFLX_CAND], { "NFLX:NASDAQ": 121.903 });
+  eq(p.verdict, "pre-split");
+  ok(/which is the split/.test(p.why));
+});
+
+test("a file a broker already adjusted is refused, not 'fixed'", () => {
+  const already = { ...NFLX_CAND, was: { quantity: 1.267, entry_price: 121.97 } };
+  const [p] = verifySplitPlan([already], { "NFLX:NASDAQ": 121.903 });
+  eq(p.verdict, "already-adjusted");
+  ok(/adjusted before you imported it/.test(p.why));
+});
+
+test("no price, or a price that explains neither, is left alone", () => {
+  eq(verifySplitPlan([NFLX_CAND], {})[0].verdict, "unknown");
+  eq(verifySplitPlan([NFLX_CAND], { "NFLX:NASDAQ": 400 })[0].verdict, "unknown",
+     "an unprovable fix is the one thing worse than no fix");
+});
+
+test("only what the market confirms is offered", () => {
+  const page = read("src/app/(app)/holdings/page.jsx");
+  ok(/checked\.filter\(\(p\) => p\.verdict === "pre-split"\)/.test(page));
+  ok(/checked\.filter\(\(p\) => p\.verdict !== "pre-split"\)/.test(page),
+     "and the rest is reported rather than hidden");
+  const h = read("src/components/journal/Holdings.jsx");
+  ok(/\{onFixSplits && splitPlanRows\.length > 0 && \(/.test(h),
+     "no button when there is nothing proven to press it for");
+  ok(/left alone\./.test(h), "the card says so on the row itself");
+});
+
+test("the proof rides on the row, so it can be read before the click", () => {
+  const [p] = verifySplitPlan([NFLX_CAND], { "NFLX:NASDAQ": 121.903 });
+  ok(/1219\.69/.test(p.why) && /121\.90/.test(p.why),
+     "both numbers, so somebody can check it against their broker");
+  eq(p.close, 121.903);
 });

@@ -88,6 +88,8 @@ export function adjustForSplits(trade, splits = []) {
   return {
     id: trade.id,
     symbol: trade.symbol,
+    exchange: trade.exchange,
+    entryDate: day(trade.entry_date),
     factor,
     splits: due,
     quantity: round4(Number(trade.quantity) * factor),
@@ -131,3 +133,62 @@ export const symbolsOf = (trades = []) => {
   }
   return [...seen];
 };
+
+/**
+ * PROVE IT AGAINST THE MARKET BEFORE OFFERING IT.
+ *
+ * The dates say a split happened while this position was held. They cannot
+ * say whether the row is still in the old shares — and that is the difference
+ * between a fix and a corruption, because applying the adjustment twice
+ * multiplies the quantity and divides the price by the same number:
+ *
+ *   bought 1 at 1200, sold 10 at 130      P&L +100
+ *   adjusted once:  10 at 120             P&L +100   ← right
+ *   adjusted twice: 100 at 12             P&L +100   ← nonsense, same P&L
+ *
+ * So the one figure anybody would check it with is the one figure that cannot
+ * tell. `split_adjusted_to` stops US doing it twice; it cannot know that a
+ * broker's file arrived already adjusted, and Stockal's report says in its own
+ * notes that it sometimes does.
+ *
+ * The proof is the price on the day. Yahoo restates closes after a split, so a
+ * close is always in TODAY's shares: a row whose entry is about `factor` times
+ * that day's close is in old money and should be adjusted; a row whose entry
+ * is about equal to it is already in new money and must be left alone.
+ *
+ * `closes` is keyed "SYMBOL:EXCHANGE" and holds the close on the entry date.
+ * A candidate with no price to check against is reported, never adjusted —
+ * an unprovable fix is the one thing worse than no fix.
+ */
+export const VERIFY_TOLERANCE = 0.35;
+
+export function verifySplitPlan(plan = [], closes = {}) {
+  return plan.map((p) => {
+    const close = Number(closes[`${String(p.symbol).toUpperCase()}:${String(p.exchange || "").toUpperCase()}`]);
+    const entry = Number(p.was?.entry_price);
+    if (!(close > 0) || !(entry > 0)) {
+      return { ...p, verdict: "unknown",
+               why: "No price for that day to check against, so this is left alone." };
+    }
+    const ratio = entry / close;
+    const near = (a, b) => Math.abs(a - b) / b <= VERIFY_TOLERANCE;
+    if (near(ratio, p.factor)) {
+      return { ...p, verdict: "pre-split", close,
+               why: `Bought at ${entry}, and the stock closed at ${close.toFixed(2)} that day — ` +
+                    `${Math.round(ratio * 100) / 100}× apart, which is the split.` };
+    }
+    if (near(ratio, 1)) {
+      return { ...p, verdict: "already-adjusted", close,
+               why: `Bought at ${entry}, and the stock closed at ${close.toFixed(2)} that day — ` +
+                    `these already agree, so your broker's file was adjusted before you imported it.` };
+    }
+    return { ...p, verdict: "unknown", close,
+             why: `Bought at ${entry} against a close of ${close.toFixed(2)} that day: ` +
+                  `neither the split nor no split explains that, so this is left alone.` };
+  });
+}
+
+/** The entry dates a verification needs, as "SYMBOL:EXCHANGE:YYYY-MM-DD". */
+export const priceKeysFor = (plan = []) =>
+  plan.map((p) => `${String(p.symbol).toUpperCase()}:${String(p.exchange || "").toUpperCase()}:${day(p.entryDate || p.entry_date)}`)
+      .filter((k) => !k.endsWith(":"));

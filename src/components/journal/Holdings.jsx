@@ -300,7 +300,7 @@ export default function Holdings({
   open, closed, diary = [], journalName = "", onRefresh, refreshing, onAckBreakeven,
   onEditTrade, onExitTrade, onDeleteTrade, onAttachChart, onRemoveChart,
   onFixSoldSnapshots, splitPlan: splitPlanRows = [], onFixSplits,
-  onSweepSplits, sweepingSplits = false,
+  onSweepSplits, sweepingSplits = false, splitsUnsure = [],
 }) {
   const [detailId, setDetailId] = useState(null);
   const [acked, setAcked] = useState([]);
@@ -1280,7 +1280,7 @@ export default function Holdings({
         * R built on a stop ten times too far away. The figures are shown
         * before and after, and nothing moves without a click.
         */}
-      {splitPlanRows.length > 0 && (
+      {(splitPlanRows.length > 0 || splitsUnsure.length > 0) && (
         <div className="ps-sold">
           <div className="ps-sold-head">
             <div>
@@ -1289,7 +1289,7 @@ export default function Holdings({
                 bought. A split — or a bonus issue, which is the same arithmetic —
                 restates both, so these rows are in old money until they are adjusted.</p>
             </div>
-            {onFixSplits && (
+            {onFixSplits && splitPlanRows.length > 0 && (
               <button className="btn sm" onClick={fixSplits} disabled={fixingSplits}>
                 {fixingSplits ? "Adjusting…" : `Adjust ${splitPlanRows.length} position${splitPlanRows.length === 1 ? "" : "s"}`}
               </button>
@@ -1301,6 +1301,17 @@ export default function Holdings({
                 <b>{p.symbol}</b> — {p.splits.map((x) => `${ratioText(x.ratio)} on ${dmy(x.date)}`).join(", ")}.{" "}
                 {qty(p.was.quantity)} at {p.was.entry_price} becomes{" "}
                 <b>{qty(p.quantity)} at {p.entry_price}</b>.
+                {/* The proof, on the row it belongs to: adjusting a position a
+                    broker already adjusted leaves the P&L unchanged and the
+                    position nonsense, so the price on the day is what
+                    separates the two. */}
+                {p.why && <i className="ps-why"> {p.why}</i>}
+              </li>
+            ))}
+            {splitsUnsure.map((p) => (
+              <li key={p.id} className="ps-unsure">
+                <b>{p.symbol}</b> — left alone.{" "}
+                <i className="ps-why">{p.why}</i>
               </li>
             ))}
           </ul>
@@ -1599,6 +1610,8 @@ export default function Holdings({
       <style jsx>{`
         .ps-sweep { font-size: 11.5px; color: var(--ink3); margin: 12px 0 0;
                     line-height: 1.6; max-width: 80ch; }
+        .ps-why { font-style: normal; color: var(--ink3); }
+        .ps-unsure { color: var(--ink3); }
         .ps-head {
           display: flex; align-items: flex-end; justify-content: space-between;
           gap: 14px; flex-wrap: wrap; margin-bottom: 12px;
