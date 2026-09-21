@@ -94,7 +94,7 @@ dispatches on an adapter's `kind`, and `ImportTrades.jsx` branches on it:
 | `taxpnl` (default) | closed trades — real charges | yes |
 | `holdings` | open positions — complete, no purchase date | yes |
 | `tradebook` | entry dates for positions already held | **no** |
-| `journal` | a whole book with its stops — Champions, SwingBot | yes |
+| `journal` | a whole book — Champions, SwingBot, Stockal, INDmoney | yes |
 
 The journal kind is the only one that can carry a REAL stop, which is why a
 bot's own CSV pair (`swingbot.js`: `trades.csv` closed, `open_positions.csv`
@@ -103,6 +103,18 @@ no stop column and does not need one — R is P&L over risk, so the stop comes
 back out of `pnl` and `R`, reproducing the file's own R to two decimals. Only
 a format that states pattern, exit reason or a note writes those columns;
 `toJournalRows` spreads them in, so no other format starts writing nulls.
+
+**A file belongs to one book.** `regionOfBroker(adapter)` is US for Stockal
+and INDmoney and IN for everything else, and the import screen REFUSES a file
+whose region is not the open book's — a dollar price in a rupee ledger makes
+every derived figure wrong and none of them look it. `toJournalRows` writes
+`region` only when it is not IN, so an Indian import still works before
+migration 052. Stockal's tax report is two sheets at once (closed trades and
+holdings), which is why an adapter may expose `parseSheets`; INDmoney is an
+order book matched FIFO — unlike Zerodha's tradebook it DOES write trades,
+because no tax statement covers the same ground. Both carry fractional shares
+to eight decimals and pages of disclaimer prose under each table, which is
+where the table ends, not a run of skipped rows.
 
 A tradebook deliberately imports nothing: its closed lots would duplicate the
 tax P&L's while being worse (no charges, mis-pairs pre-file buys). Anything
@@ -326,7 +338,7 @@ Phases: 1 data model and regions.js (done) · 2 currency-aware `format.js`
 (done; `currency.probe.mjs` pins India's exact strings) · 3 US symbols and
 quotes (done; `usmarket.probe.mjs`) · 4 US charges and calendar-year fiscal
 (done; `uscharges.probe.mjs`) · 5 the switch and per-region filtering (done;
-`bookswitch.probe.mjs`) · 6 US broker imports, each against a real file. Paid access to a market landed alongside Phase 5; pricing copy has not.
+`bookswitch.probe.mjs`) · 6 US broker imports (done: Stockal, INDmoney, both against real files). Paid access to a market landed alongside Phase 5; pricing copy has not.
 
 ## Conventions
 

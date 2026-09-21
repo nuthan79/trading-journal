@@ -2,12 +2,14 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Upload, Check, AlertTriangle, X, FileSpreadsheet } from "lucide-react";
-import { detectBroker, brokerNames, assembleImport, kindOf, wrongReportHint } from "@/lib/brokers";
+import { detectBroker, brokerNames, assembleImport, kindOf, wrongReportHint,
+         regionOfBroker } from "@/lib/brokers";
 import { BROKER_STEPS } from "@/lib/brokerSteps";
 import { resolveSymbols } from "@/lib/isin";
 import * as zerodha from "@/lib/brokers/zerodha";
 import * as zerodhaHoldings from "@/lib/brokers/zerodha-holdings";
 import * as swingbot from "@/lib/brokers/swingbot";
+import * as indmoney from "@/lib/brokers/indmoney";
 import * as zerodhaTradebook from "@/lib/brokers/zerodha-tradebook";
 import * as icicidirect from "@/lib/brokers/icicidirect";
 import { toHoldingRows, dateCaveat } from "@/lib/holdings";
@@ -184,7 +186,7 @@ function unresolvedLines(unresolved) {
 }
 
 export default function ImportTrades({
-  targets = [], chargeConfig = null, onImport, onSetDates, onDone,
+  targets = [], chargeConfig = null, onImport, onSetDates, onDone, bookRegion = "IN",
 }) {
   const [file, setFile] = useState(null);
   const [parsed, setParsed] = useState(null);
@@ -304,7 +306,8 @@ export default function ImportTrades({
            otherwise fall to the Zerodha tax P&L parser by the default above,
            which is the failure where an adapter claims a file it cannot
            read. */
-        if (swingbot.detectRows(rows)) broker = swingbot;
+        if (indmoney.detectRows(rows)) broker = indmoney;
+        else if (swingbot.detectRows(rows)) broker = swingbot;
         else if (zerodhaTradebook.detectRows(rows)) broker = zerodhaTradebook;
         else if (zerodhaHoldings.detectRows(rows)) broker = zerodhaHoldings;
         /**
@@ -316,6 +319,25 @@ export default function ImportTrades({
         else if (icicidirect.detectRows(rows)) broker = icicidirect;
       } else {
         throw new Error("Expected an .xlsx or .csv file.");
+      }
+
+      /**
+       * THE FILE BELONGS TO ONE BOOK, AND IT IS NOT ALWAYS THIS ONE.
+       *
+       * Stockal and INDmoney report US stocks in dollars; every other reader
+       * here reads an Indian report. Writing either into the wrong book puts
+       * dollar prices in a rupee ledger — every figure derived from them
+       * wrong, and not one of them looking wrong. Refused outright rather
+       * than imported somewhere plausible: "it went in, just not where you
+       * meant" costs an evening to find and a migration to undo.
+       */
+      const fileRegion = regionOfBroker(broker);
+      if (fileRegion !== bookRegion) {
+        throw new Error(
+          `This is a ${broker.label} file — ${fileRegion === "US" ? "US stocks, in dollars" : "an Indian report"}. ` +
+          `You are in the ${bookRegion === "US" ? "United States" : "India"} book. ` +
+          `Switch markets at the top of the page and drop it again.`
+        );
       }
 
       /**
@@ -427,7 +449,14 @@ export default function ImportTrades({
           ? XLSXmod.utils.sheet_to_json(workbook.Sheets[sheetName],
               { header: 1, raw: true, defval: null })
           : rows;
-        const raw = broker.parseRows(rawRows);
+        /* Some readers need more than one sheet at once — Stockal keeps the
+           closed trades and the holdings in two, and a book is both. */
+        const raw = broker.parseSheets && workbook && XLSXmod
+          ? broker.parseSheets(Object.fromEntries(
+              workbook.SheetNames.map((n) => [n.trim(),
+                XLSXmod.utils.sheet_to_json(workbook.Sheets[n],
+                  { header: 1, raw: true, defval: null })])))
+          : broker.parseRows(rawRows);
         if (!raw.positions.length) {
           throw new Error(
             raw.warnings[0] ||
@@ -437,7 +466,12 @@ export default function ImportTrades({
         }
 
         const { rows: made, duplicates, noStop } =
-          toJournalRows(raw.positions, { broker: broker.id, targets });
+          toJournalRows(raw.positions, {
+            broker: broker.id, targets, region: fileRegion,
+            /* A US file's venue: NASDAQ unless the symbol list says otherwise.
+               Resolved per row below, where the list is in hand. */
+            exchange: fileRegion === "US" ? "NASDAQ" : "NSE",
+          });
 
         if (!made.length) {
           throw new Error(

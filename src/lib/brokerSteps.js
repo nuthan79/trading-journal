@@ -23,6 +23,39 @@
  */
 export const BROKER_STEPS = [
   {
+    id: "stockal",
+    label: "Stockal (US)",
+    files: [
+      {
+        what: "Closed trades and what you hold",
+        name: "Tax report",
+        steps: [
+          "Sign in at stockal.com",
+          "Account → Reports → Tax Reports",
+          "Pick the financial year, then Download",
+        ],
+        note: "One file holds both: the year's closed trades and the holdings on 31 March. Import it in the United States book.",
+      },
+    ],
+  },
+  {
+    id: "indmoney",
+    label: "INDmoney (US)",
+    files: [
+      {
+        what: "Every buy and sell",
+        name: "Order report",
+        steps: [
+          "Open the INDmoney app or web",
+          "US Stocks → Reports / Statements",
+          "Order Report, widest date range, then Download",
+        ],
+        note: "It is the order book, not a tax statement — positions are matched oldest-lot-first. Import it in the United States book.",
+      },
+    ],
+  },
+
+  {
     id: "zerodha",
     label: "Zerodha",
     files: [

@@ -30,6 +30,8 @@ import * as zerodhaHoldings from "./zerodha-holdings";
 import * as zerodhaTradebook from "./zerodha-tradebook";
 import * as champions from "./champions";
 import * as swingbot from "./swingbot";
+import * as stockal from "./stockal";
+import * as indmoney from "./indmoney";
 
 export { assembleImport } from "../import-pipeline";
 
@@ -60,10 +62,25 @@ export { assembleImport } from "../import-pipeline";
   being read as a tax P&L, which would silently throw away the stops that are
   the only reason to prefer it.
 */
-export const BROKERS = [champions, swingbot, zerodha, groww, dhan, icicidirect, zerodhaHoldings, zerodhaTradebook];
+export const BROKERS = [champions, swingbot, stockal, indmoney, zerodha, groww, dhan, icicidirect, zerodhaHoldings, zerodhaTradebook];
 
 /** What a file yields. Absent means matched lots — the original assumption. */
 export const kindOf = (broker) => broker?.kind || "taxpnl";
+
+/**
+ * WHICH BOOK A FILE MAY BE WRITTEN INTO, and the reason it is stated at all.
+ *
+ * Stockal and INDmoney report US stocks bought in dollars. Written into an
+ * Indian book they would put dollar prices in a rupee ledger — where every
+ * figure derived from them is wrong and not one of them looks wrong. An
+ * adapter with no region is an Indian report, which is what every one of them
+ * was until these two.
+ *
+ * The import screen refuses the file rather than importing it somewhere
+ * plausible, because "it went in, just not where you meant" is the failure
+ * that takes an evening to find and a migration to undo.
+ */
+export const regionOfBroker = (broker) => broker?.region || "IN";
 
 /**
  * A recognised file that is the WRONG report, named so the message can help.

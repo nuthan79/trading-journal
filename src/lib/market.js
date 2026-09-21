@@ -19,7 +19,16 @@ export const INDEX_TICKERS = {
   "NIFTY500": "^CRSLDX",
   "NIFTY50": "^NSEI",
   "NIFTYMIDCAP": "^NSEMDCP50",
+  /* A US book's regime is the US market's, not India's. Same three states,
+     read off the index the trades actually belong to. */
+  "SP500": "^GSPC",
+  "NASDAQ100": "^NDX",
+  "RUSSELL2000": "^RUT",
 };
+
+/** The index a book's regime is read from. */
+export const REGIME_INDEX = { IN: "NIFTY500", US: "SP500" };
+export const REGIME_LABEL_FOR = { NIFTY500: "NIFTY 500", SP500: "S&P 500" };
 
 const HOSTS = YAHOO_HOSTS;
 

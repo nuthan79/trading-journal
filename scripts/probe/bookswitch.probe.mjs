@@ -80,12 +80,17 @@ test("Setup offers the plans that book's brokers actually charge", () => {
      "two different sets of fields, so they cannot share a default");
 });
 
-test("Import says US files are not read yet rather than mangling one", () => {
+/* Replaced when Stockal and INDmoney arrived: the US book imports now, and
+   what protects it is the region check on the FILE, not a closed door. */
+test("a file is refused when it belongs to the other book", () => {
+  const imp = read("src/components/ImportTrades.jsx");
+  ok(/const fileRegion = regionOfBroker\(broker\);/.test(imp));
+  ok(/if \(fileRegion !== bookRegion\) \{/.test(imp), "refused, not imported somewhere plausible");
+  ok(/Switch markets at the top of the page and drop it again/.test(imp),
+     "and it says how to put it right");
   const page = read("src/app/(app)/import/page.jsx");
-  ok(/if \(bookRegion === "US"\)/.test(page));
-  ok(/US broker files are not read yet/.test(page));
-  ok(/quietly get the rest wrong/.test(page),
-     "the reason is the one the broker adapters have always followed");
+  ok(!/US broker files are not read yet/.test(page), "the closed door is gone");
+  ok(/bookRegion=\{bookRegion\}/.test(page), "the screen knows which book it is in");
 });
 
 test("the switch names the currency, and says books are separate", () => {
@@ -113,11 +118,11 @@ test("the sample is offered only where it can actually be shown", () => {
   ok(offerAt > 0 && demoAt > 0, "both conditions exist");
 });
 
-test("the first-week card offers Import only where a file can be read", () => {
+test("the first-week card names the right files for the book", () => {
   const fw = read("src/components/journal/FirstWeek.jsx");
-  ok(/activeRegion\(\) === DEFAULT_REGION && \(\s*<Link href="\/import"/.test(fw),
-     "a US book is not sent to a page that tells it no");
-  ok(/US broker files are not\s+read yet/.test(fw), "and step one says what to do instead");
+  ok(/Import your Stockal tax report or INDmoney order book/.test(fw),
+     "a US book is told which of its brokers can be read");
+  ok(/broker&apos;s tax P&amp;L/.test(fw), "and an Indian one still hears about the tax P&L");
 });
 
 /**

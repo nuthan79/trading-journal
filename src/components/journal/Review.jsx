@@ -1,6 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { REGIME_INDEX, REGIME_LABEL_FOR } from "@/lib/market";
+import { activeRegion } from "@/lib/regions";
+
+/* Kept for the session, not per mount — see the note in the effect below. */
+const REGIME_CACHE = new Map();
 import { ChevronDown } from "lucide-react";
 import { apiFetch, track } from "@/lib/db";
 import { reviewFindings, reviewThesis, recentBook } from "@/lib/analysis";
@@ -1207,21 +1212,40 @@ export default function Review({ closed, stats, all, diary, onMeasured }) {
   // trades is bookkeeping, reading them back is the point.
   useEffect(() => { track("review_opened"); }, []);
 
+  /**
+   * THE MARKET REGIME BEHIND THE FINDINGS.
+   *
+   * Three years of daily closes — 734 points, about three quarters of a
+   * second warm and several seconds cold — fetched on EVERY visit to this
+   * page. Leaving and coming back paid for it again, which is what made the
+   * screen feel like it had stalled: the strip says "Loading market regime…"
+   * and the reader reads that as the page not working.
+   *
+   * Kept for the session now, keyed by index. The history only changes once a
+   * day and a stale afternoon close cannot move a regime that is defined by
+   * 50- and 200-day averages.
+   */
+  const indexName = REGIME_INDEX[activeRegion()] || "NIFTY500";
+
   useEffect(() => {
     let alive = true;
+    const cached = REGIME_CACHE.get(indexName);
+    if (cached) { setMarket({ loading: false, error: null, classified: cached }); return; }
+    setMarket({ loading: true, error: null, classified: [] });
     (async () => {
       try {
-        const res = await apiFetch("/api/market?index=NIFTY500&range=3y");
+        const res = await apiFetch(`/api/market?index=${indexName}&range=3y`);
         const json = await res.json();
         if (!alive) return;
         const classified = classifyRegime(json.history || []);
+        if (classified.length) REGIME_CACHE.set(indexName, classified);
         setMarket({ loading: false, error: classified.length ? null : (json.error || null), classified });
       } catch (err) {
         if (alive) setMarket({ loading: false, error: err.message, classified: [] });
       }
     })();
     return () => { alive = false; };
-  }, []);
+  }, [indexName]);
 
   const regimes = useMemo(
     () => (market.classified.length ? regimeIndex(market.classified) : null),
@@ -1338,7 +1362,7 @@ export default function Review({ closed, stats, all, diary, onMeasured }) {
           <>
             <span className="rv-dot" style={{ background: REGIME_COLOR[last.regime] }} />
             <b>{REGIME_LABEL[last.regime]}</b>
-            <span className="rv-dim">NIFTY 500 · {last.close.toFixed(0)}</span>
+            <span className="rv-dim">{REGIME_LABEL_FOR[indexName] || indexName} · {last.close.toFixed(0)}</span>
             {pos50 != null && <span className="rv-dim">{signedPct(pos50)} vs 50DMA</span>}
             {pos200 != null && <span className="rv-dim">{signedPct(pos200)} vs 200DMA</span>}
           </>

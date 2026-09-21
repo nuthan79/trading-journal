@@ -50,7 +50,7 @@ const round2 = (v) => Math.round(v * 100) / 100;
  * the same export must not double the book.
  */
 export function toJournalRows(positions, {
-  batchId, exchange = "NSE", broker = null, targets = [],
+  batchId, exchange = "NSE", broker = null, targets = [], region = null,
 } = {}) {
   const held = new Map();
   for (const t of targets || []) {
@@ -123,6 +123,10 @@ export function toJournalRows(positions, {
          start writing three nulls it never had — the probe on this file
          pins exactly that, and a null pattern would overwrite nothing today
          and something tomorrow. */
+      /* The book this file belongs to. Sent only when it is not the default,
+         so an Indian import still works against a database where migration
+         052 has not run — and a US file cannot land in a rupee ledger. */
+      ...(region && region !== "IN" ? { region } : null),
       ...(p.pattern ? { pattern: p.pattern } : null),
       ...(p.notes ? { notes: p.notes } : null),
 
