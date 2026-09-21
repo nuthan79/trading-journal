@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { summaryParts } from "@/lib/dashboard";
-import { rfmt, pct, rupee } from "@/lib/format";
+import { rfmt, pct, money } from "@/lib/format";
 import Money from "@/components/Money";
 
 /**

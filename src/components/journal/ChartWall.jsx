@@ -22,7 +22,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
-import { rupee, rfmt, dmy } from "@/lib/format";
+import { money, rfmt, dmy } from "@/lib/format";
 import { apiFetch } from "@/lib/db";
 import { tickerFor, barsKeyFor, BARS_PER_REQUEST } from "@/lib/bars";
 import { isPartial } from "@/lib/positions";
@@ -191,7 +191,7 @@ export default function ChartWall({ rows = [] }) {
                   {isFinite(t.heldDays) && ` · ${Math.round(t.heldDays)}d`}
                 </div>
                 <div className="cw-pnl mono" data-neg={t.pnl < 0 ? 1 : 0}>
-                  {isFinite(t.pnl) ? rupee(t.pnl) : "—"}
+                  {isFinite(t.pnl) ? money(t.pnl) : "—"}
                   <span className="cw-r">{rfmt(t.r, 1)}</span>
                 </div>
               </div>

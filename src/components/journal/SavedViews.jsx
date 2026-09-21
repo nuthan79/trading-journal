@@ -34,7 +34,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Plus, X, Pencil, Trash2, Check, Filter } from "lucide-react";
-import { rupee, rfmt, dmy } from "@/lib/format";
+import { money, rfmt, dmy } from "@/lib/format";
 import { PATTERNS } from "@/lib/constants";
 import {
   FIELD_GROUPS, fieldOf, opsFor, arityOf, isNumeric, DATE_PRESETS,
@@ -306,7 +306,7 @@ function Builder({ all, draft, existing, onCancel, onSave }) {
                         <span className="sv-sym">{t.symbol}</span>
                         <span className="sv-d">{dmy(t.entry_date)}</span>
                         <span className="sv-p" data-neg={t.pnl < 0 ? 1 : 0}>
-                          {isFinite(t.pnl) ? rupee(t.pnl) : "—"}
+                          {isFinite(t.pnl) ? money(t.pnl) : "—"}
                         </span>
                         {/* rfmt already carries the R and the sign, and already
                             renders an em dash when there is none. */}

@@ -35,6 +35,6 @@ test("the footer decides on the rendered strings, not the raw values", () => {
      rather than its exact spacing so a reformat does not quietly retire it. */
   ok(!/Math\.abs\(\s*realisedHere\s*-\s*totals\.pnl\s*\)/.test(src),
     "realisedHere must not be compared to the total with a numeric epsilon");
-  ok(/rupee\(realisedHere\)\s*!==\s*rupee\(totals\.pnl\)/.test(src),
+  ok(/money\(realisedHere\)\s*!==\s*money\(totals\.pnl\)/.test(src),
     "it must compare what the two cells actually print");
 });

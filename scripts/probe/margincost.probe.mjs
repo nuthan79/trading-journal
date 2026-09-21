@@ -139,7 +139,7 @@ test("every 'after charges' on a Net P&L names MTF the way it was treated", () =
   ok(/if \(m > 0 && !counted\)[\s\S]*?full\(pnl \+ c\)[\s\S]*?MTF, not deducted/.test(pp),
     "not counted, it adds back charges only and says so");
   const hn = read("components/journal/HeadlineNumbers.jsx");
-  ok(/h\.marginCounted !== false\s*\? ` and \$\{rupee\(h\.margin\)\} MTF`/.test(hn));
+  ok(/h\.marginCounted !== false\s*\? ` and \$\{money\(h\.margin\)\} MTF`/.test(hn));
   ok(/MTF, not deducted`/.test(hn));
 });
 

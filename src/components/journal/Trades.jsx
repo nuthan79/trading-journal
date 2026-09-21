@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { matchesEdgeFilter, describeEdgeFilter } from "@/lib/edge";
 import Link from "next/link";
 import { Plus, Pencil, Trash2, Download, Image as ImageIcon, X, Check, Flag, Upload } from "lucide-react";
-import { rupee, rfmt, pct, signedPct, exportFilename, dmy } from "@/lib/format";
+import { money, rfmt, pct, signedPct, exportFilename, dmy } from "@/lib/format";
 import { excursion } from "@/lib/path";
 import { COLUMN_HINTS } from "@/lib/columns";
 import { useColumnPrefs } from "@/lib/useColumnPrefs";
@@ -525,7 +525,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
      *
      * The figure answers "how much money arrived in this window", which does
      * not depend on which rows a filter happened to show. It now matches the
-     * period table to the rupee, because both walk every sell of every
+     * period table to the money, because both walk every sell of every
      * position.
      *
      * And bankedEvents rather than a local fallback: on a part-sold position
@@ -1024,7 +1024,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                       beside it. It counts every sell in the window across the
                       whole book, including positions this filter does not show
                       because their last exit falls outside it. */}
-                  {isFinite(realisedHere) && rupee(realisedHere) !== rupee(totals.pnl) && (
+                  {isFinite(realisedHere) && money(realisedHere) !== money(totals.pnl) && (
                     <span className="tr-tot-win" title={REALISED_HERE_NOTE}>
                       {/* The note is on the figure as well as the phrase: the
                           figure carries its own hover now, and the inner title

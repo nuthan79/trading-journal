@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { headline } from "@/lib/calc";
-import { rupee, rfmt, pct, days } from "@/lib/format";
+import { money, rfmt, pct, days } from "@/lib/format";
 import Money from "@/components/Money";
 import { hasRealStop } from "@/lib/stops";
 
@@ -93,11 +93,11 @@ export default function HeadlineNumbers({ closed, banking = [], openingCapital, 
      separately, because they are different costs and only one is trading's. */
   /* MTF is named as taken out only when it was: set to show it as an expense
      only, it is still named, as not taken out. */
-  const afterCosts = `After ${rupee(h.charges)} charges`
+  const afterCosts = `After ${money(h.charges)} charges`
     + (h.margin > 0
       ? h.marginCounted !== false
-        ? ` and ${rupee(h.margin)} MTF`
-        : ` · ${rupee(h.margin)} MTF, not deducted`
+        ? ` and ${money(h.margin)} MTF`
+        : ` · ${money(h.margin)} MTF, not deducted`
       : "");
 
   const mtfNote = "Interest with pledge and unpledge charges, on MTF shares sold so far. "
@@ -142,7 +142,7 @@ export default function HeadlineNumbers({ closed, banking = [], openingCapital, 
         { label: "Avg loss", value: pct(h.avgLossPct), tone: "neg",
           hint: "On the losers, as a percentage of position size" },
         { label: "Max DD (%)", value: pct(h.maxDDPct), tone: "neg",
-          hint: `${rupee(h.maxDDAmt)} at the worst point — what you actually had to sit through` },
+          hint: `${money(h.maxDDAmt)} at the worst point — what you actually had to sit through` },
         { label: "Avg hold", value: days(h.avgHold) },
       ],
     },
@@ -198,7 +198,7 @@ export default function HeadlineNumbers({ closed, banking = [], openingCapital, 
             rather than warned about a problem they do not have.
           */
           hint: h.riskVaries
-            ? `Most trades risked between ${rupee(h.riskLo)} and ${rupee(h.riskHi)}. ` +
+            ? `Most trades risked between ${money(h.riskLo)} and ${money(h.riskHi)}. ` +
               `1R has grown with the account, so a +2R early on and a +2R lately ` +
               `are different amounts of money — total R adds them as though they ` +
               `were the same.`

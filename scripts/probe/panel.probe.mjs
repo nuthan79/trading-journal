@@ -24,7 +24,7 @@ test("the headline is one figure and its R, the percentage in the hover", () => 
 
 test("the split under it is a sentence, not 'banked ₹−30.4k'", () => {
   const s = panel();
-  ok(/"Made" : "Lost"\} \$\{rupee\(Math\.abs\(row\.realisedPnl\)\)\} on the \$\{row\.qtyExited\} sold/.test(s));
+  ok(/"Made" : "Lost"\} \$\{money\(Math\.abs\(row\.realisedPnl\)\)\} on the \$\{row\.qtyExited\} sold/.test(s));
   ok(!/banked \{isFinite\(row\.realisedPnl\)/.test(s));
 });
 

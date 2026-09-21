@@ -5,7 +5,7 @@ import { track } from "@/lib/db";
 import { pageEvent } from "@/lib/pageEvents";
 import AvatarChoice from "./AvatarChoice";
 import { Check } from "lucide-react";
-import { rupee, pct } from "@/lib/format";
+import { money, pct } from "@/lib/format";
 import Money from "@/components/Money";
 import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
 

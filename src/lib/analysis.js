@@ -7,7 +7,7 @@ import { FREE_AT_R, POWER_R, POWER_DAYS } from "./path";
 /* The one finding that has to say a rupee figure mid-sentence. Everything
    else here returns numbers and lets the component format them, which is not
    available inside a prose string — see the house rule in CLAUDE.md. */
-import { rupee } from "./format";
+import { money } from "./format";
 import { kellyFromR, nextRiskStep, KELLY_MIN_TRADES } from "./kelly";
 import { hasRealStop } from "./stops";
 
@@ -693,10 +693,10 @@ function riskSizing(closed) {
       [], {
         magnitude: Math.min(100, (ratio - 1) * 20),
         figures: [
-          { value: `${pctOf(current)} · ${rupee(currentAmt)}`, label: "risked on a typical trade" },
-          { value: `${pctOf(k.suggested)} · ${rupee(amtAt(k.suggested))}`,
+          { value: `${pctOf(current)} · ${money(currentAmt)}`, label: "risked on a typical trade" },
+          { value: `${pctOf(k.suggested)} · ${money(amtAt(k.suggested))}`,
             label: "what the record supports", lead: true },
-          { value: `${worstCost.toFixed(1)}% · ${rupee(Math.abs(k.worst) * currentAmt)}`,
+          { value: `${worstCost.toFixed(1)}% · ${money(Math.abs(k.worst) * currentAmt)}`,
             tone: "neg", label: "of the account, on your worst trade at this size" },
         ],
       });
@@ -713,10 +713,10 @@ function riskSizing(closed) {
       [], {
         magnitude: Math.min(100, (ratio - 1) * 30),
         figures: [
-          { value: `${pctOf(current)} · ${rupee(currentAmt)}`, label: "risked on a typical trade" },
-          { value: `${pctOf(k.suggested)} · ${rupee(amtAt(k.suggested))}`,
+          { value: `${pctOf(current)} · ${money(currentAmt)}`, label: "risked on a typical trade" },
+          { value: `${pctOf(k.suggested)} · ${money(amtAt(k.suggested))}`,
             label: "what the record supports", lead: true },
-          { value: `${k.worst.toFixed(1)}R · ${rupee(Math.abs(k.worst) * currentAmt)}`,
+          { value: `${k.worst.toFixed(1)}R · ${money(Math.abs(k.worst) * currentAmt)}`,
             tone: "neg", label: "worst trade in the book, at today's size" },
         ],
       });
@@ -752,8 +752,8 @@ function riskSizing(closed) {
 
     return F("good", "risk-below-edge",
       "Your edge is good and your risk is small — there is room to size up",
-      `You could comfortably raise risk per trade from ${pctOf(current)} (${rupee(currentAmt)}) ` +
-      `to ${pctOf(step)} (${rupee(amtAt(step))}). ` +
+      `You could comfortably raise risk per trade from ${pctOf(current)} (${money(currentAmt)}) ` +
+      `to ${pctOf(step)} (${money(amtAt(step))}). ` +
       `Always check the market stance before raising it — every figure here comes from trades ` +
       `you have already taken, so it describes your edge in the conditions those trades ` +
       `happened in, and a size increase lands hardest when those change. ` +
@@ -761,14 +761,14 @@ function riskSizing(closed) {
       `why a strong expectancy can still produce a modest annual return: the edge is real, the ` +
       `stake is small. Move in steps and let each one prove itself — at ${pctOf(step)}, a trade ` +
       `like your worst so far (${k.worst.toFixed(1)}R) takes ${worstAtStep.toFixed(1)}% — ` +
-      `${rupee(Math.abs(k.worst) * amtAt(step))} — off the account in one go. That is the figure to be comfortable losing before you think about ` +
+      `${money(Math.abs(k.worst) * amtAt(step))} — off the account in one go. That is the figure to be comfortable losing before you think about ` +
       `the step after this one.`,
       [], {
         magnitude: Math.min(100, (1 - ratio) * 60),
         figures: [
-          { value: `${pctOf(current)} · ${rupee(currentAmt)}`, label: "risked on a typical trade" },
+          { value: `${pctOf(current)} · ${money(currentAmt)}`, label: "risked on a typical trade" },
           /* The number the card exists to recommend. */
-          { value: `${pctOf(step)} · ${rupee(amtAt(step))}`,
+          { value: `${pctOf(step)} · ${money(amtAt(step))}`,
             label: "a comfortable next step", lead: true },
           /* Reads as one sentence with its own value — "1.5% of the account,
              on your worst trade at 0.35%". The old label said "there", which
@@ -776,7 +776,7 @@ function riskSizing(closed) {
              before the number meant anything. */
           /* Red on a green card, deliberately: this one is what a bad trade
              costs, and in the card's own green it reads as more good news. */
-          { value: `${worstAtStep.toFixed(1)}% · ${rupee(Math.abs(k.worst) * amtAt(step))}`,
+          { value: `${worstAtStep.toFixed(1)}% · ${money(Math.abs(k.worst) * amtAt(step))}`,
             tone: "neg",
             label: `of the account, on your worst trade at ${pctOf(step)}` },
         ],
@@ -927,7 +927,7 @@ function sizingReflexes(closed) {
       /* The rupee average beside the R, because "+2.96R" and "+1.04R" say
          nothing about which band actually made more money — and on a card
          about position SIZE that is the question being asked. */
-      sub: b.cash == null ? null : rupee(Math.round(b.cash)),
+      sub: b.cash == null ? null : money(Math.round(b.cash)),
       n: b.n,
     })),
     axisNote: distinct
@@ -1731,7 +1731,7 @@ function chargesRecorded(closed) {
 
   const costs = estimate != null
     ? ` On the trades that do record them, charges come to ${(rate * 100).toFixed(2)}% of turnover. ` +
-      `At your own rate the missing ones are worth roughly ${rupee(estimate)} — currently counted as ` +
+      `At your own rate the missing ones are worth roughly ${money(estimate)} — currently counted as ` +
       `profit, in every net figure on the app.`
     : ` What they came to cannot be estimated here, because too few trades record charges to measure ` +
       `a rate from.`;
@@ -1751,7 +1751,7 @@ function chargesRecorded(closed) {
         { value: `${missing.length}`, label: "trades with no charges" },
         { value: `${pct}%`, label: "of trades have them recorded" },
         ...(estimate != null
-          ? [{ value: rupee(estimate), label: "counted as profit, roughly" }]
+          ? [{ value: money(estimate), label: "counted as profit, roughly" }]
           : []),
       ],
       /* No chart. One share and one estimate are two numbers, and the figures

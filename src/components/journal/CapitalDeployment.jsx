@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { deploymentSeries, DEPLOY_BANDS } from "@/lib/deployment";
-import { rupee, pct, signedPct, dmy } from "@/lib/format";
+import { money, pct, signedPct, dmy } from "@/lib/format";
 import Money from "@/components/Money";
 import { annualisedReturn, returnQuality, indexReturn } from "@/lib/calc";
 import { apiFetch } from "@/lib/db";
@@ -139,10 +139,10 @@ function axisMoney(v) {
   const unit = Math.abs(v) >= 1e7 ? 1e7 : 1e5;
   for (let d = 0; d <= 2; d++) {
     if (Math.abs(Number((v / unit).toFixed(d)) * unit - v) < unit * 1e-6) {
-      return rupee(v, { decimals: d });
+      return money(v, { decimals: d });
     }
   }
-  return rupee(v, { decimals: 2 });
+  return money(v, { decimals: 2 });
 }
 
 /**
@@ -617,9 +617,9 @@ export default function CapitalDeployment({ all = [], accountSize = 0, flows = [
           {hovDay ? (
             <>
               <b>{dmy(hovDay.d)}</b>
-              <span>{rupee(hovDay.deployed)} committed · {pct(hovDay.pct, 0)} of {rupee(hovDay.capital)}</span>
+              <span>{money(hovDay.deployed)} committed · {pct(hovDay.pct, 0)} of {money(hovDay.capital)}</span>
               <span>{hovDay.count} position{hovDay.count === 1 ? "" : "s"}</span>
-              <span>{rupee(hovDay.risk)} at risk · {pct(hovDay.riskPct, 2)}</span>
+              <span>{money(hovDay.risk)} at risk · {pct(hovDay.riskPct, 2)}</span>
               {/* The only item written label-then-value; every other one leads
                   with its number. Without a gap of its own "Nifty 500 22,928"
                   runs together as one four-part number, so the value is spaced
@@ -775,9 +775,9 @@ export default function CapitalDeployment({ all = [], accountSize = 0, flows = [
               {mHovM ? (
                 <>
                   <b>{monthName(mHovM.key)}</b>
-                  <span>{rupee(mHovM.avgDeployed)} average · {pct(mHovM.avgPct, 0)} of capital</span>
+                  <span>{money(mHovM.avgDeployed)} average · {pct(mHovM.avgPct, 0)} of capital</span>
                   <span>{mHovM.avgCount.toFixed(1)} positions, most {mHovM.maxCount}</span>
-                  <span>{rupee(mHovM.minDeployed)} to {rupee(mHovM.maxDeployed)} across the month</span>
+                  <span>{money(mHovM.minDeployed)} to {money(mHovM.maxDeployed)} across the month</span>
                   <span>{pct(mHovM.avgRiskPct, 2)} at risk</span>
                 </>
               ) : (

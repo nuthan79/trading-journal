@@ -13,6 +13,8 @@ import {
   signUpWithPassword, signInWithGoogle,
   sendPasswordReset, avatarUrl, trackVisit, setAnalyticsFlag, setDemoPinned } from "@/lib/db";
 import { stats } from "@/lib/calc";
+import { setActiveRegion } from "@/lib/format";
+import { currentRegion } from "@/lib/regions";
 import { derivePosition, isOpen, isPartial } from "@/lib/positions";
 import { mtfPrefs } from "@/lib/mtf";
 import FirstRun from "@/components/journal/FirstRun";
@@ -452,6 +454,18 @@ export default function AppLayout({ children }) {
      each trade before it is derived, because the calculation only ever sees a
      trade. Defaults when the profile has none, so nothing changes until the
      user changes it, and nothing breaks before migration 050. */
+  /**
+   * WHICH BOOK IS BEING READ, told to the formatters once.
+   *
+   * Every money figure asks `lib/format.js` how to write itself, and it
+   * answers in the active book's currency — see the note there for why that is
+   * one setting rather than an argument in 142 places. Set during render,
+   * before anything below it formats a figure, and `currentRegion` answers IN
+   * for a profile that has never heard of regions, which is every profile
+   * today.
+   */
+  setActiveRegion(currentRegion(profile));
+
   const mtf = useMemo(() => mtfPrefs(profile),
     [profile?.mtf_pledge_fee, profile?.mtf_unpledge_fee, profile?.mtf_in_pnl]);
 

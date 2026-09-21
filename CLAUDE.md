@@ -271,11 +271,20 @@ net P&L, not a tile. Blending needs an FX rate on every figure, and then a
 finished Indian trade's P&L moves when the dollar does — which is false. R and
 win rate are ratios and are the honest cross-market comparison.
 
+**`money()` follows the book; `rupee()` is always rupees.** `format.js` holds
+one active region, set by the app layout from the profile — not threaded
+through the 142 call sites, because a missed one prints dollars with a rupee
+sign and nothing on screen says so. A region is a separate book, so everything
+rendered at one moment shares a currency, which is what makes one module-level
+answer right. `money`/`amount`/`exact`/`moneyParts`/`moneyTitle` and `<Money>`
+all follow it; `rupee()` stays for India's own subject matter — statutory
+rates, broker presets, the ₹18 pledge fee, the learn pages. Ladders live in
+`LADDERS`: k/L/Cr/Lakh Cr for India, K/M/B/T for the US.
+
 Phases: 1 data model and regions.js (done) · 2 currency-aware `format.js`
-across 142 money call sites and 164 ₹ literals, pinned by an "India is
-unchanged" probe · 3 US symbols and quotes · 4 US charges and calendar-year
-fiscal · 5 the switch and per-region filtering · 6 US broker imports, each
-against a real file.
+(done; `currency.probe.mjs` pins India's exact strings) · 3 US symbols and
+quotes · 4 US charges and calendar-year fiscal · 5 the switch and per-region
+filtering · 6 US broker imports, each against a real file.
 
 ## Conventions
 

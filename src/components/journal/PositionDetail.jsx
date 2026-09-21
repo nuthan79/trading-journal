@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Pencil, Trash2, X, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, LogOut, ImagePlus, Flag, Check } from "lucide-react";
-import { rupee, rfmt, pct, signedPct, today } from "@/lib/format";
+import { money, rfmt, pct, signedPct, today } from "@/lib/format";
 import { isMtf } from "@/lib/mtf";
 import Money from "@/components/Money";
 import { chartUrl } from "@/lib/db";
@@ -233,7 +233,7 @@ export default function PositionDetail({ row, diary = [], twin = null, onAcknowl
   const atRiskNow = () => {
     if (!isFinite(row.stop)) return stat("At risk now", "Unknown", "no stop recorded");
     if (row.openRiskAmt > 0) {
-      return stat("At risk now", rupee(row.openRiskAmt),
+      return stat("At risk now", money(row.openRiskAmt),
         row.breakevenBroken
           ? <span className="pd-warn">you marked breakeven, but the price has been below entry — check your stop</span>
           : row.isRiskFree ? "if the stop is hit — covered by what is banked" : "if the stop is hit");
@@ -368,7 +368,7 @@ export default function PositionDetail({ row, diary = [], twin = null, onAcknowl
             <div className={`pd-big mono ${row.pnl >= 0 ? "pos" : "neg"}`}
                  title={isFinite(row.pnl) && row.exposure > 0
                    ? `${signedPct((row.pnl / row.exposure) * 100)} of what the position cost` : undefined}>
-              {isFinite(row.pnl) ? rupee(row.pnl) : "—"}
+              {isFinite(row.pnl) ? money(row.pnl) : "—"}
               {isFinite(row.r) && <i>{rfmt(row.r)}</i>}
             </div>
 
@@ -376,13 +376,13 @@ export default function PositionDetail({ row, diary = [], twin = null, onAcknowl
                 asked the reader to decode a negative bank balance. */}
             <div className="pd-split">
               {closed
-                ? `After ${rupee(row.charges)} of charges`
-                  + (row.margin > 0 && row.marginInPnl !== false ? ` and ${rupee(row.margin)} MTF` : "")
+                ? `After ${money(row.charges)} of charges`
+                  + (row.margin > 0 && row.marginInPnl !== false ? ` and ${money(row.margin)} MTF` : "")
                 : [
                     row.qtyExited > 0 && isFinite(row.realisedPnl) &&
-                      `${row.realisedPnl >= 0 ? "Made" : "Lost"} ${rupee(Math.abs(row.realisedPnl))} on the ${row.qtyExited} sold`,
+                      `${row.realisedPnl >= 0 ? "Made" : "Lost"} ${money(Math.abs(row.realisedPnl))} on the ${row.qtyExited} sold`,
                     row.qtyOpen > 0 && (isFinite(row.unrealisedPnl)
-                      ? `${row.unrealisedPnl >= 0 ? "up" : "down"} ${rupee(Math.abs(row.unrealisedPnl))} on the ${row.qtyOpen} still held`
+                      ? `${row.unrealisedPnl >= 0 ? "up" : "down"} ${money(Math.abs(row.unrealisedPnl))} on the ${row.qtyOpen} still held`
                       : `no price yet on the ${row.qtyOpen} still held`),
                   ].filter(Boolean).join(" · ").replace(/^./, (c) => c.toUpperCase())}
             </div>
@@ -404,11 +404,11 @@ export default function PositionDetail({ row, diary = [], twin = null, onAcknowl
                 ? "assumed, not set"
                 : isFinite(row.slPct) ? `${pct(row.slPct)} ${dir > 0 ? "below" : "above"} entry` : "none recorded")}
             {stat("Risked",
-              isFinite(row.riskAmt) ? rupee(row.riskAmt) : "—",
+              isFinite(row.riskAmt) ? money(row.riskAmt) : "—",
               isFinite(row.riskAmt)
                 ? `${isFinite(row.riskPct) ? `${pct(row.riskPct, 2)} of account · ` : ""}this is 1R`
                 : "needs a stop")}
-            {stat("Position", isFinite(row.exposure) ? rupee(row.exposure) : "—", "what it cost")}
+            {stat("Position", isFinite(row.exposure) ? money(row.exposure) : "—", "what it cost")}
 
             <div className="pd-row-l">{closed ? "How it ended" : "Where it stands"}</div>
             {closed
@@ -429,7 +429,7 @@ export default function PositionDetail({ row, diary = [], twin = null, onAcknowl
                   isFinite(row.pnl) && row.exposure > 0
                     ? `${signedPct((row.pnl / row.exposure) * 100)} of what it cost` : null)
               : atRiskNow()}
-            {stat("Charges", isFinite(row.charges) ? rupee(row.charges) : "—",
+            {stat("Charges", isFinite(row.charges) ? money(row.charges) : "—",
               isFinite(row.exposure) && row.exposure > 0
                 ? `${pct((row.charges / row.exposure) * 100, 2)} of position` : null)}
           </div>
@@ -503,7 +503,7 @@ export default function PositionDetail({ row, diary = [], twin = null, onAcknowl
                     </td>
                     <td className="num pd-dim">—</td>
                     <td className={`num ${row.unrealisedPnl >= 0 ? "pos" : "neg"}`}>
-                      {isFinite(row.unrealisedPnl) ? rupee(row.unrealisedPnl) : "—"}
+                      {isFinite(row.unrealisedPnl) ? money(row.unrealisedPnl) : "—"}
                       {isFinite(row.mark) && (
                         <i className="pd-dim">at {rfmt(atR(Number(row.mark)))}</i>
                       )}
@@ -518,9 +518,9 @@ export default function PositionDetail({ row, diary = [], twin = null, onAcknowl
                   <td>Position</td>
                   <td className="num pd-dim">—</td>
                   <td className="num">{qty}</td>
-                  <td className="num">{isFinite(row.charges) ? rupee(row.charges) : "—"}</td>
+                  <td className="num">{isFinite(row.charges) ? money(row.charges) : "—"}</td>
                   <td className={`num ${row.pnl >= 0 ? "pos" : "neg"}`}>
-                    {isFinite(row.pnl) ? rupee(row.pnl) : "—"}
+                    {isFinite(row.pnl) ? money(row.pnl) : "—"}
                     {isFinite(row.r) && <i className="pd-dim">{rfmt(row.r)} overall</i>}
                   </td>
                 </tr>
@@ -539,7 +539,7 @@ export default function PositionDetail({ row, diary = [], twin = null, onAcknowl
             <p className="pd-mtf">
               <b>MTF</b> {Number(row.mtf_leverage)}× at ₹{Number(row.mtf_rate)} per lakh a day
               {row.margin > 0 && (
-                <> · <b>{rupee(row.margin)}</b> so far, {row.marginInPnl !== false
+                <> · <b>{money(row.margin)}</b> so far, {row.marginInPnl !== false
                   ? "deducted from the P&L above"
                   : "not deducted from the P&L above"}</>
               )}

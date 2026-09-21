@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { byPeriod } from "@/lib/calc";
-import { rupee, rfmt, pct, signedPct } from "@/lib/format";
+import { money, rfmt, pct, signedPct } from "@/lib/format";
 import Money from "@/components/Money";
 
 /**
@@ -19,7 +19,7 @@ import Money from "@/components/Money";
  */
 
 /** Every rupee of it — for the hovers, where the point is the exact figure. */
-const full = (v) => rupee(v, { compact: false });
+const full = (v) => money(v, { compact: false });
 
 /* What a period's P&L is net of. MTF costs are named beside charges and added
    back into the "before" figure — leaving them out would make that figure

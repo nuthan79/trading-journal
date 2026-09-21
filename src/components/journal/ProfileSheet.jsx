@@ -7,7 +7,7 @@ import {
   exportEverything, signOutEverywhere, deleteMyAccount,
   saveNominee, setAnalyticsOptOut, setDemoPinned,
 } from "@/lib/db";
-import { rupee, today } from "@/lib/format";
+import { money, today } from "@/lib/format";
 import { MIN_PASSWORD } from "@/lib/password";
 import { RevealToggle, pwType } from "@/components/PasswordEye";
 import AvatarChoice from "./AvatarChoice";
@@ -685,7 +685,7 @@ export default function ProfileSheet({ profile, avatar, counts, onClose, onlyPas
               <div className="pf-card">
                 {row("Signed in as", email || "—")}
                 {row("Member since", joined ? fmtDate(joined) : "—")}
-                {row("Account size", rupee(profile?.account_size))}
+                {row("Account size", money(profile?.account_size))}
                 {row("Default risk", `${profile?.default_risk_pct ?? "—"}%`)}
                 {row("Trades logged", `${counts?.total ?? 0}`)}
               </div>

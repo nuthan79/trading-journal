@@ -5,7 +5,7 @@ import { ChevronDown } from "lucide-react";
 import { apiFetch, track } from "@/lib/db";
 import { reviewFindings, reviewThesis, recentBook } from "@/lib/analysis";
 import { classifyRegime, regimeIndex, REGIME_LABEL } from "@/lib/market";
-import { signedPct, rupee } from "@/lib/format";
+import { signedPct, money } from "@/lib/format";
 import Money from "@/components/Money";
 import Link from "next/link";
 import { setupGaps } from "@/lib/gaps";
@@ -575,10 +575,10 @@ function SeriesChart({ data, color }) {
         <>
           <line x1={W - PAD_R} x2={W - PAD_R} y1={TOP - 2} y2={BASE} stroke="var(--rule)" />
           <text x={W - PAD_R + 7} y={TOP + 4} className="rv-chart-lbl">
-            {rupee(Math.round(hi * data.rupeeAxis.perPct))}
+            {money(Math.round(hi * data.rupeeAxis.perPct))}
           </text>
           <text x={W - PAD_R + 7} y={BASE + 4} className="rv-chart-lbl">
-            {rupee(0)}
+            {money(0)}
           </text>
         </>
       )}
@@ -645,7 +645,7 @@ function SeriesChart({ data, color }) {
                     fill="transparent" pointerEvents="all">
                 <title>
                   {`${q.label} · ${q.value.toFixed(2)}${data.unit} per trade` +
-                   (q.amount != null ? ` · ${rupee(q.amount)} average` : "")}
+                   (q.amount != null ? ` · ${money(q.amount)} average` : "")}
                 </title>
               </rect>
             ))}
@@ -875,7 +875,7 @@ function ProcessMap({ data, week }) {
           <>
             The bottleneck is <em>{bottleneck.name.toLowerCase()}</em>. It has cost you{" "}
             {Math.abs(bottleneck.costR)}R
-            {/* rupee() emits "₹8.26 L" — one value, one space, and on a narrow
+            {/* money() emits "₹8.26 L" — one value, one space, and on a narrow
                 screen the headline broke the line between the number and its
                 tier. */}
             {bottleneck.costRupees

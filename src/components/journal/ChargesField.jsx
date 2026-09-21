@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { RotateCcw, ChevronDown } from "lucide-react";
 import { tradeCharges, entryCharges, CHARGE_LABELS } from "@/lib/charges";
-import { rupee } from "@/lib/format";
+import { money } from "@/lib/format";
 import Money from "@/components/Money";
 
 /* A charge is money: two decimals, never a float's tail in the box. */

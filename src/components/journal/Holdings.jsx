@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { RefreshCw, Flag, Rocket, CornerDownRight, Download } from "lucide-react";
-import { rupee, rfmt, pct, signedPct, moneyParts, exportFilename,
+import { money, rfmt, pct, signedPct, moneyParts, exportFilename,
          monthShort, dmy } from "@/lib/format";
 import { COLUMN_HINTS } from "@/lib/columns";
 import { useColumnPrefs } from "@/lib/useColumnPrefs";
@@ -94,7 +94,7 @@ const RISK_WARN_R = 5;
  * that changes between one visit and the next, and the only one somebody
  * checks against what their broker app is showing them this morning. "−₹10.9k"
  * cannot be checked against anything. The other four are aggregates nobody
- * reconciles to the rupee, and "₹10.92 L" is the faster read for those.
+ * reconciles to the money, and "₹10.92 L" is the faster read for those.
  *
  * The paise are set smaller and dimmer. At this length one uniform size makes
  * the eye stop on the wrong group of digits; the rupees are what is being read
@@ -880,7 +880,7 @@ export default function Holdings({
             <div className={`ps-sum-v mono ${totals.unknownCount === rows.length && rows.length ? "ps-dim" : "neg"}`}>
               {totals.unknownCount === rows.length && rows.length
                 ? "—"
-                : rupee(-Math.abs(totals.openRisk))}
+                : money(-Math.abs(totals.openRisk))}
             </div>
             <div className="ps-sum-s mono">
               {/* Counts only what the figure above actually covers. Saying
@@ -941,9 +941,9 @@ export default function Holdings({
                version of that figure, and the one that changes decisions: a
                position going nowhere on MTF is paying for the privilege. Only
                when something open is on margin. */
-            foot={totals.mtfN > 0 ? `−${rupee(totals.mtfPerDay)}` : null}
+            foot={totals.mtfN > 0 ? `−${money(totals.mtfPerDay)}` : null}
             footLabel={totals.mtfN > 0
-              ? `MTF a day · ${rupee(totals.mtfSoFar)} so far`
+              ? `MTF a day · ${money(totals.mtfSoFar)} so far`
               : undefined}
           />
           {/* Ordered by how close each figure is to right now: today, then
@@ -967,7 +967,7 @@ export default function Holdings({
             /* No line at all when nothing has been sold down. A rule under a
                ₹0 is a reading somebody has to make, and there is nothing to
                read. */
-            foot={totals.bankedFrom > 0 ? rupee(totals.banked) : null}
+            foot={totals.bankedFrom > 0 ? money(totals.banked) : null}
             footLabel="banked"
           />
           <Summary
@@ -1216,7 +1216,7 @@ export default function Holdings({
                       title={r.unknownRisk
                         ? "No stop recorded, so there is no risk figure — not a risk of zero. Set a stop and this fills in."
                         : undefined}>
-                    {r.unknownRisk ? "—" : riskFree ? "0" : rupee(-Math.abs(r.openRiskAmt))}
+                    {r.unknownRisk ? "—" : riskFree ? "0" : money(-Math.abs(r.openRiskAmt))}
                   </td>
                   )}
                   {show("netRiskR") && (
@@ -1266,12 +1266,12 @@ export default function Holdings({
                   )}
                   {show("realisedPnl") && (
                   <td className={`num ${r.realisedPnl >= 0 ? "pos" : "neg"}`}>
-                    {isFinite(r.realisedPnl) && r.qtyExited > 0 ? rupee(r.realisedPnl) : <span className="ps-dim">—</span>}
+                    {isFinite(r.realisedPnl) && r.qtyExited > 0 ? money(r.realisedPnl) : <span className="ps-dim">—</span>}
                   </td>
                   )}
                   {show("unrealisedPnl") && (
                   <td className={`num ${r.unrealisedPnl >= 0 ? "pos" : "neg"}`} style={{ fontWeight: 500 }}>
-                    {isFinite(r.unrealisedPnl) ? rupee(r.unrealisedPnl) : "—"}
+                    {isFinite(r.unrealisedPnl) ? money(r.unrealisedPnl) : "—"}
                   </td>
                   )}
                   {show("atR") && (
@@ -1291,7 +1291,7 @@ export default function Holdings({
                   <td className="num" style={{ fontSize: 12, color: "var(--ink2)" }}>
                     {Number(r.margin) > 0
                       ? <Money v={r.margin} note={`MTF so far — interest to today with the pledge fee${
-                          r.marginPerDay > 0 ? `. Another ${rupee(r.marginPerDay)} a day while you hold` : ""}`} />
+                          r.marginPerDay > 0 ? `. Another ${money(r.marginPerDay)} a day while you hold` : ""}`} />
                       : r.interestUnknown
                       ? <span title="Interest not counted — the entry date was estimated">—</span>
                       : "—"}

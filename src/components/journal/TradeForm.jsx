@@ -5,7 +5,7 @@ import { X, Check, Plus, ChevronDown } from "lucide-react";
 import SymbolSearch from "@/components/SymbolSearch";
 import ChargesField from "./ChargesField";
 import { derivePosition } from "@/lib/positions";
-import { rupee, pct, rfmt, signedPct, today } from "@/lib/format";
+import { money, pct, rfmt, signedPct, today } from "@/lib/format";
 import { mtfFigures, isMtf, annualPct } from "@/lib/mtf";
 import Money from "@/components/Money";
 import {
@@ -696,7 +696,7 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
     ? "Needs the leverage and the interest rate"
     : `${t.mtf_leverage}× · ₹${t.mtf_rate} per lakh a day`
       + (mtf && isFinite(mtf.cost)
-        ? ` · ${rupee(mtf.cost)} so far${isFinite(mtf.costR) ? ` (${Math.abs(mtf.costR).toFixed(2)}R)` : ""}`
+        ? ` · ${money(mtf.cost)} so far${isFinite(mtf.costR) ? ` (${Math.abs(mtf.costR).toFixed(2)}R)` : ""}`
         : "");
 
   /* Ticking MTF fills in the saved rate — the broker's charge rarely changes
@@ -859,7 +859,7 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                             : !isMtf(t.mtf_leverage)
                             ? "Must be above 1× — at 1× nothing is borrowed."
                             : mtf
-                            ? `Your ${rupee(mtf.own)} + broker's ${rupee(mtf.funded)} = ${rupee(mtf.position)}`
+                            ? `Your ${money(mtf.own)} + broker's ${money(mtf.funded)} = ${money(mtf.position)}`
                               + (num(t.mtf_leverage) > 7 ? " — unusually high, worth checking" : "")
                             : "Add entry price and quantity to see the split"}
                         </div></label>
@@ -886,13 +886,13 @@ export default function TradeForm({ initial, accountSize, defaultRiskPct, charge
                       <div className="tf-mtf">
                         {mtf.openQty > 0 && (
                           <div className="tf-mtf-cell">
-                            <b className="mono">{rupee(mtf.perDayNow)}</b>
+                            <b className="mono">{money(mtf.perDayNow)}</b>
                             <span>interest per day</span>
                           </div>
                         )}
                         <div className="tf-mtf-cell"
                              title={isFinite(mtf.cost) ? undefined : mtf.why}>
-                          <b className="mono">{isFinite(mtf.cost) ? rupee(mtf.cost) : "—"}</b>
+                          <b className="mono">{isFinite(mtf.cost) ? money(mtf.cost) : "—"}</b>
                           <span>
                             {!isFinite(mtf.cost)
                               ? mtf.why

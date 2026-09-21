@@ -5,7 +5,7 @@ import Link from "next/link";
 import { dimensionRows, DIMENSIONS, maxAbsTotalR, isThin, NOT_RECORDED, edgeHref } from "@/lib/edge";
 import { mistakeCost, outcomeTagCounts } from "@/lib/analysis";
 import { isExecutionError } from "@/lib/constants";
-import { rupee, rfmt, pct } from "@/lib/format";
+import { money, rfmt, pct } from "@/lib/format";
 import Money from "@/components/Money";
 
 /*

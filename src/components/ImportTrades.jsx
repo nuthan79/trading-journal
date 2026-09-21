@@ -14,7 +14,7 @@ import { toHoldingRows, dateCaveat } from "@/lib/holdings";
 import { toJournalRows, journalSummary } from "@/lib/journalImport";
 import { matchFifo, openPositions, datesForHeldPositions } from "@/lib/tradebook";
 import { buildReport } from "@/lib/importReport";
-import { rupee, pct } from "@/lib/format";
+import { money, pct } from "@/lib/format";
 import Money from "@/components/Money";
 
 /**
@@ -1445,7 +1445,7 @@ export default function ImportTrades({
                   {t.exit_price == null ? "—" : Number(t.exit_price).toFixed(2)}
                 </td>
                 {/* Net profit is unknown until a position is closed, and
-                    `rupee(undefined)` renders an em dash rather than a zero —
+                    `money(undefined)` renders an em dash rather than a zero —
                     but the tone class would still have coloured it red. */}
                 {/* Nothing sold, nothing realised. The journal's own Net
                     Profit column carries the entry charge on an unsold
@@ -1454,7 +1454,7 @@ export default function ImportTrades({
                 <td className={`num ${!isFinite(t._preview.netProfit) || !t.exits?.length ? "im-dim"
                   : t._preview.netProfit >= 0 ? "pos" : "neg"}`}>
                   {isFinite(t._preview.netProfit) && t.exits?.length
-                    ? rupee(t._preview.netProfit) : "—"}
+                    ? money(t._preview.netProfit) : "—"}
                 </td>
                 {/* Hardcoded to a dash back when a tax report could only ever
                     produce a stopless trade. Left that way it now contradicts

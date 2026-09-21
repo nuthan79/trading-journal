@@ -18,7 +18,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, X, RotateCcw, Eye } from "lucide-react";
-import { rupee, rfmt, dmy, pct } from "@/lib/format";
+import { money, rfmt, dmy, pct } from "@/lib/format";
 import { chartUrl, apiFetch, listDrillCards, saveDrillSession } from "@/lib/db";
 import { eligible, buildDeck, deckHealth, score, verdict, reveal,
          MIN_CALLS, STALE_DAYS } from "@/lib/drill";
@@ -220,7 +220,7 @@ export default function ChartDrill({ trades = [], diary = [] }) {
           <div className="cd-out" data-won={r.won ? 1 : 0}>
             <b>{card.trade.symbol}</b>
             <span className="mono">{dmy(card.trade.entry_date)} → {dmy(card.trade.exit_date)}</span>
-            <span className="mono cd-pnl">{isFinite(r.pnl) ? rupee(r.pnl) : "—"}</span>
+            <span className="mono cd-pnl">{isFinite(r.pnl) ? money(r.pnl) : "—"}</span>
             <span className="mono">{rfmt(r.r, 1)}</span>
             {isFinite(r.heldDays) && <span className="mono">{Math.round(r.heldDays)}d</span>}
             {r.exitReason && <span className="cd-reason">{r.exitReason}</span>}
