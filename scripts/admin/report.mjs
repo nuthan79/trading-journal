@@ -101,7 +101,7 @@ export function excluding(data, emails = []) {
 }
 
 export function people(data, now = Date.now()) {
-  const { users, profiles = [], events, trades, diary } = data;
+  const { users, profiles = [], events, trades, diary, access = [] } = data;
   const byId = new Map(profiles.map((p) => [p.id, p]));
   const from30 = istDayBack(now, 29);
 
@@ -135,6 +135,14 @@ export function people(data, now = Date.now()) {
       trades: myTrades.length,
       diary: diary.filter((d) => d.user_id === u.id).length,
       imports: mine.filter((e) => e.event === "imported").length,
+      /* Which paid markets are open to them, and until when. India is free
+         and never appears here — a row is a market that was sold. */
+      markets: access.filter((a) => a.user_id === u.id)
+        .filter((a) => !a.expires_at || new Date(a.expires_at).getTime() > now)
+        .map((a) => `${a.region}${a.expires_at ? ` to ${String(a.expires_at).slice(0, 10)}` : ""}`),
+      lapsed: access.filter((a) => a.user_id === u.id)
+        .filter((a) => a.expires_at && new Date(a.expires_at).getTime() <= now)
+        .map((a) => a.region),
       optedOut: !!p.analytics_opt_out,
     };
   }).sort((a, b) => b.activeDays30 - a.activeDays30
@@ -186,6 +194,9 @@ export function buildReport(raw, now = Date.now(), { exclude = [] } = {}) {
 
   return {
     generatedAt: new Date(now).toISOString(),
+    /* Sold access at a glance: who holds it, and whose has run out. */
+    paid: list.filter((p) => p.markets.length),
+    lapsedAccess: list.filter((p) => p.lapsed.length && !p.markets.length),
     excluded,
     liveMinutes: LIVE_MINUTES,
     live,

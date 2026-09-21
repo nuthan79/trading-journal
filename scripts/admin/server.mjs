@@ -91,17 +91,21 @@ async function users() {
 }
 
 async function collect() {
-  const [u, profiles, events, trades, diary] = await Promise.all([
+  const [u, profiles, events, trades, diary, access] = await Promise.all([
     users(),
-    table("profiles", "id,journal_name,onboarded_at,analytics_opt_out,created_at"),
+    table("profiles", "id,journal_name,onboarded_at,analytics_opt_out,created_at,region"),
     table("user_events", "user_id,event,created_at"),
-    table("trades", "user_id,created_at"),
+    table("trades", "user_id,created_at,region"),
     table("diary_entries", "user_id,created_at"),
+    /* Empty on a database where migration 053 has not run — which means
+       India only, which is the free tier. */
+    table("region_access", "user_id,region,expires_at,note").catch(() => []),
   ]);
   /* Your own logins, out of the figures. Kept in .env.local, not here: the
      repo is public and these are your addresses. */
   const exclude = (env("ADMIN_EXCLUDE") || "").split(",").map((e) => e.trim()).filter(Boolean);
-  return buildReport({ users: u, profiles, events, trades, diary }, Date.now(), { exclude });
+  return buildReport({ users: u, profiles, events, trades, diary, access },
+                     Date.now(), { exclude });
 }
 
 const port = Number(process.argv[2]) || 7788;

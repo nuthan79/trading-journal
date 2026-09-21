@@ -310,11 +310,23 @@ it is not IN, so saves still work before migration 052. The sample book is
 Indian and is not dealt into a US journal; MTF is absent where `hasMtf` is
 false; Import says US files are not read yet rather than mangling one.
 
+**Access to a market is sold; India is free.** `region_access` (migration
+053) says who may WRITE where — read-your-own, and NO write policy at all, so
+only the service role grants it. It is a table and not a profile column
+because `own_profile` is `for all`: a user may update any column of their own
+row, so an entitlement there is one they can grant themselves. The trades and
+capital_flows policies are `as restrictive` with `using (true)` — permissive
+policies are OR-ed, so a second one would have granted rather than limited.
+`has_region()` answers true for IN without consulting the table. **Writes
+blocked, reads kept**: a lapsed book stays readable, because those are the
+user's own trades. `lib/entitlements.js` is only the polite half — it keeps
+the app from offering a Save the database would refuse.
+
 Phases: 1 data model and regions.js (done) · 2 currency-aware `format.js`
 (done; `currency.probe.mjs` pins India's exact strings) · 3 US symbols and
 quotes (done; `usmarket.probe.mjs`) · 4 US charges and calendar-year fiscal
 (done; `uscharges.probe.mjs`) · 5 the switch and per-region filtering (done;
-`bookswitch.probe.mjs`) · 6 US broker imports, each against a real file.
+`bookswitch.probe.mjs`) · 6 US broker imports, each against a real file. Paid access to a market landed alongside Phase 5; pricing copy has not.
 
 ## Conventions
 

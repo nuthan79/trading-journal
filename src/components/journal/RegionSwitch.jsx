@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Check } from "lucide-react";
+import { ChevronDown, Check, Lock } from "lucide-react";
 import { REGIONS } from "@/lib/regions";
 
 /**
@@ -20,7 +20,16 @@ import { REGIONS } from "@/lib/regions";
  * The choice is remembered on the profile, so the market you were last
  * reading is the one that opens on your phone.
  */
-export default function RegionSwitch({ value, onChange }) {
+/**
+ * A MARKET YOU CANNOT WRITE IN IS STILL SHOWN, with a lock.
+ *
+ * Hiding it would be the obvious thing and the wrong one: a market nobody
+ * can see is a market nobody asks for. The lock says there is something here
+ * and it is not yours yet, which is a sentence somebody can act on. Opening
+ * it still works — the book is readable; it is adding to it that needs
+ * access, and the page says so.
+ */
+export default function RegionSwitch({ value, onChange, markets }) {
   const [open, setOpen] = useState(false);
   const box = useRef(null);
 
@@ -36,7 +45,8 @@ export default function RegionSwitch({ value, onChange }) {
     };
   }, [open]);
 
-  const current = REGIONS.find((r) => r.id === value) || REGIONS[0];
+  const list = markets?.length ? markets : REGIONS.map((r) => ({ ...r, state: "open" }));
+  const current = list.find((r) => r.id === value) || list[0];
 
   return (
     <div className="rs" ref={box}>
@@ -50,11 +60,13 @@ export default function RegionSwitch({ value, onChange }) {
 
       {open && (
         <div className="rs-menu" role="listbox">
-          {REGIONS.map((r) => (
+          {list.map((r) => (
             <button key={r.id} role="option" aria-selected={r.id === value}
                     onClick={() => { setOpen(false); onChange?.(r.id); }}>
               <b>{r.sign}</b>
               <span>{r.label}</span>
+              {r.state === "locked" && <i title="Read-only — logging trades here needs access"><Lock size={12} />read-only</i>}
+              {r.state === "expired" && <i title="Access ended — the book is still readable">ended</i>}
               {r.id === value && <Check size={13} />}
             </button>
           ))}
@@ -87,6 +99,11 @@ export default function RegionSwitch({ value, onChange }) {
         .rs-menu button:hover { background: var(--bg); }
         .rs-menu button b { color: var(--brass); width: 12px; }
         .rs-menu button span { flex: 1; }
+        .rs-menu button i {
+          display: inline-flex; align-items: center; gap: 4px; font-style: normal;
+          font-size: 10.5px; letter-spacing: .04em; color: var(--ink3);
+          border: 1px solid var(--rule); border-radius: 2px; padding: 1px 5px;
+        }
         .rs-menu p {
           margin: 4px 6px 6px; padding-top: 8px; border-top: 1px solid var(--rule);
           font-size: 11px; line-height: 1.5; color: var(--ink3);

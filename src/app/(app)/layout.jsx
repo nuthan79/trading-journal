@@ -11,12 +11,14 @@ import {
   listFlows, listFilters, saveFilter, deleteFilter,
   markOpenPositions, signInWithPassword, signOut,
   signUpWithPassword, signInWithGoogle,
-  sendPasswordReset, avatarUrl, trackVisit, setAnalyticsFlag, setDemoPinned } from "@/lib/db";
+  sendPasswordReset, avatarUrl, trackVisit, setAnalyticsFlag, setDemoPinned,
+  listRegionAccess } from "@/lib/db";
 import { stats } from "@/lib/calc";
 import { setActiveRegion } from "@/lib/format";
 import { currentRegion, regionOf, regionSettings, region as regionInfo,
          REGIONS, DEFAULT_REGION } from "@/lib/regions";
 import { SHOW_REGIONS } from "@/lib/flags";
+import { canWrite, accessState, accessFor } from "@/lib/entitlements";
 import { derivePosition, isOpen, isPartial } from "@/lib/positions";
 import { mtfPrefs } from "@/lib/mtf";
 import FirstRun from "@/components/journal/FirstRun";
@@ -295,6 +297,10 @@ export default function AppLayout({ children }) {
   const [exitsByTrade, setExitsByTrade] = useState({});
   const [diary, setDiary] = useState([]);
   const [allFlows, setAllFlows] = useState([]);
+  /* Which markets this user may write in. Empty is the normal answer: India
+     is free and needs no row. The real lock is the policy in migration 053 —
+     this only keeps the app from offering a Save the database would refuse. */
+  const [access, setAccess] = useState([]);
   const [filters, setFilters] = useState([]);
   const [editing, setEditing] = useState(null);
   const [showForm, setShowForm] = useState(false);
@@ -357,19 +363,23 @@ export default function AppLayout({ children }) {
     if (!profile?.onboarded_at) return;
     (async () => {
       try {
-        const [t, d, fl, ex, sv] = await Promise.all([
+        const [t, d, fl, ex, sv, ac] = await Promise.all([
           listTrades(), listDiary(), listFlows(), listExitsByTrade(),
           /* A journal that predates migration 043 has no saved_filters table
              and would fail the whole load on one missing feature. Views are a
              convenience over trades; they are not worth taking the book down
              for, so this one degrades to an empty menu on its own. */
           listFilters().catch(() => []),
+          /* Degrades to "India only", which is the free tier, on any database
+             where migration 053 has not run. */
+          listRegionAccess(),
         ]);
         setAllTrades(t);
         setDiary(d);
         setAllFlows(fl);
         setExitsByTrade(ex);
         setFilters(sv);
+        setAccess(ac);
 
         // A partial still has size running, so it wants a mark like any open one.
         const openNow = t.filter(isOpen);
@@ -417,6 +427,10 @@ export default function AppLayout({ children }) {
    * today.
    */
   setActiveRegion(bookRegion);
+
+  /* Open, expired, or never granted — the three states worth telling apart. */
+  const book = accessState(access, bookRegion);
+  const canWriteHere = canWrite(access, bookRegion);
 
   /* Each book is funded separately — see regionSettings. India keeps the
      columns it always had, so nothing about an Indian journal moves. */
@@ -841,8 +855,16 @@ export default function AppLayout({ children }) {
   };
 
   const openNewTrade = useCallback(() => {
+    /* A book you may read but not add to. The database would refuse the save
+       — see migration 053 — so the form is not opened onto a dead end. */
+    if (!canWriteHere) {
+      say(book.state === "expired"
+        ? `Your access to this market ended. The book stays readable; new trades need it renewed.`
+        : `This market is not open on your account yet. Ask for access and it unlocks here.`);
+      return;
+    }
     setEditing(null); setSelling(false); setShowForm(true);
-  }, []);
+  }, [canWriteHere, book.state, say]);
   /**
    * Refused on a sample trade, and every write path is guarded the same way.
    *
@@ -962,7 +984,7 @@ export default function AppLayout({ children }) {
     <JournalContext.Provider
       value={{
         trades, diary: demo ? demo.diary : diary, flows, profile, accountSize,
-        bookRegion, switchRegion,
+        bookRegion, switchRegion, access, canWriteHere, bookAccess: book,
         /* The user's OWN progress, for the first-week card. `diary` above is
            the sample book's while that is showing, and counting it would tick
            a step the user has not done. */
@@ -1048,7 +1070,8 @@ export default function AppLayout({ children }) {
               {/* Before New trade, because it decides which book that trade
                   lands in. */}
               {SHOW_REGIONS && (
-                <RegionSwitch value={bookRegion} onChange={switchRegion} />
+                <RegionSwitch value={bookRegion} onChange={switchRegion}
+                              markets={accessFor(access, REGIONS)} />
               )}
               <button className="btn" onClick={openNewTrade}>
                 <Plus size={14} />New trade
@@ -1078,6 +1101,17 @@ export default function AppLayout({ children }) {
               <DemoBanner onDismiss={dismissDemo}
                           pinned={demoPinned}
                           hiddenCount={trades.length} />
+            </div>
+          )}
+          {/* A market this account may read and not write. Said once, above
+              whichever screen is open, rather than discovered at the Save
+              button — which is where the database would say it. */}
+          {SHOW_REGIONS && !canWriteHere && (
+            <div className="warn" style={{ marginTop: 16 }}>
+              <b>{regionInfo(bookRegion).label} is read-only on your account.</b>{" "}
+              {book.state === "expired"
+                ? "Your access ended, so this book stays open to read and closed to new trades."
+                : "You can look around; logging trades here needs access."}
             </div>
           )}
           {/* The mirror of it: no sample, and nothing of their own either, so

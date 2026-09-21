@@ -1668,6 +1668,28 @@ export async function renamePattern(from, to) {
   return (data || []).length;
 }
 
+/**
+ * Which markets this user may write in.
+ *
+ * Their own rows only — the policy says so and there is no write policy at
+ * all, so this is a read of something the app cannot change. An empty list is
+ * the normal state: India is free and needs no row.
+ *
+ * A database without migration 053 answers with an error, and that must not
+ * take the journal down with it: an Indian book needs no entitlement, so the
+ * failure degrades to exactly the behaviour there was before this existed.
+ */
+export async function listRegionAccess() {
+  try {
+    const { data, error } = await supabase
+      .from("region_access").select("region,granted_at,expires_at");
+    if (error) throw error;
+    return data || [];
+  } catch {
+    return [];
+  }
+}
+
 export async function saveProfile(patch) {
   const id = await uid();
   const { data, error } = await supabase

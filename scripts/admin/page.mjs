@@ -30,9 +30,11 @@ const rows = (list, kind) => list.length ? list.map((p) => `
     <td class="num">${n(p.activeDays30)}</td>
     <td class="num">${n(p.trades)}</td>
     <td class="num">${n(p.diary)}</td>
+    <td>${p.markets?.length ? esc(p.markets.join(", "))
+          : p.lapsed?.length ? `<i>${esc(p.lapsed.join(", "))} ended</i>` : "—"}</td>
     <td>${esc(day(p.signedUp))}</td>
     <td>${esc(ago(p.daysSinceSeen))}</td>
-  </tr>`).join("") : `<tr><td colspan="7" class="none">Nobody yet — ${esc(kind)}</td></tr>`;
+  </tr>`).join("") : `<tr><td colspan="8" class="none">Nobody yet — ${esc(kind)}</td></tr>`;
 
 const table = (title, note, list, kind) => `
   <section>
@@ -41,7 +43,7 @@ const table = (title, note, list, kind) => `
     <table>
       <thead><tr>
         <th>Ledger</th><th>Email</th><th class="num">Days active (30d)</th>
-        <th class="num">Trades</th><th class="num">Diary</th><th>Signed up</th><th>Last seen</th>
+        <th class="num">Trades</th><th class="num">Diary</th><th>Paid access</th><th>Signed up</th><th>Last seen</th>
       </tr></thead>
       <tbody>${rows(list, kind)}</tbody>
     </table>
@@ -142,6 +144,11 @@ export function render(r) {
   ${r.live.length ? table("In the journal now",
     `Anyone who logged a trade, wrote an entry or opened the app in the last ${r.liveMinutes} minutes.`,
     r.live, "") : ""}
+  ${r.paid.length ? table("Paid access",
+    "Markets sold to these accounts, with the date each runs out. India is free and never appears here.",
+    r.paid, "") : ""}
+  ${r.lapsedAccess.length ? table("Access ended",
+    "Their book stays readable; new trades need it renewed.", r.lapsedAccess, "") : ""}
   ${table("Worth thanking", "Opened the journal on five or more separate days in the last month. These are the people whose habit has actually formed — write to them by name.", r.loyal, "nobody has five active days in the last month yet")}
   ${table("Gone quiet", "Logged trades once and has not been back in a fortnight. A short, specific note here is worth more than any feature.", r.quiet, "nobody has drifted off")}
   ${table("Signed up, never logged a trade", "They made an account and stopped. Whatever happened, it happened before the first trade — the part worth fixing.", r.neverStarted, "everyone who signed up has logged a trade")}
