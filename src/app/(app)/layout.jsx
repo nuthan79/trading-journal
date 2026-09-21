@@ -1167,7 +1167,12 @@ export default function AppLayout({ children }) {
             <div className="hint" style={{ marginTop: 14 }}>
               Shown in rupees at today&apos;s rate, ₹{fx.rate.toFixed(2)} to the dollar —
               what this book is worth to you now, not what each trade made at the time.
-              R is unaffected: it is a ratio.
+              {/* Prices are what the market quotes, and converting them would
+                  invent a number nobody ever dealt at. Said here, because a
+                  table of rupee totals beside a dollar entry price is the one
+                  place this view could be misread. */}
+              {" "}Entry, stop and CMP stay in dollars — that is what you paid and what
+              the market quotes. R is unaffected either way: it is a ratio.
             </div>
           )}
           {unfunded && (

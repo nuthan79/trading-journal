@@ -65,7 +65,9 @@ test("the toggle is offered only where it means something, and says the rate", (
      "the hover says what today's rate can and cannot tell you");
   const layout = read("src/app/(app)/layout.jsx");
   ok(/Shown in rupees at today&apos;s rate/.test(layout), "and the page says it above every screen");
-  ok(/R is unaffected: it is a ratio/.test(layout));
+  ok(/R is unaffected either way: it is a ratio/.test(layout));
+  ok(/Entry, stop and CMP stay in dollars/.test(layout),
+     "converting a price would invent a number nobody dealt at");
   ok(/localStorage\.setItem\("ledgerr:show-as"/.test(layout),
      "remembered per browser: it is how you read, not a fact about the account");
 });
