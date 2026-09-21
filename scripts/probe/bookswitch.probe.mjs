@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, ok, eq } from "./harness.mjs";
-import { regionOf, regionSettings, regionSettingsPatch, hasMtf } from "@/lib/regions";
+import { regionOf, regionSettings, regionSettingsPatch, hasMtf, REGIONS } from "@/lib/regions";
 
 const ROOT = path.resolve(fileURLToPath(new URL("../../", import.meta.url)));
 const read = (p) => readFileSync(path.join(ROOT, p), "utf8");
@@ -118,4 +118,24 @@ test("the first-week card offers Import only where a file can be read", () => {
   ok(/activeRegion\(\) === DEFAULT_REGION && \(\s*<Link href="\/import"/.test(fw),
      "a US book is not sent to a page that tells it no");
   ok(/US broker files are not\s+read yet/.test(fw), "and step one says what to do instead");
+});
+
+/**
+ * FOUND BY TRYING TO SAVE ONE. Every US venue the app can offer must be a
+ * venue the database accepts: `trades.exchange` carried an NSE/BSE check from
+ * the first schema, so the whole US book rendered perfectly and could not
+ * write a row. A screen that renders is not a feature that works.
+ */
+test("every venue the app offers is one the database allows", () => {
+  const sql = read("supabase/054_us_exchanges.sql");
+  const allowed = sql.match(/add constraint trades_exchange_check\s*\n\s*check \(exchange in \(([^)]+)\)\)/)[1]
+    .split(",").map((x) => x.trim().replace(/'/g, ""));
+  for (const r of REGIONS) {
+    for (const e of r.exchanges) ok(allowed.includes(e), `${e} is refused by the check constraint`);
+  }
+  /* The ETF venues the US symbol list carries, which are not in `exchanges`
+     but do arrive on a row when somebody picks SPY. */
+  for (const e of ["ARCA", "BATS", "IEXG"]) ok(allowed.includes(e), `${e} is refused`);
+  ok(/price_bars_exchange_check/.test(sql),
+     "and the bars table too, or the history behind breakeven marks fails in the background");
 });
