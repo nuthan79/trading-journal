@@ -2,11 +2,13 @@
 
 import { useMemo, useState } from "react";
 import { X, Check, Upload, Ruler } from "lucide-react";
-import { BROKER_PRESETS, mergeConfig } from "@/lib/charges";
+import { BROKER_PRESETS, US_BROKER_PRESETS, mergeConfig, mergeUsConfig } from "@/lib/charges";
 import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
 import { mtfPrefs } from "@/lib/mtf";
 import { SHOW_SETUP_TRADES } from "@/lib/flags";
 import OwnSetups from "./OwnSetups";
+import { regionSettings, regionSettingsPatch, hasMtf, region as regionInfo,
+         DEFAULT_REGION } from "@/lib/regions";
 
 // JSON has no Infinity — the "no cap" preset would otherwise round-trip
 // through profiles.charge_config as null, and null reads back as a cap of
@@ -26,8 +28,15 @@ const fromDraftCfg = (cfg) => ({
 });
 
 export default function SettingsSheet({ profile, onSave, onClose, onNavigate,
-                                       needStopsCount = 0, trades = [], onProfileChange }) {
+                                       needStopsCount = 0, trades = [], onProfileChange,
+                                       bookRegion = DEFAULT_REGION }) {
   const persisted = loadDraft(DRAFT_KEYS.settings);
+
+  /* Each book is funded separately: the account size and risk % belong to the
+     market being read, not to the user. India keeps the columns it always
+     had — see regionSettings — so nothing about an Indian journal moves. */
+  const mine = regionSettings(profile, bookRegion);
+  const book = regionInfo(bookRegion);
 
   /* What the MTF settings are now — the profile's, or the defaults a profile
      without them (before migration 050) is calculated with. */
@@ -36,13 +45,19 @@ export default function SettingsSheet({ profile, onSave, onClose, onNavigate,
      existed still opens with them filled in rather than blank. */
   const [s, setS] = useState({
     journal_name: profile.journal_name || "",
-    account_size: String(profile.account_size ?? ""),
-    default_risk_pct: String(profile.default_risk_pct ?? ""),
+    account_size: String(mine.account_size ?? ""),
+    default_risk_pct: String(mine.default_risk_pct ?? ""),
     mtf_in_pnl: mtfNow._mtfInPnl,
     ...(persisted?.s || {}),
   });
+  /* The charge config of THIS book: India's statutory-plus-brokerage shape,
+     or the US commission one. Two different sets of fields, so they cannot
+     share a default. */
   const [cfg, setCfg] = useState(() =>
-    persisted?.cfg ? fromDraftCfg(persisted.cfg) : mergeConfig(profile.charge_config)
+    persisted?.cfg ? fromDraftCfg(persisted.cfg)
+      : bookRegion === DEFAULT_REGION
+        ? mergeConfig(mine.charge_config)
+        : mergeUsConfig(mine.charge_config)
   );
   const [saving, setSaving] = useState(false);
   const set = (k) => (e) => setS((p) => ({ ...p, [k]: e.target.value }));
@@ -51,15 +66,17 @@ export default function SettingsSheet({ profile, onSave, onClose, onNavigate,
   const closeAndClear = () => { clearDraft(); onClose(); };
 
   const presetName = useMemo(() => {
-    for (const [name, preset] of Object.entries(BROKER_PRESETS)) {
+    const presets = bookRegion === DEFAULT_REGION ? BROKER_PRESETS : US_BROKER_PRESETS;
+    for (const [name, preset] of Object.entries(presets)) {
       if (Object.entries(preset).every(([k, v]) => cfg[k] === v)) return name;
     }
     return "";
   }, [cfg]);
 
   const applyPreset = (name) => {
-    if (!BROKER_PRESETS[name]) return;
-    setCfg((p) => ({ ...p, ...BROKER_PRESETS[name] }));
+    const presets = bookRegion === DEFAULT_REGION ? BROKER_PRESETS : US_BROKER_PRESETS;
+    if (!presets[name]) return;
+    setCfg((p) => ({ ...p, ...presets[name] }));
   };
 
   const submit = async () => {
@@ -68,9 +85,13 @@ export default function SettingsSheet({ profile, onSave, onClose, onNavigate,
       const inPnl = s.mtf_in_pnl !== false;
       await onSave({
         journal_name: s.journal_name.trim() || "Breakout Ledger",
-        account_size: Number(s.account_size) || 0,
-        default_risk_pct: Number(s.default_risk_pct) || 0,
-        charge_config: forSave(cfg),
+        /* Into the columns for India, into region_settings for anywhere else,
+           merged so another market's settings survive this write. */
+        ...regionSettingsPatch(profile, bookRegion, {
+          account_size: Number(s.account_size) || 0,
+          default_risk_pct: Number(s.default_risk_pct) || 0,
+          charge_config: forSave(cfg),
+        }),
         /*
          * ONLY WHAT CHANGED. Sent every time, this would make every Setup save
          * fail on a database where migration 050 has not run — a user changing
@@ -112,16 +133,23 @@ export default function SettingsSheet({ profile, onSave, onClose, onNavigate,
           <div style={{ borderTop: "1px solid var(--rule)", paddingTop: 18 }}>
             <div className="eyebrow" style={{ marginBottom: 4 }}>Charges</div>
             <div className="hint" style={{ marginTop: 0, marginBottom: 12 }}>
-              Drives the auto-calculated figure in the trade form. Pick the plan your
-              broker charges you on. STT, GST, stamp duty and the exchange and SEBI
-              fees are the same for every trader in the country — we keep those
-              current, so there is nothing here to maintain.
+              {bookRegion === DEFAULT_REGION
+                ? <>Drives the auto-calculated figure in the trade form. Pick the plan your
+                  broker charges you on. STT, GST, stamp duty and the exchange and SEBI
+                  fees are the same for every trader in the country — we keep those
+                  current, so there is nothing here to maintain.</>
+                /* The American bill is almost all commission: the two regulatory
+                   fees are cents, sell-side only, and set by the SEC and FINRA
+                   on dates they announce. */
+                : <>Drives the auto-calculated figure in the trade form. Pick what your
+                  broker charges to execute. The SEC and FINRA fees on a sale are set
+                  nationally and change on announced dates — we keep those current.</>}
             </div>
 
             <label className="f" style={{ marginBottom: 12 }}><span>Broker plan</span>
               <select className="in" value={presetName} onChange={(e) => applyPreset(e.target.value)}>
                 <option value="" disabled>Custom — doesn't match a preset</option>
-                {Object.keys(BROKER_PRESETS).map((name) => (
+                {Object.keys(bookRegion === DEFAULT_REGION ? BROKER_PRESETS : US_BROKER_PRESETS).map((name) => (
                   <option key={name} value={name}>{name}</option>
                 ))}
               </select>
@@ -146,6 +174,11 @@ export default function SettingsSheet({ profile, onSave, onClose, onNavigate,
             * are the same on every margin trade, and the choice is about how
             * this user reads their whole record.
             */}
+          {/* MTF is an Indian broker product — pledged shares, a per-lakh daily
+              rate, a pledge fee each way. US margin is an interest rate on a
+              balance, which is a different model and not this one, so the
+              section is absent rather than empty. */}
+          {hasMtf(bookRegion) && (
           <div style={{ borderTop: "1px solid var(--rule)", paddingTop: 18 }}>
             <div className="eyebrow" style={{ marginBottom: 4 }}>Margin (MTF)</div>
             <div className="hint" style={{ marginTop: 0, marginBottom: 12 }}>
@@ -175,6 +208,7 @@ export default function SettingsSheet({ profile, onSave, onClose, onNavigate,
               </label>
             </div>
           </div>
+          )}
 
           {/* Saved as they are edited rather than with this sheet — see the
               note in OwnSetups: a rename writes the trades too, and a list

@@ -14,7 +14,9 @@ import {
   sendPasswordReset, avatarUrl, trackVisit, setAnalyticsFlag, setDemoPinned } from "@/lib/db";
 import { stats } from "@/lib/calc";
 import { setActiveRegion } from "@/lib/format";
-import { currentRegion } from "@/lib/regions";
+import { currentRegion, regionOf, regionSettings, region as regionInfo,
+         REGIONS, DEFAULT_REGION } from "@/lib/regions";
+import { SHOW_REGIONS } from "@/lib/flags";
 import { derivePosition, isOpen, isPartial } from "@/lib/positions";
 import { mtfPrefs } from "@/lib/mtf";
 import FirstRun from "@/components/journal/FirstRun";
@@ -27,6 +29,7 @@ import { pageEvent } from "@/lib/pageEvents";
 import { isPreset, presetIndex, presetDataUri } from "@/lib/avatars";
 import { buildDemo } from "@/lib/demo";
 import DemoBanner from "@/components/journal/DemoBanner";
+import RegionSwitch from "@/components/journal/RegionSwitch";
 import SampleOffer from "@/components/journal/SampleOffer";
 import Landing from "@/components/Landing";
 import Wordmark from "@/components/Wordmark";
@@ -288,10 +291,10 @@ export default function AppLayout({ children }) {
 
   // ---- journal data + handlers (moved from the old Journal.jsx) ---------
   const [loading, setLoading] = useState(true);
-  const [trades, setTrades] = useState([]);
+  const [allTrades, setAllTrades] = useState([]);
   const [exitsByTrade, setExitsByTrade] = useState({});
   const [diary, setDiary] = useState([]);
-  const [flows, setFlows] = useState([]);
+  const [allFlows, setAllFlows] = useState([]);
   const [filters, setFilters] = useState([]);
   const [editing, setEditing] = useState(null);
   const [showForm, setShowForm] = useState(false);
@@ -306,7 +309,7 @@ export default function AppLayout({ children }) {
 
   const mergeMarks = useCallback((rows) => {
     if (!rows?.length) return;
-    setTrades((prev) => prev.map((t) => {
+    setAllTrades((prev) => prev.map((t) => {
       const hit = rows.find((r) => r.id === t.id);
       return hit ? { ...t, last_price: hit.last_price, last_price_at: hit.last_price_at } : t;
     }));
@@ -319,7 +322,7 @@ export default function AppLayout({ children }) {
    */
   const reloadTrades = useCallback(async () => {
     const [t, x] = await Promise.all([listTrades(), listExitsByTrade()]);
-    setTrades(t);
+    setAllTrades(t);
     setExitsByTrade(x);
     return t;
   }, []);
@@ -362,9 +365,9 @@ export default function AppLayout({ children }) {
              for, so this one degrades to an empty menu on its own. */
           listFilters().catch(() => []),
         ]);
-        setTrades(t);
+        setAllTrades(t);
         setDiary(d);
-        setFlows(fl);
+        setAllFlows(fl);
         setExitsByTrade(ex);
         setFilters(sv);
 
@@ -383,7 +386,60 @@ export default function AppLayout({ children }) {
     })();
   }, [profile?.onboarded_at, mergeMarks]);
 
-  const accountSize = profile?.account_size ?? 1000000;
+  /**
+   * THE OPEN BOOK, and the rows that belong to it.
+   *
+   * A region is a separate book: India and the US each have their own account
+   * size, capital ledger, positions and totals, and nothing on screen ever
+   * sums across two currencies. Every row is fetched once — there are not
+   * enough of them to be worth two round trips — and the book is the slice of
+   * them that belongs to the region being read. Everything downstream takes
+   * `trades` and `flows` and cannot tell the difference.
+   *
+   * `regionOf` answers IN for a row with no region, which is every row written
+   * before migration 052, so an Indian journal sees exactly what it always
+   * saw whether or not the switch is on.
+   */
+  const bookRegion = SHOW_REGIONS ? currentRegion(profile) : DEFAULT_REGION;
+  const trades = useMemo(
+    () => allTrades.filter((t) => regionOf(t) === bookRegion), [allTrades, bookRegion]);
+  const flows = useMemo(
+    () => allFlows.filter((f) => regionOf(f) === bookRegion), [allFlows, bookRegion]);
+
+  /**
+   * WHICH BOOK IS BEING READ, told to the formatters once.
+   *
+   * Every money figure asks `lib/format.js` how to write itself, and it
+   * answers in the active book's currency — see the note there for why that is
+   * one setting rather than an argument in 142 places. Set during render,
+   * before anything below it formats a figure, and `currentRegion` answers IN
+   * for a profile that has never heard of regions, which is every profile
+   * today.
+   */
+  setActiveRegion(bookRegion);
+
+  /* Each book is funded separately — see regionSettings. India keeps the
+     columns it always had, so nothing about an Indian journal moves. */
+  const accountSize = regionSettings(profile, bookRegion).account_size || 1000000;
+
+  /**
+   * Switching books.
+   *
+   * Written to the profile rather than the browser, so the market you were
+   * last reading follows you to another device — the same reasoning as the
+   * sample-book flag. Set locally first: the screens re-derive from it, and
+   * waiting for a round trip would leave the old book on screen for a beat.
+   */
+  const switchRegion = async (id) => {
+    const next = regionOf({ region: id });
+    if (next === bookRegion) return;
+    setProfile((p) => ({ ...(p || {}), region: next }));
+    try {
+      setProfile(await dbSaveProfile({ region: next }));
+    } catch (e) {
+      say(e.message || "Could not remember that market.");
+    }
+  };
 
   /**
    * The sample book, or nothing.
@@ -407,7 +463,10 @@ export default function AppLayout({ children }) {
    * three real ones without a word is indistinguishable from having lost them.
    */
   const demoPinned = !!profile?.demo_pinned_at;
-  const demoOn = !!profile &&
+  /* The sample book is Indian — its symbols, its prices, its charges. Dealing
+     it into a US journal would explain the app with stocks that do not trade
+     there, so it is offered in India only until there is a US one. */
+  const demoOn = !!profile && bookRegion === DEFAULT_REGION &&
     (demoPinned || (!profile.demo_dismissed_at && trades.length === 0));
   const demo = useMemo(
     () => (demoOn
@@ -454,17 +513,7 @@ export default function AppLayout({ children }) {
      each trade before it is derived, because the calculation only ever sees a
      trade. Defaults when the profile has none, so nothing changes until the
      user changes it, and nothing breaks before migration 050. */
-  /**
-   * WHICH BOOK IS BEING READ, told to the formatters once.
-   *
-   * Every money figure asks `lib/format.js` how to write itself, and it
-   * answers in the active book's currency — see the note there for why that is
-   * one setting rather than an argument in 142 places. Set during render,
-   * before anything below it formats a figure, and `currentRegion` answers IN
-   * for a profile that has never heard of regions, which is every profile
-   * today.
-   */
-  setActiveRegion(currentRegion(profile));
+
 
   const mtf = useMemo(() => mtfPrefs(profile),
     [profile?.mtf_pledge_fee, profile?.mtf_unpledge_fee, profile?.mtf_in_pnl]);
@@ -582,7 +631,11 @@ export default function AppLayout({ children }) {
 
   const saveTrade = async (payload, exits, chartSrc) => {
     try {
-      const saved = await dbSaveTrade(payload);
+      /* The book it was entered in. Sent only when it is not the default, so
+         a save still works against a database where migration 052 has not
+         run — and an Indian trade lands as IN either way. */
+      const saved = await dbSaveTrade(
+        bookRegion === DEFAULT_REGION ? payload : { ...payload, region: bookRegion });
 
       // Written after the trade so they have an id to hang off. A single
       // exit is fully described by the flat columns already, so if
@@ -640,7 +693,7 @@ export default function AppLayout({ children }) {
       }
 
       const [t, ex] = await Promise.all([listTrades(), listExitsByTrade()]);
-      setTrades(t);
+      setAllTrades(t);
       setExitsByTrade(ex);
 
       setShowForm(false); setEditing(null);
@@ -665,7 +718,7 @@ export default function AppLayout({ children }) {
     if (!window.confirm("Delete this trade? This can't be undone.")) return;
     try {
       await dbDeleteTrade(id);
-      setTrades((prev) => prev.filter((x) => x.id !== id));
+      setAllTrades((prev) => prev.filter((x) => x.id !== id));
       say("Trade removed.");
     } catch (e) {
       say(e.message || "Could not delete the trade.");
@@ -909,6 +962,7 @@ export default function AppLayout({ children }) {
     <JournalContext.Provider
       value={{
         trades, diary: demo ? demo.diary : diary, flows, profile, accountSize,
+        bookRegion, switchRegion,
         /* The user's OWN progress, for the first-week card. `diary` above is
            the sample book's while that is showing, and counting it would tick
            a step the user has not done. */
@@ -991,6 +1045,11 @@ export default function AppLayout({ children }) {
               </div>
             </div>
             <div style={{ display: "flex", gap: 10, alignItems: "center", paddingBottom: 12 }}>
+              {/* Before New trade, because it decides which book that trade
+                  lands in. */}
+              {SHOW_REGIONS && (
+                <RegionSwitch value={bookRegion} onChange={switchRegion} />
+              )}
               <button className="btn" onClick={openNewTrade}>
                 <Plus size={14} />New trade
               </button>
@@ -1064,6 +1123,7 @@ export default function AppLayout({ children }) {
                is what makes "this one is still in use" checkable. */
             trades={trades}
             onProfileChange={setProfile}
+            bookRegion={bookRegion}
             onNavigate={(href) => { setShowSettings(false); router.push(href); }}
           />
         )}

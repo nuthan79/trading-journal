@@ -13,6 +13,9 @@ import {
   ENTRY_EMOTIONS, EXIT_EMOTIONS,
 } from "@/lib/constants";
 import { patternOptions } from "@/lib/patterns";
+import { region as regionInfo, activeRegion } from "@/lib/regions";
+
+const defaultExchange = () => regionInfo(activeRegion()).defaultExchange;
 import { resolveTradingViewChart } from "@/lib/charts";
 import { entryCharges, mergeConfig } from "@/lib/charges";
 import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
@@ -193,7 +196,9 @@ function statusFromExits(exits, quantity) {
 }
 
 const blank = () => ({
-  status: "open", symbol: "", company: "", exchange: "NSE", side: "long",
+  /* The default venue of the book being written in — NSE in India, NASDAQ in
+     a US one. The symbol picker overwrites it the moment a stock is chosen. */
+  status: "open", symbol: "", company: "", exchange: defaultExchange(), side: "long",
   entry_date: today(),
   // Blank on a new trade: toPayload() pins it to the opening stop on first save.
   entry_price: "", quantity: "", stop_loss: "", initial_stop_loss: "", stop_source: "",

@@ -186,13 +186,17 @@ function brokerageFor(turnover, cfg) {
  * exist there left at zero, so everything downstream — the per-sell split,
  * the charges box, the CSV — reads one shape and not two.
  */
-function legChargesUS({ leg, price, quantity, date }) {
+export const mergeUsConfig = (partial) => ({ ...DEFAULT_US_CHARGE_CONFIG, ...(partial || {}) });
+
+function legChargesUS({ leg, price, quantity, date }, config) {
   const qty = num(quantity);
   const px = num(price);
   const turnover = px * qty;
   if (!(turnover > 0)) return null;
 
-  const cfg = { ...DEFAULT_US_CHARGE_CONFIG };
+  /* The user's own plan — commission is the one US cost that is theirs. The
+     two regulatory fees are not, and are not in the config at all. */
+  const cfg = mergeUsConfig(config);
   const commission = cfg.commissionModel === "flat" ? num(cfg.commissionFlat)
     : cfg.commissionModel === "perShare"
       ? Math.min(Math.max(qty * num(cfg.commissionPerShare), num(cfg.commissionMin)),
@@ -224,7 +228,7 @@ export function legCharges({ leg, exchange = "NSE", price, quantity, date, regio
   const country = String(region || "").toUpperCase() === "US"
     || ["NASDAQ", "NYSE", "AMEX", "ARCA", "BATS", "IEXG"].includes(String(exchange).toUpperCase())
     ? "US" : "IN";
-  if (country === "US") return legChargesUS({ leg, price, quantity, date });
+  if (country === "US") return legChargesUS({ leg, price, quantity, date }, config);
 
   const cfg = mergeConfig(config);
   const qty = num(quantity);

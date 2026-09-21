@@ -10,7 +10,7 @@ import { useJournal } from "../JournalContext";
 
 export default function ImportPage() {
   const router = useRouter();
-  const { reloadTrades, say, profile } = useJournal();
+  const { reloadTrades, say, profile, bookRegion } = useJournal();
   const [targets, setTargets] = useState(null);
   const [keysErr, setKeysErr] = useState("");
 
@@ -58,6 +58,36 @@ export default function ImportPage() {
     return (
       <div className="sec">
         <div className="eyebrow">Checking what's already here</div>
+      </div>
+    );
+  }
+
+  /**
+   * NOTHING TO IMPORT INTO A US BOOK YET, and said plainly rather than
+   * offering a file picker that will reject everything dropped on it.
+   *
+   * Every adapter here reads an Indian broker's report. A Schwab or Fidelity
+   * export handed to the Zerodha parser does not produce a helpful error, it
+   * produces a confident wrong answer — which is the rule the broker adapters
+   * have followed from the start: no format without a real file to test it
+   * against. They arrive one at a time, each checked against an actual export.
+   */
+  if (bookRegion === "US") {
+    return (
+      <div className="sec">
+        <div className="eyebrow">Import</div>
+        <h2 style={{ fontSize: 18, margin: "6px 0 8px" }}>US broker files are not read yet</h2>
+        <p style={{ fontSize: 13.5, color: "var(--ink2)", lineHeight: 1.65, maxWidth: "62ch" }}>
+          Every importer here reads an Indian broker&apos;s report, and handing one of
+          them a Schwab or Fidelity export would not fail cleanly — it would read the
+          columns it recognises and quietly get the rest wrong. So the US importers are
+          being added one broker at a time, each written against a real export.
+        </p>
+        <p style={{ fontSize: 13.5, color: "var(--ink2)", lineHeight: 1.65, maxWidth: "62ch" }}>
+          Until then, <b>New trade</b> logs a US position in full — symbol, stop, charges
+          and all. Send me the statement your broker gives you and it becomes the next
+          importer.
+        </p>
       </div>
     );
   }

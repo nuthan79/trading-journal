@@ -302,11 +302,19 @@ from the venue, India otherwise, and returns ONE shape with the other
 country's lines at zero. The fiscal year comes from `regions.fiscalStartMonth`
 through the open book: April/FY26 in India, January/2026 in the US.
 
+**The layout slices the book.** Every row is fetched once; `trades` and
+`flows` are the slice whose `regionOf` matches `bookRegion`, and every screen
+downstream reads those and cannot tell. `SHOW_REGIONS` off pins `bookRegion`
+to IN — the app works, the switch is gone. A trade carries `region` only when
+it is not IN, so saves still work before migration 052. The sample book is
+Indian and is not dealt into a US journal; MTF is absent where `hasMtf` is
+false; Import says US files are not read yet rather than mangling one.
+
 Phases: 1 data model and regions.js (done) · 2 currency-aware `format.js`
 (done; `currency.probe.mjs` pins India's exact strings) · 3 US symbols and
 quotes (done; `usmarket.probe.mjs`) · 4 US charges and calendar-year fiscal
-(done; `uscharges.probe.mjs`) · 5 the switch and per-region filtering ·
-6 US broker imports, each against a real file.
+(done; `uscharges.probe.mjs`) · 5 the switch and per-region filtering (done;
+`bookswitch.probe.mjs`) · 6 US broker imports, each against a real file.
 
 ## Conventions
 

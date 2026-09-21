@@ -27,15 +27,15 @@ test("anything without a region is India — row, profile, null, nonsense", () =
   eq(DEFAULT_REGION, "IN");
 });
 
-test("the switch is off, so nothing on screen has changed", () => {
-  eq(SHOW_REGIONS, false);
-  /* And no screen reads regions yet — Phase 1 is data and description only.
-     When a component does start reading this, that is Phase 5, and this line
-     is the reminder to turn the flag on deliberately. */
-  const used = readdirSync(path.join(ROOT, "src/components/journal"))
-    .filter((f) => /\.jsx$/.test(f))
-    .filter((f) => /from "@\/lib\/regions"/.test(read(`src/components/journal/${f}`)));
-  eq(used.join(","), "", "no component imports regions while the flag is off");
+/* Phase 5 turned this on, and this test replaces the one that held the
+   opposite while the work landed in pieces. Off again would pin the whole app
+   to India — which is what every existing row is — rather than break it. */
+test("the switch is on, and turning it off pins everything to India", () => {
+  eq(SHOW_REGIONS, true);
+  const layout = read("src/app/(app)/layout.jsx");
+  ok(/const bookRegion = SHOW_REGIONS \? currentRegion\(profile\) : DEFAULT_REGION;/.test(layout),
+     "the flag decides between the user's book and India, not between working and not");
+  ok(/\{SHOW_REGIONS && \(\s*<RegionSwitch/.test(layout), "and the control hides with it");
 });
 
 test("India's settings are read from exactly where they always were", () => {

@@ -49,12 +49,12 @@ export const SHOW_SETUP_TRADES = false;
 /**
  * The region switch — India, the US, and whatever follows.
  *
- * Off while the work lands in pieces. Migration 052 gives every row a region
- * and every existing one says IN, `lib/regions.js` describes what a region
- * decides, and nothing reads either yet. Turning this on is Phase 5: the
- * dropdown in the top bar, and every screen filtered to one book.
+ * ON since Phase 5. The dropdown sits beside New trade, every screen shows
+ * one book, and the choice is remembered on the profile. Turning it OFF again
+ * pins the whole app to India, which is what every existing row is: the
+ * filter falls back to IN, the switch disappears, and nothing else changes.
  *
  * A REGION IS A SEPARATE BOOK — see the note in regions.js. Nothing in the
  * app may ever total across two currencies, flag on or off.
  */
-export const SHOW_REGIONS = false;
+export const SHOW_REGIONS = true;

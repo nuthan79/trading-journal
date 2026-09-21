@@ -78,10 +78,10 @@ test("the huge-number guard still fires, in both books", () => {
 
 test("the app layout tells the formatters which book is open", () => {
   const layout = read("src/app/(app)/layout.jsx");
-  ok(/setActiveRegion\(currentRegion\(profile\)\)/.test(layout));
+  ok(/setActiveRegion\(bookRegion\)/.test(layout));
   /* Before the first figure is formatted, which on this page means before the
      derivation that feeds every screen. */
-  ok(layout.indexOf("setActiveRegion(currentRegion(profile))") < layout.indexOf("const all = useMemo"),
+  ok(layout.indexOf("setActiveRegion(bookRegion)") < layout.indexOf("const all = useMemo"),
      "set before anything below it formats a figure");
 });
 
