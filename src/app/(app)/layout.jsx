@@ -383,8 +383,12 @@ export default function AppLayout({ children }) {
         setFilters(sv);
         setAccess(ac);
 
-        // A partial still has size running, so it wants a mark like any open one.
-        const openNow = t.filter(isOpen);
+        /* A partial still has size running, so it wants a mark like any open
+           one — but only in the book being read. Marking every market's
+           positions asks the quote source for prices nothing on screen will
+           show, on every load, out of a rate limit shared with Refresh. */
+        const here = currentRegion(profile);
+        const openNow = t.filter((x) => isOpen(x) && regionOf(x) === here);
         if (openNow.length) {
           markOpenPositions(openNow).then(({ marked }) => {
             if (marked.length) mergeMarks(marked);
@@ -396,7 +400,7 @@ export default function AppLayout({ children }) {
         setLoading(false);
       }
     })();
-  }, [profile?.onboarded_at, mergeMarks]);
+  }, [profile?.onboarded_at, profile?.region, mergeMarks]);
 
   /**
    * THE OPEN BOOK, and the rows that belong to it.
@@ -582,12 +586,17 @@ export default function AppLayout({ children }) {
      nothing to convert. A failure costs the conversion and nothing else. */
   useEffect(() => {
     if (bookCurrency === homeCurrency) { setFx(null); return; }
+    /* The route wants a signed-in caller and the token comes from the session
+       in localStorage, restored a beat after the first render — so without
+       this the first attempts 401 and the toggle arrives disabled, then
+       silently fixes itself. */
+    if (!userId) return;
     let live = true;
     dbFxRate(`${bookCurrency}${homeCurrency}`)
       .then((d) => { if (live && d?.rate > 0) setFx(d); })
       .catch(() => { /* the dollars are the real figures; they are still there */ });
     return () => { live = false; };
-  }, [bookCurrency, homeCurrency]);
+  }, [bookCurrency, homeCurrency, userId]);
 
   const mtf = useMemo(() => mtfPrefs(profile),
     [profile?.mtf_pledge_fee, profile?.mtf_unpledge_fee, profile?.mtf_in_pnl]);

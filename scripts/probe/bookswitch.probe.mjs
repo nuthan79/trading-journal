@@ -199,3 +199,22 @@ test("the one figure that writes its own sign asks which currency", () => {
   ok(/\{p\.sign\}\{currencySign\(\)\}\{p\.int\}/.test(h));
   ok(!/\{p\.sign\}₹/.test(h), "no hard-coded rupee left in it");
 });
+
+/* SEEN IN THE NETWORK LOG: opening a US book asked the quote source for
+   seven Indian symbols nothing on screen would show, on every load, out of a
+   rate limit shared with Refresh prices. */
+test("only the open book's positions are marked", () => {
+  const s = layout();
+  ok(/const here = currentRegion\(profile\);/.test(s));
+  ok(/t\.filter\(\(x\) => isOpen\(x\) && regionOf\(x\) === here\)/.test(s));
+  ok(/profile\?\.region, mergeMarks\]/.test(s),
+     "and it re-runs when the book changes, or the other market never gets marks");
+});
+
+/* ALSO SEEN: two 401s before the rate arrived, because the session is
+   restored a beat after the first render. */
+test("the rate is not asked for before there is a session to ask with", () => {
+  const s = layout();
+  ok(/if \(!userId\) return;\s*\n\s*let live = true;/.test(s));
+  ok(/\}, \[bookCurrency, homeCurrency, userId\]\);/.test(s), "and it runs once there is one");
+});
