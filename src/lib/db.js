@@ -1944,8 +1944,23 @@ function blobToDataUri(blob) {
   });
 }
 
-export async function exportEverything() {
+/**
+ * `region` narrows the file to one book.
+ *
+ * "Everything" still means everything by default — the whole account, both
+ * books, each row carrying its own region, which is what somebody asking for
+ * their data under the DPDP Act is entitled to. A book on its own is the
+ * other honest request: a US accountant has no business reading an Indian
+ * ledger, and the file is easier to hand over when it holds one market.
+ *
+ * The profile and the import history are NOT split: they describe the
+ * account, not a market, and a file without them cannot be restored.
+ */
+export async function exportEverything({ region = null } = {}) {
   const user_id = await uid();
+  const mine = (rows) => (region
+    ? (rows || []).filter((r) => (r?.region || "IN") === region)
+    : (rows || []));
 
   const raw = (table, order) =>
     fetchAllPages(() => supabase.from(table).select("*").order(order, { ascending: true }));
@@ -2005,10 +2020,19 @@ export async function exportEverything() {
     }
   }
 
+  /* One book, or the lot. The exits follow their trades rather than a region
+     of their own: a sell belongs to the trade it came from. */
+  const keptTrades = mine(trades);
+  const keptIds = new Set(keptTrades.map((t) => t.id));
+
   return {
     exported_at: new Date().toISOString(),
+    region: region || "all",
     account: { user_id, email: (await supabase.auth.getUser()).data?.user?.email ?? null },
     note:
+      (region
+        ? `The ${region} book of this account, and the profile behind it. `
+        : "") +
       "Everything this account holds. Uploaded charts are embedded in " +
       "`chart_links` as data: URIs — the image itself is in this file, so it " +
       "still opens after the account is gone. Paste one into a browser's " +
@@ -2023,10 +2047,10 @@ export async function exportEverything() {
     chart_images_embedded: stored.length - skipped,
     chart_images_missing: skipped,
     profile,
-    trades,
-    trade_exits: exits,
-    diary_entries: diary,
-    capital_flows: flows,
+    trades: keptTrades,
+    trade_exits: (exits || []).filter((e) => !region || keptIds.has(e.trade_id)),
+    diary_entries: mine(diary),
+    capital_flows: mine(flows),
     import_batches: batches,
     user_events: events,
     client_errors: errors,

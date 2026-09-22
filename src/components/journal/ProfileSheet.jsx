@@ -11,6 +11,8 @@ import { money, today } from "@/lib/format";
 import { MIN_PASSWORD } from "@/lib/password";
 import { RevealToggle, pwType } from "@/components/PasswordEye";
 import AvatarChoice from "./AvatarChoice";
+import { SHOW_REGIONS } from "@/lib/flags";
+import { region as regionInfo } from "@/lib/regions";
 
 /**
  * The account, as opposed to the journal's settings.
@@ -485,19 +487,27 @@ function AnalyticsChoice({ profile, onSaved }) {
   );
 }
 
-function ExportEverything() {
+function ExportEverything({ bookRegion }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
-  const run = async () => {
-    setBusy(true); setErr("");
+  /**
+   * The whole account, or one book.
+   *
+   * "Everything" keeps meaning everything — both markets, each row carrying
+   * its region — because that is what somebody asking for their data is
+   * entitled to. A single book is the other real request: it is the file you
+   * hand an accountant who has no business reading the other market.
+   */
+  const run = async (region = null) => {
+    setBusy(region || "all"); setErr("");
     try {
-      const data = await exportEverything();
+      const data = await exportEverything({ region });
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `journal-export-${today()}.json`;
+      a.download = `journal-export-${region ? `${region.toLowerCase()}-` : ""}${today()}.json`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -512,9 +522,18 @@ function ExportEverything() {
 
   return (
     <>
-      <button className="btn ghost sm" onClick={run} disabled={busy}>
-        <Download size={13} />{busy ? "Building…" : "Export everything"}
-      </button>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button className="btn ghost sm" onClick={() => run(null)} disabled={!!busy}>
+          <Download size={13} />{busy === "all" ? "Building…" : "Export everything"}
+        </button>
+        {SHOW_REGIONS && bookRegion && (
+          <button className="btn ghost sm" onClick={() => run(bookRegion)} disabled={!!busy}
+                  title="The trades, sells, diary and capital of this market only">
+            <Download size={13} />
+            {busy === bookRegion ? "Building…" : `Export the ${regionInfo(bookRegion).label} book`}
+          </button>
+        )}
+      </div>
       {err && <div className="warn" style={{ marginTop: 8 }}>{err}</div>}
     </>
   );
@@ -629,7 +648,8 @@ function DangerZone({ email }) {
   );
 }
 
-export default function ProfileSheet({ profile, avatar, counts, onClose, onlyPassword, onProfileChange }) {
+export default function ProfileSheet({ profile, avatar, counts, onClose, onlyPassword,
+                                      onProfileChange, bookRegion }) {
   const [email, setEmail] = useState("");
   const [joined, setJoined] = useState(null);
 
@@ -702,7 +722,7 @@ export default function ProfileSheet({ profile, avatar, counts, onClose, onlyPas
                 settings and the events recorded about you. Nothing is held back and
                 nothing is summarised.
               </p>
-              <ExportEverything />
+              <ExportEverything bookRegion={bookRegion} />
 
               {/* Between exporting and deleting on purpose: these are the
                   middle ground — things you can change your mind about

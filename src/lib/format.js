@@ -105,7 +105,21 @@ export function amount(v, { compact = true, decimals = 2, region } = {}) {
 
   if (!tier) {
     if (a >= 1e19) return (neg ? "−" : "") + hugeGuard(a);
-    out = new Intl.NumberFormat(locale, { maximumFractionDigits: a < 100 ? 2 : 0 }).format(a);
+    /**
+     * PAISE AND CENTS ONLY WHERE THERE ARE ANY.
+     *
+     * The band from 100 to 999 used to round to whole units, so a realised
+     * $599.82 — six hundred dollars less eighteen cents of charges — printed
+     * as "$600", and the charges looked as though they had not been taken at
+     * all. The figure was right and the writing hid the one thing somebody
+     * was checking for.
+     *
+     * A round number still prints round: ₹600 is "₹600", not "₹600.00", which
+     * is where two decimals everywhere would have made a column of P&Ls worse
+     * to read for the sake of the few that need them. Below 100 nothing
+     * changes — that band already carried its decimals.
+     */
+    out = new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(a);
   } else {
     const scaled = a / tier.div;
     /* Four-digit crore figures need grouping and lose their decimals: "₹1,093 Cr"

@@ -1262,6 +1262,7 @@ export default function AppLayout({ children }) {
             counts={{ total: trades.length }}
             onlyPassword={showProfile === "password"}
             onProfileChange={setProfile}
+            bookRegion={bookRegion}
             onClose={() => setShowProfile(null)}
           />
         )}

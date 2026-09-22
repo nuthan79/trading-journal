@@ -269,3 +269,17 @@ test("a saved view belongs to the book it was built in", () => {
   ok(/\(x\.region \|\| "IN"\) === here/.test(db),
      "and saving over a name replaces the view in this book, not another's");
 });
+
+/* Two files worth having: the whole account, and one market on its own. */
+test("the export can be the whole account or one book", () => {
+  const db = read("src/lib/db.js");
+  ok(/export async function exportEverything\(\{ region = null \} = \{\}\)/.test(db));
+  ok(/const keptIds = new Set\(keptTrades\.map\(\(t\) => t\.id\)\);/.test(db),
+     "a sell follows its trade rather than carrying a region of its own");
+  ok(/The profile and the import history are NOT split/.test(db),
+     "they describe the account, and a file without them cannot be restored");
+  const sheet = read("src/components/journal/ProfileSheet.jsx");
+  ok(/Export the \$\{regionInfo\(bookRegion\)\.label\} book/.test(sheet));
+  ok(/journal-export-\$\{region \? `\$\{region\.toLowerCase\(\)\}-` : ""\}/.test(sheet),
+     "and the filename says which one it is");
+});

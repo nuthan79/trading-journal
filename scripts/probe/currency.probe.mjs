@@ -17,7 +17,12 @@ const read = (p) => readFileSync(path.join(ROOT, p), "utf8");
  * live journal's numbers changed with it.
  */
 const IN_CASES = [
-  [0, "₹0"], [45, "₹45"], [99.5, "₹99.5"], [450.5, "₹451"], [999, "₹999"],
+  [0, "₹0"], [45, "₹45"], [99.5, "₹99.5"],
+  /* CHANGED DELIBERATELY, 2026-09-22: this band rounded to whole units, so a
+     realised 599.82 — six hundred less eighteen of charges — printed as 600
+     and the charges looked as though they had never been taken. Paise show
+     only where there are any: 600 is still "₹600". */
+  [450.5, "₹450.5"], [599.82, "₹599.82"], [600, "₹600"], [999, "₹999"],
   [1000, "₹1.0k"], [58800, "₹58.8k"], [99999, "₹100.0k"],
   [588000, "₹5.88 L"], [5880000, "₹58.80 L"],
   [10930000000, "₹1,093 Cr"], [12000000000000, "₹12.00 Lakh Cr"],
@@ -112,4 +117,21 @@ test("Money renders and hovers in the same currency", () => {
   ok(/import \{ money, moneyTitle \}/.test(src));
   ok(/\{money\(v, opts\)\}/.test(src), "the figure follows the book");
   ok(!/rupee/.test(src), "and nothing here is hard-wired to rupees");
+});
+
+/**
+ * WHERE THE CHARGES WENT.
+ *
+ * Reported as "the charges are not adding to P&L": a US trade made $600 gross
+ * and $599.82 after an eighteen-cent bill, and the screen said "$600". The
+ * arithmetic was right and the writing hid the one thing being checked.
+ */
+test("a figure the charges have shaved shows what they took", () => {
+  setActiveRegion("US");
+  eq(money(599.82), "$599.82");
+  eq(money(600), "$600", "and a round number stays round");
+  setActiveRegion("IN");
+  eq(money(599.82), "₹599.82");
+  eq(money(67.74), "₹67.74", "the band under 100 always carried its paise");
+  eq(money(1234.5), "₹1.2k", "and the tiers above are untouched — they are for scanning");
 });
