@@ -81,6 +81,26 @@ fi
 echo "Using psql $PV"
 
 # ------------------------------------------------------- production guard
+# IT MUST BE A CONNECTION STRING, AND THAT MUST BE CHECKED BEFORE ANYTHING
+# ELSE. psql does not reject an argument it cannot parse as a URI — it falls
+# back to a LOCAL connection on the default socket, as your own user. The
+# failure then reads "role nuthann does not exist", which sends you looking at
+# your password rather than at the argument; and on a machine where a local
+# server happens to be running as that role, it would not fail at all. This
+# script writes a schema and loads a dump into whatever it reaches, so the one
+# unacceptable outcome is reaching something nobody named. Every guard below,
+# including the refusal to touch the live project, matches on the string — so
+# a string that is not a URI slips past all of them.
+if ! printf '%s' "$TARGET" | grep -qE '^postgres(ql)?://[^/]+'; then
+  echo "That is not a connection string:"
+  echo "  $TARGET"
+  echo
+  echo "It has to start with postgresql:// — copy it from the SCRATCH project's"
+  echo "Settings → Database → Connection string → URI. Passing anything else"
+  echo "makes psql fall back to a local database, which is not what you meant."
+  exit 1
+fi
+
 LIVE_REF="$(grep -E '^NEXT_PUBLIC_SUPABASE_URL=' .env.local 2>/dev/null \
             | sed -E 's#.*//([a-z0-9]+)\..*#\1#' || true)"
 if [ -n "${LIVE_REF:-}" ] && printf '%s' "$TARGET" | grep -q "$LIVE_REF"; then
