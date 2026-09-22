@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, ok, eq } from "./harness.mjs";
 import { qty } from "@/lib/format";
+import { columnKeyFor } from "@/lib/useColumnPrefs";
 import { loadHidden, serializeHidden } from "@/lib/columnPrefs";
 
 const SRC = path.resolve(fileURLToPath(new URL("../../src", import.meta.url)));
@@ -229,4 +230,26 @@ test("a fractional share is written like a number, not a serial", () => {
   eq(qty(null), "—");
   const q = read("components/Qty.jsx");
   ok(/title=\{short !== full \? full : undefined\}/.test(q), "and every digit is in the hover");
+});
+
+/**
+ * COLUMNS ARE A BOOK'S, NOT A USER'S.
+ *
+ * Reported in use: hiding a column in the US book hid it in India as well,
+ * because one storage key served both. MTF cost has no meaning in a US book
+ * and every meaning in an Indian one — the two tables are not the same table.
+ */
+test("each book remembers its own columns, and India keeps its key", () => {
+  eq(columnKeyFor("holdings", "IN"), "holdings", "nobody's saved choice moves");
+  eq(columnKeyFor("holdings", undefined), "holdings");
+  eq(columnKeyFor("holdings", "US"), "holdings.US");
+  eq(columnKeyFor("trades", "US"), "trades.US");
+  const src = read("lib/useColumnPrefs.js");
+  ok(/columnKeyFor\(table, activeRegion\(\)\)/.test(src), "and the hook asks which book it is in");
+});
+
+test("the pre-picker key is read only in the book it came from", () => {
+  const h = read("components/journal/Holdings.jsx");
+  ok(/activeRegion\(\) === "IN" \? "ledgerr:holdings-columns" : null/.test(h),
+     "read into a US book it would hand it a choice made about other columns");
 });

@@ -240,3 +240,16 @@ test("benchmarks and the year label belong to the book", () => {
      "Monthly, Quarterly, Yearly — true in both markets, and the rows say which year");
   ok(!/label: "Financial year"/.test(pp), "no tab names a year a US book does not have");
 });
+
+/* REPORTED IN USE: hiding a column in the US book hid it in India too. Every
+   remembered CHOICE belongs to the book it was made in, the same way the
+   account size and the trades do. */
+test("a remembered choice belongs to the book it was made in", () => {
+  const cols = read("src/lib/useColumnPrefs.js");
+  ok(/columnKeyFor\(table, activeRegion\(\)\)/.test(cols), "columns");
+  const fw = read("src/components/journal/FirstWeek.jsx");
+  ok(/r === DEFAULT_REGION \? "" : `:\$\{r\}`/.test(fw),
+     "and the first-week card, which is about a book that is still empty");
+  /* Both keep India's existing key, so no saved choice moves. */
+  ok(/DEFAULT_REGION \? table : `\$\{table\}\.\$\{region\}`/.test(cols));
+});

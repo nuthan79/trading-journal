@@ -19,7 +19,14 @@ import { activeRegion, DEFAULT_REGION } from "@/lib/regions";
  * other. Every storage call is guarded — private windows and blocked site
  * data throw on access, and the card must still render (or not) correctly.
  */
-const keyFor = (userId) => `ledgerr:first-week-hidden:${userId || "anon"}`;
+/* Per book as well as per user: a US book opened for the first time has its
+   own three things to do, and hiding the card in India should not hide the
+   guidance in a journal that is still empty. India keeps the key it had. */
+const keyFor = (userId) => {
+  const who = userId || "anon";
+  const r = activeRegion();
+  return `ledgerr:first-week-hidden:${who}${r === DEFAULT_REGION ? "" : `:${r}`}`;
+};
 
 export default function FirstWeek({ trades, needStops, assumedStops, diary,
                                     onboardedAt, userId, onNewTrade }) {

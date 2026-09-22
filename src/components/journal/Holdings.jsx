@@ -361,7 +361,10 @@ export default function Holdings({
    */
   const colPrefs = useColumnPrefs("holdings", {
     defaults: [...BEYOND_ESSENTIALS],
-    legacyKey: "ledgerr:holdings-columns",
+    /* The key this table used before the picker existed — India's, and only
+       India's: read into a US book it would hand it a choice made about a
+       different set of columns. */
+    legacyKey: activeRegion() === "IN" ? "ledgerr:holdings-columns" : null,
   });
   /* Same as Trades: a market without margin funding has no MTF column, and
      hiding it in one place keeps the header, the cell and the CSV in step. */

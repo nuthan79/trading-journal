@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { activeRegion, DEFAULT_REGION } from "./regions";
 import { loadHidden, serializeHidden } from "./columnPrefs";
 
 /**
@@ -12,8 +13,20 @@ import { loadHidden, serializeHidden } from "./columnPrefs";
  * load for anybody who chose differently. Every storage call is guarded —
  * private windows and blocked site data throw on access.
  */
+/**
+ * WHICH BOOK'S COLUMNS. A region is a separate book, and the columns worth
+ * showing differ: MTF cost means nothing in a US book, and hiding it there
+ * used to hide it in India too, because one key served both.
+ *
+ * India keeps the key it has always had, so nobody's saved choice moves; any
+ * other market gets its own. The same reasoning as the account size — see
+ * regionSettings.
+ */
+export const columnKeyFor = (table, region) =>
+  (!region || region === DEFAULT_REGION ? table : `${table}.${region}`);
+
 export function useColumnPrefs(table, { defaults = [], legacyKey = null } = {}) {
-  const key = `ledgerr:columns:${table}`;
+  const key = `ledgerr:columns:${columnKeyFor(table, activeRegion())}`;
 
   const [hidden, setHiddenState] = useState(() => {
     let raw = null, legacy = null;
