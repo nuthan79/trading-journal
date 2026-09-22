@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { dimensionRows, DIMENSIONS, maxAbsTotalR, isThin, NOT_RECORDED, edgeHref } from "@/lib/edge";
+import { useSectors } from "@/lib/sectors";
 import { mistakeCost, outcomeTagCounts } from "@/lib/analysis";
 import { isExecutionError } from "@/lib/constants";
 import { money, rfmt, pct } from "@/lib/format";
@@ -46,8 +47,19 @@ const EDGE_COLUMNS = [
  * what the market did. Splitting them across two screens, which is how it was,
  * meant the cost of a mistake sat a long way from the setups it happened in.
  */
-export default function Edge({ closed = [], accountSize }) {
+export default function Edge({ closed: rawClosed = [], accountSize }) {
   const [dim, setDim] = useState("pattern");
+
+  /* What business each company is in, laid onto the trades before anything
+     groups them — `sector` is not a column on a trade, and edge.js reads it
+     as though it were. Asked for unconditionally here, unlike on the tables,
+     because the grouping button has to know whether there is anything to
+     group by before anybody can choose it. */
+  const sectorOf = useSectors(true);
+  const closed = useMemo(
+    () => rawClosed.map((t) => ({ ...t, ...sectorOf(t.symbol) })),
+    [rawClosed, sectorOf],
+  );
 
   /* Only the groupings that apply to this record — see `showIf` in edge.js.
      The table reads D.id, not `dim`, so a grouping that has disappeared falls

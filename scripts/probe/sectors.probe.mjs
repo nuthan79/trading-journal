@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, ok, eq } from "./harness.mjs";
 import { sectorFileFor } from "@/lib/sectors";
+import { DIMENSIONS, dimensionRows, edgeFilterFor, matchesEdgeFilter, NOT_RECORDED } from "@/lib/edge";
 import { REGIONS } from "@/lib/regions";
 
 const ROOT = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
@@ -96,8 +97,13 @@ test("the stocks a probe can name are classified", () => {
 test("both tables ask for the file only while a sector column is showing", () => {
   for (const f of ["components/journal/Holdings.jsx", "components/journal/Trades.jsx"]) {
     const src = read(path.join("src", f));
-    ok(/useSectors\(\s*show\("sector"\)\s*\|\|\s*show\("industry"\)\s*\)/.test(src),
+    /* Trades has a third trigger — a filter arriving from the sector
+       breakdown, which needs the lookup with no column on screen. What must
+       not appear anywhere is a bare `useSectors(true)`, which would put the
+       request on every visit to the table. */
+    ok(/useSectors\(\s*show\("sector"\)\s*\|\|\s*show\("industry"\)/.test(src),
        `${f} does not gate useSectors on its columns being shown`);
+    ok(!/useSectors\(\s*true\s*\)/.test(src), `${f} asks for the file unconditionally`);
   }
 });
 
@@ -125,4 +131,55 @@ test("both columns explain themselves in a header hover", () => {
   for (const k of ["sector", "industry"]) {
     ok(new RegExp(`^\\s*${k}:`, "m").test(hints), `COLUMN_HINTS has no ${k}`);
   }
+});
+
+/* ---- the breakdown on Analysis ------------------------------------- */
+
+/**
+ * The sector grouping is a categorical dimension like any other, so it is
+ * tested the way the others are: by running it.
+ */
+test("trades group by sector, and the grouping hides itself on an unclassified book", () => {
+  const D = DIMENSIONS.find((d) => d.id === "sector");
+  ok(D, "there is no sector dimension");
+
+  const book = [
+    { symbol: "RELIANCE", sector: "Oil Gas & Consumable Fuels", r: 2, pnl: 100 },
+    { symbol: "HDFCBANK", sector: "Financial Services", r: -1, pnl: -50 },
+    { symbol: "AUBANK", sector: "Financial Services", r: 3, pnl: 150 },
+    { symbol: "NEWLISTING", r: 1, pnl: 10 },
+  ];
+  const rows = dimensionRows(book, "sector", { accountSize: 100000 });
+  const by = new Map(rows.map((r) => [r.key, r]));
+  eq(by.get("Financial Services")?.n, 2, "the two banks are one group");
+  eq(by.get("Oil Gas & Consumable Fuels")?.n, 1, "and the refiner is its own");
+  ok(by.has(NOT_RECORDED), "a stock with no classification is not silently dropped");
+  eq(rows.reduce((a, r) => a + r.n, 0), book.length, "every trade lands in exactly one group");
+
+  ok(D.showIf(book), "offered where something is classified");
+  ok(!D.showIf(book.map(({ sector, ...t }) => t)),
+     "still offered on a book where nothing is classified");
+});
+
+/**
+ * THE ROUND TRIP. Clicking a sector row goes to /trades with that group as a
+ * filter, and the membership test is the dimension's own `get` — which reads
+ * `t.sector`, a field no trade carries until something looks it up. Filling it
+ * on the way in is the whole of what makes the link land on trades rather than
+ * on an empty table under a banner naming a group with trades in it.
+ */
+test("a sector filter arriving from Analysis is tested against a filled-in trade", () => {
+  const t = { symbol: "AUBANK", status: "closed" };
+  const q = edgeFilterFor("sector", { key: "Financial Services" });
+  ok(!matchesEdgeFilter(t, q), "a bare trade cannot match — that is the trap");
+  ok(matchesEdgeFilter({ ...t, sector: "Financial Services" }, q), "a filled one does");
+
+  const src = read("src/components/journal/Trades.jsx");
+  ok(/matchesEdgeFilter\(\{ \.\.\.t, \.\.\.sectorOf\(t\.symbol\) \}, edge\)/.test(src),
+     "the trades screen tests the raw trade, so a sector filter would show nothing");
+  ok(/edge\?\.dim === "sector"/.test(src),
+     "the lookup is not switched on for a filter that needs it");
+
+  const edge = read("src/components/journal/Edge.jsx");
+  ok(/\.\.\.sectorOf\(t\.symbol\)/.test(edge), "Edge never lays the classification on");
 });

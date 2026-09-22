@@ -348,6 +348,28 @@ export const DIMENSIONS = [
   { id: "exit", label: "Exit reason",
     get: (t) => t.exit_reason || NOT_RECORDED },
 
+  /*
+   * WAS THAT FOUR IDEAS OR ONE? Four capital goods names bought in a
+   * fortnight is a single bet the journal never said out loud, and this is
+   * where it says it: win rate, expectancy and total R by what the companies
+   * actually do.
+   *
+   * `sector` is NOT a column on a trade — it is looked up from the book's
+   * classification file and laid onto the row by whoever is about to group
+   * or filter by it (see lib/sectors.js, and Edge and Trades for the two
+   * places that do it). Reading `t.sector` here rather than doing the lookup
+   * means this file stays pure and synchronous like every other dimension,
+   * and the membership test on the trades screen is still literally this
+   * function.
+   *
+   * `showIf` because an unclassified book — the file not built, or a market
+   * with no published classification — would otherwise offer a button
+   * leading to one row reading "Not recorded".
+   */
+  { id: "sector", label: "Sector",
+    get: (t) => t.sector || NOT_RECORDED,
+    showIf: (closed) => closed.some((t) => t.sector) },
+
   { id: "month", label: "Month",
     get: (t) => (t.exit_date || t.entry_date || "").slice(0, 7) || "-" },
 ];

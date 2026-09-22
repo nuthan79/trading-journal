@@ -146,7 +146,9 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
   const show = (k) => (k === "margin" && !mtfHere ? false : colPrefs.show(k));
   /* Nothing is fetched unless one of the two columns is on — see
      lib/sectors.js. */
-  const sectorOf = useSectors(show("sector") || show("industry"));
+  /* Either column showing, or a filter arriving from the sector breakdown
+     on Analysis — otherwise nothing here needs the file. */
+  const sectorOf = useSectors(show("sector") || show("industry") || edge?.dim === "sector");
   const leadSpan = BEFORE_PNL.filter(show).length;
   const trailSpan = AFTER_COSTS.filter(show).length + 1;   // + the edit/delete column
 
@@ -418,7 +420,12 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
       trades and this list showing 24.
     */
     if (edge) {
-      r = r.filter((t) => t.status === "closed" && matchesEdgeFilter(t, edge));
+      /* Sector is looked up rather than stored, so the trade handed to the
+         membership test carries it — otherwise arriving from the sector
+         breakdown would filter to nothing while the banner named a group
+         with trades in it. */
+      r = r.filter((t) => t.status === "closed"
+        && matchesEdgeFilter({ ...t, ...sectorOf(t.symbol) }, edge));
     }
     /* isOpen, not status === "open" — a part-sold position is open, and
        testing the string alone dropped it out of BOTH tabs. See positions.js. */

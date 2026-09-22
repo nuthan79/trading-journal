@@ -325,7 +325,12 @@ ComHeadernew, which returns the same SEBI classification: checked on 300 names
 carried by both, it agreed with NSE's published sector on all 265 that
 answered and differed on none. Where NSE publishes the string it still wins,
 spelling included. Nothing is written to a trade — a company can be
-reclassified, and an old export should not carry a frozen guess.
+reclassified, and an old export should not carry a frozen guess. `sector` is
+therefore a field nothing carries until a screen lays it on: Edge and Trades
+both spread the lookup over the trade before grouping or filtering, which is
+what lets `DIMENSIONS` read `t.sector` synchronously like every other
+dimension and keeps the membership test on /trades literally the same
+function that built the row.
 
 **One symbol file per book, one ticker spelling per venue.** `symbols.json` is
 NSE+BSE, `symbols.us.json` is 11k US listings; `SymbolSearch` fetches only the
