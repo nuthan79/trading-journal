@@ -303,7 +303,7 @@ export default function AppLayout({ children }) {
      is free and needs no row. The real lock is the policy in migration 053 —
      this only keeps the app from offering a Save the database would refuse. */
   const [access, setAccess] = useState([]);
-  const [filters, setFilters] = useState([]);
+  const [allFilters, setAllFilters] = useState([]);
   const [editing, setEditing] = useState(null);
   const [showForm, setShowForm] = useState(false);
   // Opened via Exit rather than Edit: the form starts on a fresh sell row.
@@ -314,6 +314,47 @@ export default function AppLayout({ children }) {
   const [flash, setFlash] = useState("");
 
   const say = useCallback((m) => { setFlash(m); setTimeout(() => setFlash(""), 2600); }, []);
+
+  /**
+   * THE OPEN BOOK, and the rows that belong to it.
+   *
+   * A region is a separate book: India and the US each have their own account
+   * size, capital ledger, positions and totals, and nothing on screen ever
+   * sums across two currencies. Every row is fetched once — there are not
+   * enough of them to be worth two round trips — and the book is the slice of
+   * them that belongs to the region being read. Everything downstream takes
+   * `trades` and `flows` and cannot tell the difference.
+   *
+   * `regionOf` answers IN for a row with no region, which is every row written
+   * before migration 052, so an Indian journal sees exactly what it always
+   * saw whether or not the switch is on.
+   */
+  const bookRegion = SHOW_REGIONS ? currentRegion(profile) : DEFAULT_REGION;
+  const trades = useMemo(
+    () => allTrades.filter((t) => regionOf(t) === bookRegion), [allTrades, bookRegion]);
+  const flows = useMemo(
+    () => allFlows.filter((f) => regionOf(f) === bookRegion), [allFlows, bookRegion]);
+  /* The diary belongs to a book as well — an entry is about a trade, and a
+     trade is in one market. Shared, it ticked "write one diary entry" in a
+     brand new US book on the strength of work done in the Indian one. */
+  const diary = useMemo(
+    () => allDiary.filter((d) => regionOf(d) === bookRegion), [allDiary, bookRegion]);
+  /* And the saved views: one built on Indian trades can only ever match
+     nothing in a US book, and a menu of them is the columns leak again. */
+  const filters = useMemo(
+    () => allFilters.filter((f) => regionOf(f) === bookRegion), [allFilters, bookRegion]);
+
+  /**
+   * WHICH BOOK IS BEING READ, told to the formatters once.
+   *
+   * Every money figure asks `lib/format.js` how to write itself, and it
+   * answers in the active book's currency — see the note there for why that is
+   * one setting rather than an argument in 142 places. Set during render,
+   * before anything below it formats a figure, and `currentRegion` answers IN
+   * for a profile that has never heard of regions, which is every profile
+   * today.
+   */
+  setActiveRegion(bookRegion);
 
   const mergeMarks = useCallback((rows) => {
     if (!rows?.length) return;
@@ -344,20 +385,25 @@ export default function AppLayout({ children }) {
    * reload, showing two entries the database says are one.
    */
   const saveView = useCallback(async (f) => {
-    const row = await saveFilter(f);
-    setFilters((xs) => {
+    /* Into the book it was built in. Sent only when it is not the default, so
+       a save still works before migration 057 — and two books may hold a view
+       of the same name, which is what that migration widened the index for. */
+    const row = await saveFilter(
+      bookRegion === DEFAULT_REGION ? f : { ...f, region: bookRegion });
+    setAllFilters((xs) => {
       const rest = xs.filter((x) => x.id !== row.id
-        && x.name.trim().toLowerCase() !== row.name.trim().toLowerCase());
+        && !(regionOf(x) === regionOf(row)
+             && x.name.trim().toLowerCase() === row.name.trim().toLowerCase()));
       return [...rest, row].sort((a, b) =>
         (a.position - b.position) || a.created_at.localeCompare(b.created_at));
     });
     say("View saved.");
     return row;
-  }, [say]);
+  }, [say, bookRegion]);
 
   const removeView = useCallback(async (id) => {
     await deleteFilter(id);
-    setFilters((xs) => xs.filter((x) => x.id !== id));
+    setAllFilters((xs) => xs.filter((x) => x.id !== id));
     say("View deleted.");
   }, [say]);
 
@@ -380,7 +426,7 @@ export default function AppLayout({ children }) {
         setAllDiary(d);
         setAllFlows(fl);
         setExitsByTrade(ex);
-        setFilters(sv);
+        setAllFilters(sv);
         setAccess(ac);
 
         /* A partial still has size running, so it wants a mark like any open
@@ -402,42 +448,7 @@ export default function AppLayout({ children }) {
     })();
   }, [profile?.onboarded_at, profile?.region, mergeMarks]);
 
-  /**
-   * THE OPEN BOOK, and the rows that belong to it.
-   *
-   * A region is a separate book: India and the US each have their own account
-   * size, capital ledger, positions and totals, and nothing on screen ever
-   * sums across two currencies. Every row is fetched once — there are not
-   * enough of them to be worth two round trips — and the book is the slice of
-   * them that belongs to the region being read. Everything downstream takes
-   * `trades` and `flows` and cannot tell the difference.
-   *
-   * `regionOf` answers IN for a row with no region, which is every row written
-   * before migration 052, so an Indian journal sees exactly what it always
-   * saw whether or not the switch is on.
-   */
-  const bookRegion = SHOW_REGIONS ? currentRegion(profile) : DEFAULT_REGION;
-  const trades = useMemo(
-    () => allTrades.filter((t) => regionOf(t) === bookRegion), [allTrades, bookRegion]);
-  const flows = useMemo(
-    () => allFlows.filter((f) => regionOf(f) === bookRegion), [allFlows, bookRegion]);
-  /* The diary belongs to a book as well — an entry is about a trade, and a
-     trade is in one market. Shared, it ticked "write one diary entry" in a
-     brand new US book on the strength of work done in the Indian one. */
-  const diary = useMemo(
-    () => allDiary.filter((d) => regionOf(d) === bookRegion), [allDiary, bookRegion]);
 
-  /**
-   * WHICH BOOK IS BEING READ, told to the formatters once.
-   *
-   * Every money figure asks `lib/format.js` how to write itself, and it
-   * answers in the active book's currency — see the note there for why that is
-   * one setting rather than an argument in 142 places. Set during render,
-   * before anything below it formats a figure, and `currentRegion` answers IN
-   * for a profile that has never heard of regions, which is every profile
-   * today.
-   */
-  setActiveRegion(bookRegion);
 
   /**
    * READING A BOOK IN THE OTHER CURRENCY. Dollars are what a US book made and

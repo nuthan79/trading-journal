@@ -1491,10 +1491,15 @@ export async function saveFilter(f) {
   if (!id) {
     delete row.id;
     const { data: mine, error: e1 } = await supabase
-      .from("saved_filters").select("id,name");
+      .from("saved_filters").select("id,name,region");
     if (e1) throw e1;
+    /* Within the same book. "Winners" in India and "Winners" in a US book are
+       two views of two different markets, and neither replaces the other —
+       which is what migration 057 widened the unique index to allow. */
+    const here = row.region || "IN";
     const hit = (mine || []).find(
-      (x) => String(x.name).trim().toLowerCase() === name.toLowerCase());
+      (x) => (x.region || "IN") === here
+        && String(x.name).trim().toLowerCase() === name.toLowerCase());
     if (hit) id = hit.id;
   }
 

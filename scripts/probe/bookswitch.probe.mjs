@@ -253,3 +253,19 @@ test("a remembered choice belongs to the book it was made in", () => {
   /* Both keep India's existing key, so no saved choice moves. */
   ok(/DEFAULT_REGION \? table : `\$\{table\}\.\$\{region\}`/.test(cols));
 });
+
+/* A saved view is built from one market's trades. "MTF trades since April"
+   offered in a US book can only ever match nothing. */
+test("a saved view belongs to the book it was built in", () => {
+  const s = layout();
+  ok(/const filters = useMemo\(\s*\n?\s*\(\) => allFilters\.filter\(\(f\) => regionOf\(f\) === bookRegion\)/.test(s),
+     "the menu shows this book's views");
+  ok(/bookRegion === DEFAULT_REGION \? f : \{ \.\.\.f, region: bookRegion \}/.test(s),
+     "and a new one is saved into it, sent only when it is not India");
+  const sql = read("supabase/057_saved_filters_region.sql");
+  ok(/saved_filters_user_region_name_idx/.test(sql) && /user_id, region, lower\(name\)/.test(sql),
+     "one name per user becomes one name per user PER BOOK, or 'Winners' could exist once only");
+  const db = read("src/lib/db.js");
+  ok(/\(x\.region \|\| "IN"\) === here/.test(db),
+     "and saving over a name replaces the view in this book, not another's");
+});
