@@ -15,6 +15,15 @@
  */
 export const COLUMN_HINTS = {
   /* ---- shared ------------------------------------------------------- */
+  /* Two levels of one classification, so they are worded as a pair: the
+     second says it sits under the first, or the column reads as a rival
+     answer to the same question. */
+  sector: "What business the company is in — NSE's own classification in an "
+    + "Indian book, Nasdaq's in a US one. Four names from one sector is one "
+    + "idea with four tickers on it",
+  industry: "The narrower group inside the sector — Petroleum Products within "
+    + "Oil Gas & Consumable Fuels. Blank where the exchange publishes no "
+    + "classification, which is every ETF and a few recent listings",
   entry_date: "The day you bought",
   entry_price: "The price you bought at",
   slPct: "How far your stop sat from your entry, as a percentage of the entry price",

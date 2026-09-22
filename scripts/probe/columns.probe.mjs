@@ -156,7 +156,10 @@ test("storage is only ever touched inside a guard", () => {
 
 test("Trades: MTF cost is hidden by default only for someone with no margin trades", () => {
   const src = read("components/journal/Trades.jsx");
-  ok(/defaults: all\.some\(\(t\) => Number\(t\.mtf_leverage\) > 1\) \? \[\] : \["margin"\],/.test(src));
+  /* Alongside Industry, which is hidden on a fresh browser for its own
+     reasons — the point of the test is that MTF's half still asks about the
+     book rather than being a flat default. */
+  ok(/all\.some\(\(t\) => Number\(t\.mtf_leverage\) > 1\) \? \[\] : \["margin"\]/.test(src));
 });
 
 test("Trades: the cost columns total the same rows the P&L does", () => {

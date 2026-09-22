@@ -144,7 +144,7 @@ test("every 'after charges' on a Net P&L names MTF the way it was treated", () =
 });
 
 test("the CSV carries margin, so pnl still reconciles", () => {
-  ok(/"notes",[\s\S]*?"margin"\];/.test(read("components/journal/Trades.jsx")));
+  ok(/"notes",[\s\S]*?"margin",/.test(read("components/journal/Trades.jsx")));
 });
 
 test("the detail panel says margin in one line under the table, not in it", () => {

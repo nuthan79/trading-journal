@@ -7,6 +7,7 @@ import { money, rfmt, pct, signedPct, moneyParts, currencySign, exportFilename,
 import { COLUMN_HINTS } from "@/lib/columns";
 import { hasMtf, activeRegion } from "@/lib/regions";
 import { useColumnPrefs } from "@/lib/useColumnPrefs";
+import { useSectors } from "@/lib/sectors";
 import Qty from "@/components/Qty";
 import { qty } from "@/lib/format";
 import ColumnPicker from "./ColumnPicker";
@@ -38,6 +39,8 @@ import { soldSinceSnapshot } from "@/lib/snapshots";
 const HOLDING_COLS = [
   { key: "symbol", header: "symbol" },
   { key: "exchange", header: "exchange" },
+  { key: "sector", header: "sector" },
+  { key: "industry", header: "industry" },
   { key: "entry_date", header: "entered" },
   { key: "days", header: "days_held" },
   { key: "qtyOpen", header: "open_qty" },
@@ -280,11 +283,15 @@ function BreakevenFlag({ c, busy, onAck }) {
    here because Days says the same thing more usefully; the rest are the
    workings behind Open risk and Unrealised, which stay. */
 const BEYOND_ESSENTIALS = new Set([
+  /* Sector earns its place; Industry under it is a second column saying
+     almost the same thing, so it waits to be asked for. */
+  "industry",
   "entry_date", "qtyOpen", "openPct", "slPct", "toStop", "buyValue", "netRiskR", "realisedPnl",
 ]);
 /* The picker's list, in table order. Labels match the headers exactly — the
    list is how somebody finds a column they can see, so it must use its name. */
 const HOLDINGS_COLUMNS = [
+  { k: "sector", label: "Sector" }, { k: "industry", label: "Industry" },
   { k: "entry_date", label: "Entered" }, { k: "days", label: "Days" },
   { k: "qtyOpen", label: "Open qty" }, { k: "openPct", label: "Open %" },
   { k: "entry_price", label: "Entry" }, { k: "stop", label: "Stop" },
@@ -370,6 +377,11 @@ export default function Holdings({
      hiding it in one place keeps the header, the cell and the CSV in step. */
   const mtfHere = hasMtf(activeRegion());
   const show = (k) => (k === "margin" && !mtfHere ? false : colPrefs.show(k));
+  /* Asked for only while a column is showing, so a book nobody classifies
+     never fetches the file — see lib/sectors.js. It is laid onto the rows
+     rather than read in the cell so that sorting and the CSV get it too;
+     a column that cannot be sorted is half a column on a table this wide. */
+  const sectorOf = useSectors(show("sector") || show("industry"));
 
   const rows = useMemo(() => {
     return open
@@ -467,8 +479,12 @@ export default function Holdings({
         const toStop = canRead ? ((t.mark - stop) / t.mark) * 100 : NaN;
         const breached = canRead && (t.side === "short" ? t.mark >= stop : t.mark <= stop);
 
+        const cls = sectorOf(t.symbol);
+
         return {
           ...t,
+          sector: cls.sector,
+          industry: cls.industry,
           qtyOpen,
           openPct,
           liveExposure,
@@ -523,7 +539,7 @@ export default function Holdings({
           return ((isFinite(av) ? av : -1e12) - (isFinite(bv) ? bv : -1e12)) * sort.dir;
         return String(av || "").localeCompare(String(bv || "")) * sort.dir;
       });
-  }, [open, sort]);
+  }, [open, sort, sectorOf]);
 
   const totals = useMemo(() => {
     const sum = (f) => rows.reduce((a, r) => a + (isFinite(f(r)) ? f(r) : 0), 0);
@@ -851,7 +867,8 @@ export default function Holdings({
     const by = new Map();
     rows.forEach((r, index) => {
       const key = String(r.symbol || "").toUpperCase();
-      const g = by.get(key) || { symbol: r.symbol, exchange: r.exchange, lots: [], index };
+      const g = by.get(key) || { symbol: r.symbol, exchange: r.exchange,
+                                 sector: r.sector, industry: r.industry, lots: [], index };
       g.lots.push(r);
       by.set(key, g);
     });
@@ -903,6 +920,8 @@ export default function Holdings({
           <span className="ps-dim"> {g.exchange}</span>
           <i className="ps-lots">{g.lots.length} buys</i>
         </td>
+        {show("sector") && <td className="ps-sect" title={g.sector}>{g.sector || "—"}</td>}
+        {show("industry") && <td className="ps-sect ps-dim" title={g.industry}>{g.industry || "—"}</td>}
         {show("entry_date") && <td className="ps-dim fz">—</td>}
         {show("days") && <td className="num ps-dim">{isFinite(g.days) ? `${g.days}` : "—"}</td>}
         {show("qtyOpen") && <td className="num"><Qty v={g.qtyOpen} /></td>}
@@ -1020,6 +1039,14 @@ export default function Holdings({
                     )}
                     {r.status === "partial" && <span className="ps-tag">part sold</span>}
                   </td>
+                  {/* Every buy of a stock has the same sector, so under an
+                      expanded group it is already on the line above. */}
+                  {show("sector") && (
+                  <td className="ps-sect" title={nested ? "" : r.sector}>{nested ? "" : (r.sector || "—")}</td>
+                  )}
+                  {show("industry") && (
+                  <td className="ps-sect ps-dim" title={nested ? "" : r.industry}>{nested ? "" : (r.industry || "—")}</td>
+                  )}
                   {show("entry_date") && (
                   <td className="mono ps-dim">
                     {r.entry_date}
@@ -1483,6 +1510,8 @@ export default function Holdings({
                   it — on its own it would slide under and disappear. */}
               <th className="num fz">#</th>
               {th("symbol", "Symbol", "fz2 fz-last")}
+              {show("sector") && th("sector", "Sector")}
+              {show("industry") && th("industry", "Industry")}
               {show("entry_date") && th("entry_date", "Entered")}
               {show("days") && th("days", "Days", "num")}
               {show("qtyOpen") && th("qtyOpen", "Open qty", "num")}
@@ -1830,6 +1859,11 @@ export default function Holdings({
         }
         .ps-group { background: var(--bg); }
         .ps-group td { font-weight: 500; }
+        /* Long enough for "Consumer Durables" and for most industries;
+           what does not fit is cut with the whole name in the hover, which
+           beats a column that sets its own width from one outlier. */
+        .ps-sect { min-width: 104px; max-width: 150px; overflow: hidden;
+                   text-overflow: ellipsis; white-space: nowrap; }
         .ps-lots { font-style: normal; font-size: 10.5px; color: var(--ink3);
                    border: 1px solid var(--rule); border-radius: 2px;
                    padding: 1px 5px; margin-left: 7px; white-space: nowrap; }

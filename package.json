@@ -10,7 +10,9 @@
     "probe": "node --import ./scripts/probe/register.mjs scripts/probe.mjs",
     "probe:tz": "TZ=America/New_York node --import ./scripts/probe/register.mjs scripts/probe.mjs",
     "admin": "node scripts/admin/server.mjs",
-    "symbols:us": "node scripts/build-symbols-us.mjs"
+    "symbols:us": "node scripts/build-symbols-us.mjs",
+    "sectors": "node scripts/build-sectors.mjs",
+    "sectors:us": "node scripts/build-sectors.mjs --region=US"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

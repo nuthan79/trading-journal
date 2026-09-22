@@ -19,6 +19,11 @@ npm run symbols:us # rebuild public/symbols.us.json from Nasdaq Trader's own
 npm run symbols   # rebuild public/symbols.json — NSE and BSE both download
                    # automatically. Refuses to write a file >10% smaller than
                    # the existing one; pass --force only if it really shrank.
+
+npm run sectors    # rebuild public/sectors.json — the Sector/Industry columns.
+npm run sectors:us # same for the US. India crawls BSE per scrip (~4 min) for
+                   # the NSE classification; the US is one Nasdaq request.
+                   # Same shrink guard. Re-run these with the symbol files.
 ```
 
 ```bash
@@ -306,6 +311,21 @@ answer right. `money`/`amount`/`exact`/`moneyParts`/`moneyTitle` and `<Money>`
 all follow it; `rupee()` stays for India's own subject matter — statutory
 rates, broker presets, the ₹18 pledge fee, the learn pages. Ladders live in
 `LADDERS`: k/L/Cr/Lakh Cr for India, K/M/B/T for the US.
+
+**Sector is per market, looked up, never stored.** `lib/sectors.js` fetches
+`public/sectors.<book>.json` — built by `scripts/build-sectors.mjs` — and only
+once a Sector or Industry column is actually showing, so nobody pays for a
+column they do not use. Two levels of one classification, not four: India's is
+the NSE scheme (Oil Gas & Consumable Fuels → Petroleum Products) and the US's
+is Nasdaq's (Energy → Integrated oil Companies), and they are never mapped
+onto one another — the same company sits in differently-named buckets, and a
+blended taxonomy is one neither exchange publishes. NSE's per-symbol API is
+behind Akamai and answers 403 to a build, so India's values come over BSE's
+ComHeadernew, which returns the same SEBI classification: checked on 300 names
+carried by both, it agreed with NSE's published sector on all 265 that
+answered and differed on none. Where NSE publishes the string it still wins,
+spelling included. Nothing is written to a trade — a company can be
+reclassified, and an old export should not carry a frozen guess.
 
 **One symbol file per book, one ticker spelling per venue.** `symbols.json` is
 NSE+BSE, `symbols.us.json` is 11k US listings; `SymbolSearch` fetches only the

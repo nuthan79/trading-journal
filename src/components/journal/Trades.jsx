@@ -9,6 +9,7 @@ import { excursion } from "@/lib/path";
 import { hasMtf, activeRegion } from "@/lib/regions";
 import { COLUMN_HINTS } from "@/lib/columns";
 import { useColumnPrefs } from "@/lib/useColumnPrefs";
+import { useSectors } from "@/lib/sectors";
 import ColumnPicker from "./ColumnPicker";
 import Money from "@/components/Money";
 import { downloadCsv } from "@/lib/csv";
@@ -46,19 +47,26 @@ const TRADE_COLS = ["symbol", "exchange", "side", "entry_date", "entry_price", "
   /* Last, so a spreadsheet keyed on the columns before it is undisturbed. On a
      trade bought on MTF, pnl is net of this as well as of charges, and without
      it the export would not reconcile: gross − charges ≠ pnl. */
-  "margin"];
+  "margin",
+  /* Looked up at download rather than stored on the trade: a company can
+     be reclassified, and a figure the journal did not record should not
+     be frozen into every old export. */
+  "sector", "industry"];
 
 /* Named for THEIR journal, not for the app. A folder of exports from three
    people is three sets of "ledgerr-closed-…" otherwise, and the one thing
    that would tell them apart is the one thing the file does not say. */
-const exportCsv = (rows, label, journalName) =>
-  downloadCsv(rows, TRADE_COLS, exportFilename(label, { prefix: journalName }));
+const exportCsv = (rows, label, journalName, sectorOf) =>
+  downloadCsv(rows.map((t) => ({ ...t, ...sectorOf(t.symbol) })), TRADE_COLS,
+              exportFilename(label, { prefix: journalName }));
 
 /* MFE and MAE are not columns on the row under those names — they are read
    through excursion(), which also decides when there is no figure. Sorting
    through the same function keeps a dash from sorting as a number. */
-const sortValue = (t, k) =>
-  k === "mfe" ? excursion(t).mfe : k === "mae" ? excursion(t).mae : t[k];
+const sortValue = (t, k, sectorOf) =>
+  k === "mfe" ? excursion(t).mfe : k === "mae" ? excursion(t).mae
+  : k === "sector" || k === "industry" ? sectorOf(t.symbol)[k]
+  : t[k];
 
 const EXCURSION_NOTE = "on closing prices while the position was held, in R";
 
@@ -72,6 +80,7 @@ const REALISED_HERE_NOTE =
 /* The picker's list, in table order, with the labels the headers use. Symbol
    is not in it: a row with no name is not a row anybody can read. */
 const TRADE_COLUMNS = [
+  { k: "sector", label: "Sector" }, { k: "industry", label: "Industry" },
   { k: "entry_date", label: "In" }, { k: "exit_date", label: "Out" },
   { k: "heldDays", label: "Held" }, { k: "entry_price", label: "Entry" },
   { k: "stop_loss", label: "Stop" }, { k: "slPct", label: "SL %" },
@@ -87,7 +96,7 @@ const TRADE_COLUMNS = [
 ];
 /* Where the totals row splits. Symbol is first in BEFORE_PNL and never hidden,
    so the lead span is always at least one. */
-const BEFORE_PNL = ["symbol", "entry_date", "exit_date", "heldDays", "entry_price", "stop_loss",
+const BEFORE_PNL = ["symbol", "sector", "industry", "entry_date", "exit_date", "heldDays", "entry_price", "stop_loss",
                     "slPct", "quantity", "exposure", "avgExitPrice", "exitPct"];
 /* Between R and these sit the two cost columns, which have totals of their
    own in the footer rather than falling inside the trailing span. */
@@ -121,7 +130,9 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
      bought on margin — a column of dashes on every row would be noise. Only
      the default: a saved choice, or a first MTF trade, shows it. */
   const colPrefs = useColumnPrefs("trades", {
-    defaults: all.some((t) => Number(t.mtf_leverage) > 1) ? [] : ["margin"],
+    /* Industry sits under Sector and mostly repeats it in more words, so
+       it waits to be asked for. Sector itself shows. */
+    defaults: ["industry", ...(all.some((t) => Number(t.mtf_leverage) > 1) ? [] : ["margin"])],
   });
   /**
    * MTF DOES NOT EXIST IN EVERY MARKET, so its column does not either.
@@ -133,6 +144,9 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
    */
   const mtfHere = hasMtf(activeRegion());
   const show = (k) => (k === "margin" && !mtfHere ? false : colPrefs.show(k));
+  /* Nothing is fetched unless one of the two columns is on — see
+     lib/sectors.js. */
+  const sectorOf = useSectors(show("sector") || show("industry"));
   const leadSpan = BEFORE_PNL.filter(show).length;
   const trailSpan = AFTER_COSTS.filter(show).length + 1;   // + the edit/delete column
 
@@ -438,12 +452,12 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
         (t.pattern || "").toLowerCase().includes(s) || (t.notes || "").toLowerCase().includes(s));
     }
     return [...r].sort((a, b) => {
-      const av = sortValue(a, sort.k), bv = sortValue(b, sort.k);
+      const av = sortValue(a, sort.k, sectorOf), bv = sortValue(b, sort.k, sectorOf);
       if (typeof av === "number" || typeof bv === "number")
         return ((isFinite(av) ? av : -1e12) - (isFinite(bv) ? bv : -1e12)) * sort.dir;
       return String(av || "").localeCompare(String(bv || "")) * sort.dir;
     });
-  }, [all, mistake, missingField, edge, filter, view, q, sort]);
+  }, [all, mistake, missingField, edge, filter, view, q, sort, sectorOf]);
 
   // Resolved by id against the filtered list, not held as an object: change
   // the filter or the sort while it's open and the panel follows the row,
@@ -728,7 +742,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                         prefs={colPrefs} />
           <button className="btn ghost sm" title={`Download the ${rows.length} trade${
                     rows.length === 1 ? "" : "s"} shown, as ${exportFilename(viewLabel, { prefix: journalName })}`}
-                  onClick={() => exportCsv(rows, viewLabel, journalName)}>
+                  onClick={() => exportCsv(rows, viewLabel, journalName, sectorOf)}>
             <Download size={13} />CSV
           </button>
         </div>
@@ -765,6 +779,8 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
           <table className="t">
             <thead><tr>
               {th("symbol", "Symbol", "fz fz-last")}
+              {show("sector") && th("sector", "Sector")}
+              {show("industry") && th("industry", "Industry")}
               {show("entry_date") && th("entry_date", "In")}
               {show("exit_date") && th("exit_date", "Out")}
               {show("heldDays") && th("heldDays", "Held", "num")}
@@ -828,6 +844,15 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                         <Flag size={10} strokeWidth={2.5} style={{ verticalAlign: "-1px" }} />
                       </span>)}
                   </td>
+                  {show("sector") && (
+                  <td className="tr-sect" title={sectorOf(t.symbol).sector}>
+                    {sectorOf(t.symbol).sector || "—"}</td>
+                  )}
+                  {show("industry") && (
+                  <td className="tr-sect" style={{ color: "var(--ink3)" }}
+                      title={sectorOf(t.symbol).industry}>
+                    {sectorOf(t.symbol).industry || "—"}</td>
+                  )}
                   {show("entry_date") && (
                   <td className="mono" style={{ fontSize: 12 }}>{t.entry_date}</td>
                   )}
@@ -1139,6 +1164,10 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
       )}
 
       <style jsx>{`
+        /* Cut with the whole name in the hover, so one long industry does
+           not set the width of the column on every other row. */
+        .tr-sect { font-size: 12px; min-width: 104px; max-width: 150px;
+                   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .tr-search { position: relative; width: 180px; }
         .tr-search .in {
           padding: 6px 28px 6px 10px; font-size: 13px;
