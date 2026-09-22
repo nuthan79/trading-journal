@@ -25,20 +25,39 @@ import { loadHidden, serializeHidden } from "./columnPrefs";
 export const columnKeyFor = (table, region) =>
   (!region || region === DEFAULT_REGION ? table : `${table}.${region}`);
 
+/** What this key holds now. Guarded: private windows throw on access. */
+export function readHidden(key, { defaults = [], legacyKey = null } = {}) {
+  let raw = null, legacy = null;
+  try {
+    raw = localStorage.getItem(key);
+    if (legacyKey) legacy = localStorage.getItem(legacyKey);
+  } catch { /* nothing stored is a valid answer */ }
+  return loadHidden(raw, { defaults, legacy });
+}
+
 export function useColumnPrefs(table, { defaults = [], legacyKey = null } = {}) {
   const key = `ledgerr:columns:${columnKeyFor(table, activeRegion())}`;
 
-  const [hidden, setHiddenState] = useState(() => {
-    let raw = null, legacy = null;
-    try {
-      raw = localStorage.getItem(key);
-      if (legacyKey) legacy = localStorage.getItem(legacyKey);
-    } catch {}
-    return loadHidden(raw, { defaults, legacy });
-  });
+  /**
+   * THE KEY CAN CHANGE UNDER A MOUNTED TABLE, which is what switching books
+   * does: the screens stay, the data changes. Read once in an initializer,
+   * the hook kept the previous book's choice in memory and wrote it into the
+   * new book's key on the first toggle — so hiding a column in the US hid it
+   * in India, exactly as if the keys had never been split.
+   *
+   * So the key is held BESIDE the value and compared on every render. This is
+   * React's own pattern for state derived from a prop, and it re-renders
+   * immediately rather than after a paint — which is why it is here and not
+   * in an effect: an effect would flash the previous book's columns first.
+   */
+  const [state, setState] = useState(() => ({ key, hidden: readHidden(key, { defaults, legacyKey }) }));
+  if (state.key !== key) {
+    setState({ key, hidden: readHidden(key, { defaults, legacyKey }) });
+  }
+  const hidden = state.key === key ? state.hidden : readHidden(key, { defaults, legacyKey });
 
   const setHidden = useCallback((next) => {
-    setHiddenState(next);
+    setState({ key, hidden: next });
     try { localStorage.setItem(key, serializeHidden(next)); } catch {}
   }, [key]);
 

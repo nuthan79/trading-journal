@@ -253,3 +253,31 @@ test("the pre-picker key is read only in the book it came from", () => {
   ok(/activeRegion\(\) === "IN" \? "ledgerr:holdings-columns" : null/.test(h),
      "read into a US book it would hand it a choice made about other columns");
 });
+
+/**
+ * REPORTED TWICE, AND THE SECOND TIME IT WAS NOT THE KEY.
+ *
+ * Splitting the storage key per book was necessary and not sufficient: the
+ * hook read that key in a useState initializer, which runs once. Switching
+ * books changes the key under a MOUNTED table — the screens stay, the data
+ * changes — so the previous book's set stayed in memory and the first toggle
+ * wrote it into the new book's key. The columns followed you across exactly
+ * as before, and the split looked broken.
+ */
+test("the columns are re-read when the book changes under a mounted table", () => {
+  const src = read("lib/useColumnPrefs.js");
+  ok(/const \[state, setState\] = useState\(\(\) => \(\{ key, hidden: readHidden/.test(src),
+     "the key is held beside the value");
+  ok(/if \(state\.key !== key\) \{/.test(src), "and compared on every render");
+  ok(!/useState\(\(\) => \{\s*\n\s*let raw = null/.test(src), "not read once and kept forever");
+  /* An effect would paint the previous book's columns first — the reason the
+     file gives for reading in the initializer in the first place. */
+  ok(/rather than after a paint/.test(src), "and the reason for not using an effect is written down");
+});
+
+test("readHidden survives a browser that refuses storage", () => {
+  /* Private windows and blocked site data throw on access; the table must
+     still draw, with its defaults. */
+  const src = read("lib/useColumnPrefs.js");
+  ok(/try \{[\s\S]*?localStorage\.getItem\(key\)[\s\S]*?\} catch/.test(src));
+});
