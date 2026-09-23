@@ -72,10 +72,12 @@ const EXCURSION_NOTE = "on closing prices while the position was held, in R";
 
 const REALISED_HERE_NOTE =
   "Money that actually arrived between these dates, counting every sell of "
-  + "every position — including positions not listed here, whose last exit "
-  + "falls outside the window. The total beside it sums whole positions "
-  + "instead, so it carries money realised before or after. This figure "
-  + "matches Performance by period for the same dates.";
+  + "every position in the book — including positions this view is not "
+  + "showing, whether because their last exit falls outside the window or "
+  + "because a tab or filter hides them. So it is the same figure on Winners "
+  + "as on Losers. The total beside it sums the rows on screen over their "
+  + "whole lives instead, so it carries money realised before or after. This "
+  + "figure matches Performance by period for the same dates.";
 
 /* The picker's list, in table order, with the labels the headers use. Symbol
    is not in it: a row with no name is not a row anybody can read. */
@@ -1066,13 +1068,25 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                   {/* Not "of it" any more: it is no longer a share of the total
                       beside it. It counts every sell in the window across the
                       whole book, including positions this filter does not show
-                      because their last exit falls outside it. */}
+                      because their last exit falls outside it.
+
+                      AND THE SCREEN HAS TO SAY SO, not only the hover. The
+                      scope was in the title attribute and nowhere a reader
+                      would find it, so on the Winners tab the line read as a
+                      fact about the winners: three positions that banked
+                      ₹2.47 L in the window sat under "₹77.1k realised
+                      between these dates", the difference being losers the
+                      tab was hiding. The proof it is not about the rows is
+                      that Winners and Losers printed the same ₹77.1k. A
+                      figure whose scope differs from the table it sits in
+                      must name that scope where the figure is. */}
                   {isFinite(realisedHere) && money(realisedHere) !== money(totals.pnl) && (
                     <span className="tr-tot-win" title={REALISED_HERE_NOTE}>
                       {/* The note is on the figure as well as the phrase: the
                           figure carries its own hover now, and the inner title
                           is the one the pointer lands on over the digits. */}
-                      <Money v={realisedHere} note={REALISED_HERE_NOTE} /> realised between these dates
+                      <Money v={realisedHere} note={REALISED_HERE_NOTE} /> realised across the whole book
+                      {" "}between these dates
                       {/*
                         THE REASON THEY DIFFER, ON SCREEN.
 
@@ -1084,8 +1098,8 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                         can otherwise reach — that the page is wrong.
                       */}
                       <i className="tr-tot-why">
-                        the P&amp;L column totals these positions over their whole lives,
-                        so it counts money made outside these dates too
+                        every sell in the window, including positions this view hides —
+                        while the P&amp;L beside it totals these rows over their whole lives
                       </i>
                     </span>
                   )}

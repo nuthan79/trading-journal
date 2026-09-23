@@ -38,3 +38,42 @@ test("the footer decides on the rendered strings, not the raw values", () => {
   ok(/money\(realisedHere\)\s*!==\s*money\(totals\.pnl\)/.test(src),
     "it must compare what the two cells actually print");
 });
+
+/**
+ * A FIGURE WHOSE SCOPE DIFFERS FROM ITS TABLE MUST SAY SO WHERE IT IS.
+ *
+ * "realised between these dates" walks the whole book, not the rows: it is
+ * what reconciles with Performance, and it is deliberately unaffected by the
+ * tab or the filter. That scope lived only in a title attribute, so on the
+ * Winners tab the line read as a claim about the winners — three positions
+ * that banked ₹2.47 L inside the window sitting under "₹77.1k realised
+ * between these dates", the gap being losers the tab was hiding. Winners and
+ * Losers printed the same ₹77.1k, which is the proof it was never about the
+ * rows.
+ *
+ * Comments are stripped: the reason lives in one, and a comment nobody sees
+ * is exactly what failed here.
+ */
+test("the realised figure names the whole book on screen, not only in a hover", () => {
+  const visible = read("components/journal/Trades.jsx")
+    .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  ok(/realised across the whole book/.test(visible),
+     "the line does not say whose money it is where a reader will see it");
+  ok(/including positions this view hides/.test(visible),
+     "nothing on screen says the figure counts rows the filter is not showing");
+});
+
+/**
+ * And the value itself stays book-wide. Walking `rows` is the bug this was
+ * fixed out of once already — a position that sold inside the window and
+ * finished after it is not in `rows` at all, and a real book came out ₹4.8 L
+ * short of Performance for the same year.
+ */
+test("the realised figure is summed over the book, never the rows on screen", () => {
+  const src = read("components/journal/Trades.jsx");
+  const body = src.slice(src.indexOf("const realisedHere"),
+                         src.indexOf("const totals", src.indexOf("const realisedHere")));
+  ok(/for \(const t of all\)/.test(body), "it must walk every trade in the book");
+  ok(!/\bof rows\b/.test(body), "it is walking the filtered rows again");
+  ok(/bankedEvents\(t\)/.test(body), "it must split positions into their sells");
+});
