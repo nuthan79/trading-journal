@@ -61,7 +61,7 @@ test("the Dashboard hands the paragraph the same banking list as the tiles", () 
 
 test("the tiles are folded by default and the choice is remembered", () => {
   const src = read("components/journal/HeadlineNumbers.jsx");
-  ok(/localStorage\.getItem\(OPEN_KEY\) === "1"; \} catch \{ return false; \}/.test(src),
+  ok(/localStorage\.getItem\(OPEN_KEY\(\)\) === "1"; \} catch \{ return false; \}/.test(src),
     "closed unless the user opened it, and closed if storage is blocked");
   ok(/\{open && bands\.map/.test(src), "the bands render only when open");
 });

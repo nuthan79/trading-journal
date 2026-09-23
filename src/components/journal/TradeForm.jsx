@@ -19,6 +19,7 @@ const defaultExchange = () => regionInfo(activeRegion()).defaultExchange;
 import { resolveTradingViewChart } from "@/lib/charts";
 import { entryCharges, mergeConfig } from "@/lib/charges";
 import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
+import { scopedKey } from "@/lib/browserStore";
 import { quoteFor } from "@/lib/db";
 import { hasRealStop, noStopOnRecord } from "@/lib/stops";
 
@@ -397,7 +398,9 @@ const formIdOf = (initial) => initial?.id ?? "new";
 /* A section that stays open or shut the way it was last left, in this browser.
    Read in the initializer: the form only ever renders on the client, so there
    is no server render to disagree with. Guarded, since blocked storage throws. */
-function useRememberedFold(key) {
+function useRememberedFold(rawKey) {
+  /* Per account: this browser may be shared — see browserStore.js. */
+  const key = scopedKey(rawKey);
   const [open, setOpen] = useState(() => {
     try { return localStorage.getItem(key) === "1"; } catch { return false; }
   });

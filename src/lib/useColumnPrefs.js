@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import { activeRegion, DEFAULT_REGION } from "./regions";
 import { loadHidden, serializeHidden } from "./columnPrefs";
+import { scopedKey } from "./browserStore";
 
 /**
  * A table's column choices, remembered in this browser.
@@ -36,7 +37,11 @@ export function readHidden(key, { defaults = [], legacyKey = null } = {}) {
 }
 
 export function useColumnPrefs(table, { defaults = [], legacyKey = null } = {}) {
-  const key = `ledgerr:columns:${columnKeyFor(table, activeRegion())}`;
+  /* Per account as well as per book. localStorage belongs to the browser, so
+     two accounts used on one machine shared a single choice: setting up
+     different columns in each and signing between them showed whichever was
+     saved last. See browserStore.js. */
+  const key = scopedKey(`ledgerr:columns:${columnKeyFor(table, activeRegion())}`);
 
   /**
    * THE KEY CAN CHANGE UNDER A MOUNTED TABLE, which is what switching books

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { scopedKey } from "@/lib/browserStore";
 import { ChevronDown } from "lucide-react";
 import { headline } from "@/lib/calc";
 import { money, rfmt, pct, days } from "@/lib/format";
@@ -25,7 +26,7 @@ function Cell({ label, value, tone, hint }) {
   );
 }
 
-const OPEN_KEY = "ledgerr:headline-numbers-open";
+const OPEN_KEY = () => scopedKey("ledgerr:headline-numbers-open");
 
 const sign = (v) => (!isFinite(v) ? "" : v > 0 ? "pos" : v < 0 ? "neg" : "");
 
@@ -34,11 +35,11 @@ export default function HeadlineNumbers({ closed, banking = [], openingCapital, 
      the session resolves on the client, so an effect would only add a flash of
      the wrong state. Guarded, since blocked storage throws. */
   const [open, setOpen] = useState(() => {
-    try { return localStorage.getItem(OPEN_KEY) === "1"; } catch { return false; }
+    try { return localStorage.getItem(OPEN_KEY()) === "1"; } catch { return false; }
   });
   const setOpenRemembered = (v) => {
     setOpen(v);
-    try { localStorage.setItem(OPEN_KEY, v ? "1" : "0"); } catch {}
+    try { localStorage.setItem(OPEN_KEY(), v ? "1" : "0"); } catch {}
   };
   const h = useMemo(
     () => headline(closed, { openingCapital, flows, banking }),

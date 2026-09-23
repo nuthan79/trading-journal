@@ -15,6 +15,7 @@ import {
   listRegionAccess, fxRate as dbFxRate } from "@/lib/db";
 import { stats } from "@/lib/calc";
 import { setActiveRegion, money, setDisplayCurrency } from "@/lib/format";
+import { setStorageUser, sweepLegacy } from "@/lib/browserStore";
 import { currentRegion, regionOf, regionSettings, region as regionInfo,
          REGIONS, DEFAULT_REGION } from "@/lib/regions";
 import { SHOW_REGIONS } from "@/lib/flags";
@@ -159,6 +160,21 @@ export default function AppLayout({ children }) {
   // time somebody alt-tabbed back from a spreadsheet.
   const userId = session?.user?.id ?? null;
   useEffect(() => { if (userId) trackVisit(); }, [userId]);
+
+  /**
+   * WHOSE BROWSER STORAGE THIS IS, told once, during render.
+   *
+   * Set here and not in an effect, because the screens below read storage in
+   * their own initializers: an effect runs after they have already read, so
+   * the first render of a second account would still see the first account's
+   * columns. Same placement and same reasoning as setActiveRegion below.
+   */
+  setStorageUser(userId);
+
+  /* The keys written before any of this was scoped, cleared once — including
+     whatever draft is sitting in a shared browser right now. See
+     browserStore.js for why it is an explicit list. */
+  useEffect(() => { sweepLegacy(); }, []);
 
   // The faults React's error boundary never sees: a throw from an event
   // handler, and a promise nobody caught. Mounted once for the whole app.
@@ -591,6 +607,10 @@ export default function AppLayout({ children }) {
   }, []);
   const chooseCurrency = (c) => {
     setShowAs(c);
+    /* Deliberately NOT scoped to the account, unlike the columns and the
+       drafts: fxview.probe.mjs records the decision — reading a US book in
+       rupees is how you are looking at the screen, not a fact about whose
+       journal it is. */
     try { localStorage.setItem("ledgerr:show-as", c); } catch { /* nothing to lose */ }
   };
   /* Fetched once per book, and not at all for an Indian one — there is
