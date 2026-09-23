@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { dimensionRows, DIMENSIONS, maxAbsTotalR, isThin, NOT_RECORDED, edgeHref } from "@/lib/edge";
+import { dimensionRows, DIMENSIONS, labelOf, maxAbsTotalR, isThin, NOT_RECORDED, edgeHref } from "@/lib/edge";
 import { useSectors } from "@/lib/sectors";
 import { mistakeCost, outcomeTagCounts } from "@/lib/analysis";
 import { isExecutionError } from "@/lib/constants";
@@ -100,13 +100,13 @@ export default function Edge({ closed: rawClosed = [], accountSize }) {
         </div>
         <div className="seg" style={{ marginBottom: 12 }}>
           {dims.map((d) => (
-            <button key={d.id} data-on={D.id === d.id ? 1 : 0} onClick={() => setDim(d.id)}>{d.label}</button>
+            <button key={d.id} data-on={D.id === d.id ? 1 : 0} onClick={() => setDim(d.id)}>{labelOf(d)}</button>
           ))}
         </div>
         <div className="card scroll">
           <table className="t">
             <thead><tr>
-              <th>{D.label}</th>
+              <th>{labelOf(D)}</th>
               {EDGE_COLUMNS.map((c) => (
                 <th key={c.k} className="num" title={c.hint}>{c.label}</th>
               ))}

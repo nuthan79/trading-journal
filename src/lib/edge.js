@@ -21,6 +21,8 @@
 
 import { stats } from "./calc";
 import { isMtf } from "./mtf";
+import { money } from "./format";
+import { activeRegion, region } from "./regions";
 
 const n = (v) => (v === "" || v == null ? NaN : Number(v));
 const mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : NaN);
@@ -221,20 +223,36 @@ export const HOLD_BANDS = [
  */
 const STEPS = [250, 500, 1000, 2500, 5000, 10_000, 25_000, 50_000, 100_000, 250_000, 500_000];
 
-/** Band edges read better trimmed — "₹10k" not "₹10.0k". */
-const edge = (v) => {
-  if (v >= 1e7) return `₹${(v / 1e7).toFixed(2).replace(/\.?0+$/, "")}Cr`;
-  if (v >= 1e5) return `₹${(v / 1e5).toFixed(2).replace(/\.?0+$/, "")}L`;
-  if (v >= 1e3) return `₹${(v / 1e3).toFixed(1).replace(/\.?0+$/, "")}k`;
-  return `₹${Math.round(v)}`;
-};
+/**
+ * The same idea for what a position COST, which is an order of magnitude
+ * above what was risked on it and rounds to different numbers: nobody thinks
+ * in ₹2.5L positions, they think in lakhs of three. Wide enough at both ends
+ * to serve a book trading ₹50k positions and one trading a crore, and it runs
+ * low enough that a US book of $5k positions still gets more than one band.
+ */
+const SIZE_STEPS = [1000, 2500, 5000, 10_000, 25_000, 50_000, 100_000,
+                    200_000, 300_000, 500_000, 1_000_000, 2_500_000, 5_000_000, 10_000_000];
 
-export function moneyBands(values, { target = 7 } = {}) {
+/**
+ * Band edges read better trimmed — "₹10k" not "₹10.00 L".
+ *
+ * Through money() rather than a rupee ladder written out here, so the edges
+ * are the open book's currency: this used to print ₹ over a US book's
+ * dollars, which is the one mistake about money that nothing on screen can
+ * show you. India's strings are unchanged — ₹10k, ₹1L, ₹1.2Cr all come back
+ * identical.
+ */
+const edge = (v) => money(v)
+  .replace(/\s+/g, "")
+  .replace(/(\.\d*?)0+(?=[A-Za-z]|$)/, "$1")
+  .replace(/\.(?=[A-Za-z]|$)/, "");
+
+export function moneyBands(values, { target = 7, steps = STEPS } = {}) {
   const vals = values.filter((v) => isFinite(v) && v > 0);
   if (!vals.length) return [{ max: Infinity, label: NOT_RECORDED }];
 
   const hi = Math.max(...vals);
-  const step = STEPS.find((sp) => hi / sp <= target) || STEPS[STEPS.length - 1];
+  const step = steps.find((sp) => hi / sp <= target) || steps[steps.length - 1];
 
   const out = [];
   for (let lo = 0; lo < hi; lo += step) {
@@ -300,6 +318,13 @@ export function fixedBander(spec) {
  * already mean something to a reader. Categorical ones supply `get()` and are
  * grouped as-is.
  */
+/**
+ * A dimension's name. Most are a fixed string; one depends on the open book,
+ * because "Risk in rupees" is a lie in a dollar journal. Resolved here so the
+ * three places that print a name cannot disagree about which shape it is.
+ */
+export const labelOf = (d) => (typeof d?.label === "function" ? d.label() : d?.label || "");
+
 export const DIMENSIONS = [
   { id: "pattern", label: "Base pattern",
     get: (t) => t.pattern || NOT_RECORDED },
@@ -318,9 +343,38 @@ export const DIMENSIONS = [
 
   // The same question in money. See moneyBands for why this one is banded on
   // fixed edges while every other continuous dimension is banded adaptively.
-  { id: "riskamt", label: "Risk in rupees", continuous: true, money: true,
+  /* Named for the currency it is actually showing — the edges follow the
+     open book, so "Risk in rupees" over a US book was wrong twice. */
+  { id: "riskamt", label: () => `Risk in ${region(activeRegion()).currency === "INR" ? "rupees" : "dollars"}`,
+    continuous: true, money: true,
     fixed: (closed) => moneyBands(closed.map((t) => t.riskAmt)),
     value: (t) => t.riskAmt },
+
+  /*
+   * HOW BIG WAS THE BET, as opposed to how much was risked on it.
+   *
+   * Position size is not independent of the two tabs before it — it is their
+   * arithmetic: size × stop width = risk, exactly, on every trade. So a big
+   * position is either a big risk or a tight stop, and those two already have
+   * a tab each.
+   *
+   * It is here anyway, and for the thing that identity hides. Risk-based
+   * sizing assumes the stop holds; concentration is what happens when it does
+   * not. A position at a fifth of capital risked at a quarter of a percent
+   * loses several R, not one, if it gaps through the stop overnight — and no
+   * expectancy table shows that until the night it happens. Read this tab for
+   * whether the big bets are the ones paying, and read the row counts as
+   * exposure rather than as edge.
+   *
+   * ROUND EDGES, NOT QUANTILES. Bands of three lakh are a category somebody
+   * thinks in; "₹4.7L – ₹7.1L" is a cut point, and dividing a book into
+   * equal-sized groups is arithmetic about the book rather than about the
+   * trading. Same argument as the risk bands above, and the same builder.
+   */
+  { id: "size", label: "Position size", continuous: true, money: true,
+    fixed: (closed) => moneyBands(closed.map((t) => t.exposure),
+                                  { target: 5, steps: SIZE_STEPS }),
+    value: (t) => t.exposure },
 
   /*
    * DOES MARGIN PAY? The same trades split by whether they were bought on
@@ -561,5 +615,5 @@ export function matchesEdgeFilter(t, { dim, key, lo, hi } = {}) {
 export function describeEdgeFilter({ dim, key, band } = {}) {
   const d = DIMENSIONS.find((x) => x.id === dim);
   if (!d) return null;
-  return { label: d.label, value: key != null ? key : band };
+  return { label: labelOf(d), value: key != null ? key : band };
 }
