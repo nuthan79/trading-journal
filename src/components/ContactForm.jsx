@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { BRAND } from "@/lib/brand";
+import { whyNotSendable } from "@/lib/contact";
 
 /**
  * Write to us.
@@ -24,11 +25,23 @@ export default function ContactForm() {
   const [err, setErr] = useState("");
   const [sent, setSent] = useState(false);
 
-  const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) && message.trim().length >= 10;
-
+  /**
+   * THE BUTTON IS NEVER DEAD. It used to disable itself until the message
+   * reached ten characters, with nothing on screen saying so — somebody typed
+   * "i need US", nine characters, clicked a grey button that did nothing, and
+   * reported the form broken. A disabled control cannot be focused or
+   * clicked, so a screen reader announces nothing either; there was no route
+   * to the reason at all.
+   *
+   * It now submits whatever it has and answers in the same place any other
+   * failure is answered. The rule itself lives in lib/contact.js, with the
+   * route that enforces it.
+   */
   const submit = async (e) => {
     e?.preventDefault();
-    if (!valid || busy) return;
+    if (busy) return;
+    const why = whyNotSendable({ email, message });
+    if (why) { setErr(why); return; }
     setBusy(true); setErr("");
     try {
       const res = await fetch("/api/contact", {
@@ -87,7 +100,7 @@ export default function ContactForm() {
 
       {err && <div className="warn">{err}</div>}
 
-      <button className="btn" type="submit" disabled={!valid || busy}
+      <button className="btn" type="submit" disabled={busy}
               style={{ alignSelf: "flex-start" }}>
         {busy ? "Sending…" : "Send message"}
       </button>

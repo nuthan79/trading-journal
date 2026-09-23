@@ -1,5 +1,8 @@
 import { BRAND } from "@/lib/brand";
 import { rateLimit, callerIp, tooMany } from "@/lib/rateLimit";
+/* The minimum and the email test are shared with the form rather than
+   restated — see lib/contact.js for why the minimum is this low. */
+import { MIN_MESSAGE, looksLikeEmail } from "@/lib/contact";
 
 /**
  * The strictest limit here, and the only route a stranger can reach.
@@ -40,7 +43,6 @@ const RESEND_ENDPOINT = "https://api.resend.com/emails";
 /** Long enough for a real question, short enough that nobody pastes a novel
  *  or a payload into it. */
 const MAX = { name: 100, email: 200, message: 4000 };
-const MIN_MESSAGE = 10;
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -50,7 +52,6 @@ const json = (body, status = 200) =>
 
 // Deliberately loose. The address only has to be plausible enough to reply to,
 // and every strict regex ever written rejects somebody's real address.
-const looksLikeEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 
 const escapeHtml = (s) =>
   String(s).replace(/[&<>"']/g, (c) =>
@@ -93,7 +94,7 @@ export async function POST(req) {
     return json({ error: "That email address doesn't look right." }, 400);
   }
   if (message.length < MIN_MESSAGE) {
-    return json({ error: "Tell us a little more than that." }, 400);
+    return json({ error: "Tell us what's wrong, or what you need." }, 400);
   }
 
   const to = process.env.CONTACT_TO || BRAND.contactEmail;
