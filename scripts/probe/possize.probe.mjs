@@ -80,3 +80,43 @@ test("every place that prints a dimension's name resolves it", () => {
   ok(/labelOf\(D\)/.test(src) && /labelOf\(d\)/.test(src), "both the tab and the header must resolve it");
   ok(/label: labelOf\(d\)/.test(read("lib/edge.js")), "the trades banner prints a raw label");
 });
+
+/* ---- the trade count ------------------------------------------------ */
+
+/**
+ * "0 TRADES" ON A ROW THAT MADE $201.
+ *
+ * stats() defines `n` as the trades carrying a finite R, and a trade with no
+ * stop has none — R is profit over the risk taken. A US book of imported
+ * holdings, where nothing carries a stop yet, therefore showed every band as
+ * 0 trades beside real money, three lines below a link whose own hover said
+ * "See the 3 trades in 2 years+".
+ *
+ * The row has carried the honest count all along as `trades`, and isThin()
+ * already uses it. Only the cell read `n`.
+ */
+test("a band reports how many trades are in it, stop or no stop", () => {
+  setActiveRegion("IN");
+  const noStops = [
+    { exposure: 500000, pnl: 4713, r: NaN },
+    { exposure: 300, pnl: 277, r: NaN },
+    { exposure: 124900, pnl: 20133, r: NaN },
+  ];
+  const rows = dimensionRows(noStops, "size", {});
+  eq(rows.reduce((a, r) => a + r.trades, 0), 3, "the trades vanished from the count");
+  ok(rows.every((r) => r.n === 0), "none of them has an R, which is the whole point");
+  ok(rows.some((r) => isFinite(r.netPnl) && r.netPnl !== 0),
+     "the money is still counted — it needs no stop");
+});
+
+test("the trades column prints the count, not the size of the R sample", () => {
+  const src = read("components/journal/Edge.jsx");
+  /* A rendered JSX child, not `${g.n}` inside a hover's template literal —
+     the lookbehind is what tells them apart, and without it this test passed
+     against the very bug it is here for. */
+  ok(!/(?<!\$)\{g\.n\}/.test(src),
+     "the trades cell is printing g.n again — a band with no stops reads as zero trades");
+  ok(/(?<!\$)\{g\.trades\}/.test(src), "it must print the group's own count");
+  ok(/g\.n < g\.trades/.test(src),
+     "nothing says the R columns cover fewer trades than the row counts");
+});

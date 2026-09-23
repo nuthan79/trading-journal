@@ -130,7 +130,33 @@ export default function Edge({ closed: rawClosed = [], accountSize }) {
                         {g.key}
                       </Link>
                     </td>
-                    <td className="num">{g.n}</td>
+                    {/*
+                      HOW MANY TRADES ARE IN THIS BAND — not how many of them
+                      have an R.
+
+                      This printed `g.n`, which stats() defines as the trades
+                      carrying a finite R, and a band whose trades all lack a
+                      stop has none. So a US book of imported holdings showed
+                      "0 trades" on a row that also showed $201.33 of net P&L,
+                      three lines below a link whose own hover read "See the 3
+                      trades in 2 years+". Its own column hint says "Closed
+                      trades in this group", and isThin() already counts them
+                      that way — this cell was the only thing reading n.
+
+                      Where some of them have a stop and some do not, the two
+                      figures are both true of different columns, and the
+                      hover says which is which rather than picking one and
+                      hoping.
+                    */}
+                    <td className="num"
+                        title={g.n < g.trades
+                          ? `${g.n} of these ${g.trades} ${g.n === 1 ? "has" : "have"} a stop on `
+                            + `record, so the R columns describe `
+                            + `${g.n === 0 ? "none of them" : g.n === 1 ? "that one" : `those ${g.n}`}. `
+                            + `Net P&L and Avg value describe all ${g.trades}.`
+                          : undefined}>
+                      {g.trades}
+                    </td>
                     <td className="num">{pct(g.winRate, 0)}</td>
                     <td className="num pos">{rfmt(g.avgWin)}</td>
                     <td className="num neg">{rfmt(-g.avgLoss)}</td>
@@ -160,6 +186,13 @@ export default function Edge({ closed: rawClosed = [], accountSize }) {
             </tbody>
           </table>
         </div>
+        {groups.some((g) => g.n < g.trades) && (
+          <div className="hint" style={{ marginTop: 8 }}>
+            Where a row holds trades with no stop on record, the R columns describe only
+            the ones that have a stop — R is profit over the risk taken, and there is none
+            to divide by without it. Net P&amp;L and Avg value describe every trade in the row.
+          </div>
+        )}
         {groups.some((g) => isThin(g)) && (
           <div className="hint" style={{ marginTop: 8 }}>
             Faded rows have fewer than 15 trades — noise, not signal. Read them as questions to watch, not conclusions.
