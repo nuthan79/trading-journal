@@ -167,5 +167,46 @@ test("the comparison shows only on the fixed sample", () => {
   const src = read("components/journal/Review.jsx");
   ok(/w\.last && w\.baseline &&/.test(src),
      "the week strip would claim a usual seven days, which is about pace, not trading");
-  ok(/Your usual \{w\.trades\}/.test(src), "the line must name the sample size it is matching");
+  ok(/Usual \{w\.trades\}:/.test(src), "the line must name the sample size it is matching");
+});
+
+/* ---- reading the two strips against each other ---------------------- */
+
+/**
+ * THREE FIXED COLUMNS. With auto-fit they did not line up: the second strip
+ * had five items to the first one's three, the stop list wrapped, and the same
+ * fact sat at a different x in each — which is the one thing a pair of strips
+ * exists to allow. What closed, how the stops held, how much was risked;
+ * anything else is a footnote to the first column and is placed there.
+ */
+test("the two strips share one column grid", () => {
+  const src = read("components/journal/Review.jsx");
+  const css = src.slice(src.indexOf(".rv-proc-week-l {"), src.indexOf(".rv-marks"));
+  ok(!/auto-fit/.test(css), "auto-fit lets the strips disagree about where a column starts");
+  ok(/grid-template-columns: minmax\(/.test(css), "the columns must be fixed, not flowed");
+  ok(/\.rv-sub \{ grid-column: 1;/.test(css), "footnotes must sit under the first column");
+  ok(/@media \(max-width: 760px\)/.test(css), "and collapse to one column when there is no room");
+});
+
+/**
+ * THE SHAPE, NOT ONLY THE COUNT. Nine losses scattered through ten trades is
+ * variance; nine at the end is a regime, and "1 won, 9 lost" cannot tell them
+ * apart. Filled for a win and hollow for a loss, so it reads without colour.
+ */
+test("the fixed sample shows each trade in order", () => {
+  const w = recentCompliance([
+    trade("2026-08-24", 4, "WIN", "2026-08-24"),
+    ...Array.from({ length: 9 }, (_, i) =>
+      trade(`2026-09-0${i + 1}`, -1, `L${i}`, `2026-09-0${i + 1}`)),
+  ], { last: 10 });
+  eq(w.marks.length, 10, "one mark per trade in the sample");
+  eq(w.marks[0], 1, "oldest first, so the eye lands on what just happened");
+  eq(w.marks[9], -1);
+
+  const src = read("components/journal/Review.jsx");
+  ok(/w\.last && w\.marks\?\.length > 0/.test(src),
+     "a week of three marks is a row of dots, not a sequence — fixed sample only");
+  const css = src.slice(src.indexOf(".rv-marks {"));
+  ok(/border: 1px solid var\(--short\)/.test(css) && /background: var\(--long\)/.test(css),
+     "filled or hollow, so the marks are legible without colour");
 });

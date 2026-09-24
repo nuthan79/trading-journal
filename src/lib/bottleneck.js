@@ -577,6 +577,18 @@ export function recentCompliance(closed = [], { days = 7, last = null, open = []
       ? open.filter((t) => entryDay(t) && entryDay(t) >= entryDay(recent[0])).length
       : 0,
     trades: recent.length,
+    /**
+     * THE SAMPLE AS A SEQUENCE, oldest first — a win or a loss per trade.
+     *
+     * "1 won, 9 lost" is the count; this is the shape, and on a fixed sample
+     * the shape is the whole signal. Nine losses scattered through ten trades
+     * is variance; nine at the end is a regime, and the sentence cannot show
+     * the difference while a row of marks shows nothing else.
+     */
+    marks: recent.map((t) => {
+      const v = Number.isFinite(t.r) ? t.r : num(t.pnl);
+      return Number.isFinite(v) ? (v > 0 ? 1 : -1) : 0;
+    }),
     won: scored.filter((t) => t.r > 0).length,
     lost: scored.filter((t) => t.r <= 0).length,
     netR: scored.length ? +sum(scored.map((t) => t.r)).toFixed(1) : null,

@@ -884,6 +884,20 @@ function ProcessWindow({ w, quiet }) {
                 </b>
               </span>
             )}
+            {/* THE SHAPE, NOT ONLY THE COUNT. Nine losses scattered through
+                ten trades is variance; nine at the end is a regime, and the
+                sentence cannot tell them apart. Oldest on the left, so the
+                eye lands on what just happened. Only on the fixed sample —
+                a week of three marks is a row of dots, not a sequence. */}
+            {w.last && w.marks?.length > 0 && (
+              <span className="rv-marks"
+                    title={"Each trade in this sample, oldest first — filled for a "
+                      + "winner, hollow for a loser."}>
+                {w.marks.map((m, i) => (
+                  <i key={i} data-w={m > 0 ? 1 : 0} />
+                ))}
+              </span>
+            )}
           </li>
           <li>
             {w.losses === 0 ? (
@@ -918,29 +932,27 @@ function ProcessWindow({ w, quiet }) {
             slump it was not.
           */}
           {w.last && w.stillOpen > 0 && (
-            <li className="rv-dim"
-                title={"Ordering closed trades by when they were entered leaves out the "
-                  + "entries from the same stretch that have not resolved — and an entry "
-                  + "can only be closed already if it resolved fast, which mostly means "
-                  + "stopped out. These are the ones still running."}>
-              {w.stillOpen} more taken since then {w.stillOpen === 1 ? "is" : "are"} still open,
-              so {w.stillOpen === 1 ? "it is" : "they are"} not counted here.
+            <li className="rv-dim rv-sub"
+                title={`${w.stillOpen} more ${w.stillOpen === 1 ? "entry" : "entries"} from `
+                  + "this stretch have not resolved, so they are not counted above. An entry "
+                  + "can only be closed already if it resolved fast, and fast mostly means "
+                  + "stopped out — these are the ones still running."}>
+              {w.stillOpen} more taken since, still open
             </li>
           )}
           {w.last && w.baseline && (
-            <li className="rv-dim">
-              Your usual {w.trades}: {w.baseline.expectedWins} won ·{" "}
-              {w.baseline.expectedR > 0 ? "+" : ""}{w.baseline.expectedR}R
+            <li className="rv-dim rv-sub">
               <span title={`The other ${w.baseline.n} closed trades in this book, `
                 + `averaging ${w.baseline.perTrade > 0 ? "+" : ""}${w.baseline.perTrade}R each. `
                 + `These ${w.trades} are left out of it, so the comparison is against `
                 + `everything except themselves.`}>
-                {" "}· from the other {w.baseline.n}
+                Usual {w.trades}: {w.baseline.expectedWins} won ·{" "}
+                {w.baseline.expectedR > 0 ? "+" : ""}{w.baseline.expectedR}R
               </span>
             </li>
           )}
           {w.assumedStops > 0 && (
-            <li className="rv-dim">
+            <li className="rv-dim rv-sub">
               {w.assumedStops} carried an assumed stop, so {w.assumedStops === 1
                 ? "it is" : "they are"} not counted above.
             </li>
@@ -1546,12 +1558,35 @@ export default function Review({ closed, stats, all, diary, onMeasured }) {
         }
         /* Wraps into columns on a wide screen rather than running one short
            list down the left — see the house rule on filling the width. */
+        /*
+          THREE FIXED COLUMNS, so the two strips line up and can be read down
+          rather than across. With auto-fit they did not: the second strip had
+          five items to the first one's three, the stop list wrapped, and the
+          same fact sat at a different x in each — which is the one thing a
+          pair of strips exists to allow you to compare.
+
+          What closed, how the stops held, how much was risked. Anything else
+          is a footnote to the first column and is placed there.
+        */
         .rv-proc-week-l {
           list-style: none; margin: 0; padding: 0;
-          display: grid; gap: 4px 26px;
-          grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+          display: grid; gap: 4px 26px; align-items: start;
+          grid-template-columns: minmax(230px, 1.2fr) minmax(210px, 1.3fr) minmax(150px, 0.9fr);
           font-size: 12.5px; line-height: 1.55; color: var(--ink);
         }
+        .rv-proc-week-l .rv-sub { grid-column: 1; font-size: 11.5px; }
+        @media (max-width: 760px) {
+          .rv-proc-week-l { grid-template-columns: 1fr; }
+          .rv-proc-week-l .rv-sub { grid-column: auto; }
+        }
+        /* One mark per trade. Filled won, hollow lost — legible without
+           colour, which a red/green pair alone is not. */
+        .rv-marks { display: flex; gap: 3px; margin-top: 5px; }
+        .rv-marks i {
+          width: 7px; height: 7px; border-radius: 50%;
+          border: 1px solid var(--short); background: transparent;
+        }
+        .rv-marks i[data-w="1"] { border-color: var(--long); background: var(--long); }
 
         .rv-proc-scroll { overflow-x: auto; }
         .rv-proc-t {
