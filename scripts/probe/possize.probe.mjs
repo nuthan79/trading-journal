@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { test, ok, eq } from "./harness.mjs";
 import { DIMENSIONS, dimensionRows, labelOf, NOT_RECORDED } from "@/lib/edge";
 import { setActiveRegion } from "@/lib/format";
+import { SHOW_POSITION_SIZE_DIM } from "@/lib/flags";
 
 const SRC = path.resolve(fileURLToPath(new URL("../../src", import.meta.url)));
 const read = (p) => readFileSync(path.join(SRC, p), "utf8");
@@ -119,4 +120,31 @@ test("the trades column prints the count, not the size of the R sample", () => {
   ok(/(?<!\$)\{g\.trades\}/.test(src), "it must print the group's own count");
   ok(/g\.n < g\.trades/.test(src),
      "nothing says the R columns cover fewer trades than the row counts");
+});
+
+/* ---- held back ------------------------------------------------------ */
+
+/**
+ * HIDDEN, NOT DELETED. Position size is risk divided by stop width, exactly,
+ * so a tab that ranks expectancy by it invites the reader to conclude that
+ * big positions pay when the honest question is whether the risk was right.
+ * "Risk % of capital" and "Risk in rupees" ask that directly.
+ *
+ * The bands, the ladder and the currency-aware edges stay live and probed —
+ * the concentration question they were built for is real and may get a home
+ * that does not read as an edge claim. Unhide, never rebuild.
+ */
+test("the position size grouping is held back, and still works", () => {
+  const D = DIMENSIONS.find((d) => d.id === "size");
+  ok(D, "the dimension was deleted rather than hidden");
+  eq(SHOW_POSITION_SIZE_DIM, false, "the flag is meant to be off");
+  ok(D.showIf && !D.showIf([{ exposure: 300000 }]),
+     "it is still being offered on the What works tabs");
+
+  /* Still computes, so it cannot rot while it is away, and an old
+     /trades?dim=size link still knows what it filtered by. */
+  setActiveRegion("IN");
+  const rows = dimensionRows(book([180000, 900000]), "size", {});
+  ok(rows.length >= 2 && rows[0].key.includes("₹"), "the bands stopped working while hidden");
+  eq(labelOf(D), "Position size", "and it can still name itself for the trades banner");
 });

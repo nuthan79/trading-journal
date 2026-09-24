@@ -23,6 +23,7 @@ import { stats } from "./calc";
 import { isMtf } from "./mtf";
 import { money } from "./format";
 import { activeRegion, region } from "./regions";
+import { SHOW_POSITION_SIZE_DIM } from "./flags";
 
 const n = (v) => (v === "" || v == null ? NaN : Number(v));
 const mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : NaN);
@@ -371,7 +372,11 @@ export const DIMENSIONS = [
    * equal-sized groups is arithmetic about the book rather than about the
    * trading. Same argument as the risk bands above, and the same builder.
    */
+  /* Held back — see SHOW_POSITION_SIZE_DIM in flags.js. Gated here rather
+     than by deleting the entry, so an old /trades?dim=size link still names
+     its filter and the probes keep running against the bands. */
   { id: "size", label: "Position size", continuous: true, money: true,
+    showIf: () => SHOW_POSITION_SIZE_DIM,
     fixed: (closed) => moneyBands(closed.map((t) => t.exposure),
                                   { target: 5, steps: SIZE_STEPS }),
     value: (t) => t.exposure },

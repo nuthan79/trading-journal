@@ -73,3 +73,18 @@ export const SHOW_REGIONS = true;
  * trading without being asked.
  */
 export const SHOW_LAST_TEN = true;
+
+/**
+ * The Position size grouping on Analysis → What works.
+ *
+ * OFF because it misleads. Position size is not an independent choice — it is
+ * risk divided by stop width, exactly, on every trade — so the tab invites a
+ * reader to conclude that big positions pay, when the honest question is
+ * whether the RISK was right. "Risk % of capital" and "Risk in rupees" ask
+ * that directly and are the two the user should be deciding on.
+ *
+ * Built, probed and kept: the concentration question it was meant to answer —
+ * that risk-based sizing assumes the stop holds — is real and may yet get a
+ * home somewhere it does not read as an edge claim. Unhide, never rebuild.
+ */
+export const SHOW_POSITION_SIZE_DIM = false;
