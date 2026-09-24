@@ -88,3 +88,21 @@ export const SHOW_LAST_TEN = true;
  * home somewhere it does not read as an edge claim. Unhide, never rebuild.
  */
 export const SHOW_POSITION_SIZE_DIM = false;
+
+/**
+ * The "Your exits end in very different places" card on Analysis → Process.
+ *
+ * OFF because the spread it reports is a definition, not a finding. You record
+ * "sold into strength" BECAUSE the trade was working and "stop hit" BECAUSE it
+ * was not, so grouping outcomes by the reason recorded for the exit is
+ * grouping outcomes by the outcome. On the book that prompted this: sold into
+ * strength +4.34R at 100% won, stop hit −0.97R at 5% won — a 5.53R spread that
+ * could not have come out any other way.
+ *
+ * Kept because the question underneath is real and answerable: among the
+ * reasons that ARE alternatives to each other on the same trade — trailing
+ * stop, 20 SMA, discretionary — which lets the most run? That needs the
+ * reasons partitioned into the ones you chose and the ones that chose you,
+ * which nothing records yet. Unhide when it does.
+ */
+export const SHOW_EXIT_METHOD_CARD = false;

@@ -1,4 +1,5 @@
 import { brokerFamily } from "./brokerFamily";
+import { SHOW_EXIT_METHOD_CARD } from "./flags";
 import { scaleOutFinding } from "./positions";
 /* The thresholds the path is measured against, imported rather than repeated:
    two definitions of "risk free" is how a badge on Holdings and a finding here
@@ -89,8 +90,26 @@ const chron = (rows) =>
  * the plain layout, so this can be adopted a finding at a time rather than in
  * one rewrite of eleven.
  */
-const F = (severity, id, title, detail, evidence, extra = {}) =>
-  ({ id, severity, title, detail, evidence, ...extra });
+/**
+ * A finding, and WHICH OF THE SHARED NUMBERS IT OWNS.
+ *
+ * One builder usually produces several findings from one pass over the book,
+ * and they were all handed the same evidence object — so the table under a
+ * card listed every figure the builder had computed, most of them belonging
+ * to a sibling that did not fire. The sizing card carried "Risk after a loss"
+ * and "Trades after a loss", which are the revenge-sizing finding's, and a
+ * reader trying to reconcile the card against its own numbers could not.
+ *
+ * `only` names the keys this finding is about. Without it the whole object is
+ * shown, which is right for a builder that produces one card.
+ */
+const F = (severity, id, title, detail, evidence, extra = {}) => {
+  const { only, ...rest } = extra;
+  const ev = only && evidence
+    ? Object.fromEntries(Object.entries(evidence).filter(([k]) => only.includes(k)))
+    : evidence;
+  return { id, severity, title, detail, evidence: ev, ...rest };
+};
 
 /** Ledes, kept beside each other so they can be read as a set and stay in one
  *  voice — plain sentences, no R-notation, no term the screen has not already
@@ -753,17 +772,15 @@ function riskSizing(closed) {
 
     return F("good", "risk-below-edge",
       "Your edge is good and your risk is small — there is room to size up",
-      `You could comfortably raise risk per trade from ${pctOf(current)} (${money(currentAmt)}) ` +
-      `to ${pctOf(step)} (${money(amtAt(step))}). ` +
-      `Always check the market stance before raising it — every figure here comes from trades ` +
-      `you have already taken, so it describes your edge in the conditions those trades ` +
-      `happened in, and a size increase lands hardest when those change. ` +
-      `Across ${k.n} trades your edge supports meaningfully more than you are using, which is ` +
-      `why a strong expectancy can still produce a modest annual return: the edge is real, the ` +
-      `stake is small. Move in steps and let each one prove itself — at ${pctOf(step)}, a trade ` +
-      `like your worst so far (${k.worst.toFixed(1)}R) takes ${worstAtStep.toFixed(1)}% — ` +
-      `${money(Math.abs(k.worst) * amtAt(step))} — off the account in one go. That is the figure to be comfortable losing before you think about ` +
-      `the step after this one.`,
+      /* Was 705 characters, and the figures below it already carried the
+         current stake and the step. What is left is the reason, the size of
+         the worst night it buys, and the one caveat that is not in any
+         figure — that the edge was measured in conditions that can change. */
+      `Across ${k.n} trades your edge supports more than you are staking. Move in steps: at ` +
+      `${pctOf(step)}, a trade like your worst so far (${k.worst.toFixed(1)}R) costs ` +
+      `${money(Math.abs(k.worst) * amtAt(step))}, or ${worstAtStep.toFixed(1)}% of the account, ` +
+      `in one go. Check the market stance first — these figures come from conditions you have ` +
+      `already traded in.`,
       [], {
         magnitude: Math.min(100, (1 - ratio) * 60),
         figures: [
@@ -845,6 +862,10 @@ function sizingReflexes(closed) {
 
   const out = [];
 
+  /* Which of this builder's numbers belong to which card — see F(). */
+  const EV_REVENGE = ["avgRiskAfterLoss", "avgRiskAfterWin", "differencePct", "sampleAfterLoss"];
+  const EV_SIZING = ["sizingWorthRupees", "sizingWorthPct", "sizeOutcomeCorrelation"];
+
   if (bump > 20) {
     out.push(F("critical", "revenge-sizing",
       "You size up after losing",
@@ -852,7 +873,7 @@ function sizingReflexes(closed) {
       `mechanism that turns an ordinary losing streak into a serious drawdown — the bets get bigger ` +
       `exactly as the run gets worse.`,
       ev,
-      { lede: LEDE_AFTER_LOSS,
+      { only: EV_REVENGE, lede: LEDE_AFTER_LOSS,
         figures: [{ value: `+${ev.differencePct}%`, label: "bigger after a loss" }],
         chart: { type: "bars", unit: "%", rows: [
           { label: "After a loss", value: ev.avgRiskAfterLoss, n: ev.sampleAfterLoss, worst: true },
@@ -980,7 +1001,7 @@ function sizingReflexes(closed) {
       `How much you bet had no bearing on how much came back, so varying it only cost you — ` +
       `${Math.abs(ev.sizingWorthPct)}% of the profit.`,
       ev,
-      { lede: LEDE_SIZE,
+      { lede: LEDE_SIZE, only: EV_SIZING,
         figures: sizeFigs(),
         chart: sizeChart,
         verdict: "Size every trade the same until something shows that the bigger bets " +
@@ -991,7 +1012,7 @@ function sizingReflexes(closed) {
       `The trades you bet more on did come back better. Rarer than it sounds — for most traders ` +
       `the extra size adds nothing or costs.`,
       ev,
-      { lede: LEDE_SIZE,
+      { lede: LEDE_SIZE, only: EV_SIZING,
         figures: sizeFigs(),
         chart: sizeChart,
         verdict: "Worth protecting rather than pushing. Keep the upper bound where it is — " +
@@ -1116,6 +1137,8 @@ function entryQuality(closed) {
  * that ledger.
  */
 function exitBehaviour(closed) {
+  /* Held back — see SHOW_EXIT_METHOD_CARD in flags.js. */
+  if (!SHOW_EXIT_METHOD_CARD) return null;
   const scored = closed.filter((t) => isFinite(t.r) && t.exit_reason);
   if (scored.length < 12) return null;
 

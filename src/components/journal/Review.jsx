@@ -760,14 +760,18 @@ function FindingCard({ f, n }) {
    * visible is the title, one line, the chart and the figures; the rest is
    * one click down, with the evidence.
    *
-   * The one line is the lede where there is one, otherwise the verdict —
-   * whichever the card leads with — and for a card with no figures, its
-   * detail, since that is all it has to say.
+   * THE LINE IS THE CONCLUSION, NOT THE METHOD. It used to be the lede, which
+   * explains how the chart was built — read before the chart, by somebody who
+   * has not yet seen what it says. The verdict is what the finding means, and
+   * that is what belongs under the title; the lede moves down with the
+   * workings, and onto the chart as a hover for anyone who wants it there.
+   *
+   * A card with no figures still shows its detail, since that is all it has.
    */
-  const oneLine = rich ? (f.lede || f.verdict) : f.detail;
+  const oneLine = rich ? (f.verdict || f.lede) : f.detail;
   const moreDetail = rich && f.detail;
-  const moreVerdict = rich && f.lede && f.verdict;
-  const hasMore = moreDetail || moreVerdict || f.evidence;
+  const moreLede = rich && f.verdict && f.lede;
+  const hasMore = moreDetail || moreLede || f.evidence;
 
   return (
     <div className="rv-card" style={{ borderLeftColor: sev.color }}>
@@ -816,13 +820,14 @@ function FindingCard({ f, n }) {
 
       {hasMore && (
         <details className="rv-evidence">
-          <summary>{moreDetail || moreVerdict ? "Why, and the numbers" : "Check the numbers"}</summary>
-          {moreVerdict && (
+          <summary>{moreDetail || moreLede ? "Why, and the numbers" : "Check the numbers"}</summary>
+          {/* The method, now that the conclusion has been read and the chart
+              seen. It was the first thing on the card and explained a picture
+              nobody had looked at yet. */}
+          {moreLede && (
             <p className="rv-verdict" style={{ borderLeftColor: sev.color }}>
-              {/* Named, because an unlabelled box of bold text reads as an
-                  alert. This one is the answer, not the alarm. */}
-              <b className="rv-verdict-cap">What it means</b>
-              {f.verdict}
+              <b className="rv-verdict-cap">How this is measured</b>
+              {f.lede}
             </p>
           )}
           {moreDetail && <p className="rv-detail">{f.detail}</p>}
