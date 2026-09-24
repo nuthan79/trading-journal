@@ -63,9 +63,20 @@ test("the threshold is seven and Holdings acts on it", () => {
   const src = read("components/journal/Holdings.jsx");
   ok(/run\.n >= LOSING_RUN_ALERT &&/.test(src), "Holdings does not show it");
   ok(/losingRun\(closed\)/.test(src), "it must read the closed book, not the open one");
-  /* The wording is the point: one reading is useful, the other is harmful. */
-  ok(/says nothing\s*\n?\s*about whether the setup works/.test(src.replace(/\s+/g, " ").replace(/ /g, " "))
-     || /says nothing about whether the setup works/.test(src.replace(/\s+/g, " ")),
-     "the card must not read as a verdict on the system");
-  ok(/stand aside/.test(src), "and it must say what to do instead");
+  /*
+   * WHAT THE CARD SAYS, AND HOW MUCH OF IT.
+   *
+   * Two readings of a long run: "the market has turned" is useful, "my system
+   * is broken" destroys an edge that was only having a bad month. So the card
+   * has to steer to the first — but the first draft spent three sentences
+   * doing it, which is two more than a warning gets read at. The method and
+   * the caveat belong in the hover; the body is what to do.
+   */
+  const flat = src.replace(/\s+/g, " ");
+  ok(/The market isn&apos;t taking your setups/.test(flat), "it must name the market, not the system");
+  ok(/Cut risk per trade, or stand aside/.test(flat), "and say what to do about it");
+  ok(/not that your setup stopped working/.test(flat), "the reassurance must survive, in the hover");
+  /* The body, without the heading or the hover, stays short enough to read. */
+  const body = flat.slice(flat.indexOf("The market isn&apos;t"), flat.indexOf("Last winner"));
+  ok(body.length < 180, `the card is ${body.length} characters of prose again`);
 });

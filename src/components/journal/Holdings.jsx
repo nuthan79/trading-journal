@@ -1328,23 +1328,26 @@ export default function Holdings({
         */}
       {run.n >= LOSING_RUN_ALERT && (
         <div className="ps-sold ps-run">
-          <div className="ps-sold-head">
-            <div>
-              <b>{run.n} losing entries in a row</b>
-              <p>
-                Counted by the day you took them, and a day where anything won ends the
-                run — so this is the shortest it could be.
-                {run.lastWin && (
-                  <> Your last entry that made money was <b>{run.lastWin.symbol}</b>,
-                    taken {dmy(run.lastWin.date)}.</>
-                )}
-                {" "}A run this long turns up in any book eventually and says nothing
-                about whether the setup works. It does say the market is not taking it
-                at the moment, which is the point to cut risk per trade or stand aside
-                rather than to push harder.
-              </p>
-            </div>
-          </div>
+          {/* TWO FACTS AND AN INSTRUCTION. The first version explained how the
+              run was counted, conceded that runs happen, and then said what to
+              do — three sentences deep, which is two more than a warning gets
+              read at. The method and the caveat moved into the hover; what is
+              left is the thing to act on. */}
+          <b title={"Counted by the day you took each trade. A day where anything won "
+            + "ends the run, so this is the shortest count the dates allow. A run this "
+            + "long turns up in any book eventually — it says the market has turned, "
+            + "not that your setup stopped working."}>
+            {run.n} losing entries in a row
+          </b>
+          <p>
+            The market isn&apos;t taking your setups. Cut risk per trade, or stand aside
+            until one works.
+          </p>
+          {run.lastWin && (
+            <p className="ps-run-last">
+              Last winner <b>{run.lastWin.symbol}</b> · {dmy(run.lastWin.date)}
+            </p>
+          )}
         </div>
       )}
 
@@ -1744,6 +1747,9 @@ export default function Holdings({
         /* The other cards here offer a fix; this one is a condition to read.
            Its own colour so it is not mistaken for something to click. */
         .ps-run { border-color: var(--short); border-left-width: 3px; }
+        .ps-run b { cursor: help; }
+        .ps-run p { margin: 4px 0 0; }
+        .ps-run-last { color: var(--ink3); font-size: 12px; }
         .ps-sold-head { display: flex; justify-content: space-between; align-items: flex-start;
                         gap: 14px; flex-wrap: wrap; }
         .ps-sold-head b { font-size: 14px; }
