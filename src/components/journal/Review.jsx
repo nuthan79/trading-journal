@@ -16,6 +16,7 @@ import Money from "@/components/Money";
 import Link from "next/link";
 import { setupGaps } from "@/lib/gaps";
 import { isOpen } from "@/lib/positions";
+import LosingRun from "./LosingRun";
 import { processStages, recentCompliance } from "@/lib/bottleneck";
 import { needsMeasuring, measurePaths } from "@/lib/measure";
 import { tickerFor } from "@/lib/bars";
@@ -978,7 +979,7 @@ function ProcessWindow({ w, quiet }) {
  * see the note at the top of bottleneck.js. An empty cell says "not costed"
  * more honestly than any figure could.
  */
-function ProcessMap({ data, week, lastTen }) {
+function ProcessMap({ data, week, lastTen, closed }) {
   if (!data) return null;
   const { stages, bottleneck, strong, unmeasured } = data;
 
@@ -1032,6 +1033,12 @@ function ProcessMap({ data, week, lastTen }) {
         Each stage is a decision you make on every trade, in order. Three are costed
         against your own plan; the rest are ranked.
       </p>
+
+      {/* Above the strips because it is the conclusion they lead to, and
+          because somebody opening this tab to ask how the recent trading has
+          gone should not have to read two rows of figures to find out. Same
+          card as Holdings, from one file — see LosingRun. */}
+      <LosingRun closed={closed} />
 
       <ProcessWindow w={week} quiet={
         <>Nothing closed. The ranking above needs dozens of trades to move, so a quiet
@@ -1452,7 +1459,7 @@ export default function Review({ closed, stats, all, diary, onMeasured }) {
 
       <MeasureOffer trades={all || closed} onMeasured={onMeasured} />
 
-      <ProcessMap data={process} week={week} lastTen={lastTen} />
+      <ProcessMap data={process} week={week} lastTen={lastTen} closed={closed} />
 
       {gaps.length > 0 && (
         <div className="rv-gaps">

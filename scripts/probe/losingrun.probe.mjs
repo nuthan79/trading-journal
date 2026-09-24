@@ -58,11 +58,25 @@ test("an empty or winning book is not on a run", () => {
   eq(losingRun([]).lastWin, null, "and has nothing to measure from");
 });
 
-test("the threshold is seven and Holdings acts on it", () => {
+/**
+ * ON ANALYSIS, NOT ON HOLDINGS.
+ *
+ * Seven is one trader's number — measured on one book, and nobody has said it
+ * is right for anyone else. Holdings is a factual screen about what is held;
+ * a judgement resting on a threshold that may be wrong for the reader belongs
+ * where interpretation already lives, and where nothing else on the page is
+ * stated as fact. Asked for and reversed the same day, which is the whole
+ * reason it is one component rather than two copies.
+ */
+test("the threshold is seven and the Process tab acts on it", () => {
   eq(LOSING_RUN_ALERT, 7, "the number the measurement supported");
-  const src = read("components/journal/Holdings.jsx");
-  ok(/run\.n >= LOSING_RUN_ALERT &&/.test(src), "Holdings does not show it");
+  const src = read("components/journal/LosingRun.jsx");
+  ok(/run\.n < LOSING_RUN_ALERT\) return null/.test(src), "the card shows below the threshold");
   ok(/losingRun\(closed\)/.test(src), "it must read the closed book, not the open one");
+  ok(/<LosingRun closed=\{closed\} \/>/.test(read("components/journal/Review.jsx")),
+     "the Process tab does not show it");
+  ok(!/LosingRun/.test(read("components/journal/Holdings.jsx")),
+     "Holdings states facts; a threshold somebody else may not share is not one");
   /*
    * WHAT THE CARD SAYS, AND HOW MUCH OF IT.
    *
