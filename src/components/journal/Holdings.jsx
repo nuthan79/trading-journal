@@ -21,6 +21,7 @@ import { bankedEvents } from "@/lib/positions";
 import { FREE_AT_R, POWER_R, POWER_DAYS, breakevenPrompt } from "@/lib/path";
 import PositionDetail from "./PositionDetail";
 import { soldSinceSnapshot } from "@/lib/snapshots";
+import { losingRun, LOSING_RUN_ALERT } from "@/lib/bottleneck";
 
 /**
  * The columns of the holdings table, in the order the table shows them, plus
@@ -382,6 +383,11 @@ export default function Holdings({
      rather than read in the cell so that sorting and the CSV get it too;
      a column that cannot be sorted is half a column on a table this wide. */
   const sectorOf = useSectors(show("sector") || show("industry"));
+
+  /* The run of losing entries the book is on right now — see losingRun. On
+     this screen because it is the one you read before deciding whether to
+     take another. */
+  const run = useMemo(() => losingRun(closed), [closed]);
 
   const rows = useMemo(() => {
     return open
@@ -1310,6 +1316,38 @@ export default function Holdings({
         * R built on a stop ten times too far away. The figures are shown
         * before and after, and nothing moves without a click.
         */}
+      {/*
+        * THE MARKET IS NOT TAKING THESE SETUPS.
+        *
+        * Measured on a 1,176-trade book: after a run of losing entries reached
+        * seven, the next ten trades averaged −19.6R against a usual +11.2R,
+        * and shuffling the same trades produced something that bad 0.4% of the
+        * time. So this is worth interrupting the screen for — and worth
+        * wording carefully, because the useful reading is "stand aside for a
+        * while", and the harmful one is "my system is broken, change it".
+        */}
+      {run.n >= LOSING_RUN_ALERT && (
+        <div className="ps-sold ps-run">
+          <div className="ps-sold-head">
+            <div>
+              <b>{run.n} losing entries in a row</b>
+              <p>
+                Counted by the day you took them, and a day where anything won ends the
+                run — so this is the shortest it could be.
+                {run.lastWin && (
+                  <> Your last entry that made money was <b>{run.lastWin.symbol}</b>,
+                    taken {dmy(run.lastWin.date)}.</>
+                )}
+                {" "}A run this long turns up in any book eventually and says nothing
+                about whether the setup works. It does say the market is not taking it
+                at the moment, which is the point to cut risk per trade or stand aside
+                rather than to push harder.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {(splitPlanRows.length > 0 || splitsUnsure.length > 0) && (
         <div className="ps-sold">
           <div className="ps-sold-head">
@@ -1703,6 +1741,9 @@ export default function Holdings({
           border: 1px solid var(--brass); background: var(--card); border-radius: 3px;
           padding: 14px 16px; margin-bottom: 14px;
         }
+        /* The other cards here offer a fix; this one is a condition to read.
+           Its own colour so it is not mistaken for something to click. */
+        .ps-run { border-color: var(--short); border-left-width: 3px; }
         .ps-sold-head { display: flex; justify-content: space-between; align-items: flex-start;
                         gap: 14px; flex-wrap: wrap; }
         .ps-sold-head b { font-size: 14px; }

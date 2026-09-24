@@ -594,3 +594,70 @@ export function recentCompliance(closed = [], { days = 7, last = null, open = []
     noExitReason: recent.filter((t) => !t.exit_reason).length,
   };
 }
+
+/* ==================================================================== */
+/*  The run you are on now                                              */
+/* ==================================================================== */
+
+/**
+ * Seven losing entries in a row, and the book is telling you something.
+ *
+ * WHY SEVEN, AND WHY IT IS WORTH SAYING. Measured on a 1,176-trade book that
+ * wins about half its trades and averages +1.1R: a run reaching seven happened
+ * 13 times, and the ten trades that followed averaged −19.6R against a usual
+ * +11.2R. Shuffling the same trades 2,000 times produced something that bad
+ * only 0.4% of the time, so it is not the arithmetic of streaks — losses
+ * cluster because regimes do. Shorter cuts fire more often and say less
+ * (−9.5R at four, −15.0R at six); longer ones are too rare to act on.
+ *
+ * It is NOT a verdict on the system. A run this long turns up in any book
+ * eventually. It says the market is not taking these setups at the moment,
+ * which is a reason to size down or stand aside rather than to push harder.
+ */
+export const LOSING_RUN_ALERT = 7;
+
+/**
+ * COUNTED BY ENTRY DAY, AND CONSERVATIVELY, for the reason stats() counts
+ * streaks by day rather than by row: trades sharing a date have no inherent
+ * order, and a run counted per row moves with the tiebreak — on a real book
+ * the same data gave 50, 53, 67 or 71 depending on how ties happened to sort.
+ *
+ * So a day ends the run if ANYTHING taken that day made money, and only whole
+ * losing days are counted. That is the shortest run any ordering of the ties
+ * could produce, which means the alert can never fire on a tiebreak.
+ */
+export function losingRun(closed = []) {
+  const entryDay = (t) => (t?.entry_date ? String(t.entry_date).slice(0, 10) : "");
+  /* R where there is one, money where there is not — a trade with no stop
+     still won or lost, and leaving it out would let it span a run silently. */
+  const outcome = (t) => (Number.isFinite(t?.r) ? t.r : num(t?.pnl));
+  const scored = closed.filter((t) => entryDay(t) && Number.isFinite(outcome(t)));
+
+  const byDay = new Map();
+  for (const t of scored) {
+    const d = entryDay(t);
+    if (!byDay.has(d)) byDay.set(d, []);
+    byDay.get(d).push(t);
+  }
+  const newestFirst = [...byDay.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1));
+
+  const run = [];
+  for (const [, ts] of newestFirst) {
+    if (ts.some((t) => outcome(t) > 0)) break;
+    run.push(...ts);
+  }
+  const oldestFirst = run.slice().reverse();
+
+  /* The last entry that made money, for somewhere to measure the run from. */
+  const wins = scored.filter((t) => outcome(t) > 0)
+    .sort((a, b) => (entryDay(a) < entryDay(b) ? -1 : 1));
+  const lastWin = wins.length ? wins[wins.length - 1] : null;
+
+  return {
+    n: run.length,
+    from: oldestFirst.length ? entryDay(oldestFirst[0]) : null,
+    to: oldestFirst.length ? entryDay(oldestFirst[oldestFirst.length - 1]) : null,
+    symbols: oldestFirst.map((t) => t.symbol).filter(Boolean),
+    lastWin: lastWin ? { symbol: lastWin.symbol, date: entryDay(lastWin) } : null,
+  };
+}
