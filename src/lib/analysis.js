@@ -28,6 +28,7 @@ import { hasRealStop } from "./stops";
 
 const n = (v) => (v === "" || v == null ? NaN : Number(v));
 const mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : NaN);
+const sum = (a) => a.reduce((x, y) => x + y, 0);
 const median = (a) => {
   if (!a.length) return NaN;
   const s = [...a].sort((x, y) => x - y);
@@ -799,13 +800,44 @@ function sizingReflexes(closed) {
   const al = mean(afterLoss), aw = mean(afterWin);
   const bump = ((al - aw) / aw) * 100;
 
-  // Does bigger size actually mark better trades?
+  /**
+   * DID VARYING THE BET SIZE ADD ANYTHING, IN MONEY.
+   *
+   * THE TRIGGER IS STILL THE CORRELATION, and that was checked hard before it
+   * was kept. R is P&L over risk, so risk appears on both sides and the
+   * coefficient looks like it should be biased — but the null that matters is
+   * "sizing tells you nothing", which means R independent of risk, and under
+   * that null it is unbiased: R shuffled against risk 3,000 times gives a
+   * median of −0.001 and trips −0.20 only 1% of the time. A first attempt to
+   * replace it used a P&L shuffle instead, which is not a null at all — it
+   * destroys the proportionality between size and money, which is a real
+   * effect rather than noise — and the replacement it suggested fired on
+   * noise 17% of the time. Strictly worse. Kept the statistic; fixed the words.
+   *
+   * WHAT CHANGED IS WHAT THE CARD SAYS. A coefficient is unreadable and the
+   * old headline made a claim about judgement the number cannot support. The
+   * same finding in money can be checked by hand: a trade's result is its risk
+   * times its R, so the book as it happened is Σ(risk × R) and the same trades
+   * at one flat size are mean(risk) × ΣR. The difference is what varying the
+   * bet was worth.
+   */
+  const riskCash = rows.map((t) => n(t.riskAmt)).filter(isFinite);
+  const sized = rows.filter((t) => isFinite(n(t.riskAmt)));
+  const actualCash = sum(sized.map((t) => n(t.riskAmt) * t.r));
+  const flatCash = riskCash.length ? mean(riskCash) * sum(sized.map((t) => t.r)) : NaN;
+  const sizingGap = actualCash - flatCash;
+  /* As a share of what flat sizing would have made, so it reads the same on
+     any account. Guarded: a book that made nothing flat has no denominator. */
+  const sizingGapPct = isFinite(flatCash) && Math.abs(flatCash) > 0
+    ? (sizingGap / Math.abs(flatCash)) * 100 : NaN;
   const corr = pearson(rows.map((t) => t.riskPct), rows.map((t) => t.r));
 
   const ev = {
     avgRiskAfterLoss: +al.toFixed(2),
     avgRiskAfterWin: +aw.toFixed(2),
     differencePct: +bump.toFixed(0),
+    sizingWorthRupees: isFinite(sizingGap) ? Math.round(sizingGap) : null,
+    sizingWorthPct: isFinite(sizingGapPct) ? +sizingGapPct.toFixed(0) : null,
     sizeOutcomeCorrelation: isFinite(corr) ? +corr.toFixed(2) : null,
     sampleAfterLoss: afterLoss.length,
   };
@@ -837,8 +869,10 @@ function sizingReflexes(closed) {
    * neither a number nor a sentence, and said what the headline already had.
    */
   const sizeFigs = () => [
-    { value: String(ev.sizeOutcomeCorrelation).replace("-", "\u2212"), label: "size vs outcome" },
-    { value: `${rows.length}`, label: "trades measured" },
+    { value: money(Math.abs(ev.sizingWorthRupees)),
+      label: ev.sizingWorthRupees < 0 ? "what varying the bet cost" : "what varying the bet added",
+      tone: ev.sizingWorthRupees < 0 ? "neg" : "pos" },
+    { value: `${sized.length}`, label: "trades measured" },
   ];
 
   /**
@@ -936,23 +970,26 @@ function sizingReflexes(closed) {
         `${buckets[buckets.length - 1].hi.toFixed(2)}% risk`,
   };
 
-  if (isFinite(corr) && corr < -0.2) {
+  /* The correlation decides whether there is anything here; the money says
+     what it was worth. Both must agree in direction, so the headline can never
+     name a figure the trigger does not support. */
+  const ENOUGH = 30;
+  if (isFinite(corr) && corr < -0.2 && sized.length >= ENOUGH && sizingGap < 0) {
     out.push(F("warning", "conviction-inverted",
-      "Your biggest positions are your worst trades",
-      `The trades you sized up on have come back worse than the ones you sized down on. Whatever is ` +
-      `driving the conviction is not predicting the outcome — which means the sizing decision is ` +
-      `currently subtracting from the result rather than adding to it.`,
+      `Betting the same each time would have made ${money(Math.abs(Math.round(sizingGap)))} more`,
+      `How much you bet had no bearing on how much came back, so varying it only cost you — ` +
+      `${Math.abs(ev.sizingWorthPct)}% of the profit.`,
       ev,
       { lede: LEDE_SIZE,
         figures: sizeFigs(),
         chart: sizeChart,
-        verdict: "Betting the same amount on every trade would have made you more money " +
-                 "than your own judgement about which ones deserved more." }));
-  } else if (isFinite(corr) && corr > 0.25) {
+        verdict: "Size every trade the same until something shows that the bigger bets " +
+                 "are the better ones." }));
+  } else if (isFinite(corr) && corr > 0.25 && sized.length >= ENOUGH && sizingGap > 0) {
     out.push(F("good", "conviction-works",
-      "Your conviction is informative",
-      `The trades you back harder do come back better. This is rarer than it sounds — for most ` +
-      `traders the relationship is flat or backwards.`,
+      `Backing your best ideas harder made you ${money(Math.round(sizingGap))} more`,
+      `The trades you bet more on did come back better. Rarer than it sounds — for most traders ` +
+      `the extra size adds nothing or costs.`,
       ev,
       { lede: LEDE_SIZE,
         figures: sizeFigs(),
