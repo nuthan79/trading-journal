@@ -58,3 +58,18 @@ export const SHOW_SETUP_TRADES = false;
  * app may ever total across two currencies, flag on or off.
  */
 export const SHOW_REGIONS = true;
+
+/**
+ * The last ten closed trades, beside the last seven days, on Process.
+ *
+ * ON, unlike the rest of this file — a trial the user asked for and will keep
+ * or drop after living with it. It is a flag anyway so that dropping it is
+ * one word here rather than an edit to Review.jsx, and so the probes keep
+ * running against it either way.
+ *
+ * The two strips answer the same questions of different samples. A week is
+ * the calendar's idea of recent and goes quiet when you do; ten trades is
+ * always ten trades, and the dates it spans say how fast you have been
+ * trading without being asked.
+ */
+export const SHOW_LAST_TEN = true;

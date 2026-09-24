@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { REGIME_INDEX, REGIME_LABEL_FOR } from "@/lib/market";
+import { SHOW_LAST_TEN } from "@/lib/flags";
 import { activeRegion } from "@/lib/regions";
 
 /* Kept for the session, not per mount — see the note in the effect below. */
@@ -848,6 +849,79 @@ const listWords = (xs) =>
   : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`;
 
 /**
+ * One recent stretch of trading, read the way somebody opens this screen on a
+ * Sunday: what closed, whether the stops held, how steady the sizing was.
+ *
+ * Two of these render — the last seven days and the last ten closed trades —
+ * over the same three questions and two different samples. Written once
+ * because two copies of a strip drift, and the whole point of showing them
+ * together is that they are compared line for line.
+ *
+ * Its classes are in the global style block, which is what lets this be a
+ * component at all: a scoped `<style jsx>` reaches nothing rendered from in
+ * here. See the styled-jsx note in CLAUDE.md.
+ */
+function ProcessWindow({ w, quiet }) {
+  if (!w) return null;
+  return (
+    <div className="rv-proc-week" data-quiet={w.trades === 0 ? "1" : undefined}>
+      <div className="rv-proc-week-h">
+        {w.last ? `Last ${w.last} closed` : `Last ${w.days} days`}
+        {w.from && w.to && <span className="rv-dim"> · {w.from} to {w.to}</span>}
+      </div>
+      {w.trades === 0 ? (
+        <p className="rv-proc-week-p">{quiet}</p>
+      ) : (
+        <ul className="rv-proc-week-l">
+          <li>
+            <b>{w.trades}</b> closed
+            {w.netR != null && (
+              <span className="rv-dim">
+                {" "}· {w.won} won, {w.lost} lost ·{" "}
+                <b style={{ color: w.netR >= 0 ? "var(--long)" : "var(--short)" }}>
+                  {w.netR > 0 ? "+" : ""}{w.netR}R
+                </b>
+              </span>
+            )}
+          </li>
+          <li>
+            {w.losses === 0 ? (
+              <>No losses to test the stop against.</>
+            ) : w.overruns === 0 ? (
+              <><b style={{ color: "var(--long)" }}>Every stop held</b> — {w.losses}{" "}
+                {w.losses === 1 ? "loss" : "losses"}, none past 1R.</>
+            ) : (
+              <>
+                <b style={{ color: "var(--short)" }}>
+                  {w.overruns} of {w.losses}
+                </b>{" "}
+                {w.losses === 1 ? "loss" : "losses"} ran past the stop
+                {w.overrunSymbols.length > 0 && (
+                  <span className="rv-dim"> · {w.overrunSymbols.join(", ")}</span>
+                )}
+              </>
+            )}
+          </li>
+          {w.riskMin != null && (
+            <li>
+              Risk {w.riskMin}%
+              {w.riskMax !== w.riskMin && <> to {w.riskMax}%</>}
+              <span className="rv-dim"> per trade</span>
+            </li>
+          )}
+          {w.assumedStops > 0 && (
+            <li className="rv-dim">
+              {w.assumedStops} carried an assumed stop, so {w.assumedStops === 1
+                ? "it is" : "they are"} not counted above.
+            </li>
+          )}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/**
  * The process as stages, ranked by what each one is costing.
  *
  * WHY A TABLE AND NOT SIX CARDS. Six cards is what the findings below already
@@ -862,7 +936,7 @@ const listWords = (xs) =>
  * see the note at the top of bottleneck.js. An empty cell says "not costed"
  * more honestly than any figure could.
  */
-function ProcessMap({ data, week }) {
+function ProcessMap({ data, week, lastTen }) {
   if (!data) return null;
   const { stages, bottleneck, strong, unmeasured } = data;
 
@@ -917,64 +991,18 @@ function ProcessMap({ data, week }) {
         against your own plan; the rest are ranked.
       </p>
 
-      <div className="rv-proc-week" data-quiet={week.trades === 0 ? "1" : undefined}>
-        <div className="rv-proc-week-h">
-          Last {week.days} days
-          <span className="rv-dim"> · {week.from} to {week.to}</span>
-        </div>
-        {week.trades === 0 ? (
-          <p className="rv-proc-week-p">
-            Nothing closed. The ranking above needs dozens of trades to move, so a quiet
-            week changes none of it — that is the point of looking at this weekly rather
-            than recomputing it.
-          </p>
-        ) : (
-          <ul className="rv-proc-week-l">
-            <li>
-              <b>{week.trades}</b> closed
-              {week.netR != null && (
-                <span className="rv-dim">
-                  {" "}· {week.won} won, {week.lost} lost ·{" "}
-                  <b style={{ color: week.netR >= 0 ? "var(--long)" : "var(--short)" }}>
-                    {week.netR > 0 ? "+" : ""}{week.netR}R
-                  </b>
-                </span>
-              )}
-            </li>
-            <li>
-              {week.losses === 0 ? (
-                <>No losses to test the stop against.</>
-              ) : week.overruns === 0 ? (
-                <><b style={{ color: "var(--long)" }}>Every stop held</b> — {week.losses}{" "}
-                  {week.losses === 1 ? "loss" : "losses"}, none past 1R.</>
-              ) : (
-                <>
-                  <b style={{ color: "var(--short)" }}>
-                    {week.overruns} of {week.losses}
-                  </b>{" "}
-                  {week.losses === 1 ? "loss" : "losses"} ran past the stop
-                  {week.overrunSymbols.length > 0 && (
-                    <span className="rv-dim"> · {week.overrunSymbols.join(", ")}</span>
-                  )}
-                </>
-              )}
-            </li>
-            {week.riskMin != null && (
-              <li>
-                Risk {week.riskMin}%
-                {week.riskMax !== week.riskMin && <> to {week.riskMax}%</>}
-                <span className="rv-dim"> per trade</span>
-              </li>
-            )}
-            {week.assumedStops > 0 && (
-              <li className="rv-dim">
-                {week.assumedStops} carried an assumed stop, so {week.assumedStops === 1
-                  ? "it is" : "they are"} not counted above.
-              </li>
-            )}
-          </ul>
-        )}
-      </div>
+      <ProcessWindow w={week} quiet={
+        <>Nothing closed. The ranking above needs dozens of trades to move, so a quiet
+          week changes none of it — that is the point of looking at this weekly rather
+          than recomputing it.</>
+      } />
+
+      {/* The same three questions of a fixed sample. A week goes quiet when
+          you do; ten trades is always ten trades, and the dates it spans say
+          how fast you have been trading without being asked. On trial — see
+          SHOW_LAST_TEN in flags.js. Hidden while there are none, rather than
+          printed empty beside a week that already said so. */}
+      {SHOW_LAST_TEN && lastTen?.trades > 0 && <ProcessWindow w={lastTen} quiet={null} />}
 
       <div className="rv-proc-scroll">
         <table className="rv-proc-t">
@@ -1304,6 +1332,11 @@ export default function Review({ closed, stats, all, diary, onMeasured }) {
     () => recentCompliance(closed, { days: 7, asOf: new Date() }),
     [closed]
   );
+  /* On trial beside it — see SHOW_LAST_TEN in flags.js. */
+  const lastTen = useMemo(
+    () => (SHOW_LAST_TEN ? recentCompliance(closed, { last: 10 }) : null),
+    [closed]
+  );
 
   const last = market.classified[market.classified.length - 1];
   const pos50 = last?.ma50 ? ((last.close - last.ma50) / last.ma50) * 100 : null;
@@ -1375,7 +1408,7 @@ export default function Review({ closed, stats, all, diary, onMeasured }) {
 
       <MeasureOffer trades={all || closed} onMeasured={onMeasured} />
 
-      <ProcessMap data={process} week={week} />
+      <ProcessMap data={process} week={week} lastTen={lastTen} />
 
       {gaps.length > 0 && (
         <div className="rv-gaps">

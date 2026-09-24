@@ -478,15 +478,33 @@ export function processStages(closed = [], findings = []) {
  * `asOf` is passed in rather than read from the clock so the caller owns the
  * boundary and this stays testable.
  */
-export function recentCompliance(closed = [], { days = 7, asOf = new Date() } = {}) {
+export function recentCompliance(closed = [], { days = 7, last = null, asOf = new Date() } = {}) {
   const end = new Date(asOf);
   const start = new Date(end.getTime() - days * 86400000);
   const iso = (d) => d.toISOString().slice(0, 10);
+  const day = (t) => (t.exit_date ? String(t.exit_date).slice(0, 10) : "");
 
-  const recent = closed.filter((t) => {
-    const d = t.exit_date && String(t.exit_date).slice(0, 10);
-    return d && d > iso(start) && d <= iso(end);
-  });
+  /**
+   * TWO WAYS TO SAY "RECENTLY", and they answer different questions.
+   *
+   * A window asks what a stretch of calendar looked like, and a quiet week
+   * answers with three trades or none — which is honest, and useless for
+   * judging whether the sizing has settled down.
+   *
+   * A count asks the same questions of a fixed sample, so it says something
+   * whatever the pace, and the dates it spans become information in
+   * themselves: ten trades over five days is not the same trading as ten
+   * over three months.
+   *
+   * Ties on a date keep their input order, sort being stable — ten trades
+   * closed in one batch have no inherent order and this does not invent one.
+   */
+  const recent = last
+    ? closed.filter(day).sort((a, b) => (day(a) < day(b) ? -1 : day(a) > day(b) ? 1 : 0)).slice(-last)
+    : closed.filter((t) => {
+        const d = day(t);
+        return d && d > iso(start) && d <= iso(end);
+      });
 
   const scored = recent.filter((t) => Number.isFinite(t.r));
   const measured = scored.filter(hasRealStop);
@@ -495,8 +513,12 @@ export function recentCompliance(closed = [], { days = 7, asOf = new Date() } = 
   const risks = recent.map((t) => num(t.riskPct)).filter((v) => v != null && v > 0);
 
   return {
-    days,
-    from: iso(start), to: iso(end),
+    days: last ? null : days,
+    last,
+    /* A window states the dates it asked for; a count states the dates it
+       happened to cover, which is the more interesting half of the answer. */
+    from: last ? (recent.length ? day(recent[0]) : null) : iso(start),
+    to: last ? (recent.length ? day(recent[recent.length - 1]) : null) : iso(end),
     trades: recent.length,
     won: scored.filter((t) => t.r > 0).length,
     lost: scored.filter((t) => t.r <= 0).length,
