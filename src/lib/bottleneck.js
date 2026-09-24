@@ -45,6 +45,12 @@ import { hasRealStop } from "./stops";
  *  not enough to act on. */
 const THIN_STAGE = 20;
 
+/**
+ * Below this there is no baseline worth comparing a sample against — an
+ * "average ten" drawn from twenty trades is two samples, not a norm.
+ */
+const BASELINE_MIN = 30;
+
 /** The same line stopDiscipline draws. Two checks disagreeing about what
  *  counts as a stop overrun is how one screen contradicts another. */
 const OVERRUN_R = -1.15;
@@ -478,11 +484,12 @@ export function processStages(closed = [], findings = []) {
  * `asOf` is passed in rather than read from the clock so the caller owns the
  * boundary and this stays testable.
  */
-export function recentCompliance(closed = [], { days = 7, last = null, asOf = new Date() } = {}) {
+export function recentCompliance(closed = [], { days = 7, last = null, open = [], asOf = new Date() } = {}) {
   const end = new Date(asOf);
   const start = new Date(end.getTime() - days * 86400000);
   const iso = (d) => d.toISOString().slice(0, 10);
   const day = (t) => (t.exit_date ? String(t.exit_date).slice(0, 10) : "");
+  const entryDay = (t) => (t.entry_date ? String(t.entry_date).slice(0, 10) : "");
 
   /**
    * TWO WAYS TO SAY "RECENTLY", and they answer different questions.
@@ -496,11 +503,20 @@ export function recentCompliance(closed = [], { days = 7, last = null, asOf = ne
    * themselves: ten trades over five days is not the same trading as ten
    * over three months.
    *
+   * AND THE COUNT ORDERS BY WHEN THE BET WAS PLACED, not when it resolved.
+   * This is the difference between two completely different readings of the
+   * same book: by exit date a run of old winners closing now reads as a good
+   * spell, while the entries actually being placed are getting stopped out
+   * within a day. Measured on a real book the two disagreed by 23R and by
+   * five wins — one said raise the size, the other said stop trading. The
+   * question being asked is whether the market is taking the setups now, so
+   * it is the entries that have to be recent.
+   *
    * Ties on a date keep their input order, sort being stable — ten trades
-   * closed in one batch have no inherent order and this does not invent one.
+   * opened in one batch have no inherent order and this does not invent one.
    */
   const recent = last
-    ? closed.filter(day).sort((a, b) => (day(a) < day(b) ? -1 : day(a) > day(b) ? 1 : 0)).slice(-last)
+    ? closed.filter(entryDay).sort((a, b) => (entryDay(a) < entryDay(b) ? -1 : entryDay(a) > entryDay(b) ? 1 : 0)).slice(-last)
     : closed.filter((t) => {
         const d = day(t);
         return d && d > iso(start) && d <= iso(end);
@@ -512,13 +528,54 @@ export function recentCompliance(closed = [], { days = 7, last = null, asOf = ne
   const overruns = losses.filter((t) => t.r < OVERRUN_R);
   const risks = recent.map((t) => num(t.riskPct)).filter((v) => v != null && v > 0);
 
+  /**
+   * THE REST OF THE BOOK, so the sample can be read against something.
+   *
+   * "+23.2R" says nothing on its own: a reader cannot tell a good stretch
+   * from an ordinary one, and the whole use of this strip is deciding
+   * whether the market has turned. Against "your usual ten is +11.1R" it
+   * answers immediately. Same for the wins — five of ten looks like a coin
+   * until you know the long-run rate is five.
+   *
+   * THE SAMPLE IS EXCLUDED FROM ITS OWN BASELINE. Comparing ten trades
+   * against a book that contains those ten pulls the norm toward whatever
+   * just happened, and most on a short record, which is exactly where the
+   * comparison is relied on hardest.
+   */
+  const inSample = new Set(recent);
+  const restR = closed.filter((t) => !inSample.has(t))
+    .map((t) => t.r).filter((v) => Number.isFinite(v));
+  const baseline = restR.length >= BASELINE_MIN && recent.length
+    ? {
+        n: restR.length,
+        perTrade: +(sum(restR) / restR.length).toFixed(2),
+        expectedR: +((sum(restR) / restR.length) * recent.length).toFixed(1),
+        expectedWins: Math.round(
+          (restR.filter((v) => v > 0).length / restR.length) * recent.length),
+      }
+    : null;
+
   return {
     days: last ? null : days,
     last,
+    baseline,
     /* A window states the dates it asked for; a count states the dates it
        happened to cover, which is the more interesting half of the answer. */
-    from: last ? (recent.length ? day(recent[0]) : null) : iso(start),
-    to: last ? (recent.length ? day(recent[recent.length - 1]) : null) : iso(end),
+    from: last ? (recent.length ? entryDay(recent[0]) : null) : iso(start),
+    to: last ? (recent.length ? entryDay(recent[recent.length - 1]) : null) : iso(end),
+    /**
+     * HOW MANY BETS FROM THE SAME STRETCH HAVE NOT RESOLVED, which this
+     * sample cannot see and which cuts against it.
+     *
+     * Ordering closed trades by entry date over-represents quick losses: an
+     * entry placed last week can only be closed already if it resolved fast,
+     * and fast resolutions are mostly stop-outs. The ones still running are
+     * the ones that have not failed. Left unsaid, a reader could stop trading
+     * on the strength of nine losses while four recent entries sit in profit.
+     */
+    stillOpen: last && recent.length
+      ? open.filter((t) => entryDay(t) && entryDay(t) >= entryDay(recent[0])).length
+      : 0,
     trades: recent.length,
     won: scored.filter((t) => t.r > 0).length,
     lost: scored.filter((t) => t.r <= 0).length,

@@ -15,6 +15,7 @@ import { signedPct, money } from "@/lib/format";
 import Money from "@/components/Money";
 import Link from "next/link";
 import { setupGaps } from "@/lib/gaps";
+import { isOpen } from "@/lib/positions";
 import { processStages, recentCompliance } from "@/lib/bottleneck";
 import { needsMeasuring, measurePaths } from "@/lib/measure";
 import { tickerFor } from "@/lib/bars";
@@ -866,7 +867,7 @@ function ProcessWindow({ w, quiet }) {
   return (
     <div className="rv-proc-week" data-quiet={w.trades === 0 ? "1" : undefined}>
       <div className="rv-proc-week-h">
-        {w.last ? `Last ${w.last} closed` : `Last ${w.days} days`}
+        {w.last ? `Last ${w.last} taken` : `Last ${w.days} days`}
         {w.from && w.to && <span className="rv-dim"> · {w.from} to {w.to}</span>}
       </div>
       {w.trades === 0 ? (
@@ -907,6 +908,35 @@ function ProcessWindow({ w, quiet }) {
               Risk {w.riskMin}%
               {w.riskMax !== w.riskMin && <> to {w.riskMax}%</>}
               <span className="rv-dim"> per trade</span>
+            </li>
+          )}
+          {/*
+            THE SAMPLE READ AGAINST THE BOOK. "+23.2R" cannot be judged on
+            its own; beside a usual ten it can. Only on the fixed sample —
+            "your usual seven days" is a claim about pace rather than about
+            trading, and a week that happened to be quiet would read as a
+            slump it was not.
+          */}
+          {w.last && w.stillOpen > 0 && (
+            <li className="rv-dim"
+                title={"Ordering closed trades by when they were entered leaves out the "
+                  + "entries from the same stretch that have not resolved — and an entry "
+                  + "can only be closed already if it resolved fast, which mostly means "
+                  + "stopped out. These are the ones still running."}>
+              {w.stillOpen} more taken since then {w.stillOpen === 1 ? "is" : "are"} still open,
+              so {w.stillOpen === 1 ? "it is" : "they are"} not counted here.
+            </li>
+          )}
+          {w.last && w.baseline && (
+            <li className="rv-dim">
+              Your usual {w.trades}: {w.baseline.expectedWins} won ·{" "}
+              {w.baseline.expectedR > 0 ? "+" : ""}{w.baseline.expectedR}R
+              <span title={`The other ${w.baseline.n} closed trades in this book, `
+                + `averaging ${w.baseline.perTrade > 0 ? "+" : ""}${w.baseline.perTrade}R each. `
+                + `These ${w.trades} are left out of it, so the comparison is against `
+                + `everything except themselves.`}>
+                {" "}· from the other {w.baseline.n}
+              </span>
             </li>
           )}
           {w.assumedStops > 0 && (
@@ -1334,8 +1364,10 @@ export default function Review({ closed, stats, all, diary, onMeasured }) {
   );
   /* On trial beside it — see SHOW_LAST_TEN in flags.js. */
   const lastTen = useMemo(
-    () => (SHOW_LAST_TEN ? recentCompliance(closed, { last: 10 }) : null),
-    [closed]
+    () => (SHOW_LAST_TEN
+      ? recentCompliance(closed, { last: 10, open: (all || []).filter(isOpen) })
+      : null),
+    [closed, all]
   );
 
   const last = market.classified[market.classified.length - 1];
