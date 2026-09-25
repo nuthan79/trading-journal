@@ -50,24 +50,29 @@ export const metadata = {
    * of people — who are precisely the ones this app fits, and whom nobody in
    * India is currently writing for.
    */
-  title: `${BRAND.name} — VCP & breakout trade journal for NSE, measured in R`,
+  title: `${BRAND.name} — VCP & breakout trade journal for NSE and US, in R`,
   description:
     "A trading journal for Indian breakout swing traders. Log the base pattern, " +
     "Weinstein stage and RS rank, see expectancy in R by setup, and import your " +
-    "Zerodha, Groww or Dhan tax P&L with charges to the paisa.",
+    "Zerodha, Groww or Dhan tax P&L with charges to the paisa. MTF interest costed " +
+    "per sell, and a separate book in dollars for US trades.",
   keywords: [
     "VCP trading journal", "breakout trading journal India", "stage analysis journal",
     "R multiple journal", "swing trading journal India", "NSE trading journal",
     "trade journal with charges", "Zerodha tax P&L import", "position sizing NSE",
+    /* The second book, for the people already searching for it. Kept after
+       the NSE terms, which are the ones this ranks for. */
+    "MTF interest calculator", "US stocks trading journal", "Stockal INDmoney import",
   ],
   ...(url ? { alternates: { canonical: url } } : {}),
   openGraph: {
     // The link preview is what gets seen when this is shared into a trading
     // group — so it leads with the words that group already uses.
-    title: `${BRAND.name} — VCP & breakout trade journal for NSE, in R`,
+    title: `${BRAND.name} — VCP & breakout trade journal for NSE and US, in R`,
     description:
       "Log the base pattern, stage and RS rank. See expectancy in R by setup, with " +
-      "charges to the paisa and your broker's tax P&L imported in one file.",
+      "charges and MTF interest to the paisa, your broker's tax P&L imported in one " +
+      "file, and a separate book in dollars for US trades.",
     type: "website",
     ...(url ? { url } : {}),
   },
@@ -83,10 +88,11 @@ export const metadata = {
    * trading group is the same audience arriving by a different door.
    */
   twitter: {
-    title: `${BRAND.name} — VCP & breakout trade journal for NSE, in R`,
+    title: `${BRAND.name} — VCP & breakout trade journal for NSE and US, in R`,
     description:
       "Log the base pattern, stage and RS rank. See expectancy in R by setup, with " +
-      "charges to the paisa and your broker's tax P&L imported in one file.",
+      "charges and MTF interest to the paisa, your broker's tax P&L imported in one " +
+      "file, and a separate book in dollars for US trades.",
   },
 };
 
@@ -183,7 +189,7 @@ export default function HomePage() {
       </header>
 
       <section className="mk-hero">
-        <p className="mk-eyebrow">NSE &amp; BSE · breakout swing trading</p>
+        <p className="mk-eyebrow">NSE, BSE &amp; US · breakout swing trading</p>
         {/* One h1, and it says what the product is rather than being clever. */}
         <h1>Know which of your setups actually pay.</h1>
         {/**
