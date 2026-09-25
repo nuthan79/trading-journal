@@ -343,7 +343,10 @@ select.in { font-family: 'Archivo', sans-serif; }
 /*  whole job is to arrive as finished HTML.                            */
 /* ------------------------------------------------------------------ */
 
-.mk { max-width: 760px; margin: 0 auto; padding: 0 22px 90px; }
+/* 760 left the right half of a wide screen empty, and the fix is not a wider
+   line — it is more columns. The measure stays where prose is readable; the
+   page uses the width it has. */
+.mk { max-width: 1020px; margin: 0 auto; padding: 0 22px 90px; }
 
 .mk-top {
   display: flex; align-items: center; justify-content: space-between;
@@ -371,6 +374,30 @@ select.in { font-family: 'Archivo', sans-serif; }
   font-size: 16px; line-height: 1.62; color: var(--ink2);
   margin: 0 0 26px; max-width: 60ch; text-wrap: pretty;
 }
+/* Two leads side by side rather than stacked down the left. Each keeps its
+   measure; together they fill the line. */
+.mk-leads {
+  display: grid; gap: 4px 44px; margin-bottom: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+.mk-leads .mk-lead { max-width: 46ch; }
+
+/*
+  WHAT IT RECORDS, AS A ROW OF THE WORDS THEMSELVES.
+  The vocabulary was buried three sections down in a paragraph. It is the
+  recognition moment for somebody who trades this way, so it belongs where
+  they still have their thumb on the scroll.
+*/
+.mk-chips {
+  display: flex; flex-wrap: wrap; gap: 6px; margin: 26px 0 0; padding: 0;
+  list-style: none;
+}
+.mk-chips li {
+  font-size: 11.5px; letter-spacing: 0.02em; color: var(--ink2);
+  border: 1px solid var(--rule); border-radius: 999px; padding: 4px 11px;
+  background: var(--card);
+}
+.mk-chips li[data-on] { border-color: var(--brass); color: var(--brass); font-weight: 600; }
 .mk-cta {
   display: inline-block; background: var(--ink); color: var(--paper);
   text-decoration: none; padding: 11px 20px; border-radius: 3px;
@@ -396,6 +423,22 @@ select.in { font-family: 'Archivo', sans-serif; }
 .mk-note { font-size: 12px; color: var(--ink3); margin: 12px 0 0; }
 
 .mk-sec { padding: 30px 0; border-bottom: 1px solid var(--rule); }
+/* The short feature sections, two across. Their own borders would draw a
+   ladder down the middle, so the grid carries one line under each row. */
+.mk-grid {
+  display: grid; gap: 0 46px;
+  grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+  border-bottom: 1px solid var(--rule);
+}
+.mk-grid .mk-sec { border-bottom: 0; padding: 26px 0 10px; }
+.mk-grid .mk-sec p { max-width: 46ch; }
+
+/* Three stacked paragraphs ran down the left of a 1020px page. Set in two
+   columns they keep their measure and use the line — the same fix as the
+   hero, in the one section long enough to need it. */
+.mk-cols { columns: 2; column-gap: 46px; }
+.mk-cols p { max-width: none; break-inside: avoid; margin: 0 0 12px; }
+@media (max-width: 760px) { .mk-cols { columns: 1; } }
 .mk-sec h2 { font-size: 17px; margin: 0 0 10px; letter-spacing: -0.01em; }
 .mk-sec p {
   font-size: 14px; line-height: 1.68; color: var(--ink2);

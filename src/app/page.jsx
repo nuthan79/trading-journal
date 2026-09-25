@@ -212,6 +212,7 @@ export default function HomePage() {
           * sentence works on its own, and the terms arrive as examples rather
           * than as a password.
           */}
+        <div className="mk-leads">
         <p className="mk-lead">
           A trading journal for Indian swing traders who work in <b>R</b> — profit or
           loss against what you risked — so a ₹8,000 win on a tight stop and a ₹40,000
@@ -223,8 +224,20 @@ export default function HomePage() {
           stop you set before you enter. Log those and the journal will tell you which
           of them earns.
         </p>
+        </div>
         <Link className="mk-cta" href="/dashboard">Start your journal — it&apos;s free</Link>
         <p className="mk-note">No card. Export or delete everything whenever you like.</p>
+
+        {/* The fields themselves, not a sentence about them. Two are lit
+            because they are the newest and the reason somebody arrives from
+            a search for either. */}
+        <ul className="mk-chips">
+          <li>VCP</li><li>Cup &amp; handle</li><li>Flat base</li><li>High tight flag</li>
+          <li>Double bottom</li><li>Ascending base</li>
+          <li>Weinstein stage</li><li>RS rank</li><li>Distance from pivot</li>
+          <li>Breakout volume</li><li>Charges to the paisa</li>
+          <li data-on>MTF interest</li><li data-on>US book, in dollars</li>
+        </ul>
 
         {/* The only image loaded eagerly — it is above the fold, and lazy
             loading something already in view just delays it. Width and height
@@ -240,6 +253,9 @@ export default function HomePage() {
         </figure>
       </section>
 
+      {/* Four short sections read as a grid rather than a column of
+          paragraphs down the left of a wide page. */}
+      <div className="mk-grid">
       <section className="mk-sec">
         <h2>Charges worked out to the paisa</h2>
         <p>
@@ -288,8 +304,11 @@ export default function HomePage() {
         </p>
       </section>
 
+      </div>
+
       <section className="mk-sec">
         <h2>It records what you actually look at</h2>
+        <div className="mk-cols">
         {/* The recognition moment, and the reason this section exists. A
             generic journal asks for symbol, price and quantity. Naming the
             fields is how somebody who trades this way learns in one glance
@@ -313,7 +332,9 @@ export default function HomePage() {
           enough trades to mean anything. Your chart and your notes stay with the trade.
         </p>
 
-        <figure className="shot">
+                </div>
+
+<figure className="shot">
           <img src="/shots/edge-by-pattern.jpg" width={1800} height={578} loading="lazy" decoding="async"
                alt="A table of base patterns ranked by expectancy: Flat Base +0.92R over 6 trades, Ascending Base +0.72R over 16, and at the bottom Pullback Entry at −0.84R and High Tight Flag at −0.59R. Rows with fewer than fifteen trades are faded as noise rather than signal." />
           <figcaption>
