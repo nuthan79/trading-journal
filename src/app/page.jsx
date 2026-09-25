@@ -244,6 +244,18 @@ export default function HomePage() {
         </p>
       </section>
 
+      {/* Beside charges, because it is the other half of what a position
+          costs and the one no journal usually counts. */}
+      <section className="mk-sec">
+        <h2>Margin funding, costed properly</h2>
+        <p>
+          Trade on <b>MTF</b> and the interest is worked out per sell — the funded part, the
+          calendar days you actually held it, and the pledge and unpledge fees beside it.
+          Kept apart from brokerage, so you can see what carrying a slow trade on borrowed
+          money really cost.
+        </p>
+      </section>
+
       <section className="mk-sec">
         <h2>Bring the trades you have already made</h2>
         <p>
@@ -251,6 +263,22 @@ export default function HomePage() {
           or <b>Dhan</b>. The file says which broker it is, trades are matched by ISIN
           rather than by company name, and anything already in your journal is skipped.
           Every import can be undone.
+        </p>
+      </section>
+
+      {/*
+        * SAID PLAINLY THAT IT IS NOT OPEN YET. US access is granted per
+        * account through region_access, so promising it to every visitor
+        * would be a page the signup does not honour. "Ask" is the truth and
+        * doubles as the demand signal while the launch is still a survey.
+        */}
+      <section className="mk-sec">
+        <h2>A second book, in dollars</h2>
+        <p>
+          US trades are kept as their own journal — dollars, NYSE and Nasdaq tickers, SEC and
+          FINRA fees, and a calendar year instead of April to March. Nothing is ever totalled
+          across the two, because a rupee and a dollar do not add up. Import from{" "}
+          <b>Stockal</b> or <b>INDmoney</b>. Ask and it can be switched on for your account.
         </p>
       </section>
 
