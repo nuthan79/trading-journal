@@ -888,6 +888,15 @@ function ProcessWindow({ w, quiet }) {
                 <b style={{ color: w.netR >= 0 ? "var(--long)" : "var(--short)" }}>
                   {w.netR > 0 ? "+" : ""}{w.netR}R
                 </b>
+                {/* AND WHAT THAT WAS IN MONEY. R is the unit this page argues
+                    in, and it stays the bold one — but "−11.5R" is a size
+                    nobody feels. These are closed positions, so pnl is what
+                    was realised and not a mark. */}
+                {w.netPnl != null && (
+                  <span style={{ color: w.netPnl >= 0 ? "var(--long)" : "var(--short)" }}>
+                    {" "}· <Money v={w.netPnl} />
+                  </span>
+                )}
               </span>
             )}
             {/* THE SHAPE, NOT ONLY THE COUNT. Nine losses scattered through

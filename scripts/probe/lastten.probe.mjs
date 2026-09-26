@@ -210,3 +210,23 @@ test("the fixed sample shows each trade in order", () => {
   ok(/border: 1px solid var\(--short\)/.test(css) && /background: var\(--long\)/.test(css),
      "filled or hollow, so the marks are legible without colour");
 });
+
+/**
+ * WHAT THAT WAS IN MONEY. "−11.5R" is a size nobody feels. R stays the bold
+ * figure because it is the unit this page argues in, and the rupees go beside
+ * it — realised, since every trade in these samples is closed.
+ */
+test("each strip says what the stretch made or lost in money", () => {
+  const rows = [
+    { ...trade("2026-09-10", -1, "A", "2026-09-10"), pnl: -20000 },
+    { ...trade("2026-09-11", -1, "B", "2026-09-11"), pnl: -15000 },
+    { ...trade("2026-09-12", 2, "C", "2026-09-12"), pnl: 40000 },
+  ];
+  const w = recentCompliance(rows, { last: 3 });
+  eq(w.netPnl, 5000, "the money is the sum of what each closed trade realised");
+
+  const src = read("components/journal/Review.jsx");
+  ok(/w\.netPnl != null && \(/.test(src), "the strip does not show it");
+  ok(/<Money v=\{w\.netPnl\} \/>/.test(src),
+     "money goes through <Money>, so the exact figure is in the hover");
+});
