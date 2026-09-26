@@ -41,6 +41,9 @@ const SUB = [
   { href: "/analysis/what-if", label: "What if" },
   { href: "/analysis/mindset", label: "Mindset" },
   { href: "/analysis/review", label: "Process" },
+  /* Last, and a different act from the four before it: those are screens you
+     check, this is a document you read twice a quarter. */
+  { href: "/analysis/report", label: "Report" },
   /* Built, and held back as a paid feature — see lib/flags.js. The tab is not
      rendered while the flag is off, so the route exists and is unreachable. */
   ...(SHOW_CHART_DRILL ? [{ href: "/analysis/drill", label: "Drill" }] : []),
