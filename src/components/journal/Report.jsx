@@ -4,6 +4,8 @@ import { useMemo } from "react";
 import { stats } from "@/lib/calc";
 import { money } from "@/lib/format";
 import { isExecutionError } from "@/lib/constants";
+import { dimensionRows, isThin, THIN_SLICE, NOT_RECORDED } from "@/lib/edge";
+import { useSectors } from "@/lib/sectors";
 
 /**
  * THE REPORT. A whole-book review, written the way a research note is.
@@ -125,6 +127,65 @@ function Curve({ points }) {
 /* ------------------------------------------------------------------ */
 
 /**
+ * ONE CUT OF THE BOOK, drawn as bars.
+ *
+ * The app already computes every one of these — `dimensionRows` is what the
+ * What works table runs on, and reusing it is the point: two screens deriving
+ * the same cut two ways is how they come to disagree in front of somebody.
+ * What differs here is only the drawing and the sentence under it.
+ *
+ * EXPECTANCY SETS THE BAR, NET MONEY SITS BESIDE IT. A band can be the most
+ * profitable and the least worth repeating at the same time — twenty trades
+ * at +0.2R make more money than three at +3R and say something worse about
+ * the setup. Both figures are on every row so neither can be read alone.
+ *
+ * Thin bands are drawn faded rather than dropped. A band with four trades in
+ * it is not evidence, but knowing you only took four is.
+ */
+function Cut({ rows, unit = "R" }) {
+  if (!rows.length) return null;
+  const mx = Math.max(...rows.map((r) => Math.abs(r.expectancy) || 0), 0.01);
+  return (
+    <div className="rp-bars">
+      {rows.map((r) => {
+        const v = Number.isFinite(r.expectancy) ? r.expectancy : 0;
+        const w = (Math.abs(v) / mx) * 50;
+        return (
+          <div className="rp-bar" key={r.key} data-thin={isThin(r) ? 1 : 0}>
+            <span className="rp-bar-l" title={r.key}>{r.key}</span>
+            <span className="rp-bar-t">
+              <i data-neg={v < 0 ? 1 : 0}
+                 style={v < 0
+                   ? { right: "50%", width: `${w}%` }
+                   : { left: "50%", width: `${w}%` }} />
+            </span>
+            <span className="rp-bar-v" data-neg={v < 0 ? 1 : 0}>{rr(v)}</span>
+            <span className="rp-bar-n">{money(r.netPnl)}</span>
+            <span className="rp-bar-c">{r.trades}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** The plain reading of a cut: the best band, the worst, and the gap. */
+function cutVerdict(rows) {
+  const solid = rows.filter((r) => !isThin(r) && r.key !== NOT_RECORDED
+    && Number.isFinite(r.expectancy));
+  if (solid.length < 2) {
+    return `Nothing here carries ${THIN_SLICE} trades or more yet, so read every row `
+      + `as a question rather than a finding.`;
+  }
+  const best = solid.reduce((a, b) => (b.expectancy > a.expectancy ? b : a));
+  const worst = solid.reduce((a, b) => (b.expectancy < a.expectancy ? b : a));
+  if (best.key === worst.key) return "";
+  return `${best.key} at ${rr(best.expectancy)} against ${worst.key} at `
+    + `${rr(worst.expectancy)} — a spread of ${(best.expectancy - worst.expectancy).toFixed(2)}R `
+    + `across ${best.trades} and ${worst.trades} trades. Bands under ${THIN_SLICE} trades are faded.`;
+}
+
+/**
  * THE SAME BOOK THROUGH EACH SCREEN.
  *
  * Every other cut in the app splits the record into groups that add back up to
@@ -182,7 +243,35 @@ function screens(closed) {
 
 /* ------------------------------------------------------------------ */
 
+/**
+ * The cuts, in reading order: what you bought, when, how much, how long, and
+ * how you got out. Each is a dimension the app already computes.
+ */
+const CUTS = [
+  ["pattern", "What you bought", "Base pattern",
+   "Every closed trade grouped by the base you recorded at entry."],
+  ["stage", "The market it was in", "Weinstein stage",
+   "The stage the stock was in on the day you bought it."],
+  ["sector", "Where the money came from", "Sector",
+   "Grouped by what the company actually does, on the exchange's own classification."],
+  ["hold", "How long you held", "Holding period",
+   "Calendar days from entry to the last sell."],
+  ["dist", "How far you chased", "Extension at entry",
+   "How far above the pivot the entry actually sat. Small is tight, large is chasing."],
+  ["vol", "What the breakout volume said", "Breakout volume",
+   "Volume on the breakout day as a share of the thirty-day average."],
+  ["risk", "How much you put on", "Risk % of capital",
+   "What each trade put at risk, as a share of the account."],
+  ["exit", "How you got out", "Exit reason",
+   "The reason you recorded for closing. Read it knowing the reason is often chosen BY the outcome — a stop hit is a loss by definition."],
+];
+
 export default function Report({ closed = [], accountSize = 0 }) {
+  /* The sector cut needs the classification laid onto the row, exactly as
+     Edge does it — the dimension reads t.sector and nothing carries it. */
+  const sectorOf = useSectors(true);
+  const book = useMemo(
+    () => closed.map((t) => ({ ...t, ...sectorOf(t.symbol) })), [closed, sectorOf]);
   const pts = useMemo(() => curve(closed), [closed]);
   const s = useMemo(() => stats(closed.filter((t) => Number.isFinite(t.r))), [closed]);
   const rows = useMemo(() => screens(closed), [closed]);
@@ -346,6 +435,24 @@ export default function Report({ closed = [], accountSize = 0 }) {
         </p>
       </section>
 
+      {CUTS.map(([id, tag, title, lede], i) => {
+        const rows = dimensionRows(book, id, { accountSize });
+        if (rows.length < 2) return null;
+        const v = cutVerdict(rows);
+        return (
+          <section className="rp-sec" key={id}>
+            <p className="rp-tag">{String(i + 4).padStart(2, "0")} · {tag}</p>
+            <h2>{title}</h2>
+            <p className="rp-lede">{lede}</p>
+            <div className="rp-bars-h">
+              <span /><span /><span>Expectancy</span><span>Net</span><span>Trades</span>
+            </div>
+            <Cut rows={rows} />
+            {v && <p className="rp-verdict">{v}</p>}
+          </section>
+        );
+      })}
+
       <Styles />
     </div>
   );
@@ -451,6 +558,44 @@ function Styles() {
       .rp-t tr[data-hl="1"] td { background: var(--rp-accs); font-weight: 600; }
       .rp-t tr[data-bad="1"] td { background: #FBEAE8; }
 
+      /* A row per band: label, a bar growing from a centre line, then the two
+         figures and the count. Grid rather than a chart, because the labels
+         are words of wildly different length and a chart would clip them. */
+      .rp-bars-h, .rp-bar {
+        display: grid; align-items: center; gap: 12px;
+        grid-template-columns: minmax(96px, 1.25fr) minmax(90px, 2fr) 74px 82px 46px;
+      }
+      .rp-bars-h {
+        font-family: var(--mono, ui-monospace, monospace); font-size: 10px;
+        letter-spacing: 0.08em; text-transform: uppercase; color: var(--rp-muted);
+        padding-bottom: 8px; border-bottom: 1px solid var(--rp-rule);
+      }
+      .rp-bars-h span { text-align: right; }
+      .rp-bar { padding: 7px 0; border-bottom: 1px solid #EDF1F4; font-size: 13px; }
+      .rp-bar[data-thin="1"] { opacity: 0.55; }
+      .rp-bar-l { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .rp-bar-t { position: relative; height: 12px; display: block; }
+      /* The centre line is zero; a bar grows left for a loss and right for a
+         gain, so the sign is visible before any number is read. */
+      .rp-bar-t::before {
+        content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px;
+        width: 1px; background: var(--rp-grid);
+      }
+      .rp-bar-t i {
+        position: absolute; top: 1px; height: 10px; border-radius: 1px;
+        background: var(--rp-pos); opacity: 0.85;
+      }
+      .rp-bar-t i[data-neg="1"] { background: var(--rp-neg); }
+      .rp-bar-v, .rp-bar-n, .rp-bar-c {
+        text-align: right; font-family: var(--mono, ui-monospace, monospace); font-size: 12.5px;
+      }
+      .rp-bar-v { font-weight: 600; color: var(--rp-pos); }
+      .rp-bar-v[data-neg="1"] { color: var(--rp-neg); }
+      .rp-bar-n, .rp-bar-c { color: var(--rp-muted); }
+      @media (max-width: 700px) {
+        .rp-bars-h, .rp-bar { grid-template-columns: minmax(80px, 1fr) 0 66px 74px 40px; gap: 8px; }
+        .rp-bar-t { display: none; }
+      }
       .rp-empty {
         background: var(--rp-panel); border: 1px solid var(--rp-rule);
         padding: 28px 30px; margin-top: 28px; max-width: 70ch; color: #33475A;
