@@ -343,6 +343,35 @@ export default function HomePage() {
         </figure>
       </section>
 
+      {/*
+        * THE ONE CHART AMONG THREE TABLES.
+        *
+        * The dashboard shot, the edge table and the process table are all
+        * figures in rows, which is why the page read flat however the layout
+        * was arranged. A rising line is the image this subject actually has,
+        * and it needs no reading.
+        *
+        * Here rather than in the hero because the hero's shot is the sample
+        * book and this is a real one — two dashboards from different books,
+        * adjacent, would just raise a question. The two real-book shots sit
+        * together instead, and the page closes on them.
+        */}
+      <section className="mk-sec">
+        <h2>What it adds up to</h2>
+        <p>
+          Every closed trade in sequence, in R — the line is the total after each one, and
+          the bars beneath are the trades themselves, teal for a win and rust for a loss.
+        </p>
+        <figure className="shot">
+          <img src="/shots/running-total.jpg" width={1800} height={574} loading="lazy" decoding="async"
+               alt="A cumulative R curve across 122 closed trades from February 2025 to September 2026, climbing from zero to +116.84R, with a flat first few months before the rise. Below the line, one bar per trade — teal for the winners, rust for the losers. The footer reads: 122 closed, 107 symbols, 53% won; best FORCEMOT +17.1R, worst TECHM −4.4R." />
+          <figcaption>
+            A real book — 122 trades, 53% of them won, +116.84R. The flat first months are
+            as much a part of it as the climb.
+          </figcaption>
+        </figure>
+      </section>
+
       <section className="mk-sec">
         <h2>And where you are losing it</h2>
         <p>
