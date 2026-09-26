@@ -331,15 +331,37 @@ export default function HomePage() {
           open-risk reading across every holding, and the R distribution once you have
           enough trades to mean anything. Your chart and your notes stay with the trade.
         </p>
+        </div>
 
-                </div>
-
-<figure className="shot">
+        <figure className="shot">
           <img src="/shots/edge-by-pattern.jpg" width={1800} height={578} loading="lazy" decoding="async"
                alt="A table of base patterns ranked by expectancy: Flat Base +0.92R over 6 trades, Ascending Base +0.72R over 16, and at the bottom Pullback Entry at −0.84R and High Tight Flag at −0.59R. Rows with fewer than fifteen trades are faded as noise rather than signal." />
           <figcaption>
             The same trades cut by setup. Two patterns paying, three losing — which is the
             question the rupee column cannot answer.
+          </figcaption>
+        </figure>
+      </section>
+
+      <section className="mk-sec">
+        <h2>And where you are losing it</h2>
+        <p>
+          Every trade is a handful of decisions — what you bought, when, how much you put
+          on it, where the loss ended, how you got out of the ones that worked. Three of
+          them can be costed against the plan you set yourself. The journal does that and
+          ranks the rest, so what comes back is one stage to fix rather than a page of
+          statistics.
+        </p>
+        {/* A real book, and the caption says so. The other two shots are the
+            sample one and are captioned that way; letting this pass as demo
+            data would be the kind of small lie a page like this cannot
+            afford. */}
+        <figure className="shot">
+          <img src="/shots/process-stages.jpg" width={1800} height={810} loading="lazy" decoding="async"
+               alt="A process breakdown headed: the bottleneck is sizing, it has cost you 19.1R — ₹4.77 lakh against your own plan. Below it, the last ten trades taken: 10 closed, 2 won, 8 lost, −8.3R, against a usual ten of 6 won and +11.2R. Then each stage rated — sizing and risk control leaking, timing worth watching, exit improving, cadence nothing to flag, selection not recorded." />
+          <figcaption>
+            A real book, not the sample one. Sizing is the leak here — 19.1R, ₹4.77 L,
+            measured against the plan its owner set.
           </figcaption>
         </figure>
       </section>
