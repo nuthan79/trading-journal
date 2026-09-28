@@ -163,7 +163,10 @@ const FAQ = [
     q: "What does it cost?",
     a: "Nothing at the moment. It is free while it is being built and there is " +
        "no card to enter. You can export everything you have logged as a single " +
-       "file at any time, and delete your account and its data whenever you like.",
+       "file at any time, and delete your account and its data whenever you like. " +
+       "If a paid tier does arrive, what you have already written stays readable and " +
+       "exportable — the parts that are sold are the ones that add new work, never " +
+       "the record you have already put in.",
   },
 ];
 
@@ -226,7 +229,18 @@ export default function HomePage() {
         </p>
         </div>
         <Link className="mk-cta" href="/dashboard">Start your journal — it&apos;s free</Link>
-        <p className="mk-note">No card. Export or delete everything whenever you like.</p>
+        {/*
+          * THE QUESTION THAT ARRIVES WITH THE BUTTON. "It's free" invites
+          * "and then what?", and the honest answer was three screens down in
+          * the FAQ. The promise made here is one the app already keeps: a
+          * lapsed market blocks writes and keeps reads, and export has been
+          * there since the first week — so nothing logged is ever held
+          * hostage to a price that has not been decided yet.
+          */}
+        <p className="mk-note">
+          No card, and free while it is being built. If it ever costs something, nothing
+          you have already logged gets locked up — it stays yours to read, export or delete.
+        </p>
 
         {/* The fields themselves, not a sentence about them. Two are lit
             because they are the newest and the reason somebody arrives from
