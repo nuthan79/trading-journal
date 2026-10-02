@@ -160,3 +160,31 @@ test("the exits card stays off until its reasons are alternatives", () => {
   ok(/if \(!SHOW_EXIT_METHOD_CARD\) return null;/.test(read("lib/analysis.js")),
      "the builder must not run while the flag is off");
 });
+
+/**
+ * A TILE THAT COUNTS TRADES MUST LEAD TO THEM.
+ *
+ * The mistake table on What works has routed to /trades?mistake= since it was
+ * built; the "What didn't work" tiles beside it counted the same kind of tag
+ * and went nowhere, so the reader had to go and find those trades by hand.
+ */
+test("the outcome-tag tiles route to the trades behind them", () => {
+  const src = read("components/journal/Edge.jsx");
+  const sec = src.slice(src.indexOf("outcomeRows.length > 0"), src.indexOf("<style jsx global>"));
+  ok(/href=\{`\/trades\?mistake=\$\{encodeURIComponent\(o\.tag\)\}`\}/.test(sec),
+     "the tiles are not links to the trades they count");
+  ok(/title=\{`See the \$\{o\.count\} trade/.test(sec), "and they must say what the click does");
+});
+
+/**
+ * THE COUNT ON THE TILE AND THE COUNT ON THE PAGE IT OPENS MUST AGREE.
+ *
+ * What works is computed on `closed`; the trades screen filtered `all`, so a
+ * tile reading 32 opened a list of 33 — one open position carrying the same
+ * tag. A reader who notices that stops trusting both figures.
+ */
+test("a mistake filter shows the closed trades the count was made from", () => {
+  const src = read("components/journal/Trades.jsx");
+  ok(/t\.status === "closed" && \(t\.mistakes \|\| \[\]\)\.includes\(mistake\)/.test(src),
+     "the mistake filter counts open positions the tiles never counted");
+});

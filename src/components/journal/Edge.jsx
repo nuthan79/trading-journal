@@ -289,13 +289,18 @@ export default function Edge({ closed: rawClosed = [], accountSize }) {
             </div>
           </div>
           <div className="card" style={{ display: "flex", flexWrap: "wrap", gap: 22 }}>
+            {/* The way in, exactly as the mistake rows above have. A tile
+                that counts trades and then offers no route to them is where
+                the reader has to go and find them by hand. */}
             {outcomeRows.map((o) => (
-              <div key={o.tag}>
+              <Link key={o.tag} className="ed-otile"
+                    href={`/trades?mistake=${encodeURIComponent(o.tag)}`}
+                    title={`See the ${o.count} trade${o.count === 1 ? "" : "s"} tagged "${o.tag}"`}>
                 <div className="mono" style={{ fontSize: 19, fontWeight: 500 }}>{o.count}</div>
                 <div style={{ fontSize: 11.5, color: "var(--ink3)", marginTop: 2 }}>
-                  {o.tag} · {pct(o.share, 0)} of trades
+                  <span className="ed-otile-t">{o.tag}</span> · {pct(o.share, 0)} of trades
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         </div>
@@ -309,6 +314,11 @@ export default function Edge({ closed: rawClosed = [], accountSize }) {
           color: inherit; text-decoration: none;
           border-bottom: 1px dotted var(--ink3);
         }
+        /* The whole tile is the target, but only the tag carries the dotted
+           underline — on the count it would read as a struck-through number. */
+        .ed-otile { color: inherit; text-decoration: none; display: block; }
+        .ed-otile-t { border-bottom: 1px dotted var(--ink3); }
+        .ed-otile:hover .ed-otile-t { color: var(--brass); border-bottom-color: var(--brass); }
         .mk-link:hover { color: var(--brass); border-bottom-color: var(--brass); }
       `}</style>
     </>

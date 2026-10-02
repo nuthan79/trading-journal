@@ -398,10 +398,22 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
 
   const rows = useMemo(() => {
     let r = all;
-    // Arrives from the mistakes table on Performance. Exact match, not a
-    // substring — "Sold too early" and "Sold a little late" both contain
-    // "Sold", and a fuzzy filter would quietly mix two different errors.
-    if (mistake) r = r.filter((t) => (t.mistakes || []).includes(mistake));
+    /*
+      Arrives from the mistake table and the outcome tiles on What works.
+      Exact match, not a substring — "Sold too early" and "Sold a little late"
+      both contain "Sold", and a fuzzy filter would quietly mix two different
+      errors.
+
+      CLOSED ONLY, because every count that links here was computed on closed
+      trades: What works reads `closed`, and an open position tagged with the
+      same mistake has no result to have cost anything yet. Without this the
+      tile said 32 and the page it opened said 33, which is the kind of gap a
+      reader finds and then stops trusting both numbers. The edge-dimension
+      links a few lines below have always constrained this way.
+    */
+    if (mistake) {
+      r = r.filter((t) => t.status === "closed" && (t.mistakes || []).includes(mistake));
+    }
 
     // Arrives from the gaps prompt on Review. Closed only, matching how the
     // count was made — offering to fix a hundred and then listing a hundred
