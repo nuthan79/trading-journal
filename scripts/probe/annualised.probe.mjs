@@ -354,3 +354,23 @@ test("the two returns on one screen never disagree about open positions", () => 
   ok(other.rate < a.rate, "CAGR moves with the account size");
   near(q2.employed, q.employed, 1e-9, "return on capital at work does not");
 });
+
+/**
+ * "+18.9% OVER 1.6 YEARS" READS AS A TOTAL.
+ *
+ * The sublabel used to be just `over ${span}`, on the reasoning that the tile
+ * already says CAGR and CAGR already means a year. True for anyone who
+ * expands the acronym; everyone else reads it as the whole period's return —
+ * and then meets "ahead of the index by 6.6% a year" below it carrying the
+ * same +18.9%, and cannot reconcile the two. The rate has to say it is a rate.
+ */
+test("the annual return says it is per year, not just the span it covers", () => {
+  const d = describeAnnualised({ rate: 0.189, years: 1.6, days: 584, method: "cagr", flows: 0 });
+  ok(/a year/.test(d.short), `the sublabel reads "${d.short}" and never says it is annual`);
+  ok(/1\.6 years/.test(d.short), "and it must still say what span it was measured over");
+
+  /* Under a year the span is in days, and the wording has to survive that —
+     "a year · over 240 days" is the honest shape of an extrapolation. */
+  const short = describeAnnualised({ rate: -0.04, years: 0.66, days: 240, method: "cagr", flows: 0 });
+  ok(/a year/.test(short.short) && /240 days/.test(short.short), `reads "${short.short}"`);
+});

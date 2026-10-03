@@ -424,8 +424,16 @@ export function describeAnnualised(a) {
     label: a.method === "xirr" ? "XIRR" : "CAGR",
     value: signedPct(a.rate * 100),
     tone: a.rate > 0 ? "pos" : a.rate < 0 ? "neg" : "",
-    /* The label already says CAGR, which already means a year. */
-    short: `over ${span}`,
+    /*
+      SAY THAT IT IS A RATE PER YEAR, in words.
+      This read `over ${span}` on the reasoning that the label already says
+      CAGR and CAGR already means a year. It does — to somebody who expands
+      the acronym. Everyone else reads "+18.9% over 1.6 years" as the total
+      for the whole period, and then meets "ahead of the index by 6.6% a
+      year" two lines below with the same +18.9% in it, and cannot make the
+      two agree. Reported by the person who built it.
+    */
+    short: `a year · over ${span}`,
     hint: a.method === "xirr"
       ? `Money-weighted over ${span}, counting ${a.flows} deposit`
         + `${a.flows === 1 ? "" : "s"} or withdrawal${a.flows === 1 ? "" : "s"}${marked}`
