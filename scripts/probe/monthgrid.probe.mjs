@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, eq, ok, near } from "./harness.mjs";
 import { monthlyGrid } from "@/lib/dashboard";
-import { byPeriod } from "@/lib/calc";
+import { dimensionRows } from "@/lib/edge";
 import { derivePosition } from "@/lib/positions";
 
 const mk = (t) => {
@@ -33,82 +33,58 @@ const cell = (g, year, month) =>
   g.years.find((y) => y.year === year)?.months.find((m) => m.month === month - 1);
 
 /**
- * THE BUCKET, NOT THE TOTAL.
- *
- * This grid added a position's whole R to the month of `exit_date`, which is
- * its LAST tranche — so a position sold down over three months put all of it
- * in the third. On the book that found it, September 2025 read +23.7R here
- * against +12.0R on the period table for the same month, with June and July
- * correspondingly short. positions.js has said for a long while why that is
- * wrong: "the totals were never wrong, only the buckets, which is exactly the
- * kind of wrong that survives a reconciliation."
+ * A TRADE LANDS WHOLE IN THE MONTH IT WAS FULLY CLOSED — the user's own way of
+ * counting, chosen after a day of the per-sell version. A position sold over
+ * June, July and September is one +2R result, finished in September.
  */
-test("a position sold across three months is counted in all three", () => {
+test("a position sold across three months lands whole in the month of its last sell", () => {
   const g = monthlyGrid([SPREAD]);
   ok(g, "the grid came back empty");
-  near(cell(g, 2025, 6).r, 1 / 3, 0.001, "June banked the first third");
-  near(cell(g, 2025, 7).r, 2 / 3, 0.001, "July the second");
-  near(cell(g, 2025, 9).r, 1, 0.001, "September the last");
-  ok(!cell(g, 2025, 8).hasData, "August realised nothing and must stay blank");
+  near(cell(g, 2025, 9).r, 2, 0.001, "September carries the whole +2R");
+  eq(cell(g, 2025, 9).trades, 1);
+  for (const m of [6, 7, 8]) ok(!cell(g, 2025, m).hasData, `month ${m} must stay blank`);
 });
 
 /**
- * The grid and the period table are shown on the same book and must not
- * disagree about a month. They now walk the same bankedEvents.
+ * Month closed on What works buckets the same way, so the two screens that
+ * call a trade's month "the month it closed" cannot disagree about one.
  */
-test("the grid agrees with the period table, month for month", () => {
-  const g = monthlyGrid([SPREAD]);
-  const periods = byPeriod([SPREAD], "month", { basis: "exit" });
-  /* Matched on the totals rather than on label spelling, which the two
-     formatters do differently. */
-  const gridTotal = g.years.flatMap((y) => y.months).filter((m) => m.hasData)
-    .reduce((a, m) => a + m.r, 0);
-  const periodTotal = periods.reduce((a, p) => a + (p.totalR || 0), 0);
-  near(gridTotal, periodTotal, 0.01, "the two tables disagree on the book's total R");
-  near(gridTotal, 2, 0.01, "and the parts must add back to the position's own +2R");
+test("the grid agrees with What works → Month closed", () => {
+  const OTHER = mk({
+    id: "other", symbol: "OTHER", side: "long", status: "closed",
+    entry_date: "2025-08-01", entry_price: 100, quantity: 100,
+    stop_loss: 90, stop_source: "recorded", charges: 0,
+    exit_date: "2025-08-20", exit_price: 95,
+    exits: [{ exit_date: "2025-08-20", quantity: 100, price: 95, charges: 0 }],
+  });
+  const g = monthlyGrid([SPREAD, OTHER]);
+  for (const row of dimensionRows([SPREAD, OTHER], "month")) {
+    const [y, m] = row.key.split("-").map(Number);
+    near(cell(g, y, m).r, row.totalR, 0.001, `${row.key}`);
+    eq(cell(g, y, m).trades, row.trades, `${row.key} trade count`);
+  }
 });
 
-test("a part-sold position's banked money reaches the grid", () => {
-  /* It has no exit_date, so the old version dropped it entirely while the
-     period table counted what it had banked. */
-  const PART = mk({
-    id: "part", symbol: "PART", side: "long", status: "partial",
-    entry_date: "2026-06-01", entry_price: 100, quantity: 100,
-    stop_loss: 90, stop_source: "recorded", charges: 0, last_price: 200,
-    exits: [{ exit_date: "2026-09-10", quantity: 40, price: 150, charges: 0 }],
-  });
-  const g = monthlyGrid([PART]);
-  ok(g, "a part-sold position alone produced no grid at all");
-  ok(cell(g, 2026, 9)?.hasData, "September banked money and must have a cell");
-  ok(cell(g, 2026, 9).r > 0, "and it was a gain");
-
-  /* And the screen has to hand the part-sold ones over, or the grid never
-     sees them however well it handles them. */
+test("the screen hands the grid closed trades", () => {
   const dash = readFileSync(path.resolve(fileURLToPath(
     new URL("../../src/components/journal/Dashboard.jsx", import.meta.url))), "utf8");
-  ok(/<MonthlyReturns banking=\{banking\} \/>/.test(dash),
-     "Dashboard passes `closed` again, so part-sold money is missing from the grid");
+  ok(/<MonthlyReturns closed=\{closed\} \/>/.test(dash),
+     "Dashboard must pass closed trades — a part-sold position has no result yet");
 });
 
 test("the month comes from the date string, not from a parsed Date", () => {
   /* `new Date("2025-06-10")` is UTC midnight and names 9 June west of
      Greenwich, which is what probe:tz exists to catch. */
   const src = readFileSync(path.resolve(fileURLToPath(new URL("../../src/lib/dashboard.js", import.meta.url))), "utf8");
-  ok(/e\.date\.slice\(0, 7\)\.split\("-"\)/.test(src),
+  ok(/on\.slice\(0, 7\)\.split\("-"\)/.test(src),
      "the grid parses its month with new Date again");
 });
 
-/**
- * The caption said "bucketed by exit date, so a trade lands in the month it
- * was closed", which described the behaviour this change removed. A stale
- * caption under corrected figures is worse than the bug was: the numbers
- * move and the page goes on explaining the old ones.
- */
 test("the caption describes how the months are actually counted", () => {
   const src = readFileSync(path.resolve(fileURLToPath(
     new URL("../../src/components/journal/MonthlyReturns.jsx", import.meta.url))), "utf8");
   const flat = src.replace(/\s+/g, " ");
-  ok(!/bucketed by exit date/.test(flat), "the caption still describes the old bucketing");
-  ok(/Counted when the money was realised/.test(flat),
-     "and it must say what it does now, in the period table's own words");
+  ok(!/Counted when the money was realised/.test(flat), "the caption still describes per-sell counting");
+  ok(/Each trade counts in the month it was fully closed/.test(flat),
+     "and it must say what it does now");
 });

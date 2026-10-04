@@ -7,7 +7,6 @@
  */
 
 import { stats, chronological, equityCurve, greenCount } from "./calc";
-import { bankedEvents } from "./positions";
 
 const isNum = (v) => typeof v === "number" && isFinite(v);
 const mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : NaN);
@@ -35,45 +34,37 @@ const closedOn = (t) => t.exit_date || t.entry_date;
  * empty ones — a blank January is information too, and hiding it would make
  * an inactive stretch look like it never happened.
  *
- * BUCKETED BY WHEN EACH SELL HAPPENED, not by a position's last one.
+ * A TRADE LANDS IN THE MONTH IT WAS FULLY CLOSED, whole — the way a trader
+ * counts it, and the same as What works → Month closed.
  *
- * This added `t.r` to the month of `exit_date`, which is the LAST tranche, so
- * a position sold down over three months put its whole result in the third.
- * On the book that found it: September 2025 read +23.7R here against +12.0R
- * on the period table for the same month, with June and July correspondingly
- * short. The totals were close enough to look fine, which is what let it sit.
+ * For a day this walked each sell instead, so a position sold down over three
+ * months appeared in all three, matching the period table on Performance. The
+ * user read the two side by side and chose this: a trade is one decision with
+ * one result, and it finishes in the month of its last sell. The period table
+ * still counts money when it was realised, which is right for a statement and
+ * is why the two can differ on a month — the caption says so.
  *
- * positions.js already says why that is wrong — "the totals were never wrong,
- * only the buckets, which is exactly the kind of wrong that survives a
- * reconciliation" — and byPeriod was fixed for it. This had not been. It now
- * walks the same `bankedEvents` byPeriod walks, so the two agree month for
- * month, which is the only state in which showing both is defensible.
- *
- * It takes `banking` rather than `closed` for the same reason: a part-sold
- * position has banked real money, and leaving it out dropped that money from
- * the grid entirely while the period table counted it.
+ * Closed only: a part-sold position has no result yet.
  */
-export function monthlyGrid(banking) {
-  /* key "2026-4" -> { r, byTrade: Map(id -> r in this month) } */
+export function monthlyGrid(closed) {
+  /* key "2026-4" -> { r, trades, wins } */
   const cells = new Map();
   const seen = [];
 
-  for (const t of banking || []) {
-    for (const e of bankedEvents(t)) {
-      /* A fallback event dated from the entry is a stand-in, not a sell —
-         bucketing on it would put money in a month nothing was realised. */
-      if (e.placedByEntry || !e.date || !isNum(e.r)) continue;
-      /* Parsed by hand: `new Date("2026-05-01")` is UTC midnight and names
-         April west of Greenwich. */
-      const [y, m] = e.date.slice(0, 7).split("-").map(Number);
-      if (!y || !m) continue;
-      const key = `${y}-${m - 1}`;
-      const c = cells.get(key) || { r: 0, byTrade: new Map() };
-      c.r += e.r;
-      c.byTrade.set(t.id, (c.byTrade.get(t.id) || 0) + e.r);
-      cells.set(key, c);
-      seen.push(y);
-    }
+  for (const t of closed || []) {
+    const on = closedOn(t);
+    if (!isNum(t.r) || !on) continue;
+    /* Parsed by hand: `new Date("2026-05-01")` is UTC midnight and names
+       April west of Greenwich. */
+    const [y, m] = on.slice(0, 7).split("-").map(Number);
+    if (!y || !m) continue;
+    const key = `${y}-${m - 1}`;
+    const c = cells.get(key) || { r: 0, trades: 0, wins: 0 };
+    c.r += t.r;
+    c.trades += 1;
+    if (t.r > 0) c.wins += 1;
+    cells.set(key, c);
+    seen.push(y);
   }
   if (!seen.length) return null;
 
@@ -84,15 +75,11 @@ export function monthlyGrid(banking) {
   for (let y = minYear; y <= maxYear; y++) {
     const months = MONTHS.map((_, m) => {
       const c = cells.get(`${y}-${m}`);
-      /* A position counts once in a month however many times it sold there,
-         and counts as a winner if what it banked THAT month was positive —
-         the same shape the period table's trade count has. */
-      const per = c ? [...c.byTrade.values()] : [];
       return c
         ? {
             month: m, year: y,
-            r: c.r, trades: per.length,
-            winRate: (per.filter((v) => v > 0).length / per.length) * 100,
+            r: c.r, trades: c.trades,
+            winRate: (c.wins / c.trades) * 100,
             hasData: true,
           }
         : { month: m, year: y, r: null, trades: 0, winRate: null, hasData: false };

@@ -31,7 +31,7 @@ export default function Dashboard({ closed, banking = [], accountSize, diary, fl
 
       <div className="sec"><LedgerPlot rows={closed} /></div>
 
-      <div className="sec"><MonthlyReturns banking={banking} /></div>
+      <div className="sec"><MonthlyReturns closed={closed} /></div>
 
       <div className="sec"><ProfitConcentration closed={closed} /></div>
 
