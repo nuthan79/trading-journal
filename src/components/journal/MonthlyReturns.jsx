@@ -13,8 +13,10 @@ import { rfmt, pct } from "@/lib/format";
  * with no trades is a fact about how you traded, not missing data.
  */
 
-export default function MonthlyReturns({ closed }) {
-  const grid = useMemo(() => monthlyGrid(closed), [closed]);
+/* `banking`, not `closed`: the grid buckets each SELL in the month it
+   happened, and a part-sold position has banked money with no exit date. */
+export default function MonthlyReturns({ banking = [] }) {
+  const grid = useMemo(() => monthlyGrid(banking), [banking]);
   const [hover, setHover] = useState(null);
 
   if (!grid) {
@@ -93,8 +95,9 @@ export default function MonthlyReturns({ closed }) {
           <>
             Best month {monthName(best.month)} {best.year} at {rfmt(best.r)}. Worst{" "}
             {monthName(worst.month)} {worst.year} at {rfmt(worst.r)}. Hover a cell for
-            trade count and win rate. Months are bucketed by exit date, so a trade lands
-            in the month it was closed.
+            trade count and win rate. Counted when the money was realised — a position
+            sold across two months appears in both, the same way the period table counts
+            it.
           </>
         )}
       </p>
