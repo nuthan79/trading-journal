@@ -47,8 +47,11 @@ test("the two are named apart, and the old link id still means closed", () => {
   eq(labelOf(DIMENSIONS.find((d) => d.id === "month_taken")), "Month taken");
 });
 
-test("the table says recent months are thin because they're still open", () => {
-  ok(DIMENSIONS.find((d) => d.id === "month_taken").hint, "month taken carries its caveat");
+test("the table says recent months read worse until their winners close", () => {
+  /* Not merely "thin": losers stop out first and winners stay open, so a
+     recent month reads WORSE than it will end. The caveat must say which way. */
+  ok(/losers close first/i.test(DIMENSIONS.find((d) => d.id === "month_taken").hint || ""),
+     "month taken says recent months are biased towards losers");
   ok(/\{D\.hint && <div className="hint"[^>]*>\{D\.hint\}<\/div>\}/.test(read("components/journal/Edge.jsx")),
      "Edge renders the dimension's hint under the table");
 });

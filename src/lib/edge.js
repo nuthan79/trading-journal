@@ -444,15 +444,16 @@ export const DIMENSIONS = [
    * still lands where it did.
    *
    * Closed trades only, like the rest of this table — so the latest months
-   * read thin until their open positions close. `hint` says so under the
-   * table rather than leaving a quiet September to look like a quiet month.
+   * read WORSE than they will end up: a loser stops out in days while a winner
+   * stays open, so a recent month's losers arrive here first. `hint` says so
+   * under the table rather than letting a September of 0% read as a verdict.
    */
   { id: "month", label: "Month closed",
     get: (t) => (t.exit_date || t.entry_date || "").slice(0, 7) || "-" },
 
   { id: "month_taken", label: "Month taken",
     get: (t) => (t.entry_date || "").slice(0, 7) || NOT_RECORDED,
-    hint: "Closed trades only, so the latest months fill in as their open positions close." },
+    hint: "Closed trades only. Losers close first, so the latest months look worse than they’ll end up." },
 ];
 
 /* ==================================================================== */
