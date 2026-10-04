@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { dimensionRows, DIMENSIONS, labelOf, maxAbsTotalR, isThin, NOT_RECORDED, edgeHref } from "@/lib/edge";
+import { dimensionRows, DIMENSIONS, labelOf, maxAbsTotalR, isThin, thinAt, NOT_RECORDED, edgeHref } from "@/lib/edge";
 import { useSectors } from "@/lib/sectors";
 import { mistakeCost, outcomeTagCounts } from "@/lib/analysis";
 import { isExecutionError } from "@/lib/constants";
@@ -116,7 +116,7 @@ export default function Edge({ closed: rawClosed = [], accountSize }) {
               {groups.map((g) => {
                 const wpx = (Math.abs(g.totalR) / maxAbs) * 100;
                 return (
-                  <tr key={g.key} style={{ opacity: isThin(g) ? 0.55 : 1 }}>
+                  <tr key={g.key} style={{ opacity: isThin(g, D) ? 0.55 : 1 }}>
                     {/* The row is the way in, exactly as it is in the mistakes
                         table below. A table that costs a slice out and then
                         offers no route to the trades inside it is where the
@@ -194,9 +194,9 @@ export default function Edge({ closed: rawClosed = [], accountSize }) {
             to divide by without it. Net P&amp;L and Avg value describe every trade in the row.
           </div>
         )}
-        {groups.some((g) => isThin(g)) && (
+        {groups.some((g) => isThin(g, D)) && (
           <div className="hint" style={{ marginTop: 8 }}>
-            Faded rows have fewer than 15 trades — noise, not signal. Read them as questions to watch, not conclusions.
+            Faded rows have fewer than {thinAt(D)} trades — noise, not signal. Read them as questions to watch, not conclusions.
           </div>
         )}
         {/* Only on the rupee cut. Every other dimension here is either

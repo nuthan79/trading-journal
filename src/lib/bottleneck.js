@@ -41,8 +41,7 @@ import { hasRealStop } from "./stops";
  */
 
 /** Below this a stage is reported but marked provisional rather than ranked
- *  with confidence. Matches THIN_SLICE in edge.js in spirit: enough to notice,
- *  not enough to act on. */
+ *  with confidence: enough to notice, not enough to act on. */
 const THIN_STAGE = 20;
 
 /**

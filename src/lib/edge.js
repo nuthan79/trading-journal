@@ -448,10 +448,10 @@ export const DIMENSIONS = [
    * stays open, so a recent month's losers arrive here first. `hint` says so
    * under the table rather than letting a September of 0% read as a verdict.
    */
-  { id: "month", label: "Month closed",
+  { id: "month", label: "Month closed", thin: 4,
     get: (t) => (t.exit_date || t.entry_date || "").slice(0, 7) || "-" },
 
-  { id: "month_taken", label: "Month taken",
+  { id: "month_taken", label: "Month taken", thin: 4,
     get: (t) => (t.entry_date || "").slice(0, 7) || NOT_RECORDED,
     hint: "Closed trades only. Losers close first, so the latest months look worse than they’ll end up." },
 ];
@@ -541,11 +541,25 @@ export const maxAbsTotalR = (rows) =>
   Math.max(...rows.map((r) => Math.abs(r.totalR || 0)), 1);
 
 /**
- * Slices too small to mean anything. Fifteen is not a statistical threshold so
- * much as the point below which one trade stops moving the row.
+ * Slices too small to mean anything: fewer than ten trades, or four on the two
+ * Month cuts (each dimension may carry its own `thin`).
+ *
+ * TWO NUMBERS BECAUSE THE TABS ASK TWO QUESTIONS. A pattern or a sector keeps
+ * collecting trades for as long as it is traded, and asks "is there an edge
+ * here" — which four trades cannot answer: a system winning half its trades
+ * shows 75% or better on a four-trade slice about one time in three by chance
+ * alone, and on ten about one in six. A month is capped by the calendar — a
+ * trader taking one a week never gets past four or five in it — and asks the
+ * looser "was the market with me", which four entries going mostly one way
+ * do answer.
+ *
+ * It was fifteen everywhere, which on a weekly swing book faded every month
+ * there would ever be and most patterns besides. A fade on every row tells the
+ * reader nothing about which rows to doubt.
  */
-export const THIN_SLICE = 15;
-export const isThin = (row) => row.trades < THIN_SLICE;
+export const THIN_SLICE = 10;
+export const thinAt = (dim) => dim?.thin ?? THIN_SLICE;
+export const isThin = (row, dim) => row.trades < thinAt(dim);
 
 /* ==================================================================== */
 /*  Reaching the trades behind a row                                    */
