@@ -186,6 +186,7 @@ export default function Edge({ closed: rawClosed = [], accountSize }) {
             </tbody>
           </table>
         </div>
+        {D.hint && <div className="hint" style={{ marginTop: 8 }}>{D.hint}</div>}
         {groups.some((g) => g.n < g.trades) && (
           <div className="hint" style={{ marginTop: 8 }}>
             Where a row holds trades with no stop on record, the R columns describe only

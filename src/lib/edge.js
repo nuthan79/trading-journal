@@ -429,8 +429,30 @@ export const DIMENSIONS = [
     get: (t) => t.sector || NOT_RECORDED,
     showIf: (closed) => closed.some((t) => t.sector) },
 
-  { id: "month", label: "Month",
+  /*
+   * TWO MONTHS, TWO QUESTIONS. Closed asks when the result arrived; taken asks
+   * when the decision was made — "did the months I was busiest have good
+   * setups" is about the second, and closing dates scatter a busy month's
+   * entries across the two or three after it.
+   *
+   * A second dimension and not a "taken" column beside "trades": every other
+   * column in a row describes the trades in that row, and a count of a
+   * DIFFERENT set of trades sitting among them invites dividing one by the
+   * other. Here each row is one population, whichever month it is cut by.
+   *
+   * The id stays "month" so a /trades?dim=month link made before the pair
+   * still lands where it did.
+   *
+   * Closed trades only, like the rest of this table — so the latest months
+   * read thin until their open positions close. `hint` says so under the
+   * table rather than leaving a quiet September to look like a quiet month.
+   */
+  { id: "month", label: "Month closed",
     get: (t) => (t.exit_date || t.entry_date || "").slice(0, 7) || "-" },
+
+  { id: "month_taken", label: "Month taken",
+    get: (t) => (t.entry_date || "").slice(0, 7) || NOT_RECORDED,
+    hint: "Closed trades only, so the latest months fill in as their open positions close." },
 ];
 
 /* ==================================================================== */
