@@ -20,6 +20,7 @@ import { bankedEvents } from "@/lib/positions";
    Review can never describe the same trade with two different numbers. */
 import { FREE_AT_R, POWER_R, POWER_DAYS, breakevenPrompt } from "@/lib/path";
 import PositionDetail from "./PositionDetail";
+import OpenProfitAlert from "./OpenProfitAlert";
 import { soldSinceSnapshot } from "@/lib/snapshots";
 
 /**
@@ -307,7 +308,7 @@ export default function Holdings({
   open, closed, diary = [], journalName = "", onRefresh, refreshing, onAckBreakeven,
   onEditTrade, onExitTrade, onDeleteTrade, onAttachChart, onRemoveChart,
   onFixSoldSnapshots, splitPlan: splitPlanRows = [], onFixSplits,
-  splitsUnsure = [],
+  splitsUnsure = [], accountSize = 0,
 }) {
   const [detailId, setDetailId] = useState(null);
   const [acked, setAcked] = useState([]);
@@ -1350,6 +1351,10 @@ export default function Holdings({
           </ul>
         </div>
       )}
+
+      {/* Above the figures it is about. Only when the open winners are worth a
+          tenth of the account — see lib/openProfit.js. */}
+      <OpenProfitAlert open={open} accountSize={accountSize} />
 
       <div className="ps-top">
         <div className="ps-riskcard">

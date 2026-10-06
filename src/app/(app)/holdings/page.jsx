@@ -9,12 +9,17 @@ import { loadSplitCache, saveSplitCache, staleKeys, splitsFromCache,
          mergeIntoCache } from "@/lib/splitCache";
 import { measurePaths, needsMeasuring } from "@/lib/measure";
 import { useJournal } from "../JournalContext";
+import { regionSettings } from "@/lib/regions";
 
 export default function HoldingsPage() {
   const {
     open, closed, diary, mergeMarks, say, reloadTrades, saveDiaryEntry, removeChartFromEntry,
-    openEditTrade, openExitTrade, removeTrade, profile, all,
+    openEditTrade, openExitTrade, removeTrade, profile, all, bookRegion,
   } = useJournal();
+  /* The account size the user actually set, not the layout's ₹10L stand-in:
+     the open-profit reminder is a share of it, and a share of a guess fires
+     for people who never said what they trade with. */
+  const funded = Number(regionSettings(profile, bookRegion).account_size) || 0;
   const [refreshing, setRefreshing] = useState(false);
 
   /**
@@ -196,6 +201,7 @@ journalName={profile?.journal_name}
       onEditTrade={openEditTrade}
       onExitTrade={openExitTrade}
       onDeleteTrade={removeTrade}
+      accountSize={funded}
     />
   );
 }
