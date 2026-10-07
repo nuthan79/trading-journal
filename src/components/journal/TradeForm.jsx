@@ -147,8 +147,12 @@ function splitCharges(t, exits, config) {
 
   let entrySide = total;
   if (config) {
+    /* With the sells, so a buy squared off the same day is priced as the
+       intraday leg it was — a delivery-priced buy would claim most of the
+       bill for the entry and leave the sells almost nothing. */
     const buy = entryCharges(
-      { exchange: t.exchange, entry_price: num(t.entry_price), quantity: num(t.quantity) },
+      { exchange: t.exchange, entry_price: num(t.entry_price), quantity: num(t.quantity),
+        entry_date: t.entry_date, exits },
       mergeConfig(config)
     );
     if (isFinite(buy?.total)) entrySide = Math.min(total, buy.total);

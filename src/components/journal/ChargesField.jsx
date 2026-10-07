@@ -165,6 +165,14 @@ export default function ChargesField({
                   when you close the trade — expect roughly to double.
                 </div>
               )}
+              {computed.sameDayQty > 0 && (
+                <div className="cf-note">
+                  {computed.sameDayQty === Number(trade?.quantity)
+                    ? "Bought and sold the same day, so it's charged as intraday"
+                    : `${computed.sameDayQty} of these shares were sold the day they were bought, so those are charged as intraday`}
+                  {" "}— lower STT and stamp duty, no DP charge, and your broker&apos;s intraday brokerage.
+                </div>
+              )}
               {computed.sells.length > 1 && (
                 <div className="cf-note">
                   Each tranche carries its own DP charge and brokerage, which is what

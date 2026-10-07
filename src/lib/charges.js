@@ -1,5 +1,6 @@
 /**
- * Transaction charges — Indian equity delivery.
+ * Transaction charges — Indian equity delivery, and the same-day part of it
+ * that is charged as intraday (see `sameDayQty`).
  *
  * TWO DESIGN RULES, both of which matter more than the arithmetic:
  *
@@ -28,6 +29,12 @@ export const DEFAULT_CHARGE_CONFIG = {
   sebiPct: 0.0001,        // % of turnover (₹10 per crore), both sides
   stampDutyPct: 0.015,    // % of turnover, BUY side only for delivery
   gstPct: 18,             // % on (brokerage + exchange fees + SEBI fees + DP)
+  /* Shares bought and sold on the SAME DAY are not delivered, whatever the
+     order said — a CNC buy squared off before the close is settled as
+     intraday, and the exchange and the government charge it that way. See
+     `sameDayQty` below. */
+  sttIntradayPct: 0.025,        // % of turnover, SELL side only
+  stampDutyIntradayPct: 0.003,  // % of turnover, BUY side only
 
   /* --- broker specific: yours will differ, set these from your contract note --- */
   brokerageModel: "zero", // "zero" | "flat" | "percent"
@@ -35,6 +42,11 @@ export const DEFAULT_CHARGE_CONFIG = {
   brokeragePct: 0.25,     // % of turnover, when model is "percent"
   brokerageCap: 20,       // ₹ ceiling per order for the percent model
   dpChargePerSell: 13.5,  // ₹ per sell per scrip, charged by the depository
+  /* What a zero-brokerage plan charges on the same-day part: Zerodha's
+     intraday rate, 0.03% or ₹20 per executed order, whichever is lower.
+     The flat and percentage plans charge what they always charge. */
+  intradayBrokeragePct: 0.03,
+  intradayBrokerageCap: 20,
 };
 
 /* ------------------------------------------------------------------ */
@@ -154,6 +166,7 @@ const num = (v, fallback = 0) => {
  */
 export const STATUTORY_KEYS = [
   "sttPct", "exchangeNsePct", "exchangeBsePct", "sebiPct", "stampDutyPct", "gstPct",
+  "sttIntradayPct", "stampDutyIntradayPct",
 ];
 
 const STATUTORY = Object.fromEntries(
@@ -176,8 +189,12 @@ export const mergeConfig = (partial) =>
 /*  One leg                                                            */
 /* ------------------------------------------------------------------ */
 
-function brokerageFor(turnover, cfg) {
-  if (cfg.brokerageModel === "zero") return 0;
+function brokerageFor(turnover, cfg, intradayTurnover = 0) {
+  if (cfg.brokerageModel === "zero") {
+    if (!(intradayTurnover > 0)) return 0;
+    return Math.min((intradayTurnover * num(cfg.intradayBrokeragePct)) / 100,
+                    num(cfg.intradayBrokerageCap, Infinity));
+  }
   if (cfg.brokerageModel === "flat") return num(cfg.brokerageFlat);
   const pct = (turnover * num(cfg.brokeragePct)) / 100;
   const cap = num(cfg.brokerageCap, Infinity);
@@ -241,7 +258,7 @@ function legChargesUS({ leg, price, quantity, date }, config) {
   };
 }
 
-export function legCharges({ leg, exchange = "NSE", price, quantity, date, region }, config) {
+export function legCharges({ leg, exchange = "NSE", price, quantity, date, region, intradayQty = 0 }, config) {
   /* Which country's bill this is. Named explicitly where the caller knows,
      inferred from the venue otherwise, and India when neither says — which is
      every trade written before regions existed. */
@@ -260,12 +277,22 @@ export function legCharges({ leg, exchange = "NSE", price, quantity, date, regio
   const exchangePct =
     exchange === "BSE" ? num(cfg.exchangeBsePct) : num(cfg.exchangeNsePct);
 
-  const stt = (turnover * num(cfg.sttPct)) / 100;
+  /* The part of this leg that never reached the demat account — bought and
+     sold the same day — is charged as intraday; the rest as delivery. */
+  const iQty = Math.min(qty, Math.max(0, num(intradayQty)));
+  const intraday = px * iQty;
+  const delivery = turnover - intraday;
+
+  const stt = (delivery * num(cfg.sttPct)) / 100
+    + (leg === "sell" ? (intraday * num(cfg.sttIntradayPct)) / 100 : 0);
   const exchangeFee = (turnover * exchangePct) / 100;
   const sebi = (turnover * num(cfg.sebiPct)) / 100;
-  const stampDuty = leg === "buy" ? (turnover * num(cfg.stampDutyPct)) / 100 : 0;
-  const brokerage = brokerageFor(turnover, cfg);
-  const dp = leg === "sell" ? num(cfg.dpChargePerSell) : 0;
+  const stampDuty = leg === "buy"
+    ? (delivery * num(cfg.stampDutyPct)) / 100 + (intraday * num(cfg.stampDutyIntradayPct)) / 100
+    : 0;
+  const brokerage = brokerageFor(turnover, cfg, intraday);
+  /* Nothing left the depository on a same-day sell, so it bills nothing. */
+  const dp = leg === "sell" && delivery > 0 ? num(cfg.dpChargePerSell) : 0;
 
   // GST applies to the service fees, not to the statutory taxes
   const gst = ((brokerage + exchangeFee + sebi + dp) * num(cfg.gstPct)) / 100;
@@ -273,7 +300,7 @@ export function legCharges({ leg, exchange = "NSE", price, quantity, date, regio
   const total = stt + exchangeFee + sebi + stampDuty + brokerage + dp + gst;
 
   return {
-    leg, exchange, turnover,
+    leg, exchange, turnover, intradayQty: iQty,
     stt, exchangeFee, sebi, stampDuty, brokerage, dp, gst,
     /* Zero in India, so every consumer can read one shape. */
     secFee: 0, taf: 0,
@@ -307,26 +334,22 @@ export function tradeCharges(trade, config) {
      when it happened. */
   const region = trade.region;
 
+  const rawExits = exitsOf(trade);
   const buy = legCharges(
     { leg: "buy", exchange, price: num(trade.entry_price), quantity: qty,
-      date: trade.entry_date, region },
+      date: trade.entry_date, region, intradayQty: sameDayQty(trade) },
     cfg
   );
 
-  const rawExits = Array.isArray(trade.exits) && trade.exits.length
-    ? trade.exits
-    : num(trade.exit_price) > 0
-    ? [{ price: trade.exit_price, quantity: qty }]
-    : [];
-
   const sells = rawExits
-    .map((e) =>
-      legCharges(
+    .map((e) => {
+      const on = e.exit_date || trade.exit_date;
+      return legCharges(
         { leg: "sell", exchange, price: num(e.price), quantity: num(e.quantity),
-          date: e.exit_date || trade.exit_date, region },
+          date: on, region, intradayQty: isSameDay(trade, on) ? num(e.quantity) : 0 },
         cfg
-      )
-    )
+      );
+    })
     .filter(Boolean);
 
   const sellTotal = sells.reduce((a, s) => a + s.total, 0);
@@ -366,7 +389,45 @@ export function tradeCharges(trade, config) {
       sebiPct: cfg.sebiPct, brokerageModel: cfg.brokerageModel,
       dpChargePerSell: cfg.dpChargePerSell,
     },
+    /* Shares charged as intraday, so the breakdown can say why it is small. */
+    sameDayQty: buy?.intradayQty || 0,
   };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Bought and sold the same day                                       */
+/* ------------------------------------------------------------------ */
+
+const exitsOf = (trade) => (Array.isArray(trade?.exits) && trade.exits.length
+  ? trade.exits
+  : num(trade?.exit_price) > 0
+  ? [{ price: trade.exit_price, quantity: trade.quantity, exit_date: trade.exit_date }]
+  : []);
+
+const isSameDay = (trade, on) =>
+  !!on && !!trade?.entry_date && String(on).slice(0, 10) === String(trade.entry_date).slice(0, 10);
+
+/**
+ * How many of this trade's shares were sold on the day they were bought.
+ *
+ * NOT DELIVERED, WHATEVER THE ORDER SAID. A CNC buy squared off before the
+ * close never reaches the demat account, so the exchange settles it as
+ * intraday and every charge follows: STT 0.025% on the sell side only instead
+ * of 0.1% on both, stamp duty 0.003% instead of 0.015%, no DP charge, and the
+ * broker's intraday brokerage — at Zerodha 0.03% or ₹20 an order, against
+ * zero for delivery. Only the shares sold that day: buy 100, sell 40 by the
+ * close and hold 60, and the 60 are delivery like any other.
+ *
+ * Within one trade only. The exchange nets a day's buys and sells of a scrip
+ * across the whole account, so selling OLDER shares on a day you bought more
+ * is intraday to it too — but trades here carry no account, and pairing one
+ * trade's buy with another's sell is a guess this file does not make.
+ */
+export function sameDayQty(trade) {
+  const sold = exitsOf(trade)
+    .filter((e) => isSameDay(trade, e.exit_date || trade.exit_date))
+    .reduce((a, e) => a + num(e.quantity), 0);
+  return Math.min(num(trade?.quantity), sold);
 }
 
 const round2 = (v) => Math.round(v * 100) / 100;
@@ -385,6 +446,9 @@ export function entryCharges(trade, config) {
       quantity: num(trade.quantity),
       date: trade.entry_date,
       region: trade.region,
+      /* Zero on an open position with nothing sold; the same-day part when
+         the caller hands over the sells, so the buy is priced as it was. */
+      intradayQty: sameDayQty(trade),
     },
     config
   );
