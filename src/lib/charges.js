@@ -14,7 +14,8 @@
  *    rewrite history into something that never happened. The stored number is
  *    the record; this engine only ever proposes a value for a new entry.
  *
- * Rates verified July 2026. Re-check after each Budget.
+ * Rates verified October 2026 against Zerodha's charges page. Re-check after
+ * each Budget.
  */
 
 /* ------------------------------------------------------------------ */
@@ -24,7 +25,8 @@
 export const DEFAULT_CHARGE_CONFIG = {
   /* --- statutory: same for everyone, set by government and exchanges --- */
   sttPct: 0.1,            // % of turnover, charged on BOTH buy and sell for delivery
-  exchangeNsePct: 0.00297, // % of turnover, both sides
+  exchangeNsePct: 0.00307, // % of turnover, both sides — ₹3.07 a lakh, the figure on a
+                           // Zerodha contract note: NSE's fee with its IPFT levy included
   exchangeBsePct: 0.00375, // % of turnover, both sides
   sebiPct: 0.0001,        // % of turnover (₹10 per crore), both sides
   stampDutyPct: 0.015,    // % of turnover, BUY side only for delivery
@@ -41,7 +43,8 @@ export const DEFAULT_CHARGE_CONFIG = {
   brokerageFlat: 20,      // ₹ per executed order
   brokeragePct: 0.25,     // % of turnover, when model is "percent"
   brokerageCap: 20,       // ₹ ceiling per order for the percent model
-  dpChargePerSell: 13.5,  // ₹ per sell per scrip, charged by the depository
+  dpChargePerSell: 13,    // ₹ per sell per scrip before GST — ₹15.34 with it, Zerodha's
+                          // figure (CDSL ₹3.50 + Zerodha ₹9.50)
   /* What a zero-brokerage plan charges on the same-day part: Zerodha's
      intraday rate, 0.03% or ₹20 per executed order, whichever is lower.
      The flat and percentage plans charge what they always charge. */
@@ -131,7 +134,7 @@ export const US_BROKER_PRESETS = {
 
 export const BROKER_PRESETS = {
   "Zero brokerage (Zerodha, Groww, Upstox delivery)": {
-    brokerageModel: "zero", dpChargePerSell: 13.5,
+    brokerageModel: "zero", dpChargePerSell: 13,
   },
   "Flat ₹20 per order": {
     brokerageModel: "flat", brokerageFlat: 20, dpChargePerSell: 13.5,

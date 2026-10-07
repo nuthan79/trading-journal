@@ -82,9 +82,10 @@ test("a whole US trade adds up, and names its lines", () => {
 test("India's bill is unchanged, and is not mistaken for a US one", () => {
   const s = legCharges({ leg: "sell", exchange: "NSE", price: 500, quantity: 100 },
                        { brokerageModel: "zero" });
-  eq(s.total, 67.74, "the same figure as before any of this");
+  /* 67.21 since NSE moved to 0.00307% and DP to ₹13 (October 2026). */
+  eq(s.total, 67.21, "an Indian sell, priced by Indian rules");
   eq(s.secFee, 0); eq(s.taf, 0);
-  eq(s.dp, 13.5); near(s.stt, 50, 1e-9);
+  eq(s.dp, 13); near(s.stt, 50, 1e-9);
   /* A trade with no region and an Indian venue is Indian — every row written
      before regions existed. */
   const noRegion = legCharges({ leg: "sell", exchange: "BSE", price: 500, quantity: 100 },

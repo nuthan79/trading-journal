@@ -15,15 +15,15 @@ const trade = (exits) => ({
 /*
  * A CNC BUY SQUARED OFF THE SAME DAY IS INTRADAY. Worked by hand at Zerodha's
  * rates on ₹1,000 × 100 sold at ₹1,010:
- *   buy  — exch 2.97 + SEBI 0.10 + stamp 3.00 (0.003%) + brokerage 20 (cap)
- *          + GST 4.15 = 30.22; no STT on an intraday buy
- *   sell — STT 25.25 (0.025%) + exch 3.00 + SEBI 0.10 + brokerage 20
- *          + GST 4.16 = 52.51; no DP, nothing left the demat account
+ *   buy  — exch 3.07 + SEBI 0.10 + stamp 3.00 (0.003%) + brokerage 20 (cap)
+ *          + GST 4.17 = 30.34; no STT on an intraday buy
+ *   sell — STT 25.25 (0.025%) + exch 3.10 + SEBI 0.10 + brokerage 20
+ *          + GST 4.18 = 52.63; no DP, nothing left the demat account
  */
 test("bought and sold the same day is charged as intraday", () => {
   const c = tradeCharges(trade([{ exit_date: "2026-09-14", quantity: 100, price: 1010 }]), ZERODHA);
-  near(c.buyTotal, 30.22, 0.01, "buy leg");
-  near(c.sellTotal, 52.51, 0.01, "sell leg");
+  near(c.buyTotal, 30.34, 0.01, "buy leg");
+  near(c.sellTotal, 52.63, 0.01, "sell leg");
   eq(c.breakdown.dp, 0, "no DP charge on a same-day sell");
   near(c.breakdown.stt, 25.25, 0.01, "STT only on the sell, at 0.025%");
   near(c.breakdown.stampDuty, 3, 0.01, "stamp duty at 0.003%");
@@ -36,8 +36,8 @@ test("sold the next day is delivery, exactly as before", () => {
   near(c.breakdown.stt, 201, 0.01, "0.1% on both sides");
   near(c.breakdown.stampDuty, 15, 0.01, "0.015% on the buy");
   eq(c.breakdown.brokerage, 0, "zero brokerage on delivery");
-  eq(c.breakdown.dp, 13.5, "the depository bills the sell");
-  near(c.total, 239.21, 0.01);
+  eq(c.breakdown.dp, 13, "the depository bills the sell");
+  near(c.total, 238.86, 0.01);
   eq(c.sameDayQty, 0);
 });
 
@@ -57,7 +57,7 @@ test("only the shares sold that day are intraday", () => {
   const [same, later] = c.sells;
   eq(same.dp, 0, "the same-day sell bills no DP");
   near(same.stt, 40400 * 0.00025, 0.01);
-  eq(later.dp, 13.5, "the later sell is delivery and does");
+  eq(later.dp, 13, "the later sell is delivery and does");
   near(later.stt, 63000 * 0.001, 0.01);
   eq(later.brokerage, 0);
 });
