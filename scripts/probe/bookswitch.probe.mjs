@@ -189,7 +189,9 @@ test("MTF has no column in a market without margin funding", () => {
   for (const f of ["src/components/journal/Trades.jsx", "src/components/journal/Holdings.jsx"]) {
     const src = read(f);
     ok(/const mtfHere = hasMtf\(activeRegion\(\)\);/.test(src), `${f} asks the market`);
-    ok(/const show = \(k\) => \(k === "margin" && !mtfHere \? false : colPrefs\.show\(k\)\);/.test(src),
+    /* Market cap rides the same gate for the same reason, so the test reads
+       the margin clause wherever it sits in the condition. */
+    ok(/const show = \(k\) => \(\(?k === "margin" && !mtfHere\)?[^;]*\? false : colPrefs\.show\(k\)\);/.test(src),
        `${f} hides it through show(), so header, cell and spans agree`);
     ok(/mtfHere \|\| c\.k !== "margin"/.test(src), `${f} drops it from the picker too`);
   }

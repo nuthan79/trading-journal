@@ -8,6 +8,7 @@ import { COLUMN_HINTS } from "@/lib/columns";
 import { hasMtf, activeRegion } from "@/lib/regions";
 import { useColumnPrefs } from "@/lib/useColumnPrefs";
 import { useSectors } from "@/lib/sectors";
+import { useMarketCap, hasMarketCaps } from "@/lib/marketCap";
 import Qty from "@/components/Qty";
 import { qty } from "@/lib/format";
 import ColumnPicker from "./ColumnPicker";
@@ -42,6 +43,7 @@ const HOLDING_COLS = [
   { key: "exchange", header: "exchange" },
   { key: "sector", header: "sector" },
   { key: "industry", header: "industry" },
+  { key: "mcap", header: "market_cap" },
   { key: "entry_date", header: "entered" },
   { key: "days", header: "days_held" },
   { key: "qtyOpen", header: "open_qty" },
@@ -289,10 +291,13 @@ const BEYOND_ESSENTIALS = new Set([
   "industry",
   "entry_date", "qtyOpen", "openPct", "slPct", "toStop", "buyValue", "netRiskR", "realisedPnl",
 ]);
+const CAP_RANK = { "Large cap": 1, "Mid cap": 2, "Small cap": 3, "Micro cap": 4 };
+
 /* The picker's list, in table order. Labels match the headers exactly — the
    list is how somebody finds a column they can see, so it must use its name. */
 const HOLDINGS_COLUMNS = [
   { k: "sector", label: "Sector" }, { k: "industry", label: "Industry" },
+  { k: "mcap", label: "Market cap" },
   { k: "entry_date", label: "Entered" }, { k: "days", label: "Days" },
   { k: "qtyOpen", label: "Open qty" }, { k: "openPct", label: "Open %" },
   { k: "entry_price", label: "Entry" }, { k: "stop", label: "Stop" },
@@ -377,12 +382,18 @@ export default function Holdings({
   /* Same as Trades: a market without margin funding has no MTF column, and
      hiding it in one place keeps the header, the cell and the CSV in step. */
   const mtfHere = hasMtf(activeRegion());
-  const show = (k) => (k === "margin" && !mtfHere ? false : colPrefs.show(k));
+  /* Market cap is India's classification — a US book has no such column. */
+  const capHere = hasMarketCaps(activeRegion());
+  const show = (k) => ((k === "margin" && !mtfHere) || (k === "mcap" && !capHere)
+    ? false : colPrefs.show(k));
   /* Asked for only while a column is showing, so a book nobody classifies
      never fetches the file — see lib/sectors.js. It is laid onto the rows
      rather than read in the cell so that sorting and the CSV get it too;
      a column that cannot be sorted is half a column on a table this wide. */
   const sectorOf = useSectors(show("sector") || show("industry"));
+  /* What the company was on the day it was bought — the same answer Trades
+     and What works give, so one position never reads two sizes. */
+  const capOf = useMarketCap(show("mcap"));
 
   const rows = useMemo(() => {
     return open
@@ -481,11 +492,15 @@ export default function Holdings({
         const breached = canRead && (t.side === "short" ? t.mark >= stop : t.mark <= stop);
 
         const cls = sectorOf(t.symbol);
+        const mcap = capOf(t.symbol, t.entry_date);
 
         return {
           ...t,
           sector: cls.sector,
           industry: cls.industry,
+          mcap,
+          /* Sorted by size rather than spelling — see the comparator. */
+          mcapRank: CAP_RANK[mcap] ?? 9,
           qtyOpen,
           openPct,
           liveExposure,
@@ -535,12 +550,13 @@ export default function Holdings({
        * ones.
        */
       .sort((a, b) => {
-        const av = a[sort.k], bv = b[sort.k];
+        const k = sort.k === "mcap" ? "mcapRank" : sort.k;
+        const av = a[k], bv = b[k];
         if (typeof av === "number" || typeof bv === "number")
           return ((isFinite(av) ? av : -1e12) - (isFinite(bv) ? bv : -1e12)) * sort.dir;
         return String(av || "").localeCompare(String(bv || "")) * sort.dir;
       });
-  }, [open, sort, sectorOf]);
+  }, [open, sort, sectorOf, capOf]);
 
   const totals = useMemo(() => {
     const sum = (f) => rows.reduce((a, r) => a + (isFinite(f(r)) ? f(r) : 0), 0);
@@ -869,7 +885,7 @@ export default function Holdings({
     rows.forEach((r, index) => {
       const key = String(r.symbol || "").toUpperCase();
       const g = by.get(key) || { symbol: r.symbol, exchange: r.exchange,
-                                 sector: r.sector, industry: r.industry, lots: [], index };
+                                 sector: r.sector, industry: r.industry, mcap: r.mcap, lots: [], index };
       g.lots.push(r);
       by.set(key, g);
     });
@@ -923,6 +939,7 @@ export default function Holdings({
         </td>
         {show("sector") && <td className="ps-sect" title={g.sector}>{g.sector || "—"}</td>}
         {show("industry") && <td className="ps-sect ps-dim" title={g.industry}>{g.industry || "—"}</td>}
+        {show("mcap") && <td className="ps-cap" title={capOf.hint(g.symbol, g.lots[0]?.entry_date) || undefined}>{g.mcap || "—"}</td>}
         {show("entry_date") && <td className="ps-dim fz">—</td>}
         {show("days") && <td className="num ps-dim">{isFinite(g.days) ? `${g.days}` : "—"}</td>}
         {show("qtyOpen") && <td className="num"><Qty v={g.qtyOpen} /></td>}
@@ -1047,6 +1064,10 @@ export default function Holdings({
                   )}
                   {show("industry") && (
                   <td className="ps-sect ps-dim" title={nested ? "" : r.industry}>{nested ? "" : (r.industry || "—")}</td>
+                  )}
+                  {show("mcap") && (
+                  <td className="ps-cap" title={nested ? undefined : capOf.hint(r.symbol, r.entry_date) || undefined}>
+                    {nested ? "" : (r.mcap || "—")}</td>
                   )}
                   {show("entry_date") && (
                   <td className="mono ps-dim">
@@ -1503,7 +1524,8 @@ export default function Holdings({
       </div>
 
       <div style={{ display: "flex", justifyContent: "flex-end", margin: "0 0 8px" }}>
-        <ColumnPicker columns={HOLDINGS_COLUMNS.filter((c) => mtfHere || c.k !== "margin")}
+        <ColumnPicker columns={HOLDINGS_COLUMNS.filter((c) => (mtfHere || c.k !== "margin")
+                                                      && (capHere || c.k !== "mcap"))}
                       prefs={colPrefs} resetLabel="Essentials" />
       </div>
 
@@ -1517,6 +1539,7 @@ export default function Holdings({
               {th("symbol", "Symbol", "fz2 fz-last")}
               {show("sector") && th("sector", "Sector")}
               {show("industry") && th("industry", "Industry")}
+              {show("mcap") && th("mcap", "Market cap")}
               {show("entry_date") && th("entry_date", "Entered")}
               {show("days") && th("days", "Days", "num")}
               {show("qtyOpen") && th("qtyOpen", "Open qty", "num")}
@@ -1869,6 +1892,7 @@ export default function Holdings({
         /* Long enough for "Consumer Durables" and for most industries;
            what does not fit is cut with the whole name in the hover, which
            beats a column that sets its own width from one outlier. */
+        .ps-cap { font-size: 12px; white-space: nowrap; }
         .ps-sect { min-width: 104px; max-width: 150px; overflow: hidden;
                    text-overflow: ellipsis; white-space: nowrap; }
         .ps-lots { font-style: normal; font-size: 10.5px; color: var(--ink3);

@@ -122,7 +122,7 @@ test("the trades export carries the classification", () => {
   const src = read("src/components/journal/Trades.jsx");
   const cols = src.slice(src.indexOf("const TRADE_COLS"), src.indexOf("];", src.indexOf("const TRADE_COLS")));
   ok(cols.includes('"sector"') && cols.includes('"industry"'), "TRADE_COLS is missing them");
-  ok(/downloadCsv\(rows\.map\(\(t\) => \(\{ \.\.\.t, \.\.\.sectorOf\(t\.symbol\) \}\)\)/.test(src),
+  ok(/downloadCsv\(rows\.map\(\(t\) => \(\{ \.\.\.t, \.\.\.sectorOf\(t\.symbol\)[,\s}]/.test(src),
      "the export writes the columns but never fills them");
 });
 
@@ -175,7 +175,7 @@ test("a sector filter arriving from Analysis is tested against a filled-in trade
   ok(matchesEdgeFilter({ ...t, sector: "Financial Services" }, q), "a filled one does");
 
   const src = read("src/components/journal/Trades.jsx");
-  ok(/matchesEdgeFilter\(\{ \.\.\.t, \.\.\.sectorOf\(t\.symbol\) \}, edge\)/.test(src),
+  ok(/matchesEdgeFilter\(\{ \.\.\.t, \.\.\.sectorOf\(t\.symbol\)[^}]*\}, edge\)/.test(src),
      "the trades screen tests the raw trade, so a sector filter would show nothing");
   ok(/edge\?\.dim === "sector"/.test(src),
      "the lookup is not switched on for a filter that needs it");

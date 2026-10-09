@@ -24,6 +24,11 @@ export const COLUMN_HINTS = {
   industry: "The narrower group inside the sector — Petroleum Products within "
     + "Oil Gas & Consumable Fuels. Blank where the exchange publishes no "
     + "classification, which is every ETF and a few recent listings",
+  /* Different list on each table, on purpose — see lib/marketCap.js. */
+  mcap: "How big the company is in AMFI's half-yearly ranking by market cap: large is "
+    + "the top 100, mid 101–250, small 251–750, micro beyond. SEBI stops at small; "
+    + "micro is this journal's split of its long tail. As the company was on the day "
+    + "you bought, from the list in force then — hover a cell for the rupee range",
   entry_date: "The day you bought",
   entry_price: "The price you bought at",
   slPct: "How far your stop sat from your entry, as a percentage of the entry price",

@@ -19,6 +19,7 @@
  * Categorical dimensions -- pattern, exit reason, stage -- are left alone.
  */
 
+import { CAP_ORDER } from "./marketCap";
 import { stats } from "./calc";
 import { isMtf } from "./mtf";
 import { money } from "./format";
@@ -430,6 +431,21 @@ export const DIMENSIONS = [
     showIf: (closed) => closed.some((t) => t.sector) },
 
   /*
+   * HOW BIG THE COMPANY WAS WHEN YOU BOUGHT IT — AMFI's large / mid / small,
+   * with this journal's micro below rank 500. Like sector, not a column on a
+   * trade: whoever groups by it lays `mcap` on first, from the list in force
+   * on the entry date (lib/marketCap.js says why that date and not today).
+   *
+   * In ladder order rather than by contribution: the question is whether
+   * results change as the companies get smaller, and sorting by total R would
+   * scramble the rungs.
+   */
+  { id: "mcap", label: "Market cap",
+    get: (t) => t.mcap || NOT_RECORDED,
+    order: CAP_ORDER,
+    showIf: (closed) => closed.some((t) => t.mcap) },
+
+  /*
    * TWO MONTHS, TWO QUESTIONS. Closed asks when the result arrived; taken asks
    * when the decision was made — "did the months I was busiest have good
    * setups" is about the second, and closing dates scatter a busy month's
@@ -526,6 +542,11 @@ export function dimensionRows(closed, dimensionId, { accountSize = 0, bands } = 
 
   if (orderOf) {
     rows.sort((a, b) => orderOf(a.key) - orderOf(b.key));
+  } else if (dim.order) {
+    /* A categorical dimension with a natural sequence of its own. Anything
+       not in it — NOT_RECORDED — goes last. */
+    const rank = (k) => (dim.order.includes(k) ? dim.order.indexOf(k) : dim.order.length);
+    rows.sort((a, b) => rank(a.key) - rank(b.key));
   } else {
     rows.sort((a, b) => {
       if (a.key === NOT_RECORDED) return 1;

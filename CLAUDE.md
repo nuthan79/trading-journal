@@ -24,6 +24,9 @@ npm run sectors    # rebuild public/sectors.json — the Sector/Industry columns
 npm run sectors:us # same for the US. India crawls BSE per scrip (~4 min) for
                    # the NSE classification; the US is one Nasdaq request.
                    # Same shrink guard. Re-run these with the symbol files.
+npm run mcap       # rebuild public/mcap.json — AMFI's large/mid/small list for
+                   # every half-year since 2018 (plus micro, ours, past rank
+                   # 750). Re-run each January and July when AMFI adds one.
 ```
 
 ```bash
@@ -331,6 +334,17 @@ both spread the lookup over the trade before grouping or filtering, which is
 what lets `DIMENSIONS` read `t.sector` synchronously like every other
 dimension and keeps the membership test on /trades literally the same
 function that built the row.
+
+**Market cap is dated; sector is not.** `lib/marketCap.js` reads
+`public/mcap.json` — AMFI's half-yearly ranking (SEBI: top 100 large, 101–250
+mid, rest small; ours: small stops at rank 750 ≈ ₹5,000 Cr in 2025–26, micro beyond), one character per
+list per symbol. A trade is classified by the list in force on its ENTRY date
+(Feb 1 / Aug 1 effective), never today's: winners graduate up a size and
+losers slide down, so today's list flatters one bucket and punishes another.
+Every screen — Holdings included, the user's call — asks by entry date, and
+the hovers quote the rupee range of the list that placed it. India only — the US has no
+official list and only current caps are free. ISINs stitch renames in the
+builder (ZOMATO ≡ ETERNAL), so a trade stored under either name finds both.
 
 **One symbol file per book, one ticker spelling per venue.** `symbols.json` is
 NSE+BSE, `symbols.us.json` is 11k US listings; `SymbolSearch` fetches only the

@@ -10,6 +10,7 @@ import { hasMtf, activeRegion } from "@/lib/regions";
 import { COLUMN_HINTS } from "@/lib/columns";
 import { useColumnPrefs } from "@/lib/useColumnPrefs";
 import { useSectors } from "@/lib/sectors";
+import { useMarketCap, hasMarketCaps } from "@/lib/marketCap";
 import ColumnPicker from "./ColumnPicker";
 import Money from "@/components/Money";
 import { downloadCsv } from "@/lib/csv";
@@ -51,22 +52,29 @@ const TRADE_COLS = ["symbol", "exchange", "side", "entry_date", "entry_price", "
   /* Looked up at download rather than stored on the trade: a company can
      be reclassified, and a figure the journal did not record should not
      be frozen into every old export. */
-  "sector", "industry"];
+  "sector", "industry",
+  /* AMFI's category on the day it was bought — the list in force then, so an
+     old export says what the company was when the trade was taken. */
+  "mcap"];
 
 /* Named for THEIR journal, not for the app. A folder of exports from three
    people is three sets of "ledgerr-closed-…" otherwise, and the one thing
    that would tell them apart is the one thing the file does not say. */
-const exportCsv = (rows, label, journalName, sectorOf) =>
-  downloadCsv(rows.map((t) => ({ ...t, ...sectorOf(t.symbol) })), TRADE_COLS,
+const exportCsv = (rows, label, journalName, sectorOf, capOf) =>
+  downloadCsv(rows.map((t) => ({ ...t, ...sectorOf(t.symbol), mcap: capOf(t.symbol, t.entry_date) })), TRADE_COLS,
               exportFilename(label, { prefix: journalName }));
 
 /* MFE and MAE are not columns on the row under those names — they are read
    through excursion(), which also decides when there is no figure. Sorting
    through the same function keeps a dash from sorting as a number. */
-const sortValue = (t, k, sectorOf) =>
+const sortValue = (t, k, sectorOf, capOf) =>
   k === "mfe" ? excursion(t).mfe : k === "mae" ? excursion(t).mae
   : k === "sector" || k === "industry" ? sectorOf(t.symbol)[k]
+  /* By the ladder, not the alphabet — "Large" before "Mid" before "Small" is
+     the order of size, which alphabetical happens to scramble ("Micro"). */
+  : k === "mcap" ? CAP_RANK[capOf(t.symbol, t.entry_date)] ?? 9
   : t[k];
+const CAP_RANK = { "Large cap": 1, "Mid cap": 2, "Small cap": 3, "Micro cap": 4 };
 
 const EXCURSION_NOTE = "on closing prices while the position was held, in R";
 
@@ -83,6 +91,7 @@ const REALISED_HERE_NOTE =
    is not in it: a row with no name is not a row anybody can read. */
 const TRADE_COLUMNS = [
   { k: "sector", label: "Sector" }, { k: "industry", label: "Industry" },
+  { k: "mcap", label: "Market cap" },
   { k: "entry_date", label: "In" }, { k: "exit_date", label: "Out" },
   { k: "heldDays", label: "Held" }, { k: "entry_price", label: "Entry" },
   { k: "stop_loss", label: "Stop" }, { k: "slPct", label: "SL %" },
@@ -98,7 +107,7 @@ const TRADE_COLUMNS = [
 ];
 /* Where the totals row splits. Symbol is first in BEFORE_PNL and never hidden,
    so the lead span is always at least one. */
-const BEFORE_PNL = ["symbol", "sector", "industry", "entry_date", "exit_date", "heldDays", "entry_price", "stop_loss",
+const BEFORE_PNL = ["symbol", "sector", "industry", "mcap", "entry_date", "exit_date", "heldDays", "entry_price", "stop_loss",
                     "slPct", "quantity", "exposure", "avgExitPrice", "exitPct"];
 /* Between R and these sit the two cost columns, which have totals of their
    own in the footer rather than falling inside the trailing span. */
@@ -145,12 +154,18 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
    * eventually.
    */
   const mtfHere = hasMtf(activeRegion());
-  const show = (k) => (k === "margin" && !mtfHere ? false : colPrefs.show(k));
+  /* Market cap is India's classification — a US book has no such column. */
+  const capHere = hasMarketCaps(activeRegion());
+  const show = (k) => ((k === "margin" && !mtfHere) || (k === "mcap" && !capHere)
+    ? false : colPrefs.show(k));
   /* Nothing is fetched unless one of the two columns is on — see
      lib/sectors.js. */
   /* Either column showing, or a filter arriving from the sector breakdown
      on Analysis — otherwise nothing here needs the file. */
   const sectorOf = useSectors(show("sector") || show("industry") || edge?.dim === "sector");
+  /* The same bargain for market cap, which is also how a row clicked on the
+     Market cap breakdown finds its trades. */
+  const capOf = useMarketCap(show("mcap") || edge?.dim === "mcap");
   const leadSpan = BEFORE_PNL.filter(show).length;
   const trailSpan = AFTER_COSTS.filter(show).length + 1;   // + the edit/delete column
 
@@ -439,7 +454,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
          breakdown would filter to nothing while the banner named a group
          with trades in it. */
       r = r.filter((t) => t.status === "closed"
-        && matchesEdgeFilter({ ...t, ...sectorOf(t.symbol) }, edge));
+        && matchesEdgeFilter({ ...t, ...sectorOf(t.symbol), mcap: capOf(t.symbol, t.entry_date) }, edge));
     }
     /* isOpen, not status === "open" — a part-sold position is open, and
        testing the string alone dropped it out of BOTH tabs. See positions.js. */
@@ -473,12 +488,12 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
         (t.pattern || "").toLowerCase().includes(s) || (t.notes || "").toLowerCase().includes(s));
     }
     return [...r].sort((a, b) => {
-      const av = sortValue(a, sort.k, sectorOf), bv = sortValue(b, sort.k, sectorOf);
+      const av = sortValue(a, sort.k, sectorOf, capOf), bv = sortValue(b, sort.k, sectorOf, capOf);
       if (typeof av === "number" || typeof bv === "number")
         return ((isFinite(av) ? av : -1e12) - (isFinite(bv) ? bv : -1e12)) * sort.dir;
       return String(av || "").localeCompare(String(bv || "")) * sort.dir;
     });
-  }, [all, mistake, missingField, edge, filter, view, q, sort, sectorOf]);
+  }, [all, mistake, missingField, edge, filter, view, q, sort, sectorOf, capOf]);
 
   // Resolved by id against the filtered list, not held as an object: change
   // the filter or the sort while it's open and the panel follows the row,
@@ -759,11 +774,12 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
               the tooltip rather than on the button: "CSV · 27" reads as a
               debug readout next to a row of plain word buttons, and the count
               is already stated twice on this screen. */}
-          <ColumnPicker columns={TRADE_COLUMNS.filter((c) => mtfHere || c.k !== "margin")}
+          <ColumnPicker columns={TRADE_COLUMNS.filter((c) => (mtfHere || c.k !== "margin")
+                                                       && (capHere || c.k !== "mcap"))}
                         prefs={colPrefs} />
           <button className="btn ghost sm" title={`Download the ${rows.length} trade${
                     rows.length === 1 ? "" : "s"} shown, as ${exportFilename(viewLabel, { prefix: journalName })}`}
-                  onClick={() => exportCsv(rows, viewLabel, journalName, sectorOf)}>
+                  onClick={() => exportCsv(rows, viewLabel, journalName, sectorOf, capOf)}>
             <Download size={13} />CSV
           </button>
         </div>
@@ -802,6 +818,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
               {th("symbol", "Symbol", "fz fz-last")}
               {show("sector") && th("sector", "Sector")}
               {show("industry") && th("industry", "Industry")}
+              {show("mcap") && th("mcap", "Market cap")}
               {show("entry_date") && th("entry_date", "In")}
               {show("exit_date") && th("exit_date", "Out")}
               {show("heldDays") && th("heldDays", "Held", "num")}
@@ -873,6 +890,10 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
                   <td className="tr-sect" style={{ color: "var(--ink3)" }}
                       title={sectorOf(t.symbol).industry}>
                     {sectorOf(t.symbol).industry || "—"}</td>
+                  )}
+                  {show("mcap") && (
+                  <td className="tr-cap" title={capOf.hint(t.symbol, t.entry_date) || undefined}>
+                    {capOf(t.symbol, t.entry_date) || "—"}</td>
                   )}
                   {show("entry_date") && (
                   <td className="mono" style={{ fontSize: 12 }}>{t.entry_date}</td>
@@ -1199,6 +1220,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
       <style jsx>{`
         /* Cut with the whole name in the hover, so one long industry does
            not set the width of the column on every other row. */
+        .tr-cap { font-size: 12px; white-space: nowrap; }
         .tr-sect { font-size: 12px; min-width: 104px; max-width: 150px;
                    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .tr-search { position: relative; width: 180px; }

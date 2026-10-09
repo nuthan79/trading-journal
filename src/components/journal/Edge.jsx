@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { dimensionRows, DIMENSIONS, labelOf, maxAbsTotalR, isThin, thinAt, NOT_RECORDED, edgeHref } from "@/lib/edge";
 import { useSectors } from "@/lib/sectors";
+import { useMarketCap } from "@/lib/marketCap";
 import { mistakeCost, outcomeTagCounts } from "@/lib/analysis";
 import { isExecutionError } from "@/lib/constants";
 import { money, rfmt, pct } from "@/lib/format";
@@ -56,10 +57,15 @@ export default function Edge({ closed: rawClosed = [], accountSize }) {
      because the grouping button has to know whether there is anything to
      group by before anybody can choose it. */
   const sectorOf = useSectors(true);
+  /* And how big the company was on the day it was bought — the list in force
+     then, not today's, or the winners that grew are counted a size up. */
+  const capOf = useMarketCap(true);
   const closed = useMemo(
-    () => rawClosed.map((t) => ({ ...t, ...sectorOf(t.symbol) })),
-    [rawClosed, sectorOf],
+    () => rawClosed.map((t) => ({ ...t, ...sectorOf(t.symbol), mcap: capOf(t.symbol, t.entry_date) })),
+    [rawClosed, sectorOf, capOf],
   );
+  /* The rupee range behind a market-cap row, from that row's own trades. */
+  const mcapRange = (label) => capOf.rangeFor(label, closed.filter((t) => t.mcap === label));
 
   /* Only the groupings that apply to this record — see `showIf` in edge.js.
      The table reads D.id, not `dim`, so a grouping that has disappeared falls
@@ -123,7 +129,10 @@ export default function Edge({ closed: rawClosed = [], accountSize }) {
                         reader has to go and find them by hand. */}
                     <td>
                       <Link className="mk-link" href={edgeHref(D.id, g)}
-                            title={`See the ${g.trades} trade${g.trades === 1 ? "" : "s"} in ${g.key}`}
+                            title={`See the ${g.trades} trade${g.trades === 1 ? "" : "s"} in ${g.key}`
+                              /* What the size meant in rupees, across the lists these
+                                 trades were bought under. */
+                              + (D.id === "mcap" && mcapRange(g.key) ? `. ${mcapRange(g.key)}` : "")}
                             style={g.key === NOT_RECORDED
                               ? { fontStyle: "italic", color: "var(--ink3)" }
                               : { fontWeight: 500 }}>
