@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { matchesEdgeFilter, describeEdgeFilter } from "@/lib/edge";
 import Link from "next/link";
-import { Plus, Pencil, Trash2, Download, Image as ImageIcon, X, Check, Flag, Upload } from "lucide-react";
+import { Plus, Pencil, Trash2, Download, Image as ImageIcon, X, Check, Flag, Upload, ArrowLeft } from "lucide-react";
 import { money, rfmt, pct, signedPct, exportFilename, dmy } from "@/lib/format";
 import { excursion } from "@/lib/path";
 import { hasMtf, activeRegion } from "@/lib/regions";
@@ -649,6 +649,12 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
     );
   };
 
+  /* Where Back goes: the same tab for a row of the edge
+     table, the mistakes section for a mistake. */
+  const backTo = edge?.dim ? `/analysis/edge?dim=${encodeURIComponent(edge.dim)}`
+    : mistake ? "/analysis/edge#mistakes"
+    : null;
+
   return (
     <div className="sec">
       {onNoStopView && !missingField && (
@@ -694,6 +700,18 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
               : <>Closed trades where <b>{edgeDesc.label}</b> is <b>{edgeDesc.value}</b></>}
           </span>
           <span className="tr-chip-n">{rows.length} of {all.length}</span>
+          {/* Back to the analysis that sent you here, on the same cut — one
+              word, at the user's request; the place it goes is the place you
+              just came from. Clear
+              keeps you on Trades; this returns you to what you were reading.
+              Only where the arrival came from What works — a missing-field
+              list is reached from two screens, and the browser's Back covers
+              it. */}
+          {backTo && (
+            <Link className="btn ghost sm" href={backTo}>
+              <ArrowLeft size={12} />Back
+            </Link>
+          )}
           <button className="btn ghost sm" onClick={onClearFilter}>
             <X size={12} />Clear
           </button>

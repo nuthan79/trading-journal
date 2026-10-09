@@ -49,7 +49,22 @@ const EDGE_COLUMNS = [
  * meant the cost of a mistake sat a long way from the setups it happened in.
  */
 export default function Edge({ closed: rawClosed = [], accountSize }) {
-  const [dim, setDim] = useState("pattern");
+  /*
+   * THE OPEN TAB LIVES IN THE ADDRESS, so a trip to the trades behind a row
+   * comes back to it. It was component state alone, and both the browser's
+   * Back and the trades screen's own Back link landed on Base pattern
+   * whichever cut you had been reading. Replaced, not pushed: switching tabs
+   * is not somewhere Back should step through one at a time.
+   *
+   * Read in the initializer — this screen renders only on the client, after
+   * the session resolves, so there is no server render to disagree with.
+   */
+  const [dim, setDimState] = useState(() =>
+    (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("dim")) || "pattern");
+  const setDim = (id) => {
+    setDimState(id);
+    try { window.history.replaceState(window.history.state, "", `?dim=${encodeURIComponent(id)}`); } catch {}
+  };
 
   /* What business each company is in, laid onto the trades before anything
      groups them — `sector` is not a column on a trade, and edge.js reads it
@@ -234,7 +249,11 @@ export default function Edge({ closed: rawClosed = [], accountSize }) {
       </div>
 
       {mistakeRows.length > 0 && (
-        <div className="sec">
+        /* An anchor, so Back on Trades from a mistake lands here
+           rather than at the top of the page — stopping short of it by the
+           sticky top bar (138px at its tallest, when the tabs wrap), or the
+           heading and first row land underneath. */
+        <div className="sec" id="mistakes" style={{ scrollMarginTop: 150 }}>
           <div className="sechead">
             <div>
               <div className="eyebrow">What the mistakes cost</div>
