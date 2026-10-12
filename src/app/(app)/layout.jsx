@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Plus, LayoutGrid, Layers, Table2, LineChart, BookOpen, ClipboardList, Target, Brain, Upload } from "lucide-react";
+import { Plus, LayoutGrid, Layers, Table2, LineChart, BookOpen, ClipboardList, Target, Brain, Upload, Activity } from "lucide-react";
 import {
   supabase, getProfile, saveProfile as dbSaveProfile,
   listTrades, listExitsByTrade, saveExits, saveTrade as dbSaveTrade, deleteTrade as dbDeleteTrade,
@@ -18,7 +18,7 @@ import { setActiveRegion, money, setDisplayCurrency } from "@/lib/format";
 import { setStorageUser, sweepLegacy } from "@/lib/browserStore";
 import { currentRegion, regionOf, regionSettings, region as regionInfo,
          REGIONS, DEFAULT_REGION } from "@/lib/regions";
-import { SHOW_REGIONS } from "@/lib/flags";
+import { SHOW_REGIONS, SHOW_MARKET_BREADTH } from "@/lib/flags";
 import { canWrite, accessState, accessFor } from "@/lib/entitlements";
 import { derivePosition, isOpen, isPartial } from "@/lib/positions";
 import { mtfPrefs } from "@/lib/mtf";
@@ -96,6 +96,10 @@ const TABS = [
   */
   { id: "analysis", href: "/analysis/edge", match: "/analysis",
     label: "Analysis", icon: Target },
+  /* About the market rather than the journal — breadth after each close —
+     beside Analysis because it is what the regime questions there are asked
+     against. Hidden behind SHOW_MARKET_BREADTH. */
+  ...(SHOW_MARKET_BREADTH ? [{ id: "market", href: "/market", label: "Market", icon: Activity }] : []),
   { id: "diary", href: "/diary", label: "Diary", icon: BookOpen },
 ];
 

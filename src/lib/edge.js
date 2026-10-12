@@ -20,11 +20,12 @@
  */
 
 import { CAP_ORDER } from "./marketCap";
+import { BREADTH_BANDS } from "./breadthCalc";
 import { stats } from "./calc";
 import { isMtf } from "./mtf";
 import { money } from "./format";
 import { activeRegion, region } from "./regions";
-import { SHOW_POSITION_SIZE_DIM } from "./flags";
+import { SHOW_POSITION_SIZE_DIM, SHOW_MARKET_BREADTH } from "./flags";
 
 const n = (v) => (v === "" || v == null ? NaN : Number(v));
 const mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : NaN);
@@ -444,6 +445,21 @@ export const DIMENSIONS = [
     get: (t) => t.mcap || NOT_RECORDED,
     order: CAP_ORDER,
     showIf: (closed) => closed.some((t) => t.mcap) },
+
+  /*
+   * WHAT THE MARKET WAS DOING WHEN YOU BOUGHT — the share of the Top 750 above
+   * their 50-day average at the close BEFORE the entry, the last figure you
+   * could have known. A breakout system lives or dies by this: the same setup
+   * that pays in a broad advance bleeds when a fifth of the market is above
+   * its average. Laid on by the screen, like sector and market cap, from
+   * public/breadth.json (lib/breadth.js); bands fixed at 40 and 60 so the
+   * regime line does not move with the book being read.
+   */
+  { id: "breadth", label: "Breadth at entry",
+    get: (t) => t.breadthBand || NOT_RECORDED,
+    order: BREADTH_BANDS,
+    hint: "Share of India's top 750 stocks above their 50-day average, at the close before you bought.",
+    showIf: (closed) => SHOW_MARKET_BREADTH && closed.some((t) => t.breadthBand) },
 
   /*
    * TWO MONTHS, TWO QUESTIONS. Closed asks when the result arrived; taken asks

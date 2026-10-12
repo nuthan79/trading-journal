@@ -106,3 +106,22 @@ export const SHOW_POSITION_SIZE_DIM = false;
  * which nothing records yet. Unhide when it does.
  */
 export const SHOW_EXIT_METHOD_CARD = false;
+
+/**
+ * Live market breadth. Off until there is a licensed real-time NSE feed —
+ * showing live exchange prices to other people needs one, and Yahoo answers a
+ * single stock per request, which is 750 requests a refresh. The Market
+ * screen shows end-of-day breadth from NSE's bhavcopy meanwhile; see
+ * lib/breadth.js for the seam a feed plugs into.
+ */
+export const SHOW_LIVE_BREADTH = false;
+
+/**
+ * Market breadth — the Market tab and "Breadth at entry" on What works. Built
+ * and working (end of day from NSE's bhavcopy, groups by AMFI market cap),
+ * hidden at the user's request on 12 Oct 2026: "of no use right now", to be
+ * revisited when it is clear what it should answer. Unhide, never rebuild.
+ * Run `npm run breadth` first — the data file is only as fresh as its last
+ * build, and no nightly refresh was set up.
+ */
+export const SHOW_MARKET_BREADTH = false;

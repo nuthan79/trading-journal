@@ -13,7 +13,8 @@
     "symbols:us": "node scripts/build-symbols-us.mjs",
     "sectors": "node scripts/build-sectors.mjs",
     "sectors:us": "node scripts/build-sectors.mjs --region=US",
-    "mcap": "node scripts/build-mcap.mjs"
+    "mcap": "node scripts/build-mcap.mjs",
+    "breadth": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/build-breadth.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

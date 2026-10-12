@@ -15,3 +15,7 @@ public/_*
 # positions and icon layout, change whenever a folder is opened, and had to
 # be shipped inside a backup archive for it to restore clean.
 .DS_Store
+
+# NSE's daily files, cut to the columns build-breadth uses. Rebuilt on demand
+# and two thousand files long — public data, but nothing anyone needs in git.
+.cache/

@@ -5,6 +5,8 @@ import Link from "next/link";
 import { dimensionRows, DIMENSIONS, labelOf, maxAbsTotalR, isThin, thinAt, NOT_RECORDED, edgeHref } from "@/lib/edge";
 import { useSectors } from "@/lib/sectors";
 import { useMarketCap } from "@/lib/marketCap";
+import { useBreadth } from "@/lib/breadth";
+import { SHOW_MARKET_BREADTH } from "@/lib/flags";
 import { mistakeCost, outcomeTagCounts } from "@/lib/analysis";
 import { isExecutionError } from "@/lib/constants";
 import { money, rfmt, pct } from "@/lib/format";
@@ -48,7 +50,7 @@ const EDGE_COLUMNS = [
  * what the market did. Splitting them across two screens, which is how it was,
  * meant the cost of a mistake sat a long way from the setups it happened in.
  */
-export default function Edge({ closed: rawClosed = [], accountSize }) {
+export default function Edge({ closed: rawClosed = [], accountSize, dimFromUrl = null }) {
   /*
    * THE OPEN TAB LIVES IN THE ADDRESS, so a trip to the trades behind a row
    * comes back to it. It was component state alone, and both the browser's
@@ -56,11 +58,19 @@ export default function Edge({ closed: rawClosed = [], accountSize }) {
    * whichever cut you had been reading. Replaced, not pushed: switching tabs
    * is not somewhere Back should step through one at a time.
    *
-   * Read in the initializer — this screen renders only on the client, after
-   * the session resolves, so there is no server render to disagree with.
+   * `dimFromUrl` comes from the page's useSearchParams, NOT from
+   * window.location: on a client-side navigation Next updates the address bar
+   * after the new page first renders, so reading window.location here saw
+   * the PREVIOUS page's address — the Market screen's link to ?dim=breadth
+   * opened on Base pattern. Followed as a prop thereafter, so a second link
+   * to this page with a different tab still lands on it.
    */
-  const [dim, setDimState] = useState(() =>
-    (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("dim")) || "pattern");
+  const [dim, setDimState] = useState(dimFromUrl || "pattern");
+  const [seenDim, setSeenDim] = useState(dimFromUrl);
+  if (dimFromUrl !== seenDim) {
+    setSeenDim(dimFromUrl);
+    if (dimFromUrl) setDimState(dimFromUrl);
+  }
   const setDim = (id) => {
     setDimState(id);
     try { window.history.replaceState(window.history.state, "", `?dim=${encodeURIComponent(id)}`); } catch {}
@@ -75,9 +85,13 @@ export default function Edge({ closed: rawClosed = [], accountSize }) {
   /* And how big the company was on the day it was bought — the list in force
      then, not today's, or the winners that grew are counted a size up. */
   const capOf = useMarketCap(true);
+  /* And how broad the market was the evening before — the last close a
+     trader could have read before buying. */
+  const breadth = useBreadth(SHOW_MARKET_BREADTH);
   const closed = useMemo(
-    () => rawClosed.map((t) => ({ ...t, ...sectorOf(t.symbol), mcap: capOf(t.symbol, t.entry_date) })),
-    [rawClosed, sectorOf, capOf],
+    () => rawClosed.map((t) => ({ ...t, ...sectorOf(t.symbol), mcap: capOf(t.symbol, t.entry_date),
+                                  breadthBand: breadth.bandAt(t.entry_date) })),
+    [rawClosed, sectorOf, capOf, breadth],
   );
   /* The rupee range behind a market-cap row, from that row's own trades. */
   const mcapRange = (label) => capOf.rangeFor(label, closed.filter((t) => t.mcap === label));

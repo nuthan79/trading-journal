@@ -11,6 +11,7 @@ import { COLUMN_HINTS } from "@/lib/columns";
 import { useColumnPrefs } from "@/lib/useColumnPrefs";
 import { useSectors } from "@/lib/sectors";
 import { useMarketCap, hasMarketCaps } from "@/lib/marketCap";
+import { useBreadth } from "@/lib/breadth";
 import ColumnPicker from "./ColumnPicker";
 import Money from "@/components/Money";
 import { downloadCsv } from "@/lib/csv";
@@ -21,7 +22,7 @@ import { isOpen, isClosed, isPartial, isFlagged, bankedEvents } from "@/lib/posi
 import { matches, describeFilter, seedFromTab, sortForFilter,
          realisedWindow } from "@/lib/filters";
 import SavedViews from "./SavedViews";
-import { SHOW_CHART_WALL } from "@/lib/flags";
+import { SHOW_CHART_WALL, SHOW_MARKET_BREADTH } from "@/lib/flags";
 import ChartWall from "./ChartWall";
 
 
@@ -166,6 +167,8 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
   /* The same bargain for market cap, which is also how a row clicked on the
      Market cap breakdown finds its trades. */
   const capOf = useMarketCap(show("mcap") || edge?.dim === "mcap");
+  /* Only for a row clicked on Breadth at entry — there is no column. */
+  const breadth = useBreadth(SHOW_MARKET_BREADTH && edge?.dim === "breadth");
   const leadSpan = BEFORE_PNL.filter(show).length;
   const trailSpan = AFTER_COSTS.filter(show).length + 1;   // + the edit/delete column
 
@@ -454,7 +457,8 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
          breakdown would filter to nothing while the banner named a group
          with trades in it. */
       r = r.filter((t) => t.status === "closed"
-        && matchesEdgeFilter({ ...t, ...sectorOf(t.symbol), mcap: capOf(t.symbol, t.entry_date) }, edge));
+        && matchesEdgeFilter({ ...t, ...sectorOf(t.symbol), mcap: capOf(t.symbol, t.entry_date),
+                               breadthBand: breadth.bandAt(t.entry_date) }, edge));
     }
     /* isOpen, not status === "open" — a part-sold position is open, and
        testing the string alone dropped it out of BOTH tabs. See positions.js. */
@@ -493,7 +497,7 @@ export default function Trades({ all, diary = [], onEdit, onExit, onDelete, onNe
         return ((isFinite(av) ? av : -1e12) - (isFinite(bv) ? bv : -1e12)) * sort.dir;
       return String(av || "").localeCompare(String(bv || "")) * sort.dir;
     });
-  }, [all, mistake, missingField, edge, filter, view, q, sort, sectorOf, capOf]);
+  }, [all, mistake, missingField, edge, filter, view, q, sort, sectorOf, capOf, breadth]);
 
   // Resolved by id against the filtered list, not held as an object: change
   // the filter or the sort while it's open and the panel follows the row,

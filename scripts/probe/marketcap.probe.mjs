@@ -102,7 +102,7 @@ test("each screen asks for the right day", () => {
      "What works classifies by the entry date");
   const trades = read("src/components/journal/Trades.jsx");
   ok(/capOf\(t\.symbol, t\.entry_date\) \|\| "—"/.test(trades), "the Trades cell, by the entry date");
-  ok(/matchesEdgeFilter\(\{ \.\.\.t, \.\.\.sectorOf\(t\.symbol\), mcap: capOf\(t\.symbol, t\.entry_date\) \}, edge\)/.test(trades),
+  ok(/matchesEdgeFilter\(\{ \.\.\.t, \.\.\.sectorOf\(t\.symbol\), mcap: capOf\(t\.symbol, t\.entry_date\)[^}]*\}, edge\)/.test(trades),
      "a row clicked on What works finds the same trades on Trades");
   ok(/const mcap = capOf\(t\.symbol, t\.entry_date\);/.test(read("src/components/journal/Holdings.jsx")),
      "Holdings too — the day of entry, everywhere");

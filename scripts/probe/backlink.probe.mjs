@@ -13,8 +13,13 @@ const read = (p) => readFileSync(path.join(SRC, p), "utf8");
  */
 test("What works opens on the tab named in its address, and writes it there", () => {
   const s = read("components/journal/Edge.jsx");
-  ok(/new URLSearchParams\(window\.location\.search\)\.get\("dim"\)\) \|\| "pattern"/.test(s),
-     "the initial tab comes from ?dim=");
+  ok(/useState\(dimFromUrl \|\| "pattern"\)/.test(s), "the initial tab comes from ?dim=");
+  ok(!/window\.location\.search/.test(s),
+     "and never from window.location, which still holds the previous page's address mid-navigation");
+  const page = read("app/(app)/analysis/edge/page.jsx");
+  ok(/useSearchParams\(\)\.get\("dim"\)/.test(page) && /dimFromUrl=\{dim\}/.test(page),
+     "the page reads it through Next's own hook");
+  ok(/<Suspense/.test(page), "inside a Suspense boundary");
   ok(/window\.history\.replaceState\([^)]*`\?dim=\$\{encodeURIComponent\(id\)\}`\)/.test(s),
      "choosing a tab replaces the address — replaced, so Back does not step through tabs");
   ok(/className="sec" id="mistakes" style=\{\{ scrollMarginTop: \d+ \}\}/.test(s),
