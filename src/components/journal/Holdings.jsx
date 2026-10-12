@@ -6,6 +6,7 @@ import { money, rfmt, pct, signedPct, moneyParts, currencySign, exportFilename,
          monthShort, dmy } from "@/lib/format";
 import { COLUMN_HINTS } from "@/lib/columns";
 import { hasMtf, activeRegion } from "@/lib/regions";
+import { isMtf } from "@/lib/mtf";
 import { useColumnPrefs } from "@/lib/useColumnPrefs";
 import { useSectors } from "@/lib/sectors";
 import { useMarketCap, hasMarketCaps } from "@/lib/marketCap";
@@ -624,6 +625,11 @@ export default function Holdings({
       /* What the positions bought on margin cost to carry: per day now, and
          the interest they have run up so far — sold parts and held parts. */
       mtfN: rows.filter((r) => r.marginPerDay > 0).length,
+      /* What the broker has lent on the shares still held: their cost less
+         the trader's own part, entry × (1 − 1/leverage) a share. Needs no
+         rate, so it shows even before one is entered. */
+      mtfFunded: sum((r) => (isMtf(r.mtf_leverage) && r.qtyOpen > 0
+        ? r.qtyOpen * Number(r.entry_price) * (1 - 1 / Number(r.mtf_leverage)) : 0)),
       mtfPerDay: sum((r) => r.marginPerDay),
       mtfSoFar: sum((r) => (r.marginPerDay > 0
         ? (Number(r.realisedMargin) || 0) + (Number(r.openInterest) || 0) : NaN)),
@@ -665,6 +671,8 @@ export default function Holdings({
       bankedFrom: rows.filter((r) => r.qtyExited > 0 && isFinite(r.realisedPnl)).length,
     };
   }, [rows]);
+  /* The MTF box: a market with margin funding, and something still held on it. */
+  const mtfBox = mtfHere && totals.mtfFunded > 0;
 
   /**
    * How many closed trades carry an R, which is what the all-time figure is
@@ -1426,7 +1434,7 @@ export default function Holdings({
             complete circle beside a number saying nothing much had been given
             back. The figure it described is a figure, so it sits with the
             others. */}
-        <div className="ps-strip">
+        <div className="ps-strip" data-n={mtfBox ? 7 : 6}>
           {/* First in the strip, so it reads straight on from the risk dial:
               what is at stake, then what today did to it. It is the only
               figure here that changes between one visit and the next, which
@@ -1446,14 +1454,6 @@ export default function Holdings({
                   today's. Positions with no stored close are left out of both figures rather
                   than counted as flat."
             tone={isFinite(totals.today) ? (totals.today >= 0 ? "pos" : "neg") : undefined}
-            /* Under today's move, what margin costs every day — the one live
-               version of that figure, and the one that changes decisions: a
-               position going nowhere on MTF is paying for the privilege. Only
-               when something open is on margin. */
-            foot={totals.mtfN > 0 ? `−${money(totals.mtfPerDay)}` : null}
-            footLabel={totals.mtfN > 0
-              ? `MTF a day · ${money(totals.mtfSoFar)} so far`
-              : undefined}
           />
           {/* Ordered by how close each figure is to right now: today, then
               what is still riding on the open book, then what that book is
@@ -1490,6 +1490,23 @@ export default function Holdings({
                   beside it. A position sold in part counts only the shares still held, on both
                   lines."
           />
+          {/* What margin is carrying — a box of its own, at the user's request,
+              rather than a line under Today: the amount borrowed is a figure
+              about the open book, beside what that book is worth, and Today
+              is about today. Only when something still held is on margin. */}
+          {mtfBox && (
+          <Summary
+            label="MTF"
+            value={<Money v={totals.mtfFunded} />}
+            sub={totals.mtfN > 0 ? `−${money(totals.mtfPerDay)} a day` : "add the rate to see the cost"}
+            hint="What your broker has lent on the margin positions still open — the shares held at
+                  their entry price, less your own part. Under it, what that borrowing costs each
+                  day at your rate, and what margin has cost on these positions so far: interest
+                  and pledge fees, including on the parts already sold."
+            foot={totals.mtfN > 0 ? money(totals.mtfSoFar) : null}
+            footLabel="so far"
+          />
+          )}
           {/* The month sits between what is open and the year, keeping the
               row in order of how much time each figure covers: today, the
               open book, what it is worth, this month, this year, all of it. */}
@@ -1704,19 +1721,30 @@ export default function Holdings({
         @media (max-width: 1460px) {
           .ps-top { grid-template-columns: 1fr; }
         }
+        /* Seven with the MTF box — one more column, so the strip leaves the
+           risk card's side sooner, exactly as the comment above predicts. */
+        .ps-strip[data-n="7"] { grid-template-columns: repeat(7, 1fr); }
+        @media (max-width: 1640px) {
+          .ps-top:has(.ps-strip[data-n="7"]) { grid-template-columns: 1fr; }
+        }
         /* Three, then two — factors of six, so every row is full and the strip
            never ends with one figure alone against four empty cells. That was
            already untidy at five, where the odd one sat by itself; six divides
            where five did not. */
         @media (max-width: 1100px) {
           .ps-strip { grid-template-columns: repeat(3, 1fr); }
+          /* Seven does not divide, so four a row and the last figure takes
+             two cells — every row full, nothing left alone. */
+          .ps-strip[data-n="7"] { grid-template-columns: repeat(4, 1fr); }
+          .ps-strip[data-n="7"] > :last-child { grid-column: span 2; }
         }
         @media (max-width: 720px) {
-          .ps-strip { grid-template-columns: repeat(2, 1fr); }
+          .ps-strip, .ps-strip[data-n="7"] { grid-template-columns: repeat(2, 1fr); }
         }
         @media (max-width: 520px) {
           .ps-riskcard { flex-direction: column; align-items: flex-start; }
-          .ps-strip { grid-template-columns: 1fr; }
+          .ps-strip, .ps-strip[data-n="7"] { grid-template-columns: 1fr; }
+          .ps-strip[data-n="7"] > :last-child { grid-column: auto; }
         }
         .ps-table { max-height: 62vh; }
         /* Set in columns rather than capped at a width.
