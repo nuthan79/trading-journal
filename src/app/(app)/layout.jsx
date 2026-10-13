@@ -19,6 +19,7 @@ import { setStorageUser, sweepLegacy } from "@/lib/browserStore";
 import { currentRegion, regionOf, regionSettings, region as regionInfo,
          REGIONS, DEFAULT_REGION } from "@/lib/regions";
 import { SHOW_REGIONS, SHOW_MARKET_BREADTH } from "@/lib/flags";
+import MarketStrip from "@/components/MarketStrip";
 import { canWrite, accessState, accessFor } from "@/lib/entitlements";
 import { derivePosition, isOpen, isPartial } from "@/lib/positions";
 import { mtfPrefs } from "@/lib/mtf";
@@ -1110,7 +1111,9 @@ export default function AppLayout({ children }) {
       <div>
         <div className="topbar">
           <div className="topin">
-            <div style={{ flex: "1 1 240px" }}>
+            {/* minWidth 0: without it a flex item is never narrower than its
+                content, and a long journal name pushes the buttons down. */}
+            <div style={{ flex: "1 1 240px", minWidth: 0 }}>
               <div className="brand">
                 {/* The product mark beside the journal's own name. The heading
                     here is the USER's title for their journal, not the brand,
@@ -1163,16 +1166,6 @@ export default function AppLayout({ children }) {
                   )}
                 </span>
               </div>
-              <div className="tabs">
-                {TABS.map((t) => {
-                  const I = t.icon;
-                  return (
-                    <Link key={t.id} href={t.href} className="tab" data-on={activeTab === t.id ? 1 : 0}>
-                      <I size={13} />{t.label}
-                    </Link>
-                  );
-                })}
-              </div>
             </div>
             <div style={{ display: "flex", gap: 10, alignItems: "center", paddingBottom: 12 }}>
               {/* Before New trade, because it decides which book that trade
@@ -1198,6 +1191,23 @@ export default function AppLayout({ children }) {
                 onSupport={() => router.push("/support")}
                 onSignOut={() => signOut()}
               />
+            </div>
+          </div>
+          {/* The market, end to end — a bar across the whole window between
+              whose journal this is and where to go in it, so the ticker has
+              the full width to run in rather than the gap beside the buttons.
+              The open book's own indices. */}
+          <MarketStrip book={bookRegion} />
+          <div className="topin topin-tabs">
+            <div className="tabs">
+              {TABS.map((t) => {
+                const I = t.icon;
+                return (
+                  <Link key={t.id} href={t.href} className="tab" data-on={activeTab === t.id ? 1 : 0}>
+                    <I size={13} />{t.label}
+                  </Link>
+                );
+              })}
             </div>
           </div>
         </div>

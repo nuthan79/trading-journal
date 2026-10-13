@@ -265,9 +265,9 @@ export default function Edge({ closed: rawClosed = [], accountSize, dimFromUrl =
       {mistakeRows.length > 0 && (
         /* An anchor, so Back on Trades from a mistake lands here
            rather than at the top of the page — stopping short of it by the
-           sticky top bar (138px at its tallest, when the tabs wrap), or the
-           heading and first row land underneath. */
-        <div className="sec" id="mistakes" style={{ scrollMarginTop: 150 }}>
+           sticky top bar (202px at its tallest since the market strip, when
+           the tabs wrap), or the heading and first row land underneath. */
+        <div className="sec" id="mistakes" style={{ scrollMarginTop: 215 }}>
           <div className="sechead">
             <div>
               <div className="eyebrow">What the mistakes cost</div>

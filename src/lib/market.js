@@ -19,11 +19,27 @@ export const INDEX_TICKERS = {
   "NIFTY500": "^CRSLDX",
   "NIFTY50": "^NSEI",
   "NIFTYMIDCAP": "^NSEMDCP50",
+  /* The two halves of the Nifty Midsmallcap 400 — 150 + 250. Yahoo serves
+     the 400 itself with no history (one day), so no average can be taken
+     of it; its halves come with a year and say more apart than together. */
+  "NIFTYMID150": "NIFTYMIDCAP150.NS",
+  "NIFTYSML250": "NIFTYSMLCAP250.NS",
   /* A US book's regime is the US market's, not India's. Same three states,
      read off the index the trades actually belong to. */
   "SP500": "^GSPC",
   "NASDAQ100": "^NDX",
   "RUSSELL2000": "^RUT",
+};
+
+/**
+ * The indices on the market strip under the header, per book, in the order
+ * they read: the headline index, the broad market, then the two sizes a
+ * swing book actually trades. A US book reads its own market.
+ */
+export const STRIP_INDICES = {
+  IN: [["NIFTY50", "Nifty 50"], ["NIFTY500", "Nifty 500"],
+       ["NIFTYMID150", "Midcap 150"], ["NIFTYSML250", "Smallcap 250"]],
+  US: [["SP500", "S&P 500"], ["NASDAQ100", "Nasdaq 100"], ["RUSSELL2000", "Russell 2000"]],
 };
 
 /** The index a book's regime is read from. */
@@ -125,3 +141,29 @@ export const REGIME_LABEL = {
   correction: "Correction",
   unknown: "Unclassified",
 };
+
+/**
+ * One index as the strip shows it: the latest level, the day's change, how far
+ * it stands from its 20-, 50- and 200-day averages, and its regime.
+ *
+ * The latest candle IS today while the market is open — Yahoo's daily series
+ * carries the session in progress — so the averages include it, as every
+ * charting site's do, and the day's change is against the candle before.
+ * Distances are percentages of the average: −3.9% means 3.9% below it.
+ */
+export function indexSnapshot(history) {
+  const rows = classifyRegime(history || []);
+  const last = rows.at(-1);
+  if (!last) return null;
+  const closes = rows.map((d) => d.close);
+  const ma20 = sma(closes, 20, closes.length - 1);
+  const vs = (ma) => (ma ? ((last.close - ma) / ma) * 100 : null);
+  const prev = rows.at(-2)?.close;
+  return {
+    date: last.date,
+    last: last.close,
+    dayPct: prev ? ((last.close - prev) / prev) * 100 : null,
+    vs20: vs(ma20), vs50: vs(last.ma50), vs200: vs(last.ma200),
+    regime: last.regime,
+  };
+}
