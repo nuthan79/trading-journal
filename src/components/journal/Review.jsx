@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { REGIME_INDEX, REGIME_LABEL_FOR } from "@/lib/market";
+import { REGIME_INDEX, REGIME_LABEL_FOR, indexSnapshot } from "@/lib/market";
 import { SHOW_LAST_TEN } from "@/lib/flags";
 import { activeRegion } from "@/lib/regions";
 
@@ -9,6 +9,7 @@ import { activeRegion } from "@/lib/regions";
 const REGIME_CACHE = new Map();
 import { ChevronDown } from "lucide-react";
 import { apiFetch, track } from "@/lib/db";
+import { level } from "@/components/MarketStrip";
 import { reviewFindings, reviewThesis, recentBook } from "@/lib/analysis";
 import { classifyRegime, regimeIndex, REGIME_LABEL } from "@/lib/market";
 import { signedPct, money } from "@/lib/format";
@@ -1404,8 +1405,13 @@ export default function Review({ closed, stats, all, diary, onMeasured }) {
   );
 
   const last = market.classified[market.classified.length - 1];
-  const pos50 = last?.ma50 ? ((last.close - last.ma50) / last.ma50) * 100 : null;
-  const pos200 = last?.ma200 ? ((last.close - last.ma200) / last.ma200) * 100 : null;
+  /* The same arithmetic as the market ticker across the top (indexSnapshot),
+     so the two lines can never show the Nifty 500 two ways — and with the
+     20-day beside the 50 and 200, as the ticker has it. */
+  const snap = market.classified.length ? indexSnapshot(market.classified) : null;
+  const pos20 = snap?.vs20 ?? null;
+  const pos50 = snap?.vs50 ?? null;
+  const pos200 = snap?.vs200 ?? null;
 
   if (!closed.length) {
     return (
@@ -1460,9 +1466,10 @@ export default function Review({ closed, stats, all, diary, onMeasured }) {
           <>
             <span className="rv-dot" style={{ background: REGIME_COLOR[last.regime] }} />
             <b>{REGIME_LABEL[last.regime]}</b>
-            <span className="rv-dim">{REGIME_LABEL_FOR[indexName] || indexName} · {last.close.toFixed(0)}</span>
-            {pos50 != null && <span className="rv-dim">{signedPct(pos50)} vs 50DMA</span>}
-            {pos200 != null && <span className="rv-dim">{signedPct(pos200)} vs 200DMA</span>}
+            <span className="rv-dim">{REGIME_LABEL_FOR[indexName] || indexName} · {level(last.close)}</span>
+            {pos20 != null && <span className="rv-dim">{signedPct(pos20, 2)} vs 20DMA</span>}
+            {pos50 != null && <span className="rv-dim">{signedPct(pos50, 2)} vs 50DMA</span>}
+            {pos200 != null && <span className="rv-dim">{signedPct(pos200, 2)} vs 200DMA</span>}
           </>
         ) : (
           <span className="rv-dim">

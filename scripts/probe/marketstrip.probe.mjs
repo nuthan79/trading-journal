@@ -86,3 +86,24 @@ test("the ticker pauses on hover, respects reduced motion, and loops cleanly", (
      "two copies, moved by exactly one, the second hidden from screen readers");
   ok(/setSecs\(Math\.max\(20, w \/ SPEED_PX\)\)/.test(c), "speed set by distance, so it reads at one pace");
 });
+
+/* The Process tab's regime line reads the Nifty 500 too — through the same
+   function, with the 20-day the ticker shows. */
+test("the Process tab's market line agrees with the ticker, 20-day included", () => {
+  const r = read("components/journal/Review.jsx");
+  ok(/const snap = market\.classified\.length \? indexSnapshot\(market\.classified\) : null;/.test(r), "same calculation");
+  ok(/\{signedPct\(pos20(, 2)?\)\} vs 20DMA/.test(r), "and the 20-day is on it");
+  ok(r.indexOf("vs 20DMA") < r.indexOf("vs 50DMA") && r.indexOf("vs 50DMA") < r.indexOf("vs 200DMA"), "in order, short to long");
+});
+
+/* Two decimals everywhere the indices are read — the user found −1.0% where
+   their platform showed −0.97%. Levels too, the way an exchange quotes them. */
+test("index figures read to two decimals, levels included", () => {
+  const c = read("components/MarketStrip.jsx");
+  ok(/const pct = \(v, dp = 2\) =>/.test(c), "ticker percentages default to two places");
+  ok(!/pct\(x\.\w+, 1\)/.test(c), "and none asks for one");
+  ok(/minimumFractionDigits: 2, maximumFractionDigits: 2/.test(c) && /\{level\(x\.last\)\}/.test(c), "levels to the paisa of a point");
+  const r = read("components/journal/Review.jsx");
+  for (const n of ["20", "50", "200"]) ok(new RegExp(`signedPct\\(pos${n}, 2\\)`).test(r), `Process: ${n}-day to two places`);
+  ok(/\{level\(last\.close\)\}/.test(r), "and its level");
+});

@@ -32,7 +32,12 @@ const REGIME = {
   correction: { color: "var(--short)", word: "Correction", says: "below its 50-day average, which is below the 200-day" },
 };
 
-const pct = (v, dp = 1) => (v == null || !Number.isFinite(v) ? "—" : `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(dp)}%`);
+/* Two decimals throughout, at the user's request — a rounded −1.0% hid a
+   −0.97% they could read off their charting platform. */
+const pct = (v, dp = 2) => (v == null || !Number.isFinite(v) ? "—" : `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(dp)}%`);
+/** An index level the way an exchange quotes it: 22,090.35. */
+export const level = (v) => (Number.isFinite(v)
+  ? v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—");
 const tone = (v) => (v > 0 ? "pos" : v < 0 ? "neg" : "");
 
 export default function MarketStrip({ book = "IN" }) {
@@ -76,8 +81,8 @@ export default function MarketStrip({ book = "IN" }) {
                  + `today's level counts as today's close until the market shuts, refreshed every five minutes.`}>
             {r && <span className="ms-dot" style={{ background: r.color }} />}
             <b>{x.name}</b>
-            <span className="ms-lvl">{Math.round(x.last).toLocaleString("en-IN")}</span>
-            <span className={`ms-day ${tone(x.dayPct)}`}>{pct(x.dayPct, 2)}</span>
+            <span className="ms-lvl">{level(x.last)}</span>
+            <span className={`ms-day ${tone(x.dayPct)}`}>{pct(x.dayPct)}</span>
             <span className="ms-ma">
               <span className={tone(x.vs20)}>{pct(x.vs20)}</span> 20D
               {" · "}<span className={tone(x.vs50)}>{pct(x.vs50)}</span> 50D
