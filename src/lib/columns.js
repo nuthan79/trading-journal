@@ -80,4 +80,17 @@ export const COLUMN_HINTS = {
   unrealisedPnl: "What the shares still held are up or down at the current price, "
     + "less MTF so far",
   atR: "Where the price sits in R: how many times your original risk it has moved from entry",
+
+  /* ---- What works → What the exits cost (lib/giveback.js) ------------ */
+  /* Medians, all four: one trade that ran to 17R and was sold at 9R would
+     carry a mean on its own and make a disciplined book look careless. */
+  exitTrades: "Closed trades measured against their daily closes and that reached at least "
+    + "0.25R above entry — the ones that had something to give back",
+  exitGivebackR: "The usual distance, in R, between a trade's best daily close and the price "
+    + "you sold at — what holding on handed back. Half the trades gave back more, half less",
+  exitGivebackMoney: "The same giveback in money, at each trade's own 1R",
+  exitKept: "The usual share of the best close that was still there when you sold — "
+    + "100% means you sold at the top close or better",
+  exitVerdict: "Whether trades you tagged really gave back more than the ones you did not. "
+    + "Needs 8 a side, and a difference of more than 0.25R, before it says either way",
 };

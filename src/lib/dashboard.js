@@ -244,6 +244,22 @@ export function summaryParts(closed, { openingCapital = 0, flows = [], banking =
     withR: s.n || 0,
     needStop: closed.length - (s.n || 0),
     hasR: (s.n || 0) > 0,
+    /**
+     * Whether the sample is big enough for expectancy to be a claim.
+     *
+     * A journal with one closed trade reported "Expectancy +16.72R per trade
+     * at a 100.0% win rate" in exactly the typeface it uses for a book of 139,
+     * which is the first figure a new user ever sees and the one most likely
+     * to decide whether they believe the rest. The number is arithmetically
+     * right and means nothing, and nothing on the line said so.
+     *
+     * The thresholds are not confidence intervals. Under ten, a single trade
+     * moves expectancy by more than most systems' entire edge. Under thirty,
+     * the figure is worth watching but not worth acting on — which is also
+     * where `analysis.js` already draws `provisional`, so the two screens
+     * agree rather than each inventing a bar.
+     */
+    rConfidence: (s.n || 0) < 10 ? "thin" : (s.n || 0) < 30 ? "early" : "settled",
     netPnl: money.netPnl,
     winRateByCount: decided.length ? (won / decided.length) * 100 : NaN,
     monthsSpan,

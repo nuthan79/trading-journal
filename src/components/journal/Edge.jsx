@@ -8,6 +8,8 @@ import { useMarketCap } from "@/lib/marketCap";
 import { useBreadth } from "@/lib/breadth";
 import { SHOW_MARKET_BREADTH } from "@/lib/flags";
 import { mistakeCost, outcomeTagCounts } from "@/lib/analysis";
+import { givebackBook, givebackByTag, postExitNeeded, exitVerdict } from "@/lib/giveback";
+import { COLUMN_HINTS } from "@/lib/columns";
 import { isExecutionError } from "@/lib/constants";
 import { money, rfmt, pct } from "@/lib/format";
 import Money from "@/components/Money";
@@ -17,6 +19,12 @@ import Money from "@/components/Money";
  * picker was tried here and taken out at the user's request — this table is
  * read whole, not configured. Hints are this table's own, not Trades'.
  */
+/* The exit-timing tags, costed by giveback rather than by what the trades
+   made — see "What the exits cost" below and lib/giveback.js. */
+const LATE = "Sold a little late";
+const EARLY = "Sold too early";
+const EXIT_TAGS = [LATE, EARLY];
+
 const EDGE_COLUMNS = [
   { k: "trades", label: "Trades", hint: "Closed trades in this group" },
   { k: "winRate", label: "Win rate", hint: "Share of these trades that made money" },
@@ -108,7 +116,33 @@ export default function Edge({ closed: rawClosed = [], accountSize, dimFromUrl =
   );
   const maxAbs = useMemo(() => maxAbsTotalR(groups), [groups]);
 
-  const mistakeRows = useMemo(() => mistakeCost(closed, isExecutionError), [closed]);
+  /* The two exit-timing tags are costed apart, below. You only write "Sold a
+     little late" on a trade that ran, and "Sold too early" on one that kept
+     going — so both select WINNERS, and in a table headed "what the mistakes
+     cost" they read +1.47R and +4.10R: selling badly, apparently, pays. */
+  const mistakeRows = useMemo(
+    () => mistakeCost(closed, isExecutionError).filter((m) => !EXIT_TAGS.includes(m.tag)),
+    [closed],
+  );
+  const exits = useMemo(() => {
+    const book = givebackBook(closed);
+    const late = givebackByTag(closed, LATE);
+    /* Money medians come from the measured rows themselves: the book and the
+       tag comparison give the R and the kept share, and the rupee figure is
+       the same rows at each trade's own 1R. */
+    const of = (rows) => {
+      const m = rows.map((r) => r.givebackMoney).filter(Number.isFinite).sort((a, b) => a - b);
+      const k = m.length >> 1;
+      return m.length ? (m.length % 2 ? m[k] : (m[k - 1] + m[k]) / 2) : NaN;
+    };
+    const tagged = book.rows.filter((r) => (r.t.mistakes || []).includes(LATE));
+    const rest = book.rows.filter((r) => !(r.t.mistakes || []).includes(LATE));
+    return {
+      book, late,
+      money: { all: of(book.rows), tagged: of(tagged), rest: of(rest) },
+      early: postExitNeeded(closed, EARLY),
+    };
+  }, [closed]);
   const outcomeRows = useMemo(() => outcomeTagCounts(closed, isExecutionError), [closed]);
 
   if (!closed.length) {
@@ -320,6 +354,108 @@ export default function Edge({ closed: rawClosed = [], accountSize, dimFromUrl =
         </div>
       )}
 
+      {/*
+        WHAT THE EXITS COST — the exit-timing tags, costed by the distance
+        between each trade's best daily close and the sell, which the measure
+        pass already stores (lib/giveback.js), rather than by what the trades
+        made. Medians throughout: one 17R runner sold at 9R would carry a mean
+        on its own. The tag row carries a verdict, because a self-applied tag
+        is only worth costing if it marks trades the measurement also finds.
+      */}
+      {(exits.book.measured > 0 || exits.early.count > 0) && (
+        <div className="sec">
+          <div className="sechead">
+            <div>
+              <div className="eyebrow">What the exits cost</div>
+              <div style={{ fontSize: 12, color: "var(--ink2)", marginTop: 3 }}>
+                How much of each trade&rsquo;s best close it handed back before you sold —
+                measured from the daily closes, not from the tag.
+                <b> Click a tag</b> to see its trades.
+              </div>
+            </div>
+          </div>
+          {exits.book.measured > 0 ? (
+            <div className="card scroll">
+              <table className="t">
+                <thead><tr>
+                  <th>Trades</th>
+                  <th className="num" title={COLUMN_HINTS.exitTrades}>Times</th>
+                  <th className="num" title={COLUMN_HINTS.exitGivebackR}>Gave back</th>
+                  <th className="num" title={COLUMN_HINTS.exitGivebackMoney}>In money</th>
+                  <th className="num" title={COLUMN_HINTS.exitKept}>Kept of peak</th>
+                  <th title={COLUMN_HINTS.exitVerdict}>Does the tag mark it?</th>
+                </tr></thead>
+                <tbody>
+                  {[
+                    { key: "all", label: "Every measured trade", n: exits.book.measured,
+                      r: exits.book.medianGivebackR, kept: exits.book.medianKeptPct,
+                      money: exits.money.all, verdict: null },
+                    exits.late && exits.late.tagged.count > 0 && {
+                      key: "late", label: LATE, link: true, n: exits.late.tagged.count,
+                      r: exits.late.tagged.medianGivebackR, kept: exits.late.tagged.medianKeptPct,
+                      money: exits.money.tagged, verdict: exitVerdict(exits.late) },
+                    exits.late && exits.late.tagged.count > 0 && {
+                      key: "rest", label: "Not tagged", n: exits.late.untagged.count,
+                      r: exits.late.untagged.medianGivebackR, kept: exits.late.untagged.medianKeptPct,
+                      money: exits.money.rest, verdict: null },
+                  ].filter(Boolean).map((row) => (
+                    <tr key={row.key}>
+                      <td>
+                        {row.link ? (
+                          <Link className="mk-link"
+                                href={`/trades?mistake=${encodeURIComponent(row.label)}`}
+                                title={`See the trades tagged "${row.label}"`}>
+                            {row.label}
+                          </Link>
+                        ) : <span style={{ color: "var(--ink2)" }}>{row.label}</span>}
+                      </td>
+                      <td className="num">{row.n}</td>
+                      <td className="num neg">{Number.isFinite(row.r) ? `${row.r.toFixed(2)}R` : "—"}</td>
+                      <td className="num neg"><Money v={row.money} /></td>
+                      <td className="num">{pct(row.kept, 0)}</td>
+                      <td className={row.verdict?.tone ? `ed-verdict ${row.verdict.tone}` : "ed-verdict"}>
+                        {row.verdict ? row.verdict.word : ""}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="hint">
+              None of your closed trades has been measured against its daily prices yet —
+              the measure on the <Link href="/analysis/review">Process</Link> tab does it.
+            </div>
+          )}
+          {/* NOT ESTIMATED. Selling early means the stock ran on after you
+              sold, and the measure stops at the exit date — so the journal
+              holds nothing that could cost it. Saying how many, and leaving it
+              there, is the honest half; a guess here would be confident and
+              wrong. */}
+          {exits.early.count > 0 && (
+            <div className="hint" style={{ marginTop: 8 }}>
+              <Link className="mk-link" href={`/trades?mistake=${encodeURIComponent(EARLY)}`}>
+                {EARLY}
+              </Link>
+              {" "}— {exits.early.count} trade{exits.early.count === 1 ? "" : "s"}. Costing it needs
+              prices from after the exit, what the stock did in the {exits.early.sessions} sessions
+              after you sold, and the journal does not record those yet. It is not estimated.
+            </div>
+          )}
+          {exits.book.measured > 0 && (() => {
+            const sk = exits.book.skipped;
+            const parts = [
+              sk.unmeasured && `${sk.unmeasured} not measured yet`,
+              sk["no-stop"] && `${sk["no-stop"]} with no stop`,
+              sk["never-ran"] && `${sk["never-ran"]} that never closed 0.25R above entry`,
+            ].filter(Boolean);
+            return parts.length ? (
+              <div className="hint" style={{ marginTop: 6 }}>Left out: {parts.join(", ")}.</div>
+            ) : null;
+          })()}
+        </div>
+      )}
+
       {outcomeRows.length > 0 && (
         <div className="sec">
           <div className="sechead">
@@ -363,6 +499,9 @@ export default function Edge({ closed: rawClosed = [], accountSize, dimFromUrl =
         .ed-otile-t { border-bottom: 1px dotted var(--ink3); }
         .ed-otile:hover .ed-otile-t { color: var(--brass); border-bottom-color: var(--brass); }
         .mk-link:hover { color: var(--brass); border-bottom-color: var(--brass); }
+        .ed-verdict { font-size: 12px; color: var(--ink2); white-space: nowrap; }
+        .ed-verdict.neg { color: var(--short); }
+        .ed-verdict.pos { color: var(--long); }
       `}</style>
     </>
   );

@@ -59,7 +59,13 @@ export default function Summary({ closed, banking = [], openingCapital, flows = 
       {s.hasR ? (
         <p className="sum-body">
           {s.trades} closed trades over {s.monthsSpan} months. Expectancy{" "}
-          <Fig tone={s.expectancy >= 0 ? "up" : "down"}>{rfmt(s.expectancy)}</Fig>{" "}
+          {/* Muted while the sample is thin. The accent tone is what makes a
+              figure read as a finding, and on five trades expectancy is not
+              one — it is arithmetic on a sample a single trade can swing. The
+              sentence after the paragraph says so in words; this stops the
+              number looking settled before anyone reaches it. */}
+          <Fig tone={s.rConfidence === "thin" ? "muted"
+                     : s.expectancy >= 0 ? "up" : "down"}>{rfmt(s.expectancy)}</Fig>{" "}
           per trade at a {pct(s.winRate)} win rate, for{" "}
           <Fig tone={s.totalR >= 0 ? "up" : "down"}>{rfmt(s.totalR)}</Fig> total
           {/* The rupees, which this paragraph never said — and now the one
@@ -75,6 +81,18 @@ export default function Summary({ closed, banking = [], openingCapital, flows = 
           {s.needStop > 0 && (
             <> Measured across the {s.withR} with a stop recorded;{" "}
             <Fig tone="risk">{s.needStop}</Fig> more are waiting on one.</>
+          )}
+          {/* Said last, and only while it is true. A book of thirty or more
+              gets the paragraph it always had; a book of five gets told that
+              the figure above is not yet a number about its trading. */}
+          {s.rConfidence === "thin" && (
+            <> Expectancy on {s.withR} trade{s.withR === 1 ? "" : "s"} is not yet
+            a reading on your trading — one trade moves it further than most
+            systems earn in a year. It settles somewhere around thirty.</>
+          )}
+          {s.rConfidence === "early" && (
+            <> On {s.withR} trades these are worth watching rather than acting
+            on; expectancy steadies around thirty.</>
           )}
         </p>
       ) : (
@@ -148,6 +166,10 @@ export default function Summary({ closed, banking = [], openingCapital, flows = 
         .sum-fig.up   { color: #4A5AA0; }
         .sum-fig.down { color: var(--short); }
         .sum-fig.risk { color: #B5442A; }
+        /* Thin sample: still bold, so the figure is readable and findable,
+           but carrying none of the accent that makes the others read as
+           settled. Hiding it would be worse — it is their number. */
+        .sum-fig.muted { color: var(--ink2); font-weight: 600; }
       `}</style>
     </section>
   );

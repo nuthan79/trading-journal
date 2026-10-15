@@ -121,3 +121,62 @@ test("an acknowledged flag's hover says it has left open risk", () => {
   ok(!/the dial still counts the stop recorded/.test(s), "the stale claim is gone");
   ok(/no longer counts towards "\s*\+ "open risk or the dial/.test(s));
 });
+
+/**
+ * EXPECTANCY MUST NOT READ AS A FINDING ON A SAMPLE THAT CANNOT CARRY ONE.
+ *
+ * A journal with one closed trade printed "Expectancy +16.72R per trade at a
+ * 100.0% win rate" in the same accent typeface a book of 139 gets. It is the
+ * first figure a new user sees and the one that decides whether they believe
+ * the rest of the screen — arithmetically right, meaningless, and with nothing
+ * on the line saying so.
+ *
+ * `rConfidence` is what the paragraph reads to mute the figure and add the
+ * sentence. The bands match `provisional` in analysis.js on purpose: two
+ * screens disagreeing about when a number has settled is how a user learns to
+ * trust neither.
+ */
+const one = (id, r) => mk({
+  id, symbol: id, side: "long", status: "closed",
+  entry_date: "2026-06-01", exit_date: "2026-06-20",
+  entry_price: 100, quantity: 100, stop_loss: 90,
+  stop_source: "recorded", charges: 0,
+  exits: [{ exit_date: "2026-06-20", quantity: 100, price: 100 + r * 10, charges: 0 }],
+});
+const book = (n) => Array.from({ length: n }, (_, i) => one(`t${i}`, 1));
+
+test("one closed trade is thin, and the paragraph is told so", () => {
+  eq(summaryParts(book(1), { openingCapital: 5e6 }).rConfidence, "thin");
+});
+
+test("nine is still thin, ten is early, thirty has settled", () => {
+  const band = (n) => summaryParts(book(n), { openingCapital: 5e6 }).rConfidence;
+  eq(band(9), "thin", "a single trade still moves expectancy here");
+  eq(band(10), "early");
+  eq(band(29), "early");
+  eq(band(30), "settled", "matches provisional in analysis.js");
+});
+
+test("confidence counts trades R can speak for, not every closed trade", () => {
+  /* Twenty-nine with no stop and one with: expectancy rests on the one, and
+     the band must say thin rather than reading the thirty rows as a sample. */
+  const noStop = Array.from({ length: 29 }, (_, i) => mk({
+    id: `n${i}`, symbol: `N${i}`, side: "long", status: "closed",
+    entry_date: "2026-06-01", exit_date: "2026-06-20",
+    entry_price: 100, quantity: 100, stop_loss: null, charges: 0,
+    exits: [{ exit_date: "2026-06-20", quantity: 100, price: 110, charges: 0 }],
+  }));
+  const s = summaryParts([...noStop, one("real", 1)], { openingCapital: 5e6 });
+  eq(s.withR, 1, "only one trade has an R");
+  eq(s.rConfidence, "thin", "must band on withR, not on closed.length");
+});
+
+test("the paragraph mutes a thin figure and says why", () => {
+  const src = read("components/journal/Summary.jsx");
+  ok(/rConfidence === "thin"[\s\S]{0,120}muted/.test(src),
+     "a thin sample must drop the accent tone");
+  ok(src.includes("not yet\n            a reading on your trading")
+     || /not yet[\s\S]{0,40}a reading on your trading/.test(src),
+     "and must say so in words, not only in colour");
+  ok(/\.sum-fig\.muted\s*\{/.test(src), "the muted tone needs a style");
+});
