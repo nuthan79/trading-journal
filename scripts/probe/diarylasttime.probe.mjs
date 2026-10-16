@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, ok, eq } from "./harness.mjs";
 import { losingRuns, losingRun } from "@/lib/bottleneck";
-import { lastTime, LAST_TIME_MIN } from "@/lib/diaryLastTime";
+import { lastTime, LAST_TIME_MIN, recallList, moreLabel, LAST_TIME_SHOWN } from "@/lib/diaryLastTime";
 import { fullDate } from "@/lib/diaryList";
 
 const SRC = path.resolve(fileURLToPath(new URL("../../src", import.meta.url)));
@@ -103,4 +103,57 @@ test("the block sits at the top of the diary and opens what it lists", () => {
   ok(/<style jsx global>/.test(lt) && /\.dy-lt /.test(lt));
   ok(/closed=\{closed\}/.test(read("app/(app)/diary/page.jsx")), "the page hands it the finished trades");
   eq(fullDate("2026-09-09"), "9 Sep 2026");
+});
+
+/**
+ * LEAD WITH THE WORDS. On the first real book the run held ten entries and
+ * eight were "a chart, no words" — the card's height carrying nothing, with
+ * the two rows that did buried among them.
+ */
+const E = (id, entry_date, body = "", emotions = [], image_path = "x.png") =>
+  ({ id, entry_date, body, emotions, image_path });
+const RUN = [
+  E("c1", "2026-09-10"), E("w1", "2026-09-11", "Stopped out again. Market feels heavy."),
+  E("c2", "2026-09-12"), E("c3", "2026-09-15"), E("m1", "2026-09-16", "", ["Anxious"]),
+  E("c4", "2026-09-17"), E("c5", "2026-09-18"), E("c6", "2026-09-19"),
+  E("c7", "2026-09-22"), E("c8", "2026-09-23"),
+];
+
+test("only entries with words or a mood are rows, newest first", () => {
+  const l = recallList(RUN);
+  eq(l.shown.map((g) => g.entries.map((e) => e.id).join("+")).join(), "m1,w1",
+     "a mood alone counts as words; newest first");
+  eq(l.unworded, 8, "the other eight are a count");
+  eq(l.more.length, 0, "and never rows behind the fold either");
+  eq(moreLabel(l), "8 more — charts, no words");
+});
+
+test("at most three show, a day to a row, the rest behind the fold", () => {
+  const l = recallList([
+    E("a", "2026-09-10", "one"), E("b", "2026-09-12", "two"), E("c", "2026-09-12", "three"),
+    E("d", "2026-09-12", "", ["Calm"]), E("e", "2026-09-14", "five"), E("f", "2026-09-15"),
+  ]);
+  eq(LAST_TIME_SHOWN, 3);
+  eq(l.shown.map((g) => `${g.date}:${g.entries.length}`).join(), "2026-09-14:1,2026-09-12:2",
+     "three entries, two dates — the 12th's read as one date");
+  eq(l.more.map((g) => `${g.date}:${g.entries.map((e) => e.id).join("")}`).join(), "2026-09-12:d,2026-09-10:a");
+  eq(moreLabel(l), "3 more — 2 written, 1 with no words");
+  eq(moreLabel({ moreWorded: 2, unworded: 0, charts: 0 }), "2 more");
+  eq(moreLabel({ moreWorded: 0, unworded: 2, charts: 1 }), "2 more — no words", "'charts' only when they all are");
+  eq(moreLabel({ moreWorded: 0, unworded: 0, charts: 0 }), null, "no fold line when nothing is left");
+});
+
+test("a silent run is one sentence, not an empty list", () => {
+  const l = recallList(RUN.filter((e) => e.id.startsWith("c")));
+  eq(l.shown.length, 0);
+  eq(l.charts, 8);
+  const lt = read("components/journal/Diary.jsx").slice(read("components/journal/Diary.jsx").indexOf("function LastTime"));
+  ok(/Nothing written during that run/.test(lt), "said in a line");
+  ok(!/a chart, no words/.test(lt), "a silent entry is never printed as a row");
+  ok(/\{list\.shown\.map\(day\)\}\s*\{more && list\.more\.map\(day\)\}/.test(lt), "only worded groups render, open or shut");
+  ok(/\{dmy\(g\.date\)\}/.test(lt), "dates through dmy()");
+  ok(/className="dy-lt-more" onClick=\{\(\) => setMore\(\(m\) => !m\)\} aria-expanded=\{more\}/.test(lt),
+     "the list folds with the entry cards' chevron");
+  ok(/<p className="dy-lt-now">/.test(lt) && lt.indexOf('<p className="dy-lt-now">') < lt.indexOf("dy-lt-more"),
+     "the headline stays above the fold, always shown");
 });

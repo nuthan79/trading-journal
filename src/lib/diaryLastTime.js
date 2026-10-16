@@ -65,3 +65,63 @@ export function lastTime(closed = [], diary = []) {
   });
   return { now, then, match, entries };
 }
+
+/** Entries shown under the headline before the rest fold away. */
+export const LAST_TIME_SHOWN = 3;
+
+/** Has the writer said anything — a line of text or a mood? */
+export const hasWords = (e) =>
+  !!String(e?.body || "").trim() || (Array.isArray(e?.emotions) && e.emotions.length > 0);
+
+/**
+ * The card's list, worked out once so the screen only renders it.
+ *
+ * LEAD WITH THE WORDS. On the first real book the run held ten entries and
+ * eight read "a chart, no words" — most of the card's height carrying
+ * nothing, with the two rows that did buried among them. So:
+ *
+ *   shown     at most LAST_TIME_SHOWN entries that have text or a mood,
+ *             newest first, grouped by day — four on one date read as one date
+ *   more      the rest of the worded ones, the same way, behind the fold
+ *   unworded  how many had neither. Never a row of their own, open or
+ *             closed; only ever a count.
+ *   charts    how many of those carry a chart, for the sentence that replaces
+ *             the list when nothing at all was written
+ *
+ * Dates are stored YYYY-MM-DD strings, compared as strings.
+ */
+export function recallList(entries = [], max = LAST_TIME_SHOWN) {
+  const day = (e) => String(e?.entry_date || "").slice(0, 10);
+  /* Newest first; a sort is stable, so entries on one day keep their order. */
+  const worded = (entries || []).filter(hasWords).sort((a, b) => (day(a) < day(b) ? 1 : day(a) > day(b) ? -1 : 0));
+  const unworded = (entries || []).filter((e) => !hasWords(e));
+  const byDay = (list) => {
+    const out = [];
+    for (const e of list) {
+      const last = out[out.length - 1];
+      if (last && last.date === day(e)) last.entries.push(e);
+      else out.push({ date: day(e), entries: [e] });
+    }
+    return out;
+  };
+  return {
+    shown: byDay(worded.slice(0, max)),
+    more: byDay(worded.slice(max)),
+    moreWorded: Math.max(0, worded.length - max),
+    unworded: unworded.length,
+    charts: unworded.filter((e) => !!e.image_path).length,
+  };
+}
+
+/**
+ * The fold line: "7 more — charts, no words", "2 more", or "5 more — 2
+ * written, 3 with no words". Null when there is nothing beyond what shows.
+ */
+export function moreLabel({ moreWorded, unworded, charts }) {
+  const n = moreWorded + unworded;
+  if (!n) return null;
+  if (!unworded) return `${n} more`;
+  /* "charts" only when every silent entry is one — an entry can be bare. */
+  if (!moreWorded) return `${n} more — ${charts === unworded ? "charts, " : ""}no words`;
+  return `${n} more — ${moreWorded} written, ${unworded} with no words`;
+}

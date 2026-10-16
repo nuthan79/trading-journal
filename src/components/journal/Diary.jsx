@@ -9,7 +9,7 @@ import { rfmt, dmy, today } from "@/lib/format";
 import { EMOTIONS } from "@/lib/constants";
 import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
 import { filterDiary, monthsOf, emotionsOf, monthLabel, fullDate } from "@/lib/diaryList";
-import { lastTime } from "@/lib/diaryLastTime";
+import { lastTime, recallList, moreLabel } from "@/lib/diaryLastTime";
 import { dayIndex, dayFacts } from "@/lib/diaryDay";
 import { yearMap, cellTone } from "@/lib/diaryYear";
 import { useRegimeHistory } from "@/lib/useRegimeHistory";
@@ -748,6 +748,24 @@ function YearMap({ year, jump }) {
  */
 function LastTime({ recall, open }) {
   const { now, then, match, entries } = recall;
+  /* Only the entry list folds; the headline above it is the card. */
+  const [more, setMore] = useState(false);
+  const list = recallList(entries);
+  const fold = moreLabel(list);
+  const day = (g) => (
+    <li key={g.date} className="dy-lt-day">
+      <span className="mono">{dmy(g.date)}</span>
+      <div className="dy-lt-items">
+        {g.entries.map((e) => (
+          <button key={e.id} className="dy-lt-item" onClick={() => open(e.id)}
+                  title="Open this entry in the list below">
+            {(e.emotions || []).length > 0 && <span className="dy-lt-feel">{e.emotions.join(", ")}</span>}
+            {(e.body || "").trim() && <span className="dy-lt-body">{e.body.trim().split("\n")[0]}</span>}
+          </button>
+        ))}
+      </div>
+    </li>
+  );
   const R = (r) => `${r > 0 ? "+" : r < 0 ? "−" : ""}${Math.abs(r).toFixed(2)}R`;
   return (
     <div className="dy-lt">
@@ -766,22 +784,32 @@ function LastTime({ recall, open }) {
           <> Nothing earlier in the book ran this long, so there is no run to look back at.</>
         )}
       </p>
-      {then && (entries.length ? (
+      {/* The words lead: at most three entries with text or a mood, newest
+          first, a day to a row. An entry with neither is never a row of its
+          own, open or shut — only the count on the fold line. And when the
+          whole run was silent, that is the observation, said in one line. */}
+      {then && (list.shown.length ? (
         <>
           <div className="dy-lt-h">What you wrote while it lasted</div>
           <ul className="dy-lt-list">
-            {entries.map((e) => (
-              <li key={e.id}>
-                <button className="dy-lt-item" onClick={() => open(e.id)}
-                        title="Open this entry in the list below">
-                  <span className="mono">{e.entry_date}</span>
-                  {(e.emotions || []).length > 0 && <span className="dy-lt-feel">{e.emotions.join(", ")}</span>}
-                  <span className="dy-lt-body">{(e.body || "").trim().split("\n")[0] || "a chart, no words"}</span>
-                </button>
-              </li>
-            ))}
+            {list.shown.map(day)}
+            {more && list.more.map(day)}
           </ul>
+          {fold && (list.moreWorded > 0 ? (
+            <button className="dy-lt-more" onClick={() => setMore((m) => !m)} aria-expanded={more}>
+              <span className="dy-chev"><ChevronDown size={13} /></span>
+              {/* Open, the silent ones are all that is left unshown. */}
+              {more ? (moreLabel({ ...list, moreWorded: 0 }) || "Show less") : fold}
+            </button>
+          ) : (
+            <p className="dy-lt-more" data-static="1">{fold}</p>
+          ))}
         </>
+      ) : list.unworded ? (
+        <p className="dy-lt-none">
+          Nothing written during that run
+          {list.charts ? `, ${list.charts} chart${list.charts === 1 ? "" : "s"} saved` : ""}.
+        </p>
       ) : (
         <p className="dy-lt-none">You wrote nothing while it lasted.</p>
       ))}
@@ -792,10 +820,21 @@ function LastTime({ recall, open }) {
         .dy-lt-now .pos { color: var(--long); }
         .dy-lt-h { margin-top: 10px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink3); }
         .dy-lt-list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
-        .dy-lt-item { display: flex; gap: 10px; align-items: baseline; width: 100%; text-align: left;
+        /* A day to a row: the date once, its entries stacked beside it. */
+        .dy-lt-day { display: grid; grid-template-columns: 8.5ch minmax(0, 1fr); gap: 10px; align-items: baseline; }
+        .dy-lt-day > .mono { font-size: 11.5px; color: var(--ink3); padding-top: 4px; }
+        .dy-lt-items { display: grid; min-width: 0; }
+        .dy-lt-item { display: flex; gap: 10px; align-items: baseline; width: 100%; text-align: left; min-width: 0;
                       background: none; border: 0; padding: 4px 0; cursor: pointer; color: var(--ink2); font: inherit; font-size: 12.5px; }
         .dy-lt-item:hover .dy-lt-body, .dy-lt-item:focus-visible .dy-lt-body { color: var(--ink); text-decoration: underline; }
-        .dy-lt-item .mono { font-size: 11.5px; color: var(--ink3); flex: 0 0 auto; }
+        /* The entry cards' fold, in their chevron. */
+        .dy-lt-more { display: inline-flex; align-items: center; gap: 6px; margin: 8px 0 0; padding: 2px 0;
+                      background: none; border: 0; font: inherit; font-size: 12px; color: var(--ink3); cursor: pointer; }
+        .dy-lt-more:hover, .dy-lt-more:focus-visible { color: var(--ink); }
+        .dy-lt-more[data-static] { cursor: default; }
+        .dy-lt-more[data-static]:hover { color: var(--ink3); }
+        .dy-lt-more .dy-chev { display: inline-flex; }
+        .dy-lt-more[aria-expanded="true"] .dy-chev svg { transform: rotate(180deg); }
         .dy-lt-feel { color: var(--brass); flex: 0 0 auto; }
         .dy-lt-body { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
         .dy-lt-none { margin: 8px 0 0; font-size: 12.5px; color: var(--ink3); }
