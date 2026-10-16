@@ -333,9 +333,29 @@ select.in { font-family: 'Archivo', sans-serif; }
 .entry .body { white-space: pre-wrap; font-size: 14px; line-height: 1.65; margin: 10px 0 0;
                max-width: 88ch; }
 .entry img { max-width: 100%; border: 1px solid var(--rule); border-radius: 2px; margin-top: 12px; display: block; }
-/* The chart is a button so it can be opened full size. Stripped back to
-   nothing so it still reads as an image, not a control. */
-.dy-shot { display: block; width: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; }
+/* ---- The diary list, readable at a year's scale --------------------- */
+.dy-find { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.dy-q { position: relative; flex: 1 1 280px; display: flex; align-items: center; }
+.dy-q svg { position: absolute; left: 10px; color: var(--ink3); pointer-events: none; }
+.dy-q .in { width: 100%; padding-left: 30px; }
+.dy-sel { flex: 0 0 auto; width: auto; }
+.dy-count { font-size: 12px; color: var(--ink3); white-space: nowrap; }
+.dy-none { font-size: 13px; color: var(--ink3); padding: 18px 2px; }
+/* The whole entry opens and closes; the cursor says so. */
+.dy-entry { cursor: pointer; }
+.dy-chev svg { transition: transform 0.15s; }
+.dy-entry[data-open="1"] .dy-chev svg { transform: rotate(180deg); }
+/* What the entry is on the left — it keeps the note's 88ch measure — and its
+   chart and controls on the right, all on one row. */
+.dy-row { display: flex; gap: 16px; align-items: flex-start; }
+.dy-text { flex: 1 1 auto; min-width: 0; }
+.dy-entry[data-open="0"] .dy-body {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+}
+.dy-thumb { flex: 0 0 auto; padding: 0; border: 0; background: none; cursor: zoom-in; }
+.dy-thumb img { width: 168px; height: 96px; object-fit: cover; object-position: left top;
+                margin: 0; border: 1px solid var(--rule); border-radius: 2px; display: block; }
+@media (prefers-reduced-motion: reduce) { .dy-chev svg { transition: none; } }
 
 /* ------------------------------------------------------------------ */
 /*  The marketing page at /                                            */

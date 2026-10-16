@@ -637,6 +637,46 @@ export const LOSING_RUN_ALERT = 7;
  * losing days are counted. That is the shortest run any ordering of the ties
  * could produce, which means the alert can never fire on a tiebreak.
  */
+/**
+ * Every losing run in the book, oldest first — by the same rule as losingRun
+ * below: counted by entry day, a day where anything won ends the run, money
+ * standing in where a trade has no R. The newest run is the one losingRun
+ * reports when it is still going; a probe pins that the two agree, so the
+ * diary's "last time" and the Process card can never count a run two ways.
+ *
+ * Each run: { n, from, to, endedBy } — its first and last entry day, and the
+ * winning entry that ended it ({ symbol, date, r }), null while it continues.
+ */
+export function losingRuns(closed = []) {
+  const entryDay = (t) => (t?.entry_date ? String(t.entry_date).slice(0, 10) : "");
+  const outcome = (t) => (Number.isFinite(t?.r) ? t.r : num(t?.pnl));
+  const byDay = new Map();
+  for (const t of closed) {
+    const d = entryDay(t);
+    if (!d || !Number.isFinite(outcome(t))) continue;
+    if (!byDay.has(d)) byDay.set(d, []);
+    byDay.get(d).push(t);
+  }
+  const days = [...byDay.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
+
+  const runs = [];
+  let cur = null;
+  for (const [d, ts] of days) {
+    const win = ts.filter((t) => outcome(t) > 0)
+      .sort((a, b) => outcome(b) - outcome(a))[0];
+    if (win) {
+      if (cur) { cur.endedBy = { symbol: win.symbol, date: d, r: Number.isFinite(win.r) ? win.r : null }; runs.push(cur); }
+      cur = null;
+      continue;
+    }
+    if (!cur) cur = { n: 0, from: d, to: d, endedBy: null };
+    cur.n += ts.length;
+    cur.to = d;
+  }
+  if (cur) runs.push(cur);
+  return runs;
+}
+
 export function losingRun(closed = []) {
   const entryDay = (t) => (t?.entry_date ? String(t.entry_date).slice(0, 10) : "");
   /* R where there is one, money where there is not — a trade with no stop

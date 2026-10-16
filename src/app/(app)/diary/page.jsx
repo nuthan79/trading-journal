@@ -4,11 +4,14 @@ import Diary from "@/components/journal/Diary";
 import { useJournal } from "../JournalContext";
 
 export default function DiaryPage() {
-  const { diary, all, saveDiaryEntry, removeDiaryEntry, removeChartFromEntry, say } = useJournal();
+  const { diary, all, closed, saveDiaryEntry, removeDiaryEntry, removeChartFromEntry, say } = useJournal();
   return (
     <Diary
       diary={diary}
       trades={all}
+      /* For "last time": the losing run is counted on finished trades, as
+         the Process tab's losing-run card counts it. */
+      closed={closed}
       onSave={saveDiaryEntry}
       onDelete={removeDiaryEntry}
       // Removing the CHART is not removing the entry — an entry carrying a

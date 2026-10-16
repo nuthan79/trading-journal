@@ -1,13 +1,21 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Plus, X, Trash2, Link2, Check, Pencil } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Plus, X, Trash2, Link2, Check, Pencil, Search, ChevronDown } from "lucide-react";
 import { chartUrl } from "@/lib/db";
 import ChartViewer from "./ChartViewer";
 import { resolveTradingViewChart } from "@/lib/charts";
 import { rfmt, dmy, today } from "@/lib/format";
 import { EMOTIONS } from "@/lib/constants";
 import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
+import { filterDiary, monthsOf, emotionsOf, monthLabel, fullDate } from "@/lib/diaryList";
+import { lastTime } from "@/lib/diaryLastTime";
+import { dayIndex, dayFacts } from "@/lib/diaryDay";
+import { yearMap, cellTone } from "@/lib/diaryYear";
+import { useRegimeHistory } from "@/lib/useRegimeHistory";
+import { regimeIndex, REGIME_LABEL, REGIME_LABEL_FOR } from "@/lib/market";
+import { level } from "@/components/MarketStrip";
+import Money from "@/components/Money";
 
 /**
  * ENTRIES ARE EDITABLE, AND SAY SO.
@@ -108,7 +116,7 @@ function editedOn(ts) {
   return dmy(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`);
 }
 
-export default function Diary({ diary, trades, onSave, onDelete, onRemoveChart, say }) {
+export default function Diary({ diary, trades, closed = [], onSave, onDelete, onRemoveChart, say }) {
   const [draft, setDraft] = useState(null);
   /**
    * Which chart the viewer is on, as an index into `shots` below.
@@ -121,6 +129,87 @@ export default function Diary({ diary, trades, onSave, onDelete, onRemoveChart, 
   const [urls, setUrls] = useState({});
   const [saving, setSaving] = useState(false);
   const restoredRef = useRef(false);
+
+  /*
+   * READABLE AT A YEAR'S SCALE. Every entry rendered in full with its chart at
+   * full width was fine at three and unreadable at a hundred. So an entry is
+   * collapsed to what identifies it — the day, the feelings, the trade, two
+   * lines of the note, a thumbnail — and opens in place; and the list can be
+   * searched and filtered by feeling and month.
+   */
+  const [q, setQ] = useState("");
+  const [emotion, setEmotion] = useState("");
+  const [month, setMonth] = useState("");
+  const [open, setOpen] = useState(() => new Set());
+  const toggleOpen = (id) => setOpen((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const shown = filterDiary(diary || [], { q, emotion, month });
+
+  /*
+   * THE DAY STRIP — what each entry's day actually was, beside what was
+   * written about it: the regime index's close, move and regime, what was
+   * held, bought, closed and banked. Built from data already here (see
+   * lib/diaryDay.js); the index history is the one the Process tab loads,
+   * through the same hook and the same session cache.
+   */
+  const regime = useRegimeHistory(diary.length > 0);
+  const regimes = useMemo(
+    () => (regime.classified.length ? regimeIndex(regime.classified) : null),
+    [regime.classified],
+  );
+  const days = useMemo(() => dayIndex(trades || []), [trades]);
+
+  /*
+   * THE YEAR MAP. A year of trading days above the list — the index's own
+   * calendar when it has loaded, weekdays until then — coloured by what each
+   * day realised, marked where something was written. See lib/diaryYear.js.
+   */
+  const year = useMemo(() => yearMap({
+    today: today(),
+    tradingDays: regimes ? new Set(regimes.dates) : null,
+    idx: days,
+    entries: diary || [],
+  }), [regimes, days, diary]);
+
+  /* A day on the map opens its entry: filters cleared so it is in the list,
+     opened, and scrolled to — clear of the sticky header.
+
+     SCROLLED AFTER THE RENDER, NOT DURING IT, AND NOT SMOOTHLY. A smooth
+     scroll started in the same tick as the entry opening, across a year of
+     entries whose thumbnails are still loading, stopped where the target WAS
+     — on a real book, at July for a December entry. So the jump waits for
+     the list to render with the entry open, lands instantly, and corrects
+     once more after images have had a moment to take their height. */
+  const [jump, setJump] = useState(null);
+  const openEntry = (id) => {
+    if (!id) return;
+    setQ(""); setEmotion(""); setMonth("");
+    setOpen((prev) => new Set(prev).add(id));
+    setJump(id);
+  };
+  const jumpTo = (cell) => openEntry(cell.entries[0]?.id);
+
+  /*
+   * LAST TIME — the reason the diary is kept. On a losing run, what was
+   * written during the last run like it, and how that one ended. One rule,
+   * counted the way the Process tab's losing-run card counts it; see
+   * lib/diaryLastTime.js.
+   */
+  const recall = useMemo(() => lastTime(closed || [], diary || []), [closed, diary]);
+  useEffect(() => {
+    if (!jump) return undefined;
+    const go = () => document.getElementById(`dy-${jump}`)?.scrollIntoView({ block: "start" });
+    const el = document.getElementById(`dy-${jump}`);
+    go();
+    el?.classList.add("dy-hit");
+    const again = setTimeout(go, 400);
+    const unmark = setTimeout(() => { el?.classList.remove("dy-hit"); setJump(null); }, 1600);
+    return () => { clearTimeout(again); clearTimeout(unmark); };
+  }, [jump]);
+  const filtering = !!(q.trim() || emotion || month);
 
   useEffect(() => {
     diary.forEach((e) => {
@@ -174,7 +263,9 @@ export default function Diary({ diary, trades, onSave, onDelete, onRemoveChart, 
    * a chart somebody kept, and pretending otherwise would be inventing a link
    * that is not in the data.
    */
-  const shots = (diary || [])
+  /* Over what is SHOWN: paging the viewer walks the list as filtered, so a
+     search for one stock pages through that stock's charts, not every one. */
+  const shots = shown
     .filter((e) => e.image_path && urls[e.id])
     .map((e) => {
       const t = trades.find((x) => x.id === e.trade_id);
@@ -388,7 +479,45 @@ export default function Diary({ diary, trades, onSave, onDelete, onRemoveChart, 
           <button className="btn" onClick={() => setDraft(newDraft())}><Plus size={14} />Write the first entry</button>
         </div>
       ) : (
-        diary.map((e) => {
+        <>
+        {recall && <LastTime recall={recall} open={openEntry} />}
+
+        <YearMap year={year} jump={jumpTo} />
+
+        {/* Find an entry. Only feelings and months that occur are offered, so
+            no choice in either menu filters to nothing. */}
+        <div className="dy-find">
+          <label className="dy-q">
+            <Search size={13} />
+            <input className="in" placeholder="Search what you wrote" value={q}
+                   onChange={(ev) => setQ(ev.target.value)} aria-label="Search the diary" />
+          </label>
+          <select className="in dy-sel" value={emotion} onChange={(ev) => setEmotion(ev.target.value)}
+                  aria-label="Filter by feeling">
+            <option value="">Every feeling</option>
+            {emotionsOf(diary || [], EMOTIONS).map((x) => <option key={x} value={x}>{x}</option>)}
+          </select>
+          <select className="in dy-sel" value={month} onChange={(ev) => setMonth(ev.target.value)}
+                  aria-label="Filter by month">
+            <option value="">Every month</option>
+            {monthsOf(diary || []).map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
+          </select>
+          <span className="dy-count">
+            {/* "1 of 44 entries" — the noun goes with the total, not the match. */}
+            {filtering ? `${shown.length} of ` : ""}{diary.length} entr{diary.length === 1 ? "y" : "ies"}
+          </span>
+          {filtering && (
+            <button className="btn ghost sm" onClick={() => { setQ(""); setEmotion(""); setMonth(""); }}>
+              <X size={12} />Clear
+            </button>
+          )}
+        </div>
+
+        {filtering && shown.length === 0 && (
+          <div className="dy-none">Nothing written matches that — try fewer words, or another month.</div>
+        )}
+
+        {shown.map((e) => {
           const t = trades.find((x) => x.id === e.trade_id);
           const edited = editedOn(e.updated_at);
           // The copy underneath the form it is loaded into. Left in place
@@ -396,10 +525,24 @@ export default function Diary({ diary, trades, onSave, onDelete, onRemoveChart, 
           // but dimmed, so two versions of the same note on one screen can be
           // told apart at a glance.
           const isEditing = draft?.id === e.id;
+          const expanded = open.has(e.id);
+          /* A click anywhere on the entry that is not a control opens or
+             closes it. The keyboard's way in is the chevron button — the
+             entry is not itself a button, since it holds three real ones
+             and a screen reader could not tell them apart. */
+          const onEntry = (ev) => {
+            if (ev.target.closest("button, a, input, select, textarea")) return;
+            toggleOpen(e.id);
+          };
           return (
-            <div key={e.id} className="entry" style={isEditing ? { opacity: 0.45 } : undefined}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-                <div>
+            <div key={e.id} id={`dy-${e.id}`} className="entry dy-entry" data-open={expanded ? 1 : 0}
+                 style={isEditing ? { opacity: 0.45 } : undefined}
+                 onClick={onEntry}>
+              {/* One row: what the entry is on the left, its chart and the
+                  controls on the right. A chart-only entry is then a single
+                  compact line instead of a thumbnail under an empty left half. */}
+              <div className="dy-row">
+                <div className="dy-text">
                   <div className="mono" style={{ fontSize: 12, color: "var(--ink2)" }}>{e.entry_date}</div>
                   {t && (
                     <div style={{ fontSize: 11, color: "var(--brass)", marginTop: 3 }}>
@@ -409,9 +552,32 @@ export default function Diary({ diary, trades, onSave, onDelete, onRemoveChart, 
                   {edited && (
                     <div style={{ fontSize: 11, color: "var(--ink3)", marginTop: 3 }}>edited {edited}</div>
                   )}
+                  {(e.emotions || []).length > 0 && (
+                    <div className="chips" style={{ marginTop: 9 }}>
+                      {e.emotions.map((x) => <span key={x} className="chip">{x}</span>)}
+                    </div>
+                  )}
+                  <DayStrip facts={dayFacts(e.entry_date, days, regimes)}
+                            indexLabel={REGIME_LABEL_FOR[regime.indexName] || regime.indexName} />
+                  {/* Two lines while collapsed, the whole note when open. */}
+                  {e.body && <p className="body dy-body">{e.body}</p>}
                 </div>
+                {/* The chart stays a thumbnail open or shut — full size is
+                    the viewer's job. */}
+                {e.image_path && urls[e.id] && (
+                  <button className="dy-thumb" title="Open the chart full size"
+                          onClick={() => setZoom(shots.findIndex((x) => x.id === e.id))}>
+                    <img src={urls[e.id]} alt="Chart from this entry" />
+                  </button>
+                )}
                 {!isEditing && (
-                  <div style={{ display: "flex", gap: 2, flex: "none" }}>
+                  <div style={{ display: "flex", gap: 2, flex: "none", alignItems: "center" }}>
+                    <button className="x dy-chev" onClick={() => toggleOpen(e.id)}
+                            aria-expanded={expanded}
+                            aria-label={expanded ? "Show less of this entry" : "Show all of this entry"}
+                            title={expanded ? "Show less" : "Show all"}>
+                      <ChevronDown size={13} />
+                    </button>
                     <button className="x" onClick={() => startEdit(e)} aria-label="Edit entry"
                             title="Edit this entry">
                       <Pencil size={13} />
@@ -423,22 +589,217 @@ export default function Diary({ diary, trades, onSave, onDelete, onRemoveChart, 
                   </div>
                 )}
               </div>
-              {(e.emotions || []).length > 0 && (
-                <div className="chips" style={{ marginTop: 9 }}>
-                  {e.emotions.map((x) => <span key={x} className="chip">{x}</span>)}
-                </div>
-              )}
-              {e.body && <p className="body">{e.body}</p>}
-              {e.image_path && urls[e.id] && (
-                <button className="dy-shot" title="Open full size"
-                        onClick={() => setZoom(shots.findIndex((x) => x.id === e.id))}>
-                  <img src={urls[e.id]} alt="Chart from this entry" />
-                </button>
-              )}
             </div>
           );
-        })
+        })}
+        </>
       )}
+    </div>
+  );
+}
+
+const REGIME_TONE = { uptrend: "var(--long)", pressure: "var(--brass)", correction: "var(--short)" };
+const signed = (v, dp = 2) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(dp)}`;
+const tone = (v) => (v > 0 ? "pos" : v < 0 ? "neg" : "");
+
+/**
+ * One quiet line of what the day was. Parts that do not apply are absent —
+ * see lib/diaryDay.js — so a Saturday shows no index and a flat day no "0".
+ * Rendered by a child, so its styles are global under the dy-day prefix.
+ */
+function DayStrip({ facts, indexLabel }) {
+  const parts = [];
+  if (facts.index) {
+    const x = facts.index;
+    parts.push(
+      <span key="ix">
+        {x.regime && <span className="dy-day-dot" style={{ background: REGIME_TONE[x.regime] }}
+                           title={REGIME_LABEL[x.regime]} />}
+        {indexLabel} {level(x.close)}
+        {x.movePct != null && <> <span className={tone(x.movePct)}>{signed(x.movePct)}%</span></>}
+        {x.regime && <> · {REGIME_LABEL[x.regime]}</>}
+      </span>
+    );
+  }
+  if (facts.open) parts.push(<span key="op">{facts.open} open</span>);
+  if (facts.entered) {
+    const shown = facts.entered.slice(0, 3).join(", ");
+    parts.push(<span key="in">bought {shown}{facts.entered.length > 3 ? ` +${facts.entered.length - 3}` : ""}</span>);
+  }
+  if (facts.closed) {
+    parts.push(
+      <span key="out">
+        closed {facts.closed.slice(0, 3).map((c, i) => (
+          <span key={i}>{i ? ", " : ""}{c.symbol}
+            {c.r != null && <> <span className={tone(c.r)}>{signed(c.r)}R</span></>}</span>
+        ))}{facts.closed.length > 3 ? ` +${facts.closed.length - 3}` : ""}
+      </span>
+    );
+  }
+  if (facts.banked != null) {
+    parts.push(<span key="bk">realised <span className={tone(facts.banked)}><Money v={facts.banked} /></span></span>);
+  }
+  if (!parts.length) return null;
+  return (
+    <div className="dy-day">
+      {parts.map((p, i) => <span key={i} className="dy-day-part">{i > 0 && <span className="dy-day-sep">·</span>}{p}</span>)}
+      <style jsx global>{`
+        .dy-day { margin-top: 7px; font-size: 11.5px; color: var(--ink3); line-height: 1.6;
+                  display: flex; flex-wrap: wrap; column-gap: 0; font-variant-numeric: tabular-nums; }
+        .dy-day-part { white-space: nowrap; }
+        .dy-day-sep { margin: 0 7px; color: var(--rule); }
+        .dy-day-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+                      margin-right: 5px; vertical-align: 1px; }
+        .dy-day .pos { color: var(--long); }
+        .dy-day .neg { color: var(--short); }
+      `}</style>
+    </div>
+  );
+}
+
+/**
+ * The year at a glance: a column per week, Monday to Friday, a cell per day
+ * the market was open. Rendered by a child, so global styles under dy-ym.
+ */
+function YearMap({ year, jump }) {
+  const { cols, months, stats } = year;
+  if (!cols.length) return null;
+  const tip = (c) => {
+    const bits = [dmy(c.date)];
+    if (c.r != null) bits.push(`${c.r > 0 ? "+" : c.r < 0 ? "−" : ""}${Math.abs(c.r).toFixed(2)}R realised`);
+    else if (c.traded) bits.push("traded, nothing sold");
+    else bits.push("no trades");
+    if (c.entries.length) {
+      const off = c.entries.find((x) => x.written !== c.date);
+      bits.push(off ? `entry written ${dmy(off.written)} — click to open` : "entry — click to open");
+    } else if (c.traded) bits.push("nothing written");
+    return bits.join(" · ");
+  };
+  return (
+    <div className="dy-ym">
+      <div className="dy-ym-months" style={{ gridTemplateColumns: `repeat(${cols.length}, 1fr)` }}>
+        {months.map((m) => (
+          <span key={m.ym} style={{ gridColumn: `${m.col + 1} / span 4` }}>{monthLabel(m.ym).slice(0, 3)}</span>
+        ))}
+      </div>
+      <div className="dy-ym-grid" style={{ gridTemplateColumns: `repeat(${cols.length}, 1fr)` }}>
+        {cols.map((col, ci) => col.map((c, ri) => {
+          if (!c) return <span key={`${ci}-${ri}`} className="dy-ym-gap" style={{ gridColumn: ci + 1, gridRow: ri + 1 }} />;
+          const t = cellTone(c);
+          const bg = t.kind === "gain" ? `color-mix(in srgb, var(--long) ${Math.round(25 + t.strength * 75)}%, transparent)`
+            : t.kind === "loss" ? `color-mix(in srgb, var(--short) ${Math.round(25 + t.strength * 75)}%, transparent)`
+            : t.kind === "traded" ? "var(--grid)" : undefined;
+          const Tag = c.entries.length ? "button" : "span";
+          return (
+            <Tag key={c.date} className="dy-ym-cell" data-kind={t.kind} data-note={c.entries.length ? 1 : 0}
+                 style={{ gridColumn: ci + 1, gridRow: ri + 1, background: bg }}
+                 title={tip(c)} onClick={c.entries.length ? () => jump(c) : undefined}
+                 aria-label={c.entries.length ? tip(c) : undefined} />
+          );
+        }))}
+      </div>
+      <div className="dy-ym-foot">
+        <span><i className="dy-ym-key" style={{ background: "color-mix(in srgb, var(--short) 75%, transparent)" }} />loss</span>
+        <span><i className="dy-ym-key" style={{ background: "var(--grid)" }} />traded, nothing sold</span>
+        <span><i className="dy-ym-key" style={{ background: "color-mix(in srgb, var(--long) 75%, transparent)" }} />gain</span>
+        <span><i className="dy-ym-key dy-ym-key-note" />entry written</span>
+        <span className="dy-ym-stat">
+          {stats.traded} day{stats.traded === 1 ? "" : "s"} traded this year · {stats.written} with an entry
+          {stats.tradedUnwritten > 0 && <> · <b>{stats.tradedUnwritten} traded and nothing written</b></>}
+        </span>
+      </div>
+      <style jsx global>{`
+        .dy-ym { margin: 4px 0 16px; padding: 14px 16px 12px; background: var(--card);
+                 border: 1px solid var(--rule); border-radius: 3px; }
+        .dy-ym-months, .dy-ym-grid { display: grid; column-gap: 3px; }
+        .dy-ym-months { font-size: 10px; color: var(--ink3); margin-bottom: 4px; }
+        .dy-ym-months span { white-space: nowrap; }
+        .dy-ym-grid { grid-template-rows: repeat(5, auto); row-gap: 3px; }
+        .dy-ym-cell, .dy-ym-gap { display: block; aspect-ratio: 1; border-radius: 2px; min-width: 0; }
+        .dy-ym-cell { border: 1px solid var(--rule); padding: 0; background: transparent; position: relative; }
+        .dy-ym-cell[data-kind="gain"], .dy-ym-cell[data-kind="loss"] { border-color: transparent; }
+        button.dy-ym-cell { cursor: pointer; }
+        /* The entry mark: a dot in the cell, dark enough to read on any shade. */
+        .dy-ym-cell[data-note="1"]::after {
+          content: ""; position: absolute; inset: 0; margin: auto; width: 34%; height: 34%;
+          border-radius: 50%; background: var(--ink);
+        }
+        button.dy-ym-cell:hover, button.dy-ym-cell:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+        .dy-ym-foot { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center;
+                      margin-top: 10px; font-size: 11px; color: var(--ink3); }
+        .dy-ym-key { display: inline-block; width: 10px; height: 10px; border-radius: 2px;
+                     margin-right: 5px; vertical-align: -1px; border: 1px solid var(--rule); }
+        .dy-ym-key-note { position: relative; background: transparent; }
+        .dy-ym-key-note::after { content: ""; position: absolute; inset: 0; margin: auto;
+                                 width: 4px; height: 4px; border-radius: 50%; background: var(--ink); }
+        .dy-ym-stat { margin-left: auto; }
+        .dy-ym-stat b { color: var(--ink2); font-weight: 600; }
+        /* The entry a day was clicked through to, for a moment. */
+        .dy-entry.dy-hit { outline: 2px solid var(--brass); outline-offset: 2px; transition: outline-color 0.6s; }
+        .dy-entry { scroll-margin-top: 215px; }
+      `}</style>
+    </div>
+  );
+}
+
+/**
+ * "Last time": the run you are on, the last one like it, and what you wrote
+ * while it lasted. A child, so its styles are global under dy-lt.
+ */
+function LastTime({ recall, open }) {
+  const { now, then, match, entries } = recall;
+  const R = (r) => `${r > 0 ? "+" : r < 0 ? "−" : ""}${Math.abs(r).toFixed(2)}R`;
+  return (
+    <div className="dy-lt">
+      <div className="eyebrow">Last time</div>
+      <p className="dy-lt-now">
+        You&rsquo;re on a run of <b>{now.n} losing entries</b>, since {fullDate(now.from)}.
+        {then ? (
+          <>{match === "longest"
+              ? <> Nothing earlier ran this long — the longest before this was <b>{then.n} in a row</b></>
+              : <> The last run like it was <b>{then.n} in a row</b></>}, {fullDate(then.from)} to {fullDate(then.to)}
+            {then.endedBy && (
+              <>, ended by {then.endedBy.symbol} on {fullDate(then.endedBy.date)}
+                {then.endedBy.r != null && <> (<span className="pos">{R(then.endedBy.r)}</span>)</>}</>
+            )}.</>
+        ) : (
+          <> Nothing earlier in the book ran this long, so there is no run to look back at.</>
+        )}
+      </p>
+      {then && (entries.length ? (
+        <>
+          <div className="dy-lt-h">What you wrote while it lasted</div>
+          <ul className="dy-lt-list">
+            {entries.map((e) => (
+              <li key={e.id}>
+                <button className="dy-lt-item" onClick={() => open(e.id)}
+                        title="Open this entry in the list below">
+                  <span className="mono">{e.entry_date}</span>
+                  {(e.emotions || []).length > 0 && <span className="dy-lt-feel">{e.emotions.join(", ")}</span>}
+                  <span className="dy-lt-body">{(e.body || "").trim().split("\n")[0] || "a chart, no words"}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : (
+        <p className="dy-lt-none">You wrote nothing while it lasted.</p>
+      ))}
+      <style jsx global>{`
+        .dy-lt { margin: 4px 0 14px; padding: 14px 16px; background: var(--card);
+                 border: 1px solid var(--brass); border-left-width: 3px; border-radius: 3px; }
+        .dy-lt-now { margin: 6px 0 0; font-size: 13px; color: var(--ink); line-height: 1.6; max-width: var(--note-w); }
+        .dy-lt-now .pos { color: var(--long); }
+        .dy-lt-h { margin-top: 10px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink3); }
+        .dy-lt-list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
+        .dy-lt-item { display: flex; gap: 10px; align-items: baseline; width: 100%; text-align: left;
+                      background: none; border: 0; padding: 4px 0; cursor: pointer; color: var(--ink2); font: inherit; font-size: 12.5px; }
+        .dy-lt-item:hover .dy-lt-body, .dy-lt-item:focus-visible .dy-lt-body { color: var(--ink); text-decoration: underline; }
+        .dy-lt-item .mono { font-size: 11.5px; color: var(--ink3); flex: 0 0 auto; }
+        .dy-lt-feel { color: var(--brass); flex: 0 0 auto; }
+        .dy-lt-body { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+        .dy-lt-none { margin: 8px 0 0; font-size: 12.5px; color: var(--ink3); }
+      `}</style>
     </div>
   );
 }
