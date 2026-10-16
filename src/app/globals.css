@@ -198,6 +198,22 @@ a.btn { text-decoration: none; }
 :root { --app-w: 1440px; }
 
 /**
+ * How much of the top of the window is already occupied by something
+ * sticky, so anything scrolled to can clear it.
+ *
+ * One variable because two separate rules have to agree about it: the
+ * find bar sticks BELOW the topbar, and an entry scrolled to has to
+ * clear both. Written as two parts rather than one total so that
+ * changing the topbar does not require re-deriving the other number.
+ *
+ * --topbar-h is overwritten with the topbar's measured height by the app
+ * layout (it wraps, so its height depends on the window); 215px is only
+ * the value before that runs. --dy-find-h is the diary's find bar, one
+ * row tall wherever it sticks — see the 860px rule below.
+ */
+:root { --topbar-h: 215px; --dy-find-h: 59px; }
+
+/**
  * The measure for the explanatory note under a chart.
  *
  * One variable because these notes sit under different components that each
@@ -334,7 +350,25 @@ select.in { font-family: 'Archivo', sans-serif; }
                max-width: 88ch; }
 .entry img { max-width: 100%; border: 1px solid var(--rule); border-radius: 2px; margin-top: 12px; display: block; }
 /* ---- The diary list, readable at a year's scale --------------------- */
-.dy-find { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.dy-find { display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  /* Stays under the topbar, so the search, the filters and the way back to
+     the map travel with you down a year of entries. */
+  position: sticky; top: var(--topbar-h);
+  /* Under .topbar's 20, over the entries it scrolls across. */
+  z-index: 15;
+  background: var(--paper);
+  border-bottom: 1px solid var(--rule);
+  /* The negative inline margin takes the background and the rule to the
+     edges of .jwrap's padding instead of leaving them in a 20px gutter. */
+  margin: 0 -20px 12px; padding: 10px 20px; }
+/* Narrow, the bar wraps to two rows and --dy-find-h would be a lie that
+   pushes entries under it — so there it does not stick. */
+@media (max-width: 860px) { .dy-find { position: static; margin: 0 0 12px;
+                                       padding: 0; border-bottom: 0; } }
+/* Both clear the topbar AND the find bar: what is scrolled to lands below
+   everything sticky, read off the variables rather than a typed total. */
+.dy-entry { scroll-margin-top: calc(var(--topbar-h) + var(--dy-find-h)); }
+#dy-year  { scroll-margin-top: calc(var(--topbar-h) + var(--dy-find-h) + 8px); }
 .dy-q { position: relative; flex: 1 1 280px; display: flex; align-items: center; }
 .dy-q svg { position: absolute; left: 10px; color: var(--ink3); pointer-events: none; }
 .dy-q .in { width: 100%; padding-left: 30px; }

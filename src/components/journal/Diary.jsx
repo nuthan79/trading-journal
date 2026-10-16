@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Plus, X, Trash2, Link2, Check, Pencil, Search, ChevronDown } from "lucide-react";
+import { Plus, X, Trash2, Link2, Check, Pencil, Search, ChevronDown, Calendar } from "lucide-react";
 import { chartUrl } from "@/lib/db";
 import ChartViewer from "./ChartViewer";
 import { resolveTradingViewChart } from "@/lib/charts";
@@ -11,7 +11,7 @@ import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
 import { filterDiary, monthsOf, emotionsOf, monthLabel, fullDate } from "@/lib/diaryList";
 import { lastTime, recallList, moreLabel } from "@/lib/diaryLastTime";
 import { dayIndex, dayFacts } from "@/lib/diaryDay";
-import { yearMap, cellTone } from "@/lib/diaryYear";
+import { yearMap, cellTone, cellOn, hashDate } from "@/lib/diaryYear";
 import { useRegimeHistory } from "@/lib/useRegimeHistory";
 import { regimeIndex, REGIME_LABEL, REGIME_LABEL_FOR } from "@/lib/market";
 import { level } from "@/components/MarketStrip";
@@ -193,9 +193,17 @@ export default function Diary({ diary, trades, closed = [], onSave, onDelete, on
   /* Every past day on the map does the obvious thing for that day: opens
      what was written on it, or starts an entry dated it. The footer counts
      the days traded with nothing written; a click is how one stops counting. */
-  const jumpTo = (cell) =>
-    cell.entries.length ? openEntry(cell.entries[0].id)
-                        : writeOn(cell.date);
+  /* …and a day picked is a URL. The hash is set here and not in openEntry,
+     which the "Last time" card's links also call and which should not
+     rewrite the address. Back then pops the day and the browser restores
+     the scroll it left; /diary#d-2026-08-14 is a link a trade note can hold. */
+  const appliedHash = useRef(null);
+  const jumpTo = (cell) => {
+    appliedHash.current = cell.date;
+    if (typeof window !== "undefined") window.location.hash = `d-${cell.date}`;
+    return cell.entries.length ? openEntry(cell.entries[0].id)
+                               : writeOn(cell.date);
+  };
 
   /*
    * LAST TIME — the reason the diary is kept. On a losing run, what was
@@ -204,6 +212,23 @@ export default function Diary({ diary, trades, closed = [], onSave, onDelete, on
    * lib/diaryLastTime.js.
    */
   const recall = useMemo(() => lastTime(closed || [], diary || []), [closed, diary]);
+
+  /* The hash, on first paint and on every later change, resolved through
+     the map (cellOn) so a weekend's entry finds the session it was rolled
+     onto. An empty hash is a no-op, not a reset — that is a Back press, and
+     the browser is already restoring the scroll. The ref skips the hash
+     jumpTo has just set, which it has already acted on. */
+  useEffect(() => {
+    const apply = () => {
+      const d = hashDate(window.location.hash);
+      if (!d || d === appliedHash.current) return;
+      const c = cellOn(year, d);
+      if (c) jumpTo(c);
+    };
+    apply();
+    window.addEventListener("hashchange", apply);
+    return () => window.removeEventListener("hashchange", apply);
+  }, [year]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!jump) return undefined;
     const go = () => document.getElementById(`dy-${jump}`)?.scrollIntoView({ block: "start" });
@@ -530,6 +555,13 @@ export default function Diary({ diary, trades, closed = [], onSave, onDelete, on
             {/* "1 of 44 entries" — the noun goes with the total, not the match. */}
             {filtering ? `${shown.length} of ` : ""}{diary.length} entr{diary.length === 1 ? "y" : "ies"}
           </span>
+          {/* The way back to the map, travelling with the bar. Always there:
+              a scroll listener to hide one small button is more moving parts
+              than the button is worth. */}
+          <button className="btn ghost sm"
+                  onClick={() => document.getElementById("dy-year")?.scrollIntoView({ block: "start" })}>
+            <Calendar size={12} />Calendar
+          </button>
           {filtering && (
             <button className="btn ghost sm" onClick={() => { setQ(""); setEmotion(""); setMonth(""); }}>
               <X size={12} />Clear
@@ -701,7 +733,7 @@ function YearMap({ year, jump }) {
     return bits.join(" · ");
   };
   return (
-    <div className="dy-ym">
+    <div className="dy-ym" id="dy-year">
       <div className="dy-ym-months" style={{ gridTemplateColumns: `repeat(${cols.length}, 1fr)` }}>
         {months.map((m) => (
           <span key={m.ym} style={{ gridColumn: `${m.col + 1} / span 4` }}>{monthLabel(m.ym).slice(0, 3)}</span>
@@ -763,7 +795,6 @@ function YearMap({ year, jump }) {
         .dy-ym-stat b { color: var(--ink2); font-weight: 600; }
         /* The entry a day was clicked through to, for a moment. */
         .dy-entry.dy-hit { outline: 2px solid var(--brass); outline-offset: 2px; transition: outline-color 0.6s; }
-        .dy-entry { scroll-margin-top: 215px; }
       `}</style>
     </div>
   );

@@ -1029,6 +1029,26 @@ export default function AppLayout({ children }) {
     }
   }, [loading, say]);
 
+  /**
+   * --topbar-h is MEASURED, not typed. The topbar wraps — the account name,
+   * the ticker, the tabs — and is 151px on a laptop-width window and about
+   * 212px at 800px. Anything that sticks below it or scrolls clear of it
+   * reads the variable, so one fixed number is wrong at every width but one:
+   * a find bar stuck at 215px floats 64px under a 151px topbar with entries
+   * scrolling through the gap. globals.css keeps 215px as the value before
+   * this first runs. A ref callback, because the topbar mounts only after
+   * the gates below; React 19 runs the returned cleanup when it unmounts.
+   */
+  const measureTopbar = useCallback((el) => {
+    if (!el || typeof ResizeObserver === "undefined") return undefined;
+    const set = () => document.documentElement.style.setProperty(
+      "--topbar-h", `${Math.ceil(el.getBoundingClientRect().height)}px`);
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   // ---- gate states (no topbar/tabs — user isn't in the app yet) ---------
   if (!booted) {
     return <div className="wrap"><div className="eyebrow">Starting up</div></div>;
@@ -1109,7 +1129,7 @@ export default function AppLayout({ children }) {
       }}
     >
       <div>
-        <div className="topbar">
+        <div className="topbar" ref={measureTopbar}>
           <div className="topin">
             {/* minWidth 0: without it a flex item is never narrower than its
                 content, and a long journal name pushes the buttons down. */}

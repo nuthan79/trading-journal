@@ -51,7 +51,7 @@ test("the strip sits between the header and the nav, for the open book", () => {
   /* End to end: its own row in the bar, outside the header's two columns —
      the first version ran only in the gap beside the buttons. */
   const strip2 = layout.indexOf("<MarketStrip book={bookRegion} />");
-  const header = layout.slice(layout.indexOf('<div className="topbar">'), strip2);
+  const header = layout.slice(layout.indexOf('<div className="topbar"'), strip2);
   ok(/AccountMenu[\s\S]*<\/div>\s*<\/div>\s*\{\/\*[\s\S]*\*\/\}\s*$/.test(header),
      "after the header row has closed, so it runs the full width");
   ok(/<MarketStrip book=\{bookRegion\} \/>\s*<div className="topin topin-tabs">/.test(layout), "and the tabs follow on their own row");

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, ok, eq, near } from "./harness.mjs";
-import { yearMap, cellTone } from "@/lib/diaryYear";
+import { yearMap, cellTone, cellOn, hashDate } from "@/lib/diaryYear";
 import { dayIndex } from "@/lib/diaryDay";
 import { derivePosition } from "@/lib/positions";
 
@@ -69,7 +69,7 @@ test("the map sits above the list and opens the day's entry", () => {
   ok(/tradingDays: regimes \? new Set\(regimes\.dates\) : null/.test(d), "the index's own calendar");
   ok(/const openEntry = \(id\) => \{\s*if \(!id\) return;\s*setQ\(""\); setEmotion\(""\); setMonth\(""\);\s*setOpen\(\(prev\) => new Set\(prev\)\.add\(id\)\);\s*setJump\(id\);/.test(d),
      "filters cleared so the entry is in the list, opened, and jumped to");
-  ok(/const jumpTo = \(cell\) =>\s*cell\.entries\.length \? openEntry\(cell\.entries\[0\]\.id\)\s*: writeOn\(cell\.date\);/.test(d),
+  ok(/return cell\.entries\.length \? openEntry\(cell\.entries\[0\]\.id\)\s*: writeOn\(cell\.date\);/.test(d.slice(d.indexOf("const jumpTo"))),
      "a day opens its first entry, or starts one dated it");
   ok(/id=\{`dy-\$\{e\.id\}`\}/.test(d), "each entry can be found by id");
   /* The first version smooth-scrolled in the same tick as the entry opened,
@@ -110,4 +110,70 @@ test("the draft card shows what its day was", () => {
   const card = d.slice(d.indexOf("Attach to a trade (optional)"), d.indexOf("How you were feeling"));
   ok(/<DayStrip facts=\{dayFacts\(draft\.entry_date, days, regimes\)\}/.test(card),
      "read off the draft's own date, so editing the date re-reads the day");
+});
+
+/**
+ * A DAY ON THE MAP IS A URL, resolved through the map — the cell already
+ * knows which entry a date belongs to, weekend roll-back included.
+ */
+test("cellOn finds the cell for a traded date, and the entry on it", () => {
+  const c = cellOn(map, "2026-09-30");
+  eq(c.date, "2026-09-30");
+  ok(c.traded);
+  eq(c.entries[0].id, "e1");
+});
+
+test("cellOn is null outside the window and on a closed session", () => {
+  eq(cellOn(map, "2026-09-25"), null, "before the window");
+  eq(cellOn(map, "2026-10-12"), null, "after today");
+  eq(cellOn(map, "2026-10-02"), null, "Gandhi Jayanti — a closed session is not a cell");
+  eq(cellOn(map, "2026-10-04"), null, "nor is a Sunday");
+  eq(cellOn(null, "2026-09-30"), null);
+});
+
+test("a weekend-written entry resolves through the session it was rolled onto", () => {
+  /* Sunday 4 Oct's entry sits on Thu 1 Oct (Fri 2 Oct was closed). The URL
+     carries the cell's date, and that resolves to the entry — a date→entry
+     lookup in the diary would find nothing written on 1 Oct. */
+  const c = cellOn(map, "2026-10-01");
+  eq(c.entries.map((x) => x.id).join(), "e2");
+  eq(c.entries[0].written, "2026-10-04");
+});
+
+test("hashDate reads a day off the hash by shape, and nothing else", () => {
+  eq(hashDate("#d-2026-08-14"), "2026-08-14");
+  for (const bad of ["", "#", "#d-", "#d-14-08-2026", "#d-2026-8-4", "#other",
+                     "#d-2026-13-01", "#d-2026-08-14x", undefined, null]) {
+    eq(hashDate(bad), null, `"${bad}"`);
+  }
+});
+
+test("the hash is set by a click on the map, read on load and on change", () => {
+  const d = read("components/journal/Diary.jsx");
+  const jt = d.slice(d.indexOf("const jumpTo"), d.indexOf("const writeOn") > d.indexOf("const jumpTo") ? d.indexOf("const writeOn") : undefined);
+  ok(/window\.location\.hash = `d-\$\{cell\.date\}`/.test(jt), "jumpTo sets it");
+  const oe = d.slice(d.indexOf("const openEntry"), d.indexOf("const appliedHash"));
+  ok(!/location\.hash/.test(oe), "openEntry does not — the Last time card's links must not rewrite the URL");
+  ok(/const d = hashDate\(window\.location\.hash\);\s*if \(!d \|\| d === appliedHash\.current\) return;\s*const c = cellOn\(year, d\);/.test(d),
+     "an empty hash is a no-op (Back), the one just set is skipped, and a date resolves through the map");
+  ok(/window\.addEventListener\("hashchange", apply\)/.test(d));
+});
+
+test("the find bar sticks below the topbar, and what is scrolled to clears both", () => {
+  const css = read("app/globals.css");
+  const find = css.slice(css.indexOf(".dy-find {"), css.indexOf("}", css.indexOf(".dy-find {")));
+  ok(/position: sticky; top: var\(--topbar-h\);/.test(find), "stuck under the topbar, at its height");
+  ok(/@media \(max-width: 860px\) \{ \.dy-find \{ position: static;/.test(css), "not stuck where it wraps");
+  ok(/\.dy-entry \{ scroll-margin-top: calc\(var\(--topbar-h\) \+ var\(--dy-find-h\)\); \}/.test(css),
+     "an entry clears the topbar and the bar, by variable");
+  const d = read("components/journal/Diary.jsx");
+  ok(!/scroll-margin-top: \d+px/.test(d), "no typed total left behind in the component");
+  ok(/<div className="dy-ym" id="dy-year">/.test(d), "the map can be scrolled to");
+  ok(/getElementById\("dy-year"\)\?\.scrollIntoView\(\{ block: "start" \}\)[\s\S]{0,80}<Calendar size=\{12\} \/>Calendar/.test(d),
+     "and the bar carries the way back to it");
+  /* The variable is the topbar's MEASURED height — it wraps, and a fixed
+     215px left the bar floating 64px under a 151px topbar. */
+  const layout = read("app/(app)/layout.jsx");
+  ok(/<div className="topbar" ref=\{measureTopbar\}>/.test(layout), "the topbar is measured");
+  ok(/setProperty\(\s*"--topbar-h"/.test(layout) && /new ResizeObserver\(set\)/.test(layout), "and kept current as it wraps");
 });

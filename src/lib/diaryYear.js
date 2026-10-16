@@ -78,6 +78,35 @@ export function yearMap({ today, tradingDays = null, idx = null, entries = [], w
 }
 
 /**
+ * The cell for a date, or null if that date is outside the window or was not
+ * a session.
+ *
+ * THROUGH THE MAP, NOT THE ENTRIES. yearMap rolls an entry written on a
+ * weekend or a holiday onto the last session before it, so the cell already
+ * knows which entry a date belongs to. Looking the date up in the diary
+ * instead would be a second rule for the same question, and the two would
+ * disagree on exactly the entries the roll-back exists for.
+ */
+export function cellOn(year, date) {
+  for (const col of year?.cols || []) {
+    for (const c of col) if (c && c.date === date) return c;
+  }
+  return null;
+}
+
+/**
+ * The date in a location hash, or null. "#d-2026-08-14" → "2026-08-14".
+ * Validated by shape, not parsed into a Date — a hash is user input, and
+ * new Date() on a bad one yields Invalid Date silently.
+ */
+export function hashDate(hash) {
+  const m = /^#d-(\d{4})-(\d{2})-(\d{2})$/.exec(String(hash || ""));
+  if (!m) return null;
+  const mo = Number(m[2]), d = Number(m[3]);
+  return mo >= 1 && mo <= 12 && d >= 1 && d <= 31 ? `${m[1]}-${m[2]}-${m[3]}` : null;
+}
+
+/**
  * A cell's shade: green for a day that banked R, red for one that lost it,
  * stronger the larger, flat at 3R — past which a colour cannot say more.
  * Grey for a day traded with nothing realised (buys only); none for no trade.
