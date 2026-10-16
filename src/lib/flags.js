@@ -125,3 +125,13 @@ export const SHOW_LIVE_BREADTH = false;
  * build, and no nightly refresh was set up.
  */
 export const SHOW_MARKET_BREADTH = false;
+
+/**
+ * The entries under "Last time" on the Diary — what was written during the
+ * run it recalls, words first, the rest folded to a count. Built and probed
+ * (lib/diaryLastTime.js recallList/moreLabel), hidden at the user's request
+ * on 17 Oct 2026: the card now ends at its headline — the run you are on,
+ * the longest or like one before it, and how that one ended. Unhide, never
+ * rebuild.
+ */
+export const SHOW_LAST_TIME_ENTRIES = false;

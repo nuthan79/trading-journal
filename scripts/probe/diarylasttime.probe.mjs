@@ -5,6 +5,7 @@ import { test, ok, eq } from "./harness.mjs";
 import { losingRuns, losingRun } from "@/lib/bottleneck";
 import { lastTime, LAST_TIME_MIN, recallList, moreLabel, LAST_TIME_SHOWN } from "@/lib/diaryLastTime";
 import { fullDate } from "@/lib/diaryList";
+import { SHOW_LAST_TIME_ENTRIES } from "@/lib/flags";
 
 const SRC = path.resolve(fileURLToPath(new URL("../../src", import.meta.url)));
 const read = (p) => readFileSync(path.join(SRC, p), "utf8");
@@ -101,6 +102,9 @@ test("the block sits at the top of the diary and opens what it lists", () => {
   /* A run with no entries at all says nothing below the headline — the
      user's call: "you wrote nothing while it lasted" was not wanted. */
   ok(!/You wrote nothing while it lasted/.test(lt), "no line for a run with no entries");
+  /* The whole entry list is hidden (17 Oct 2026, the user's call) — the
+     card ends at its headline. Built and kept behind a flag. */
+  ok(/\{SHOW_LAST_TIME_ENTRIES && then && \(list\.shown\.length \? \(/.test(lt), "the list renders only behind the flag");
   ok(/match === "longest"[\s\S]{0,80}the longest before this was/.test(lt), "a fallback says it is the longest, not a like one");
   ok(/<style jsx global>/.test(lt) && /\.dy-lt /.test(lt));
   ok(/closed=\{closed\}/.test(read("app/(app)/diary/page.jsx")), "the page hands it the finished trades");
@@ -158,4 +162,8 @@ test("a silent run is one sentence, not an empty list", () => {
      "the list folds with the entry cards' chevron");
   ok(/<p className="dy-lt-now">/.test(lt) && lt.indexOf('<p className="dy-lt-now">') < lt.indexOf("dy-lt-more"),
      "the headline stays above the fold, always shown");
+});
+
+test("the entry list under Last time is off", () => {
+  eq(SHOW_LAST_TIME_ENTRIES, false, "hidden at the user's request — unhide, never rebuild");
 });

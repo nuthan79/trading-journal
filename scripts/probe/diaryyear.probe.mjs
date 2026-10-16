@@ -171,10 +171,17 @@ test("the find bar sticks below the topbar, and what is scrolled to clears both"
   /* The way back up is a corner button, not a Calendar button in the bar
      (the user's call): it appears a screen down and goes to the top. */
   ok(!/<Calendar size=/.test(d) && !/dy-year/.test(d), "no Calendar button");
-  ok(/const on = \(\) => setShowTop\(window\.scrollY > window\.innerHeight\);/.test(d), "shown once a screen down");
-  ok(/\{showTop && \(\s*<button type="button" className="btn ghost sm dy-top" onClick=\{toTop\}/.test(d), "a button");
+  ok(/setShowTop\(window\.scrollY > window\.innerHeight\);/.test(d), "shown once a screen down");
+  ok(/\{showTop && \(\s*<button type="button" className="dy-top" onClick=\{toTop\}/.test(d), "a button");
   ok(/window\.scrollTo\(\{ top: 0, behavior: still \? "auto" : "smooth" \}\)/.test(d), "to the top, still where motion is reduced");
-  ok(/\.dy-top \{ position: fixed;/.test(css), "pinned to the corner");
+  /* Not cornered (the user's call): centred under the column, and it says
+     which month you have scrolled to, read off the entry under the bar. */
+  ok(/\.dy-top \{ position: fixed; left: 50%;[^}]*transform: translateX\(-50%\);/.test(css), "centred, not in the corner");
+  ok(!/\.dy-top \{[^}]*right: \d+px/.test(css), "and not pinned right");
+  ok(/data-date=\{e\.entry_date\}/.test(d), "each entry carries its date");
+  ok(/setHere\(at\?\.dataset\.date \? monthLabel\(at\.dataset\.date\.slice\(0, 7\)\) : ""\);/.test(d),
+     "the month of the first entry below the bar");
+  ok(/\{here && <span className="dy-top-here">\{here\}<\/span>\}/.test(d), "shown on the pill");
   /* The variable is the topbar's MEASURED height — it wraps, and a fixed
      215px left the bar floating 64px under a 151px topbar. */
   const layout = read("app/(app)/layout.jsx");

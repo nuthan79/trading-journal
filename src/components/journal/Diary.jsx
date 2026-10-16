@@ -9,6 +9,7 @@ import { rfmt, dmy, today } from "@/lib/format";
 import { EMOTIONS } from "@/lib/constants";
 import { useAutosave, loadDraft, DRAFT_KEYS } from "@/lib/useAutosave";
 import { filterDiary, monthsOf, emotionsOf, monthLabel, fullDate } from "@/lib/diaryList";
+import { SHOW_LAST_TIME_ENTRIES } from "@/lib/flags";
 import { lastTime, recallList, moreLabel } from "@/lib/diaryLastTime";
 import { dayIndex, dayFacts } from "@/lib/diaryDay";
 import { yearMap, cellTone, cellOn, hashDate } from "@/lib/diaryYear";
@@ -213,16 +214,27 @@ export default function Diary({ diary, trades, closed = [], onSave, onDelete, on
    */
   const recall = useMemo(() => lastTime(closed || [], diary || []), [closed, diary]);
 
-  /* BACK TO TOP, once there is a top to go back to. A year of entries runs
-     to five screens; past the first, a corner button brings back the map,
-     Last time and the form in one press. Hidden above that, where it would
-     be a button for going nowhere. */
+  /* BACK TO TOP, once there is a top to go back to, and saying where you
+     are. A year of entries runs to five screens; past the first, a pill under
+     the column — not tucked into the window's corner — names the month of the
+     entry at the top of the view and takes you back up in one press. Hidden
+     above that, where it would be a button for going nowhere. */
   const [showTop, setShowTop] = useState(false);
+  const [here, setHere] = useState("");
   useEffect(() => {
-    const on = () => setShowTop(window.scrollY > window.innerHeight);
-    on();
+    let frame = 0;
+    const read = () => {
+      frame = 0;
+      setShowTop(window.scrollY > window.innerHeight);
+      /* The first entry still showing below everything sticky. */
+      const edge = (document.querySelector(".dy-find")?.getBoundingClientRect().bottom || 0) + 8;
+      const at = [...document.querySelectorAll(".dy-entry")].find((el) => el.getBoundingClientRect().bottom > edge);
+      setHere(at?.dataset.date ? monthLabel(at.dataset.date.slice(0, 7)) : "");
+    };
+    const on = () => { if (!frame) frame = requestAnimationFrame(read); };
+    read();
     window.addEventListener("scroll", on, { passive: true });
-    return () => window.removeEventListener("scroll", on);
+    return () => { window.removeEventListener("scroll", on); if (frame) cancelAnimationFrame(frame); };
   }, []);
   const toTop = () => {
     const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -405,9 +417,10 @@ export default function Diary({ diary, trades, closed = [], onSave, onDelete, on
   return (
     <div className="sec">
       {showTop && (
-        <button type="button" className="btn ghost sm dy-top" onClick={toTop}
-                aria-label="Back to top" title="Back to top">
-          <ArrowUp size={13} />Top
+        <button type="button" className="dy-top" onClick={toTop}
+                aria-label={here ? `Back to top — you are in ${here}` : "Back to top"}>
+          <ArrowUp size={13} /><span>Top</span>
+          {here && <span className="dy-top-here">{here}</span>}
         </button>
       )}
       {zoom != null && shots.length > 0 && (
@@ -607,6 +620,7 @@ export default function Diary({ diary, trades, closed = [], onSave, onDelete, on
           };
           return (
             <div key={e.id} id={`dy-${e.id}`} className="entry dy-entry" data-open={expanded ? 1 : 0}
+                 data-date={e.entry_date}
                  style={isEditing ? { opacity: 0.45 } : undefined}
                  onClick={onEntry}>
               {/* One row: what the entry is on the left, its chart and the
@@ -861,7 +875,8 @@ function LastTime({ recall, open }) {
           first, a day to a row. An entry with neither is never a row of its
           own, open or shut — only the count on the fold line. And when the
           whole run was silent, that is the observation, said in one line. */}
-      {then && (list.shown.length ? (
+      {/* Hidden — see SHOW_LAST_TIME_ENTRIES in flags.js. */}
+      {SHOW_LAST_TIME_ENTRIES && then && (list.shown.length ? (
         <>
           <div className="dy-lt-h">What you wrote while it lasted</div>
           <ul className="dy-lt-list">

@@ -368,10 +368,24 @@ select.in { font-family: 'Archivo', sans-serif; }
 /* Both clear the topbar AND the find bar: what is scrolled to lands below
    everything sticky, read off the variables rather than a typed total. */
 .dy-entry { scroll-margin-top: calc(var(--topbar-h) + var(--dy-find-h)); }
-/* Back to top: the corner opposite the dev badge, over the entries, under
-   the topbar's menus. */
-.dy-top { position: fixed; right: 24px; bottom: 24px; z-index: 15;
-  background: var(--card); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12); }
+/* Back to top: a pill centred under the column you are reading, dark like
+   the page's one primary button, carrying the month you have scrolled to.
+   Over the entries, under the topbar's menus. */
+.dy-top { position: fixed; left: 50%; bottom: 28px; z-index: 15;
+  transform: translateX(-50%);
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 9px 16px 9px 13px; border: 0; border-radius: 999px; cursor: pointer;
+  background: var(--ink); color: var(--paper);
+  font: inherit; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  animation: dy-top-in 0.18s ease-out; }
+.dy-top:hover { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.26); }
+.dy-top:focus-visible { outline: 2px solid var(--brass); outline-offset: 3px; }
+.dy-top-here { font-weight: 500; letter-spacing: 0.04em; text-transform: none; font-size: 12px;
+  padding-left: 9px; border-left: 1px solid color-mix(in srgb, var(--paper) 30%, transparent);
+  font-variant-numeric: tabular-nums; opacity: 0.8; }
+@keyframes dy-top-in { from { opacity: 0; transform: translate(-50%, 8px); } }
+@media (prefers-reduced-motion: reduce) { .dy-top { animation: none; } }
 .dy-q { position: relative; flex: 1 1 280px; display: flex; align-items: center; }
 .dy-q svg { position: absolute; left: 10px; color: var(--ink3); pointer-events: none; }
 .dy-q .in { width: 100%; padding-left: 30px; }
