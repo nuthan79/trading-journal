@@ -533,8 +533,11 @@ function BarsChart({ data, color }) {
           </g>
         );
       })}
+      {/* At the card's edge, not the bar column's. PAD_L is measured off the
+          longest label, so a caption hung on it started somewhere different
+          on every card — 262, 290, 316, 377px on one page. */}
       {data.axisNote && (
-        <text x={PAD_L} y={H - 3} className="rv-chart-lbl">{data.axisNote}</text>
+        <text x={0} y={H - 3} className="rv-chart-lbl">{data.axisNote}</text>
       )}
     </svg>
   );
@@ -701,11 +704,13 @@ function SeriesChart({ data, color }) {
           figure caption below and the two lines overlapped. The legend starts
           after the note, measured off its own length rather than a guessed
           offset, since the note differs per finding. */}
+      {/* At the card's edge, as the bar charts have it, so every caption on
+          the page starts at one x. */}
       {data.axisNote && (
-        <text x={PAD_L} y={H - 6} className="rv-chart-lbl">{data.axisNote}</text>
+        <text x={0} y={H - 6} className="rv-chart-lbl">{data.axisNote}</text>
       )}
       {data.pointLegend && (won > 0 || lost > 0) && (() => {
-        const after = PAD_L + (data.axisNote ? data.axisNote.length * 5.35 + 26 : 0);
+        const after = data.axisNote ? data.axisNote.length * 5.35 + 26 : PAD_L;
         return (
           <g>
             <circle cx={after + 4} cy={H - 10} r="3.4" fill="var(--long)" opacity="0.65" />
@@ -867,6 +872,10 @@ const listWords = (xs) =>
  * component at all: a scoped `<style jsx>` reaches nothing rendered from in
  * here. See the styled-jsx note in CLAUDE.md.
  */
+/** Fewer closed trades than this in the last seven days and the week strip
+ *  gives way to the last ten — see ProcessMap. */
+const WEEK_MIN_CLOSED = 3;
+
 function ProcessWindow({ w, quiet }) {
   if (!w) return null;
   return (
@@ -994,6 +1003,7 @@ function ProcessWindow({ w, quiet }) {
  */
 function ProcessMap({ data, week, lastTen, closed }) {
   if (!data) return null;
+  const showTen = SHOW_LAST_TEN && lastTen?.trades > 0;
   const { stages, bottleneck, strong, unmeasured } = data;
 
   /* One scale across every bar so the lengths mean something relative to each
@@ -1053,18 +1063,22 @@ function ProcessMap({ data, week, lastTen, closed }) {
           card as Holdings, from one file — see LosingRun. */}
       <LosingRun closed={closed} />
 
-      <ProcessWindow w={week} quiet={
+      {/* Under WEEK_MIN_CLOSED the week is a line like "1 closed · 0 won, 1
+          lost" — a sample too small to say anything — so it gives way and the
+          last ten carry the recent period alone. Only while they are there to
+          carry it: without them the week, quiet or not, is all there is. */}
+      {(!showTen || week?.trades >= WEEK_MIN_CLOSED) && <ProcessWindow w={week} quiet={
         <>Nothing closed. The ranking above needs dozens of trades to move, so a quiet
           week changes none of it — that is the point of looking at this weekly rather
           than recomputing it.</>
-      } />
+      } />}
 
       {/* The same three questions of a fixed sample. A week goes quiet when
           you do; ten trades is always ten trades, and the dates it spans say
           how fast you have been trading without being asked. On trial — see
           SHOW_LAST_TEN in flags.js. Hidden while there are none, rather than
           printed empty beside a week that already said so. */}
-      {SHOW_LAST_TEN && lastTen?.trades > 0 && <ProcessWindow w={lastTen} quiet={null} />}
+      {showTen && <ProcessWindow w={lastTen} quiet={null} />}
 
       <div className="rv-proc-scroll">
         <table className="rv-proc-t">
@@ -1316,9 +1330,15 @@ export default function Review({ closed, stats, all, diary, onMeasured }) {
     [closed, regimes, stats, all, diary]
   );
 
+  /* A finding that only reports something not yet recorded — "not enough
+     diary entries to read your moods" — is a gap, not a card: it joins the
+     "Worth filling in" rows above instead of taking a card's height to say
+     nothing is there. */
+  const moodGap = useMemo(() => result.findings.find((f) => f.absence) || null, [result]);
+
   const groups = useMemo(() => {
     const by = { critical: [], warning: [], watch: [], good: [] };
-    result.findings.forEach((f) => { if (by[f.severity]) by[f.severity].push(f); });
+    result.findings.forEach((f) => { if (by[f.severity] && !f.absence) by[f.severity].push(f); });
     return by;
   }, [result]);
 
@@ -1334,12 +1354,13 @@ export default function Review({ closed, stats, all, diary, onMeasured }) {
    * WHICH GROUPS ARE OPEN. Every finding the record supports used to render at
    * once — Critical, Warning, Watch and Good, up to a dozen cards. Critical and
    * Warning are what to act on and stay open; Watch and Good fold to a count
-   * you can open. With nothing critical or warning, Watch opens instead, so
-   * the page is never only a row of counts. A click overrides either way.
+   * you can open. Watch used to open when nothing was critical or a warning;
+   * it no longer does — six watch cards were half the page for the least
+   * actionable content on it, and the verdict and the stage table above
+   * already keep the page from being only a row of counts. A click opens it.
    */
   const [opened, setOpened] = useState({});
-  const urgent = (groups.critical?.length || 0) + (groups.warning?.length || 0) > 0;
-  const groupOpen = (k) => opened[k] ?? (k === "critical" || k === "warning" || (!urgent && k === "watch"));
+  const groupOpen = (k) => opened[k] ?? (k === "critical" || k === "warning");
   const FOLDED_LABEL = { watch: "to watch", good: "going well", critical: "critical", warning: "warnings" };
 
   const thesis = useMemo(
@@ -1405,19 +1426,9 @@ export default function Review({ closed, stats, all, diary, onMeasured }) {
               ? <>The thing in the way is <em>{thesis.subject}</em>.</>
               : <>Nothing here is working against you.</>}
           </h2>
-          <div className="rv-thesis-figs">
-            <div className="rv-thesis-fig">
-              <b>{thesis.trades}</b><span>Closed trades</span>
-            </div>
-            <div className="rv-thesis-fig">
-              <b style={{ color: thesis.expectancy > 0 ? "var(--long)" : "var(--short)" }}>
-                {thesis.expectancy > 0 ? "+" : ""}{thesis.expectancy}R
-              </b><span>Average trade</span>
-            </div>
-            <div className="rv-thesis-fig">
-              <b>{thesis.winRate}%</b><span>Won</span>
-            </div>
-          </div>
+          {/* No stat tiles beside it. Closed trades, average R and win rate
+              were the Dashboard summary word for word; the verdict is what
+              this space is for. */}
           {thesis.thin && (
             <p className="rv-thesis-note">
               Read this lightly — under thirty closed trades, none of it separates
@@ -1449,10 +1460,10 @@ export default function Review({ closed, stats, all, diary, onMeasured }) {
 
       <ProcessMap data={process} week={week} lastTen={lastTen} closed={closed} />
 
-      {gaps.length > 0 && (
+      {(gaps.length > 0 || moodGap) && (
         <div className="rv-gaps">
           <div className="eyebrow" style={{ marginBottom: 6 }}>Worth filling in</div>
-          <p className="rv-gaps-lead">
+          {gaps.length > 0 && <p className="rv-gaps-lead">
             These are read off the chart, so they can be added any time — but until they
             are, the cut on the performance sheet that uses them is mostly one
             &ldquo;Not recorded&rdquo; row.
@@ -1460,7 +1471,7 @@ export default function Review({ closed, stats, all, diary, onMeasured }) {
               <> Anything marked <b>backlog</b> you are already recording; what is left
                 of it is history, and it shrinks as you fill it in.</>
             )}
-          </p>
+          </p>}
           {gaps.map((g) => (
             <div key={g.key} className="rv-gap">
               <span>
@@ -1484,6 +1495,20 @@ export default function Review({ closed, stats, all, diary, onMeasured }) {
               </Link>
             </div>
           ))}
+          {moodGap && (
+            <div className="rv-gap" title={moodGap.detail}>
+              <span>
+                <b>{moodGap.evidence?.tradesTagged ?? 0}</b> trade
+                {moodGap.evidence?.tradesTagged === 1 ? " has" : "s have"} a mood recorded
+                <span className="rv-dim">
+                  {" "}· no two moods yet have the {moodGap.evidence?.minimumTradesToCount} trades
+                  each it takes to compare them
+                </span>
+                <span className="rv-dim"> · weakens Mood vs results</span>
+              </span>
+              <Link className="rv-gap-go" href="/diary">Open the diary →</Link>
+            </div>
+          )}
         </div>
       )}
 
@@ -1784,29 +1809,18 @@ export default function Review({ closed, stats, all, diary, onMeasured }) {
           the twelfth finding.
         */
         /*
-          TWO COLUMNS ON A WIDE SCREEN, because one was leaving the right half
-          of the page blank. The headline is capped by its own line length —
-          left to run the full width of a large monitor it would read as a
-          banner rather than a sentence — so the space beside it holds the
-          numbers the eyebrow was carrying in 10px grey above it. Same facts,
-          filling the room they are in.
+          ONE COLUMN. A stat block used to sit beside the headline — closed
+          trades, average R, win rate — and it was the Dashboard summary word
+          for word, so it went; on a wide screen the headline takes the whole
+          row instead (max-width: none below), which keeps the right half from
+          standing empty.
         */
         .rv-thesis {
           margin: 0 0 18px;
           display: grid; gap: 10px 40px; align-items: end;
         }
         @media (min-width: 900px) {
-          .rv-thesis {
-            /* auto, not a fraction: the stat block is three fixed-content
-               cells and does not want to stretch. Giving the headline the
-               remainder is what leaves no gap to explain. */
-            grid-template-columns: minmax(0, 1fr) auto;
-            align-items: center;
-          }
           .rv-thesis-eyebrow { display: none; }
-          .rv-thesis-h { grid-row: 1; }
-          .rv-thesis-figs { grid-row: 1; grid-column: 2; }
-          .rv-thesis-note { grid-column: 1 / -1; }
         }
         .rv-thesis-eyebrow {
           font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase;
@@ -1836,24 +1850,6 @@ export default function Review({ closed, stats, all, diary, onMeasured }) {
         .rv-thesis-note {
           font-size: 12.5px; color: var(--ink3); margin: 0; max-width: 60ch;
         }
-        /* Hairline dividers from the gap, as the evidence tables do. */
-        .rv-thesis-figs {
-          display: none;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 1px; background: var(--rule);
-          border: 1px solid var(--rule); border-radius: 3px; overflow: hidden;
-        }
-        @media (min-width: 900px) { .rv-thesis-figs { display: grid; } }
-        .rv-thesis-fig { background: var(--card); padding: 12px 14px 11px; }
-        .rv-thesis-fig b {
-          display: block; font-size: 19px; line-height: 1; margin-bottom: 5px;
-          letter-spacing: -0.02em; font-variant-numeric: tabular-nums;
-        }
-        .rv-thesis-fig span {
-          font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase;
-          color: var(--ink3);
-        }
-
         .rv-chart { display: block; width: 100%; height: auto; margin: 14px 0 0; }
         /* Quieter than the captions and on its own line above them — a scale
            is there to be consulted, not read. */

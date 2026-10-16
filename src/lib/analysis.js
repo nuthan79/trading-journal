@@ -11,6 +11,7 @@ import { FREE_AT_R, POWER_R, POWER_DAYS } from "./path";
 import { money } from "./format";
 import { kellyFromR, nextRiskStep, KELLY_MIN_TRADES } from "./kelly";
 import { hasRealStop } from "./stops";
+import { losingRun, LOSING_RUN_ALERT } from "./bottleneck";
 
 /**
  * Behavioural review.
@@ -1923,7 +1924,9 @@ function emotionOutcomes(closed, diary) {
       `have the ${MIN_PER_EMOTION} trades it takes to compare them. The table below is what there ` +
       `is so far. Tag the mood as you enter a trade rather than after it closes — the second only ` +
       `records how the result felt.`,
-      ev);
+      /* An absence, not a finding: the Process page lists it with the other
+         things worth filling in rather than giving it a card of its own. */
+      ev, { absence: true });
   }
 
   const worst = solid[0];
@@ -2096,7 +2099,11 @@ function returnConcentration(closed) {
   return F(heavy ? "watch" : "good", "return-concentration",
     heavy
       ? "A few trades carry the whole record"
-      : "Your returns are spread across many trades",
+      /* What the test shows: the trades outside the best tenth still come to
+         a profit. "Spread across many trades" sat over "55.4% from your best
+         14" — which is concentration, and the Dashboard says so under "How
+         much rests on your best trades". */
+      : "The edge survives without your best trades",
     `${halfCount} trade${halfCount === 1 ? "" : "s"} — ${ev.shareOfAllTradesPct}% of the ones with an R — ` +
     `made half of everything you earned, and your best ${decileCount} produced ` +
     `${ev.topDecileSharePct}% of it. Set those aside and the remaining ` +
@@ -2871,6 +2878,52 @@ export function reviewThesis(closed, findings, stats) {
   };
 }
 
+/**
+ * FINDINGS THAT CONTRADICT EACH OTHER DO NOT SHARE A PAGE.
+ *
+ * Every check is right about its own question, and read top to bottom some
+ * of them still say opposite things about the same decision. Nothing is
+ * deleted — each finding still fires when it is the only thing being said
+ * about its subject — and no figure is recomputed; this only decides which
+ * statement stands when two collide.
+ *
+ *   SIZING. `conviction-inverted` ("betting the same each time would have
+ *   made ₹4.99 L more") beside `risk-consistent` ("position sizing is
+ *   disciplined … trustworthy") read as leaking and disciplined about one
+ *   decision. Both are true — one is whether size predicted outcome, the
+ *   other is dispersion — so the second is folded into the first as its
+ *   detail: the sizing IS steady, and the size chosen never predicted which
+ *   trade would work. That is a better finding than either alone.
+ *
+ *   SIZE UP, DURING A LOSING RUN. `risk-below-edge` ("there is room to size
+ *   up") is advice from the lifetime record, and the losing-run alert on the
+ *   same page says "cut risk per trade, or stand aside". While that alert is
+ *   live — a run of LOSING_RUN_ALERT or more, the threshold the card itself
+ *   uses — the size-up advice does not render.
+ */
+export function reconcileFindings(findings, closed = []) {
+  let out = [...(findings || [])];
+
+  const inverted = out.find((f) => f.id === "conviction-inverted");
+  const consistent = out.find((f) => f.id === "risk-consistent");
+  if (inverted && consistent) {
+    const ev = consistent.evidence || {};
+    const steady = ev.avgRiskPct != null && ev.coeffVariation != null
+      ? ` The sizing itself is steady — ${ev.avgRiskPct}% average risk, a variation coefficient ` +
+        `of ${ev.coeffVariation} — so this is not erratic betting: the size you chose simply never ` +
+        `predicted which trade would work.`
+      : "";
+    out = out
+      .filter((f) => f !== consistent)
+      .map((f) => (f === inverted ? { ...f, detail: `${f.detail}${steady}`, absorbed: ["risk-consistent"] } : f));
+  }
+
+  if (losingRun(closed).n >= LOSING_RUN_ALERT) {
+    out = out.filter((f) => f.id !== "risk-below-edge");
+  }
+  return out;
+}
+
 export function reviewFindings(
   closed,
   { regimes = null, stats = null, all = null, diary = null } = {}
@@ -2930,6 +2983,12 @@ export function reviewFindings(
      blocking every future import in the meantime — "you have not done this
      lately" would be no comfort at all. */
   push(duplicatePositions(all || closed));
+
+  /* Findings that contradict each other on one page are reconciled before
+     anything is ranked — see reconcileFindings. */
+  const kept = reconcileFindings(flat, closed);
+  flat.length = 0;
+  flat.push(...kept);
 
   // Substitute the real max drawdown into any template placeholder
   if (stats?.maxDD != null) {

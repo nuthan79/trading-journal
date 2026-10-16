@@ -65,9 +65,10 @@ test("Process: each card shows one line; detail and 'What it means' are one clic
   ok(/How this is measured/.test(folded), "and the method must still be reachable");
 });
 
-test("Process: Watch and Good fold unless nothing is critical or a warning", () => {
+test("Process: Watch and Good fold by default; only Critical and Warning open", () => {
   const s = read("components/journal/Review.jsx");
-  ok(/opened\[k\] \?\? \(k === "critical" \|\| k === "warning" \|\| \(!urgent && k === "watch"\)\)/.test(s));
+  ok(/opened\[k\] \?\? \(k === "critical" \|\| k === "warning"\);/.test(s),
+     "six open watch cards were half the page — watch opens only on a click");
   ok(/\{groupOpen\(sevKey\) && groups\[sevKey\]\.map/.test(s), "cards render only in an open group");
 });
 
