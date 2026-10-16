@@ -190,7 +190,12 @@ export default function Diary({ diary, trades, closed = [], onSave, onDelete, on
     setOpen((prev) => new Set(prev).add(id));
     setJump(id);
   };
-  const jumpTo = (cell) => openEntry(cell.entries[0]?.id);
+  /* Every past day on the map does the obvious thing for that day: opens
+     what was written on it, or starts an entry dated it. The footer counts
+     the days traded with nothing written; a click is how one stops counting. */
+  const jumpTo = (cell) =>
+    cell.entries.length ? openEntry(cell.entries[0].id)
+                        : writeOn(cell.date);
 
   /*
    * LAST TIME — the reason the diary is kept. On a losing run, what was
@@ -312,6 +317,17 @@ export default function Diary({ diary, trades, closed = [], onSave, onDelete, on
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  /* A new entry dated a day picked off the map — startEdit's rule exactly,
+     confirm included: a new draft with something in it is the one thing a
+     click here can destroy. The filters stay: nothing is being found in the
+     list, so clearing them would throw away the reader's view for nothing. */
+  const writeOn = (date) => {
+    if (draft && !draft.id && hasContent(serializeDraft(draft)) &&
+        !window.confirm(`You have an unsaved new entry. Writing about ${dmy(date)} will discard it.`)) return;
+    setDraft({ ...newDraft(), entry_date: date });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   const discard = () => {
     clearPersistedDraft();
     setDraft(null);
@@ -412,6 +428,14 @@ export default function Diary({ diary, trades, closed = [], onSave, onDelete, on
                   <option key={t.id} value={t.id}>{t.symbol} · {t.entry_date}</option>
                 ))}
               </select></label>
+          </div>
+          {/* What the day was, from what the book already knows — what makes
+              an entry written three weeks later worth writing. Read off the
+              date field, so changing the date re-reads the day; a day the
+              book knows nothing about renders nothing. */}
+          <div style={{ margin: "-6px 0 14px" }}>
+            <DayStrip facts={dayFacts(draft.entry_date, days, regimes)}
+                      indexLabel={REGIME_LABEL_FOR[regime.indexName] || regime.indexName} />
           </div>
 
           <div className="eyebrow" style={{ marginBottom: 8 }}>How you were feeling</div>
@@ -668,11 +692,12 @@ function YearMap({ year, jump }) {
     const bits = [dmy(c.date)];
     if (c.r != null) bits.push(`${c.r > 0 ? "+" : c.r < 0 ? "−" : ""}${Math.abs(c.r).toFixed(2)}R realised`);
     else if (c.traded) bits.push("traded, nothing sold");
-    else bits.push("no trades");
+    /* Every hover ends with what the click does, because every cell clicks. */
     if (c.entries.length) {
+      if (!c.traded) bits.push("no trades");
       const off = c.entries.find((x) => x.written !== c.date);
       bits.push(off ? `entry written ${dmy(off.written)} — click to open` : "entry — click to open");
-    } else if (c.traded) bits.push("nothing written");
+    } else bits.push(c.traded ? "nothing written — click to write" : "no trades — click to write");
     return bits.join(" · ");
   };
   return (
@@ -689,12 +714,14 @@ function YearMap({ year, jump }) {
           const bg = t.kind === "gain" ? `color-mix(in srgb, var(--long) ${Math.round(25 + t.strength * 75)}%, transparent)`
             : t.kind === "loss" ? `color-mix(in srgb, var(--short) ${Math.round(25 + t.strength * 75)}%, transparent)`
             : t.kind === "traded" ? "var(--grid)" : undefined;
-          const Tag = c.entries.length ? "button" : "span";
+          /* Every day is a button: one with an entry opens it, one without
+             starts an entry dated it — traded or not, since "stood aside" is
+             an entry too. */
           return (
-            <Tag key={c.date} className="dy-ym-cell" data-kind={t.kind} data-note={c.entries.length ? 1 : 0}
-                 style={{ gridColumn: ci + 1, gridRow: ri + 1, background: bg }}
-                 title={tip(c)} onClick={c.entries.length ? () => jump(c) : undefined}
-                 aria-label={c.entries.length ? tip(c) : undefined} />
+            <button key={c.date} type="button" className="dy-ym-cell" data-kind={t.kind}
+                    data-note={c.entries.length ? 1 : 0}
+                    style={{ gridColumn: ci + 1, gridRow: ri + 1, background: bg }}
+                    title={tip(c)} onClick={() => jump(c)} aria-label={tip(c)} />
           );
         }))}
       </div>
@@ -716,15 +743,15 @@ function YearMap({ year, jump }) {
         .dy-ym-months span { white-space: nowrap; }
         .dy-ym-grid { grid-template-rows: repeat(5, auto); row-gap: 3px; }
         .dy-ym-cell, .dy-ym-gap { display: block; aspect-ratio: 1; border-radius: 2px; min-width: 0; }
-        .dy-ym-cell { border: 1px solid var(--rule); padding: 0; background: transparent; position: relative; }
+        .dy-ym-cell { border: 1px solid var(--rule); padding: 0; background: transparent; position: relative;
+                      cursor: pointer; }
         .dy-ym-cell[data-kind="gain"], .dy-ym-cell[data-kind="loss"] { border-color: transparent; }
-        button.dy-ym-cell { cursor: pointer; }
         /* The entry mark: a dot in the cell, dark enough to read on any shade. */
         .dy-ym-cell[data-note="1"]::after {
           content: ""; position: absolute; inset: 0; margin: auto; width: 34%; height: 34%;
           border-radius: 50%; background: var(--ink);
         }
-        button.dy-ym-cell:hover, button.dy-ym-cell:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+        .dy-ym-cell:hover, .dy-ym-cell:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
         .dy-ym-foot { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center;
                       margin-top: 10px; font-size: 11px; color: var(--ink3); }
         .dy-ym-key { display: inline-block; width: 10px; height: 10px; border-radius: 2px;

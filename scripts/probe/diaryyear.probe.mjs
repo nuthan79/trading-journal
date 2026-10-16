@@ -69,7 +69,8 @@ test("the map sits above the list and opens the day's entry", () => {
   ok(/tradingDays: regimes \? new Set\(regimes\.dates\) : null/.test(d), "the index's own calendar");
   ok(/const openEntry = \(id\) => \{\s*if \(!id\) return;\s*setQ\(""\); setEmotion\(""\); setMonth\(""\);\s*setOpen\(\(prev\) => new Set\(prev\)\.add\(id\)\);\s*setJump\(id\);/.test(d),
      "filters cleared so the entry is in the list, opened, and jumped to");
-  ok(/const jumpTo = \(cell\) => openEntry\(cell\.entries\[0\]\?\.id\);/.test(d), "a day opens its first entry");
+  ok(/const jumpTo = \(cell\) =>\s*cell\.entries\.length \? openEntry\(cell\.entries\[0\]\.id\)\s*: writeOn\(cell\.date\);/.test(d),
+     "a day opens its first entry, or starts one dated it");
   ok(/id=\{`dy-\$\{e\.id\}`\}/.test(d), "each entry can be found by id");
   /* The first version smooth-scrolled in the same tick as the entry opened,
      and on a real book stopped at July for a December entry. */
@@ -81,4 +82,32 @@ test("the map sits above the list and opens the day's entry", () => {
   const ym = d.slice(d.indexOf("function YearMap"));
   ok(/<style jsx global>/.test(ym) && /\.dy-ym /.test(ym), "global under its prefix — a child component");
   ok(/traded and nothing written/.test(ym), "the gap is said in words");
+});
+
+/**
+ * EVERY PAST DAY IS A DAY YOU CAN WRITE ABOUT. The footer said "84 traded and
+ * nothing written" and then made those 84 days inert spans — the screen named
+ * the gap and offered no way to close it. Invisible to a unit test.
+ */
+test("every cell on the map is a button that does the obvious thing", () => {
+  const d = read("components/journal/Diary.jsx");
+  const ym = d.slice(d.indexOf("function YearMap"), d.indexOf("function LastTime"));
+  ok(!/\? "button" : "span"/.test(d), "no cell is a span because nothing was written on it");
+  ok(/<button key=\{c\.date\} type="button" className="dy-ym-cell"/.test(ym), "a session is always a button");
+  ok(/onClick=\{\(\) => jump\(c\)\} aria-label=\{tip\(c\)\}/.test(ym), "always clickable, always labelled");
+  ok(/"nothing written — click to write"/.test(ym) && /"no trades — click to write"/.test(ym),
+     "the hover says what the click will do");
+  ok(!/button\.dy-ym-cell/.test(ym), "the outline and pointer are on every cell, not only buttons");
+  /* writeOn is startEdit's rule: only a NEW draft with content can be lost. */
+  const w = d.slice(d.indexOf("const writeOn"), d.indexOf("const discard"));
+  ok(/if \(draft && !draft\.id && hasContent\(serializeDraft\(draft\)\) &&\s*!window\.confirm\(/.test(w), "confirm before discarding");
+  ok(/setDraft\(\{ \.\.\.newDraft\(\), entry_date: date \}\);/.test(w), "a new draft dated that day");
+  ok(!/setQ\(|setEmotion\(|setMonth\(/.test(w), "the reader's filters are left alone");
+});
+
+test("the draft card shows what its day was", () => {
+  const d = read("components/journal/Diary.jsx");
+  const card = d.slice(d.indexOf("Attach to a trade (optional)"), d.indexOf("How you were feeling"));
+  ok(/<DayStrip facts=\{dayFacts\(draft\.entry_date, days, regimes\)\}/.test(card),
+     "read off the draft's own date, so editing the date re-reads the day");
 });
