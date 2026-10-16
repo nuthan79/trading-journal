@@ -964,6 +964,26 @@ export async function importTrades({ trades, completions = [], meta }) {
     }
   }
 
+  // Why a completed position was sold, from a journal file that states it.
+  // Only onto a trade with no reason yet: one typed by hand is a fact, and the
+  // file's is a reading of the same sell.
+  for (const c of completions) {
+    if (!c.exitReason) continue;
+    const { error: reasonErr } = await supabase
+      .from("trades")
+      .update({ exit_reason: c.exitReason })
+      .is("exit_reason", null)
+      .eq("id", c.tradeId);
+    if (reasonErr) {
+      await supabase.from("trades").delete().eq("import_batch", batch.id);
+      await supabase.from("import_batches").delete().eq("id", batch.id);
+      throw new Error(
+        migrationHint(reasonErr) ||
+        `Could not record why ${c.group.symbol} was sold: ${reasonErr.message}. Nothing was saved.`
+      );
+    }
+  }
+
   if (exitRows.length) {
     const { error: exitErr } = await supabase.from("trade_exits").insert(exitRows);
     if (exitErr) {

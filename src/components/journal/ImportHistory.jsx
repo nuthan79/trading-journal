@@ -196,11 +196,20 @@ export default function ImportHistory({ onChanged }) {
                   <details className="ih-report">
                     <summary>
                       What this import decided
-                      {b.report.issues?.length > 0 && (
-                        <span className="ih-count">
-                          {b.report.issues.length} not imported
-                        </span>
-                      )}
+                      {/* Completions are outcomes too, but not misses: the
+                          sells went onto a trade already here. Counted apart,
+                          or a ledger that closed seven positions read
+                          "30 not imported". */}
+                      {(() => {
+                        const done = (b.report.issues || []).filter((i) => i.o === "completed").length;
+                        const missed = (b.report.issues || []).length - done;
+                        return (
+                          <>
+                            {done > 0 && <span className="ih-count ih-done">{done} completed</span>}
+                            {missed > 0 && <span className="ih-count">{missed} not imported</span>}
+                          </>
+                        );
+                      })()}
                     </summary>
 
                     {b.report.imported?.length > 0 && (
@@ -318,6 +327,9 @@ export default function ImportHistory({ onChanged }) {
           color: var(--brass); border: 1px solid var(--brass);
           border-radius: 2px; padding: 1px 4px;
         }
+        .ih-count + .ih-count { margin-left: 5px; }
+        /* Sells added to trades already here — done, not missed. */
+        .ih-done { color: var(--long); border-color: var(--long); }
         .ih-grp { margin-top: 8px; font-size: 12px; }
         .ih-grp b { font-weight: 600; }
         /* Wraps rather than scrolls: a long symbol list is meant to be read

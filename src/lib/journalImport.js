@@ -19,6 +19,8 @@
  *   open and part-sold positions in the same pass as the closed ones.
  */
 
+import { sameBroker } from "./brokerFamily";
+
 const round2 = (v) => Math.round(v * 100) / 100;
 
 /**
@@ -46,24 +48,56 @@ const round2 = (v) => Math.round(v * 100) / 100;
 
 /**
  * `targets` are the journal's existing rows. A position already here on the
- * same symbol and entry date is reported rather than written — re-importing
- * the same export must not double the book.
+ * same symbol and entry date is never written twice — re-importing the same
+ * export must not double the book.
+ *
+ * BUT ITS NEW SELLS ARE TAKEN. A bot's ledger is re-exported as it trades: a
+ * position imported while open comes back next week sold, and treating the
+ * whole row as a duplicate left it open in the journal for good — seven of
+ * them on the first ledger tried. So a position already here whose file shows
+ * sells the journal lacks becomes a COMPLETION: those sells attach to the
+ * trade already here, keeping its stop, notes and anything typed since,
+ * exactly as the tax P&L path completes a position (reconcile, in
+ * import-pipeline.js). Same rules as there: a sell is matched by its date,
+ * only within one broker family, never onto one of two same-day trades, and
+ * never past the shares the trade holds. `importTrades` writes them, tagged
+ * with the batch, so Undo takes them back out.
  */
 export function toJournalRows(positions, {
   batchId, exchange = "NSE", broker = null, targets = [], region = null,
 } = {}) {
   const held = new Map();
   for (const t of targets || []) {
-    held.set(`${String(t.symbol).toUpperCase()}|${t.entry_date}`, t);
+    const k = `${String(t.symbol).toUpperCase()}|${t.entry_date}`;
+    if (!held.has(k)) held.set(k, []);
+    held.get(k).push(t);
   }
 
   const rows = [];
   const duplicates = [];
   const noStop = [];
+  const completions = [];
+  const conflicts = [];
 
   for (const p of positions) {
     const key = `${p.symbol.toUpperCase()}|${p.entryDate}`;
-    if (held.has(key)) { duplicates.push(p); continue; }
+    if (held.has(key)) {
+      const done = complete(p, held.get(key), broker);
+      if (done.completion) completions.push(done.completion);
+      /* In the shape the screen's held-back list reads, as the tax P&L
+         path's conflicts are. */
+      else if (done.conflict) {
+        conflicts.push({
+          ...p,
+          exitDate: p.exits.length ? p.exits[p.exits.length - 1].exit_date : "still open",
+          buyValue: round2(p.entryPrice * p.quantity),
+          sellValue: round2(p.exits.reduce((a, e) => a + e.price * e.quantity, 0)),
+          reason: done.conflict,
+        });
+      }
+      else duplicates.push(p);
+      continue;
+    }
 
     const sold = p.exits.reduce((a, e) => a + (Number(e.quantity) || 0), 0);
     const closed = sold >= p.quantity - 1e-6 && p.exits.length > 0;
@@ -151,7 +185,55 @@ export function toJournalRows(positions, {
     });
   }
 
-  return { rows, duplicates, noStop };
+  return { rows, duplicates, noStop, completions, conflicts };
+}
+
+/**
+ * What to do with a position the journal already holds: the sells to add, a
+ * reason it cannot be done safely, or nothing (every sell already here).
+ */
+function complete(p, found, broker) {
+  const same = found.filter((t) => sameBroker(t.broker, broker));
+  if (!same.length) return {};                    // another broker's position — leave it be
+  if (same.length > 1) {
+    return { conflict: `${same.length} trades already start on this date — pick one by hand` };
+  }
+  const t = same[0];
+  const have = new Set((t.exits || []).map((e) => e.exit_date));
+  const missing = (p.exits || []).filter((e) => !have.has(e.exit_date));
+  if (!missing.length) return {};
+
+  const already = (t.exits || []).reduce((a, e) => a + (Number(e.quantity) || 0), 0);
+  const adding = missing.reduce((a, e) => a + (Number(e.quantity) || 0), 0);
+  const holding = Number(t.quantity);
+  /* More sold than the trade holds is not a sell to attach — it is a
+     different position, or a size changed by hand. Said, not guessed. */
+  if (already + adding > holding + 1e-6) {
+    return { conflict: `file sells ${already + adding} but the trade here holds ${holding} — check it by hand` };
+  }
+
+  return {
+    completion: {
+      group: { symbol: p.symbol, entryDate: p.entryDate },
+      tradeId: t.id,
+      tranches: missing.map((e) => ({
+        exit_date: e.exit_date,
+        quantity: e.quantity,
+        price: round2(e.price),
+        charges: round2(e.charges || 0),
+        /* The bot's own reason, on the sell it explains. */
+        reason: p.exitReason || null,
+      })),
+      claimsBroker: !t.broker && broker ? broker : null,
+      /* Why it was sold, onto the trade — only when this file's sells finish
+         it, since the reason describes the last sell. importTrades writes it
+         only where the trade has none, so a reason typed by hand stands. */
+      exitReason: already + adding >= holding - 1e-6 && p.exitReason ? p.exitReason : null,
+      already, adding, holding,
+      status: t.status,
+      skipped: (p.exits || []).length - missing.length,
+    },
+  };
 }
 
 /** Headline figures for the preview, before anything is written. */

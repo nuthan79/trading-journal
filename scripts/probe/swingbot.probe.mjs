@@ -142,3 +142,84 @@ test("the import screen tries it before the tax P&L parser", () => {
   ok(mine > 0 && mine < tradebook, "a CSV falls to Zerodha by default, so this must come first");
   ok(/from "@\/lib\/brokers\/swingbot"/.test(src), "and it is imported");
 });
+
+/*
+ * THE LEDGER — the bot's newer single file: both books in one, a `record`
+ * column per row, renamed columns, a real stop on every row, and a P&L that
+ * is NET of the bot's cost estimate. Rows from its real output, unchanged.
+ */
+import * as indmoney from "@/lib/brokers/indmoney";
+import { derivePosition } from "@/lib/positions";
+
+const LEDGER = `record,symbol,pattern,entry_date,exit_date,entry_price,exit_price,quantity,stop_loss,exit_reason,score,gate_ok,bars_held,pnl,r_multiple,pct,mae_r,mfe_r
+closed,GVT&D,darvas_box,2026-06-18,2026-07-03,5257.88,4574.13,27,4581.0,stop,3,False,10,-18820.98,-1.03,-13.26,-1.39,0.58
+closed,ATHERENERG,darvas_box,2026-08-04,2026-09-28,1452.58,1452.72,70,1188.1,close below 50 SMA,4,True,38,-279.42,-0.015,-0.27,-0.18,1.1
+closed,CUPID,high_tight_flag,2026-06-11,2026-09-04,155.41,282.73,429,111.71,time stop,3,False,60,54348.94,2.899,81.52,-0.07,3.29
+open,BHEL,darvas_box,2026-10-06,,452.68,,327,395.5,,3,False,7,,,,-0.5601455105110361,0.1980132218685509
+open,KTKBANK,flat_base,2026-07-30,,291.19,,557,257.55,,3,True,53,,,,-0.24040001635146685,1.6266402565693874`;
+const ledgerRows = parseCsv(LEDGER);
+
+test("the ledger is recognised as one file holding both books", () => {
+  eq(swingbot.fileKind(ledgerRows), "ledger");
+  eq(indmoney.detectRows(ledgerRows), false, "and no other adapter checked first claims it");
+  const { positions, warnings } = swingbot.parseRows(ledgerRows);
+  eq(warnings.length, 0);
+  eq(positions.length, 5);
+  eq(positions.filter((p) => p.exits.length).length, 3, "three closed");
+  eq(positions.filter((p) => !p.exits.length).length, 2, "two still open");
+});
+
+test("the ledger's stops are read straight off, on closed rows too", () => {
+  const { positions, notes } = swingbot.parseRows(ledgerRows);
+  eq(positions[0].stop, 4581, "GVT&D's stated stop, not one worked back from pnl");
+  eq(positions[3].stop, 395.5, "BHEL, open");
+  ok(!notes.some((n) => /worked back/.test(n)), "nothing reconstructed when the file states them");
+});
+
+/* The ledger's pnl is net: GVT&D moved −18,461.25 and the file says −18,820.98.
+   The gap is the bot's cost estimate, and taking it is what keeps the
+   journal's P&L and R the same numbers as the file's. */
+test("the ledger's costs become charges, and P&L and R match the file", () => {
+  const { positions, notes } = swingbot.parseRows(ledgerRows);
+  near(positions[0].exits[0].charges, 359.73, 1e-9, "GVT&D: price move less the file's pnl");
+  near(positions[1].exits[0].charges, 289.22, 1e-9, "ATHERENERG: a +9.80 move that lost money after costs");
+  ok(notes.some((n) => /come from the file itself/.test(n) && /still open import with no charges/.test(n)));
+  for (const [p, pnl, R] of [[positions[0], -18820.98, -1.03], [positions[1], -279.42, -0.015], [positions[2], 54348.94, 2.899]]) {
+    const d = derivePosition({
+      symbol: p.symbol, side: "long", status: "closed", entry_date: p.entryDate, entry_price: p.entryPrice,
+      quantity: p.quantity, stop_loss: p.stop, stop_source: "recorded", charges: 0,
+      exit_date: p.exits[0].exit_date, exit_price: p.exits[0].price, exits: p.exits,
+    }, 5e6);
+    near(d.pnl, pnl, 0.01, `${p.symbol} P&L`);
+    near(d.r, R, 0.005, `${p.symbol} R`);
+  }
+});
+
+test("the old gross trades.csv still imports with no charges", () => {
+  /* Its pnl is whole rupees off the price move — CUPID 54,617 against
+     54,620.28 — which is rounding, not a cost. */
+  const { positions, notes } = swingbot.parseRows(closedRows);
+  ok(positions.every((p) => p.exits.every((e) => e.charges === 0)), "rounding is not taken as charges");
+  ok(notes.some((n) => /import with no charges/.test(n)));
+});
+
+test("a ledger row that is neither closed nor open is reported, not guessed", () => {
+  const { positions, warnings } = swingbot.parseRows(parseCsv(LEDGER.replace("open,BHEL", "pending,BHEL")));
+  eq(positions.length, 4);
+  ok(warnings.some((w) => /BHEL: skipped — its record is "pending"/.test(w)));
+});
+
+/* r_multiple is a witness, not an import: the R its own stop, prices and P&L
+   imply must match it, or something changed between the bot and the file. */
+test("the ledger's r_multiple is checked, not imported", () => {
+  const clean = swingbot.parseRows(ledgerRows);
+  ok(!clean.notes.some((n) => /Check before importing/.test(n)), "the real file agrees with itself");
+
+  /* GVT&D's stop typed over: 4581 → 4900. The file still says −1.03R. */
+  const edited = swingbot.parseRows(parseCsv(LEDGER.replace(",27,4581.0,stop,", ",27,4900.0,stop,")));
+  const n = edited.notes.find((x) => /Check before importing/.test(x));
+  ok(n, "a stop that no longer matches the file's R is flagged");
+  ok(/GVT&D \(2026-06-18: file -1.03R, its own stop gives -1.95R\)/.test(n), n);
+  eq(edited.warnings.length, 0, "flagged, not refused — no row is lost");
+  eq(edited.positions[0].stop, 4900, "and the stop is used as written");
+});

@@ -305,7 +305,7 @@ export default function ImportTrades({
            user whose current year's tradebook was a CSV could not date one
            holding. Its columns (symbol, trade_date, trade_type) are the most
            specific of the three. */
-        /* SwingBot's two files first: they are the only CSVs here with a
+        /* SwingBot's files first (closed, open and the one-file ledger): the only CSVs here with a
            `pattern` column, so the test is cheap and certain — and both would
            otherwise fall to the Zerodha tax P&L parser by the default above,
            which is the failure where an adapter claims a file it cannot
@@ -469,7 +469,7 @@ export default function ImportTrades({
           );
         }
 
-        const { rows: made, duplicates, noStop } =
+        const { rows: made, duplicates, noStop, completions, conflicts } =
           toJournalRows(raw.positions, {
             broker: broker.id, targets, region: fileRegion,
             /* A US file's venue: NASDAQ unless the symbol list says otherwise.
@@ -477,10 +477,13 @@ export default function ImportTrades({
             exchange: fileRegion === "US" ? "NASDAQ" : "NSE",
           });
 
-        if (!made.length) {
+        /* Nothing new AND nothing to complete. A file whose only news is that
+           positions here have since been sold is not "nothing new". */
+        if (!made.length && !completions.length) {
           throw new Error(
             `All ${duplicates.length} position${duplicates.length === 1 ? " is" : "s are"} ` +
-            "already in your journal — nothing here is new."
+            "already in your journal — nothing here is new." +
+            (conflicts.length ? ` ${conflicts.length} need checking by hand: ${conflicts[0].symbol} — ${conflicts[0].reason}.` : "")
           );
         }
 
@@ -492,10 +495,11 @@ export default function ImportTrades({
           trades: made,
           duplicates,
           noStop,
-          /* Present and empty so the shared chrome renders. A journal export
-             completes nothing and conflicts with nothing: a position is either
-             already here by symbol and entry date, or it is new. */
-          completions: [], conflicts: [], nearMisses: [],
+          /* A position already here whose file shows sells the journal lacks
+             is completed — the bot sold it since the last import — and the
+             shared completions list says so before the button. See
+             toJournalRows. */
+          completions, conflicts, nearMisses: [],
           skippedSections: [], missingColumns: [],
           summary: journalSummary(made),
           warnings: raw.warnings || [],
@@ -951,15 +955,21 @@ export default function ImportTrades({
       {journal ? (
         <>
           <div className="im-stats">
-            <div><b>{s.positions}</b><span>positions</span></div>
+            <div><b>{s.positions}</b><span>new positions</span></div>
             <div><b>{s.closed}</b><span>closed</span></div>
             <div><b>{s.open}</b><span>still running</span></div>
             {/* The figure that makes this file worth preferring, so it is on
                 the board rather than in the prose below it. */}
             <div><b>{s.withStop}</b><span>with a real stop</span></div>
-            <div><b>{s.tranches}</b><span>exits</span></div>
+            {/* Positions already here that this file's sells finish — a bot's
+                ledger re-exported after it sold. Counted on the board, and
+                their sells in the exits beside it: a file whose only news is
+                seven sales read "0 exits" otherwise. */}
+            <div><b>{parsed.completions.length}</b><span>completed</span></div>
+            <div><b>{s.tranches + parsed.completions.reduce((a, c) => a + c.tranches.length, 0)}</b><span>exits</span></div>
           </div>
 
+          {s.positions > 0 && (
           <p className="im-note">
             {/* What a broker file cannot give, said before the button. Somebody
                 who has already imported a tax P&L needs to know why they would
@@ -978,6 +988,7 @@ export default function ImportTrades({
             )}
             {s.from && <> Entries from {s.from} to {s.to}.</>}
           </p>
+          )}
 
           {parsed.duplicates.length > 0 && (
             <p className="im-note">
