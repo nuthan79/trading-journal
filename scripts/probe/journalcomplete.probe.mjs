@@ -94,3 +94,19 @@ test("the import history counts completions apart from misses", () => {
   ok(/\{done\} completed/.test(h) && /\{missed\} not imported/.test(h),
      "a ledger that closed seven reads '7 completed', not '30 not imported'");
 });
+
+test("undoing an import that only completed positions says what it takes back", () => {
+  const h = read("components/journal/ImportHistory.jsx");
+  ok(/ake back the sells it added to \$\{sells\} position/.test(h), "the sells, and that the positions reopen");
+  ok(/trades \|\| reopen \? `\$\{trades\}\$\{reopen\}\?` : "Nothing left from this import — remove the record\?"/.test(h),
+     "'nothing left' only when it is true");
+});
+
+test("after a journal import, the message says the stops are the file's — not assumed", () => {
+  const imp = read("components/ImportTrades.jsx");
+  const i = imp.indexOf('parsed?.kind === "journal" ? (');
+  ok(i > 0 && i < imp.indexOf("Each one got a stop {stopPct}% below its entry"),
+     "the journal wording is reached before the assumed-stop wording");
+  ok(/each with the stop from the file/.test(imp));
+  ok(/!\(parsed\?\.kind === "journal" && journalStopless === 0\)/.test(imp), "no Stops button when nothing waits there");
+});

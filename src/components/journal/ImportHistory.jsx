@@ -269,10 +269,20 @@ export default function ImportHistory({ onChanged }) {
                       that should give somebody pause, and it belongs next to
                       the button that acts on it rather than only in the row
                       above. */}
+                  {/* An import that only COMPLETED positions created no trades,
+                      and "nothing left" was false: undo_import removes the
+                      sells it tagged, and those positions reopen. Said so,
+                      from the report's own count, before the button. */}
                   <span className="ih-ask">
-                    {liveCount(b) === 0
-                      ? "Nothing left from this import — remove the record?"
-                      : `Delete ${liveCount(b)} trade${liveCount(b) === 1 ? "" : "s"} and anything added to them since?`}
+                    {(() => {
+                      const sells = (b.report?.issues || []).filter((i) => i.o === "completed").length;
+                      const n = liveCount(b);
+                      const trades = n > 0 ? `Delete ${n} trade${n === 1 ? "" : "s"} and anything added to them since` : "";
+                      const reopen = sells > 0
+                        ? `${trades ? " and t" : "T"}ake back the sells it added to ${sells} position${sells === 1 ? "" : "s"}, which reopen`
+                        : "";
+                      return trades || reopen ? `${trades}${reopen}?` : "Nothing left from this import — remove the record?";
+                    })()}
                   </span>
                   <button className="btn sm" onClick={() => go(b)} disabled={busy === b.id}>
                     {busy === b.id ? "Undoing…" : "Yes, undo"}

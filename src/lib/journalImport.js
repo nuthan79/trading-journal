@@ -20,6 +20,7 @@
  */
 
 import { sameBroker } from "./brokerFamily";
+import { tradeCharges } from "./charges";
 
 const round2 = (v) => Math.round(v * 100) / 100;
 
@@ -151,7 +152,11 @@ export function toJournalRows(positions, {
          derivePosition adds the two — putting the total here would deduct the
          exit costs twice, which is the same trap the tax P&L path documents. */
       charges: round2(p.charges || 0),
-      charges_auto: false,
+      /* True only where the import worked the charges out itself
+         (withOwnCharges) — then they are the app's computed figure, kept in
+         step on edit like a typed trade's. A broker's stated charges stay
+         an override. */
+      charges_auto: !!p.chargesAuto,
 
       /* Spread rather than set: a format that states none of these must not
          start writing three nulls it never had — the probe on this file
@@ -251,4 +256,37 @@ export function journalSummary(rows) {
     from: rows.reduce((a, r) => (!a || r.entry_date < a ? r.entry_date : a), null),
     to: rows.reduce((a, r) => (!a || r.entry_date > a ? r.entry_date : a), null),
   };
+}
+
+/**
+ * Every leg priced by the app's own calculator, for a file whose charges are
+ * not to be taken (the SwingBot ledger — see `ownCharges` there).
+ *
+ * Per leg, not per position: the buy's charge goes on the position and each
+ * sell's on that sell, which is the split derivePosition and the per-sell
+ * banking already expect. That is what lets an open position carry its buy
+ * charge now, and a completion later add only the charge of the sell it
+ * brings — nothing is counted twice. A sale on the day of purchase picks up
+ * the intraday rates, as tradeCharges does for any trade.
+ */
+export function withOwnCharges(positions, config, { exchange = "NSE", region = null } = {}) {
+  return (positions || []).map((p) => {
+    const c = tradeCharges({
+      exchange, region, entry_date: p.entryDate, entry_price: p.entryPrice,
+      quantity: p.quantity, exits: p.exits.map((e) => ({ ...e })),
+    }, config);
+    const exits = p.exits.map((e, i) => ({ ...e, charges: round2(c.sells?.[i]?.total || 0) }));
+    const charges = round2(c.buy?.total || 0);
+    /* The preview's Net P&L, restated on these charges — it showed the file's
+       own figure, which carries the bot's costs, and the row then saved a
+       different number. Realised only: an open position has made nothing. */
+    const realised = exits.reduce((a, e) => a + (e.price - p.entryPrice) * e.quantity - e.charges, 0);
+    return {
+      ...p,
+      charges,
+      chargesAuto: true,
+      exits,
+      netProfit: exits.length ? round2(realised - charges) : 0,
+    };
+  });
 }

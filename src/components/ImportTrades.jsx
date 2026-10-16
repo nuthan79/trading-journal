@@ -13,7 +13,7 @@ import * as indmoney from "@/lib/brokers/indmoney";
 import * as zerodhaTradebook from "@/lib/brokers/zerodha-tradebook";
 import * as icicidirect from "@/lib/brokers/icicidirect";
 import { toHoldingRows, dateCaveat } from "@/lib/holdings";
-import { toJournalRows, journalSummary } from "@/lib/journalImport";
+import { toJournalRows, journalSummary, withOwnCharges } from "@/lib/journalImport";
 import { matchFifo, openPositions, datesForHeldPositions } from "@/lib/tradebook";
 import { buildReport } from "@/lib/importReport";
 import { money, pct } from "@/lib/format";
@@ -469,8 +469,14 @@ export default function ImportTrades({
           );
         }
 
+        /* A file whose charges the app works out itself — the bot's ledger,
+           whose own cost figure is its config's, not the broker's. */
+        const positions = broker.ownCharges
+          ? withOwnCharges(raw.positions, chargeConfig, {
+              exchange: fileRegion === "US" ? "NASDAQ" : "NSE", region: fileRegion })
+          : raw.positions;
         const { rows: made, duplicates, noStop, completions, conflicts } =
-          toJournalRows(raw.positions, {
+          toJournalRows(positions, {
             broker: broker.id, targets, region: fileRegion,
             /* A US file's venue: NASDAQ unless the symbol list says otherwise.
                Resolved per row below, where the list is in hand. */
@@ -753,6 +759,9 @@ export default function ImportTrades({
   /* ------------------------------- done ---------------------------- */
 
   if (result) {
+    /* Journal rows that arrived without a usable stop — the rest carry the file's. */
+    const journalStopless = parsed?.kind === "journal"
+      ? (parsed.summary?.positions || 0) - (parsed.summary?.withStop || 0) : 0;
     return (
       <section className="im-card im-done">
         <div className="im-tick"><Check size={20} /></div>
@@ -788,6 +797,25 @@ export default function ImportTrades({
               keeps it out of holding period, XIRR and the period breakdowns rather than
               quietly skewing them.
             </>
+          ) : parsed?.kind === "journal" ? (
+            /* A journal file brings its own stops, and nothing on it is
+               assumed — the tax P&L wording below told a SwingBot import
+               that each trade "got a stop 7% below its entry". */
+            <>
+              {result.inserted > 0 && (
+                <>Your positions are in, each with the stop from the file — so R is
+                  measured rather than inferred
+                  {journalStopless > 0
+                    ? `, except on ${journalStopless} with no usable stop, which wait at Stops.`
+                    : ", and nothing waits at Stops."}{" "}</>
+              )}
+              {result.completed > 0 && (
+                <>{result.completed} position{result.completed === 1 ? " was" : "s were"} already
+                  here and {result.completed === 1 ? "has" : "have"} now been closed off with the
+                  sells this file shows, keeping {result.completed === 1 ? "its" : "their"} stop and
+                  notes.</>
+              )}
+            </>
           ) : result.inserted > 0 && assume ? (
             <>Each one got a stop {stopPct}% below its entry, marked as assumed — so R,
               expectancy and the plots all read. Replace them with what you actually
@@ -802,9 +830,12 @@ export default function ImportTrades({
           )}
         </p>
         <div className="im-actions">
+          {/* A journal file with every stop has nothing for the Stops queue. */}
+          {!(parsed?.kind === "journal" && journalStopless === 0) && (
           <button className="btn" onClick={() => onDone?.("fill-stops")}>
             {assume && result.inserted > 0 ? "Review the stops" : "Add stops now"}
           </button>
+          )}
           <button className="btn ghost" onClick={() => onDone?.("later")}>
             Later
           </button>

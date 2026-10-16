@@ -86,6 +86,19 @@ const REASON = {
   "trailing stop": "Trailing stop",
 };
 
+/**
+ * LEDGERR PRICES THE CHARGES, NOT THE BOT. The ledger's pnl is net of the
+ * bot's cost estimate, but that estimate is the bot's config — it charges ₹20
+ * brokerage a side "to price in a broker that charges per order", ₹15.93 for
+ * DP against Zerodha's ₹15.34, and works on prices it rounds before writing.
+ * Measured on the first ledger: ₹6,636 against Zerodha's ₹5,573 on 22
+ * trades. So the import costs every leg with the app's own calculator and the
+ * account's broker plan (journalImport.withOwnCharges), exactly as a typed
+ * trade is costed — open positions get their buy charge now, and a sale that
+ * arrives in a later ledger brings only its own sell charge.
+ */
+export const ownCharges = true;
+
 export const id = "swingbot";
 export const label = "SwingBot";
 export const kind = "journal";
@@ -166,7 +179,6 @@ export function parseRows(rows) {
   const at = col(rows);
   const cell = (r, name) => r[at[name]];
   let reconstructed = 0;
-  let costed = 0, costSum = 0, turnoverSum = 0;
   const disagree = [];
 
   for (let i = 1; i < (rows?.length || 0); i++) {
@@ -264,23 +276,9 @@ export function parseRows(rows) {
     p.netProfit = Number.isFinite(pnl) ? pnl : round2((exitPrice - entryPrice) * quantity);
     p.exitReason = REASON[String(cell(r, "reason") ?? "").trim().toLowerCase()] || null;
 
-    /* COSTS, WHERE THE FILE'S P&L CARRIES THEM. The old trades.csv was gross —
-       its pnl is the price move to the paisa — but the ledger's sits 0.13–0.18%
-       of turnover below it on every row, which is India's delivery charges
-       (STT alone is 0.1% each way). That gap is the bot's own cost figure, so
-       it becomes the trade's charges; importing the ledger at zero would
-       overstate every net P&L by a few hundred rupees and make the journal's
-       R disagree with the file's r_multiple, which is net. Under 0.05% of
-       turnover is rounding — the old file rounds pnl to whole rupees, a few
-       rupees on lakhs of turnover, where real charges are at least 0.1% —
-       and past 2% is not a cost, so neither is taken. All of it sits on the one sell: the
-       bot exits in full, and the total is what derivePosition adds either way. */
-    const gross = (exitPrice - entryPrice) * quantity;
-    const turnover = (entryPrice + exitPrice) * quantity;
-    const cost = Number.isFinite(pnl) ? round2(gross - pnl) : 0;
-    const charges = cost >= turnover * 0.0005 && cost < turnover * 0.02 ? cost : 0;
-    if (charges) { costed++; costSum += charges; turnoverSum += turnover; }
-    p.exits.push({ exit_date: exitDate, price: exitPrice, quantity, charges });
+    /* No charge from the file: LedgeRR prices every leg itself — see
+       `ownCharges` below. */
+    p.exits.push({ exit_date: exitDate, price: exitPrice, quantity, charges: 0 });
     positions.push(p);
   }
 
@@ -299,21 +297,12 @@ export function parseRows(rows) {
       `right to the paisa, give or take the rounding in R. A stop in the file is read straight off it.`
     );
   }
-  /* Costs: taken from the file where its P&L is net of them, and said so;
-     otherwise said plainly that there are none, rather than left to be found
-     in a figure that is quietly a few thousand light. */
-  if (costed) {
-    notes.push(
-      `Charges on ${costed} closed trade${costed === 1 ? "" : "s"} come from the file itself — the ` +
-      `gap between each price move and its P&L, about ${(costSum / turnoverSum * 100).toFixed(2)}% ` +
-      `of turnover. That is the bot's own cost estimate, not a contract note.` +
-      (positions.some((q) => !q.exits.length)
-        ? " Positions still open import with no charges, since the file states costs only on a sale."
-        : "")
-    );
-  } else {
-    notes.push("Brokerage and taxes are not in this file, so these trades import with no charges.");
-  }
+  /* The bot's own cost figure is not used — see `ownCharges`. Said once, so
+     a P&L that differs from the bot's report by its costs is explained. */
+  notes.push(
+    "Charges are worked out by LedgeRR from the broker plan in your Setup, the same way as every " +
+    "other trade — the bot's own cost estimate in this file is not used."
+  );
 
   return { positions, warnings, notes };
 }

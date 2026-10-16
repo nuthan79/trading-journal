@@ -119,7 +119,7 @@ test("an open row is open, and the same file twice adds nothing", () => {
 
 test("what the file says about itself is a note, not a lost row", () => {
   const { warnings, notes } = swingbot.parseRows(closedRows);
-  ok(notes.some((w) => /no charges/.test(w)), "charges are absent and said to be");
+  ok(notes.some((w) => /Charges are worked out by LedgeRR/.test(w)), "who prices the charges is said");
   ok(notes.some((w) => /worked back from the P&L and R/.test(w)), "and the stops are explained");
   /* Under warnings these read as "2 rows unreadable — skipped before anything
      was matched", which claims a loss that did not happen. */
@@ -176,31 +176,66 @@ test("the ledger's stops are read straight off, on closed rows too", () => {
   ok(!notes.some((n) => /worked back/.test(n)), "nothing reconstructed when the file states them");
 });
 
-/* The ledger's pnl is net: GVT&D moved −18,461.25 and the file says −18,820.98.
-   The gap is the bot's cost estimate, and taking it is what keeps the
-   journal's P&L and R the same numbers as the file's. */
-test("the ledger's costs become charges, and P&L and R match the file", () => {
+/*
+ * LEDGERR PRICES THE CHARGES. The ledger's pnl is net of the bot's own cost
+ * estimate — ₹20 brokerage a side, an old DP figure — so it is not used: the
+ * adapter brings none, and withOwnCharges costs every leg with the app's
+ * calculator and the account's broker plan, as a typed trade is costed.
+ */
+import { withOwnCharges } from "@/lib/journalImport";
+import { tradeCharges, mergeConfig, BROKER_PRESETS } from "@/lib/charges";
+const ZERODHA = mergeConfig(BROKER_PRESETS["Zero brokerage (Zerodha, Groww, Upstox delivery)"]);
+
+test("the adapter takes no charge from the file, and says LedgeRR will price them", () => {
+  eq(swingbot.ownCharges, true);
   const { positions, notes } = swingbot.parseRows(ledgerRows);
-  near(positions[0].exits[0].charges, 359.73, 1e-9, "GVT&D: price move less the file's pnl");
-  near(positions[1].exits[0].charges, 289.22, 1e-9, "ATHERENERG: a +9.80 move that lost money after costs");
-  ok(notes.some((n) => /come from the file itself/.test(n) && /still open import with no charges/.test(n)));
-  for (const [p, pnl, R] of [[positions[0], -18820.98, -1.03], [positions[1], -279.42, -0.015], [positions[2], 54348.94, 2.899]]) {
-    const d = derivePosition({
-      symbol: p.symbol, side: "long", status: "closed", entry_date: p.entryDate, entry_price: p.entryPrice,
-      quantity: p.quantity, stop_loss: p.stop, stop_source: "recorded", charges: 0,
-      exit_date: p.exits[0].exit_date, exit_price: p.exits[0].price, exits: p.exits,
-    }, 5e6);
-    near(d.pnl, pnl, 0.01, `${p.symbol} P&L`);
-    near(d.r, R, 0.005, `${p.symbol} R`);
-  }
+  ok(positions.every((p) => !p.charges && p.exits.every((e) => e.charges === 0)), "nothing from the bot's pnl");
+  ok(notes.some((n) => /bot's own cost estimate in this file is not used/.test(n)));
 });
 
-test("the old gross trades.csv still imports with no charges", () => {
-  /* Its pnl is whole rupees off the price move — CUPID 54,617 against
-     54,620.28 — which is rounding, not a cost. */
-  const { positions, notes } = swingbot.parseRows(closedRows);
-  ok(positions.every((p) => p.exits.every((e) => e.charges === 0)), "rounding is not taken as charges");
-  ok(notes.some((n) => /import with no charges/.test(n)));
+test("every leg is priced by the app's own calculator — buy on the position, each sell on its sell", () => {
+  const priced = withOwnCharges(swingbot.parseRows(ledgerRows).positions, ZERODHA);
+  const g = priced[0];                                         // GVT&D
+  const c = tradeCharges({ exchange: "NSE", entry_date: g.entryDate, entry_price: g.entryPrice, quantity: g.quantity,
+    exits: [{ exit_date: "2026-07-03", price: 4574.13, quantity: 27 }] }, ZERODHA);
+  near(g.charges, c.buyTotal, 0.01, "the buy leg");
+  near(g.exits[0].charges, c.sellTotal, 0.01, "the sell leg");
+  near(g.charges + g.exits[0].charges, 312.03, 0.02, "₹312.03 at Zerodha's rates, not the bot's ₹359.73");
+  ok(g.chargesAuto, "marked as computed");
+  const bhel = priced[3];
+  ok(bhel.charges > 0 && !bhel.exits.length, "an open position carries its buy charge now");
+
+  /* Net P&L is then the price move less LedgeRR's charges — better than the
+     bot's report by its brokerage and DP, which is the point. */
+  const d = derivePosition({
+    symbol: g.symbol, side: "long", status: "closed", entry_date: g.entryDate, entry_price: g.entryPrice,
+    quantity: g.quantity, stop_loss: g.stop, stop_source: "recorded", charges: g.charges,
+    exit_date: "2026-07-03", exit_price: 4574.13, exits: g.exits,
+  }, 5e6);
+  near(d.pnl, (4574.13 - 5257.88) * 27 - 312.03, 0.02);
+  near(g.netProfit, d.pnl, 0.02, "and the preview shows the P&L that will be saved, not the bot's");
+});
+
+test("a later sale brings only its sell charge onto the trade already here", () => {
+  const priced = withOwnCharges(swingbot.parseRows(ledgerRows).positions, ZERODHA);
+  const out = toJournalRows([priced[0]], { broker: "swingbot",
+    targets: [{ id: "t-g", symbol: "GVT&D", entry_date: "2026-06-18", quantity: 27, status: "open", broker: "swingbot", exits: [] }] });
+  eq(out.completions.length, 1);
+  near(out.completions[0].tranches[0].charges, priced[0].exits[0].charges, 0.001, "the sell leg alone — the buy was charged at import");
+  ok(out.completions[0].tranches[0].charges < priced[0].charges + priced[0].exits[0].charges);
+});
+
+test("rows written from computed charges say so — charges_auto", () => {
+  const priced = withOwnCharges(swingbot.parseRows(ledgerRows).positions, ZERODHA);
+  const { rows } = toJournalRows(priced, { broker: "swingbot" });
+  ok(rows.every((r) => r.charges_auto === true));
+  const plain = toJournalRows(swingbot.parseRows(ledgerRows).positions, { broker: "swingbot" });
+  ok(plain.rows.every((r) => r.charges_auto === false), "a file's own stated charges stay an override");
+});
+
+test("the import screen prices SwingBot files with the account's plan", () => {
+  const imp = read("components/ImportTrades.jsx");
+  ok(/broker\.ownCharges\s*\? withOwnCharges\(raw\.positions, chargeConfig/.test(imp));
 });
 
 test("a ledger row that is neither closed nor open is reported, not guessed", () => {
