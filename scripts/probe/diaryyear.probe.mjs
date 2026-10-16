@@ -168,9 +168,13 @@ test("the find bar sticks below the topbar, and what is scrolled to clears both"
      "an entry clears the topbar and the bar, by variable");
   const d = read("components/journal/Diary.jsx");
   ok(!/scroll-margin-top: \d+px/.test(d), "no typed total left behind in the component");
-  ok(/<div className="dy-ym" id="dy-year">/.test(d), "the map can be scrolled to");
-  ok(/getElementById\("dy-year"\)\?\.scrollIntoView\(\{ block: "start" \}\)[\s\S]{0,80}<Calendar size=\{12\} \/>Calendar/.test(d),
-     "and the bar carries the way back to it");
+  /* The way back up is a corner button, not a Calendar button in the bar
+     (the user's call): it appears a screen down and goes to the top. */
+  ok(!/<Calendar size=/.test(d) && !/dy-year/.test(d), "no Calendar button");
+  ok(/const on = \(\) => setShowTop\(window\.scrollY > window\.innerHeight\);/.test(d), "shown once a screen down");
+  ok(/\{showTop && \(\s*<button type="button" className="btn ghost sm dy-top" onClick=\{toTop\}/.test(d), "a button");
+  ok(/window\.scrollTo\(\{ top: 0, behavior: still \? "auto" : "smooth" \}\)/.test(d), "to the top, still where motion is reduced");
+  ok(/\.dy-top \{ position: fixed;/.test(css), "pinned to the corner");
   /* The variable is the topbar's MEASURED height — it wraps, and a fixed
      215px left the bar floating 64px under a 151px topbar. */
   const layout = read("app/(app)/layout.jsx");

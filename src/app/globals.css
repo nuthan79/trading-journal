@@ -368,7 +368,10 @@ select.in { font-family: 'Archivo', sans-serif; }
 /* Both clear the topbar AND the find bar: what is scrolled to lands below
    everything sticky, read off the variables rather than a typed total. */
 .dy-entry { scroll-margin-top: calc(var(--topbar-h) + var(--dy-find-h)); }
-#dy-year  { scroll-margin-top: calc(var(--topbar-h) + var(--dy-find-h) + 8px); }
+/* Back to top: the corner opposite the dev badge, over the entries, under
+   the topbar's menus. */
+.dy-top { position: fixed; right: 24px; bottom: 24px; z-index: 15;
+  background: var(--card); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12); }
 .dy-q { position: relative; flex: 1 1 280px; display: flex; align-items: center; }
 .dy-q svg { position: absolute; left: 10px; color: var(--ink3); pointer-events: none; }
 .dy-q .in { width: 100%; padding-left: 30px; }

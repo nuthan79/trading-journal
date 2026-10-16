@@ -98,7 +98,9 @@ test("the block sits at the top of the diary and opens what it lists", () => {
      "above the year map");
   const lt = d.slice(d.indexOf("function LastTime"));
   ok(/onClick=\{\(\) => open\(e\.id\)\}/.test(lt), "an entry it lists opens in the list");
-  ok(/You wrote nothing while it lasted\./.test(lt), "and the absence is said, not hidden");
+  /* A run with no entries at all says nothing below the headline — the
+     user's call: "you wrote nothing while it lasted" was not wanted. */
+  ok(!/You wrote nothing while it lasted/.test(lt), "no line for a run with no entries");
   ok(/match === "longest"[\s\S]{0,80}the longest before this was/.test(lt), "a fallback says it is the longest, not a like one");
   ok(/<style jsx global>/.test(lt) && /\.dy-lt /.test(lt));
   ok(/closed=\{closed\}/.test(read("app/(app)/diary/page.jsx")), "the page hands it the finished trades");

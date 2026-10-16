@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Plus, X, Trash2, Link2, Check, Pencil, Search, ChevronDown, Calendar } from "lucide-react";
+import { Plus, X, Trash2, Link2, Check, Pencil, Search, ChevronDown, ArrowUp } from "lucide-react";
 import { chartUrl } from "@/lib/db";
 import ChartViewer from "./ChartViewer";
 import { resolveTradingViewChart } from "@/lib/charts";
@@ -213,6 +213,22 @@ export default function Diary({ diary, trades, closed = [], onSave, onDelete, on
    */
   const recall = useMemo(() => lastTime(closed || [], diary || []), [closed, diary]);
 
+  /* BACK TO TOP, once there is a top to go back to. A year of entries runs
+     to five screens; past the first, a corner button brings back the map,
+     Last time and the form in one press. Hidden above that, where it would
+     be a button for going nowhere. */
+  const [showTop, setShowTop] = useState(false);
+  useEffect(() => {
+    const on = () => setShowTop(window.scrollY > window.innerHeight);
+    on();
+    window.addEventListener("scroll", on, { passive: true });
+    return () => window.removeEventListener("scroll", on);
+  }, []);
+  const toTop = () => {
+    const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({ top: 0, behavior: still ? "auto" : "smooth" });
+  };
+
   /* The hash, on first paint and on every later change, resolved through
      the map (cellOn) so a weekend's entry finds the session it was rolled
      onto. An empty hash is a no-op, not a reset — that is a Back press, and
@@ -388,6 +404,12 @@ export default function Diary({ diary, trades, closed = [], onSave, onDelete, on
 
   return (
     <div className="sec">
+      {showTop && (
+        <button type="button" className="btn ghost sm dy-top" onClick={toTop}
+                aria-label="Back to top" title="Back to top">
+          <ArrowUp size={13} />Top
+        </button>
+      )}
       {zoom != null && shots.length > 0 && (
         <ChartViewer
           shots={shots}
@@ -555,13 +577,6 @@ export default function Diary({ diary, trades, closed = [], onSave, onDelete, on
             {/* "1 of 44 entries" — the noun goes with the total, not the match. */}
             {filtering ? `${shown.length} of ` : ""}{diary.length} entr{diary.length === 1 ? "y" : "ies"}
           </span>
-          {/* The way back to the map, travelling with the bar. Always there:
-              a scroll listener to hide one small button is more moving parts
-              than the button is worth. */}
-          <button className="btn ghost sm"
-                  onClick={() => document.getElementById("dy-year")?.scrollIntoView({ block: "start" })}>
-            <Calendar size={12} />Calendar
-          </button>
           {filtering && (
             <button className="btn ghost sm" onClick={() => { setQ(""); setEmotion(""); setMonth(""); }}>
               <X size={12} />Clear
@@ -733,7 +748,7 @@ function YearMap({ year, jump }) {
     return bits.join(" · ");
   };
   return (
-    <div className="dy-ym" id="dy-year">
+    <div className="dy-ym">
       <div className="dy-ym-months" style={{ gridTemplateColumns: `repeat(${cols.length}, 1fr)` }}>
         {months.map((m) => (
           <span key={m.ym} style={{ gridColumn: `${m.col + 1} / span 4` }}>{monthLabel(m.ym).slice(0, 3)}</span>
@@ -868,9 +883,7 @@ function LastTime({ recall, open }) {
           Nothing written during that run
           {list.charts ? `, ${list.charts} chart${list.charts === 1 ? "" : "s"} saved` : ""}.
         </p>
-      ) : (
-        <p className="dy-lt-none">You wrote nothing while it lasted.</p>
-      ))}
+      ) : null)}
       <style jsx global>{`
         .dy-lt { margin: 4px 0 14px; padding: 14px 16px; background: var(--card);
                  border: 1px solid var(--brass); border-left-width: 3px; border-radius: 3px; }
