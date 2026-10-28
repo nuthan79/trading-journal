@@ -240,7 +240,7 @@ export default function Summary({ closed, banking = [], openingCapital, flows = 
           knows how to get smaller and did nothing with a large screen. (The
           only others are Review's thesis grid, at 900px.) 1280 is the width
           at which the card holds the paragraph's full measure AND a readable
-          rail: ~930px of measure + 24px gap + 280px of rail + .jwrap's 40px.
+          rail: ~930px of measure + 24px gap + 300px of rail + .jwrap's 40px.
 
           WHICH RULE GOVERNS THE MEASURE. .sum-body's max-width: 92ch, in both
           ranges. The first track is max-content and takes its width from
@@ -251,7 +251,10 @@ export default function Summary({ closed, banking = [], openingCapital, flows = 
         @media (min-width: 1280px) {
           .sum-card.has-rail {
             display: grid;
-            grid-template-columns: minmax(0, max-content) minmax(260px, 1fr);
+            /* 300, not 260: two columns of a 260px rail give 108px tiles, and
+               "₹19.1k · 0.22%" needs 119 — so the one tile here with two parts
+               was ellipsised from 1280 to ~1370, which is laptop width. */
+            grid-template-columns: minmax(0, max-content) minmax(300px, 1fr);
             column-gap: 24px;
             align-items: start;
           }

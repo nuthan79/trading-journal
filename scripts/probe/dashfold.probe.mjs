@@ -247,6 +247,8 @@ test("a wide screen gets a min-width query; the measure stays 92ch", () => {
   const s = summarySrc();
   ok(/@media \(min-width: 1280px\)\s*\{\s*\.sum-card\.has-rail\s*\{[^}]*display: grid/.test(s),
      "the card goes two-column above 1280px");
+  ok(/minmax\(0, max-content\) minmax\(300px, 1fr\)/.test(s),
+     "the rail never narrower than 300px — at 260 Risk per trade ellipsised at 1280");
   ok(/\.sum-body\s*\{[^}]*max-width: 92ch;/.test(s.replace(/\/\*[\s\S]*?\*\//g, "")),
      "the paragraph keeps its own cap");
   ok(/\.sum-rail\s*\{[^}]*border-top: 1px solid var\(--rule\)/.test(s),
