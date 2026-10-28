@@ -2,7 +2,8 @@
 
 import { useMemo } from "react";
 import { summaryParts } from "@/lib/dashboard";
-import { rfmt, pct, money } from "@/lib/format";
+import { headline } from "@/lib/calc";
+import { rfmt, pct, money, days } from "@/lib/format";
 import Money from "@/components/Money";
 
 /**
@@ -18,9 +19,29 @@ const Fig = ({ children, tone }) => (
   <span className={`sum-fig ${tone || ""}`}>{children}</span>
 );
 
+function RailTile({ label, value, tone, hint }) {
+  return (
+    <div className="sum-rail-tile" title={hint || undefined}>
+      <div className={`sum-rail-v mono ${tone || ""}`}>{value}</div>
+      <div className="sum-rail-l">{label}</div>
+    </div>
+  );
+}
+
 export default function Summary({ closed, banking = [], openingCapital, flows = [] }) {
   const s = useMemo(
     () => summaryParts(closed, { openingCapital, flows, banking }),
+    [closed, banking, openingCapital, flows]
+  );
+  /*
+    COMPUTED TWICE, ON PURPOSE. summaryParts() above writes the prose;
+    headline() is the single definition of the six figures in the rail, the
+    same call over the same inputs HeadlineNumbers makes. Working them out a
+    second time here from `s` would be cheaper and is the thing that drifts —
+    one rail saying a payoff of 2.10 above a sheet saying 2.08.
+  */
+  const h = useMemo(
+    () => headline(closed, { openingCapital, flows, banking }),
     [closed, banking, openingCapital, flows]
   );
 
@@ -41,8 +62,23 @@ export default function Summary({ closed, banking = [], openingCapital, flows = 
     );
   }
 
+  /*
+    The rail says what KIND of trading produced the record; the paragraph says
+    what it came to. Nothing in it may repeat a figure the paragraph already
+    names — trades, months, expectancy, win rate, total R, net P&L, drawdown,
+    losing run, green months and quarters — or it is the duplication the
+    folded sheet below was introduced to remove. Best and worst trade stay out
+    too: the equity chart's footer prints them.
+
+    Two gates, both rules this file already keeps rather than new bars:
+    without an R four of the six are dashes, and on a thin sample the
+    paragraph is busy saying its own expectancy is not yet a reading — six
+    confident figures beside that sentence would undo it.
+  */
+  const showRail = s.hasR && s.rConfidence !== "thin";
+
   return (
-    <section className="sum-card">
+    <section className={`sum-card${showRail ? " has-rail" : ""}`}>
       <div className="sum-head">
         <span className="eyebrow">Summary</span>
         <span className="sum-right">
@@ -110,6 +146,47 @@ export default function Summary({ closed, banking = [], openingCapital, flows = 
         </p>
       )}
 
+      {showRail && (
+        <aside className="sum-rail" aria-label="The shape of it">
+          <div className="eyebrow sum-rail-h">The shape of it</div>
+          <div className="sum-rail-grid">
+            {/*
+              Risk per trade leads. Every R in the paragraph beside it is
+              unreadable without it — "+1.02R per trade" says nothing until you
+              know what an R is worth. Its hover is HeadlineNumbers' word for
+              word, and it is the one tile here whose hover changes what the
+              number means: when sizing has grown with the account, 1R is not
+              one amount of money.
+            */}
+            <RailTile
+              label="Risk per trade"
+              value={<>
+                <Money v={h.avgRisk} />
+                {isFinite(h.avgRiskPct) && (
+                  <span className="sum-rail-sub"> · {pct(h.avgRiskPct, 2)}</span>
+                )}
+              </>}
+              hint={h.riskVaries
+                ? `Most trades risked between ${money(h.riskLo)} and ${money(h.riskHi)}. ` +
+                  `1R has grown with the account, so a +2R early on and a +2R lately ` +
+                  `are different amounts of money — total R adds them as though they ` +
+                  `were the same.`
+                : "The average money put at risk on a trade. Your sizing is consistent, " +
+                  "so 1R means much the same throughout your record."} />
+            <RailTile label="Profit factor"
+              value={isFinite(h.profitFactor) ? h.profitFactor.toFixed(2) : "∞"} />
+            <RailTile label="Payoff ratio"
+              value={isFinite(h.payoff) ? h.payoff.toFixed(2) : "∞"}
+              hint="Average win divided by average loss" />
+            <RailTile label="Avg hold" value={days(h.avgHold)} />
+            <RailTile label="Avg gain" value={pct(h.avgGainPct)} tone="pos"
+              hint="On the winners, as a percentage of position size" />
+            <RailTile label="Avg loss" value={pct(h.avgLossPct)} tone="neg"
+              hint="On the losers, as a percentage of position size" />
+          </div>
+        </aside>
+      )}
+
       <style jsx>{`
         .sum-card {
           border: 1px solid var(--rule);
@@ -148,6 +225,42 @@ export default function Summary({ closed, banking = [], openingCapital, flows = 
           text-wrap: pretty;
         }
         @media (max-width: 720px) { .sum-body { font-size: 15px; } }
+
+        /* Below the breakpoint the rail stacks under the paragraph, ruled
+           off above rather than beside, three across. It must not vanish on
+           a laptop — the figures are no less true at 1200px. */
+        .sum-rail {
+          border-top: 1px solid var(--rule);
+          margin-top: 14px; padding-top: 12px;
+        }
+
+        /*
+          A min-width query, which this codebase almost never writes: every
+          other query on the Dashboard is max-width, which is why the app
+          knows how to get smaller and did nothing with a large screen. (The
+          only others are Review's thesis grid, at 900px.) 1280 is the width
+          at which the card holds the paragraph's full measure AND a readable
+          rail: ~930px of measure + 24px gap + 280px of rail + .jwrap's 40px.
+
+          WHICH RULE GOVERNS THE MEASURE. .sum-body's max-width: 92ch, in both
+          ranges. The first track is max-content and takes its width from
+          that cap, rather than repeating 92ch here — a ch in this template
+          resolves in the CARD's font, not the paragraph's 17px, and would cap
+          the line about a fifth shorter than the rule above it says.
+        */
+        @media (min-width: 1280px) {
+          .sum-card.has-rail {
+            display: grid;
+            grid-template-columns: minmax(0, max-content) minmax(260px, 1fr);
+            column-gap: 24px;
+            align-items: start;
+          }
+          .sum-card.has-rail .sum-head { grid-column: 1 / -1; }
+          .sum-rail {
+            border-top: 0; margin-top: 0; padding-top: 0;
+            border-left: 1px solid var(--rule); padding-left: 24px;
+          }
+        }
       `}</style>
 
       <style jsx global>{`
@@ -170,6 +283,36 @@ export default function Summary({ closed, banking = [], openingCapital, flows = 
            but carrying none of the accent that makes the others read as
            settled. Hiding it would be worse — it is their number. */
         .sum-fig.muted { color: var(--ink2); font-weight: 600; }
+
+        /* The rail's tiles render through RailTile, so their styles must be
+           global (see CLAUDE.md), under a prefix of their own. Typography is
+           .hn-cell's — mono value, small uppercase label — so the rail and the
+           sheet below read as one system; the sizing is not, since .hn-cell
+           is built for five to seven across and this is two or three. */
+        .sum-rail-h { display: block; margin-bottom: 10px; color: var(--ink3); }
+        .sum-rail-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 14px 20px;
+        }
+        @media (min-width: 1280px) {
+          .sum-rail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+        .sum-rail-tile { min-width: 0; }
+        .sum-rail-v {
+          font-size: 18px; font-weight: 500; line-height: 1.15;
+          letter-spacing: -0.015em; color: var(--ink);
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .sum-rail-v.pos { color: var(--long); }
+        .sum-rail-v.neg { color: var(--short); }
+        .sum-rail-sub { font-size: 0.68em; color: var(--ink3); }
+        .sum-rail-l {
+          font-family: 'Archivo', sans-serif; font-size: 9px; font-weight: 600;
+          letter-spacing: 0.11em; text-transform: uppercase; color: var(--ink3);
+          margin-top: 5px;
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
       `}</style>
     </section>
   );
