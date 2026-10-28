@@ -1059,8 +1059,8 @@ function ProcessMap({ data, week, lastTen, closed }) {
 
       {/* Above the strips because it is the conclusion they lead to, and
           because somebody opening this tab to ask how the recent trading has
-          gone should not have to read two rows of figures to find out. Same
-          card as Holdings, from one file — see LosingRun. */}
+          gone should not have to read two rows of figures to find out.
+          Holdings carries one line pointing here — see LosingRun. */}
       <LosingRun closed={closed} />
 
       {/* Under WEEK_MIN_CLOSED the week is a line like "1 closed · 0 won, 1

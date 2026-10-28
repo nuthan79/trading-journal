@@ -23,6 +23,7 @@ import { bankedEvents } from "@/lib/positions";
 import { FREE_AT_R, POWER_R, POWER_DAYS, breakevenPrompt } from "@/lib/path";
 import PositionDetail from "./PositionDetail";
 import OpenProfitAlert from "./OpenProfitAlert";
+import { LosingRunLine } from "./LosingRun";
 import { soldSinceSnapshot } from "@/lib/snapshots";
 
 /**
@@ -1384,6 +1385,10 @@ export default function Holdings({
       {/* Above the figures it is about. Only when the open winners are worth a
           tenth of the account — see lib/openProfit.js. */}
       <OpenProfitAlert open={open} accountSize={accountSize} />
+
+      {/* A pointer to Process, not the card: the judgement lives there. One
+          line, only while a run of seven or more is on — see LosingRun. */}
+      <LosingRunLine closed={closed} />
 
       <div className="ps-top">
         <div className="ps-riskcard">

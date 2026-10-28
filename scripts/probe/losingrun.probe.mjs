@@ -75,8 +75,9 @@ test("the threshold is seven and the Process tab acts on it", () => {
   ok(/losingRun\(closed\)/.test(src), "it must read the closed book, not the open one");
   ok(/<LosingRun closed=\{closed\} \/>/.test(read("components/journal/Review.jsx")),
      "the Process tab does not show it");
-  ok(!/LosingRun/.test(read("components/journal/Holdings.jsx")),
-     "Holdings states facts; a threshold somebody else may not share is not one");
+  const holdings = read("components/journal/Holdings.jsx");
+  ok(!/<LosingRun[\s>]/.test(holdings),
+     "Holdings states facts; the card's judgement is not one");
   /*
    * WHAT THE CARD SAYS, AND HOW MUCH OF IT.
    *
@@ -93,4 +94,29 @@ test("the threshold is seven and the Process tab acts on it", () => {
   /* The body, without the heading or the hover, stays short enough to read. */
   const body = flat.slice(flat.indexOf("The market isn&apos;t"), flat.indexOf("Last winner"));
   ok(body.length < 180, `the card is ${body.length} characters of prose again`);
+});
+
+/**
+ * HOLDINGS GETS ONE LINE THAT POINTS TO THE CARD — ON TRIAL, 29 OCT 2026.
+ *
+ * Holdings is where the next trade is decided, so a run belongs in sight
+ * there, but as a pointer: the count, the last winner, what to do, and a link
+ * to Process. It must come from the card's own file, read the closed book, and
+ * fire at the card's own threshold — a second count or a second seven is how
+ * two screens come to disagree about whether a run is on.
+ */
+test("Holdings shows the one-line pointer, from the card's own file", () => {
+  const holdings = read("components/journal/Holdings.jsx");
+  ok(/import \{ LosingRunLine \} from "\.\/LosingRun";/.test(holdings), "imported from LosingRun.jsx");
+  ok(/<LosingRunLine closed=\{closed\} \/>/.test(holdings), "rendered with the closed book");
+  const src = read("components/journal/LosingRun.jsx");
+  const line = src.slice(src.indexOf("export function LosingRunLine"));
+  ok(line.length > 0 && /losingRun\(closed\)/.test(line), "the same count");
+  ok(/run\.n < LOSING_RUN_ALERT\) return null/.test(line), "the same threshold, nothing new");
+  ok(!/\b7\b/.test(line.replace(/\/\*[\s\S]*?\*\//g, "")), "no second seven");
+  ok(/title=\{METHOD\}/.test(line) && /title=\{METHOD\}/.test(src.slice(0, src.indexOf("export function LosingRunLine"))),
+     "one hover, shared, so the caveat cannot drift");
+  ok(/href="\/analysis\/review#losing-run"/.test(line), "it points at the card");
+  ok(/className="lr" id="losing-run"/.test(src), "and the card answers to that anchor");
+  ok(!/The market isn&apos;t taking your setups/.test(line), "the verdict is not restated on Holdings");
 });
