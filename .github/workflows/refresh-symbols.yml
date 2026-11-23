@@ -1,10 +1,17 @@
 # Rebuilds the symbol and sector files every Saturday and commits them if they
 # changed; Vercel deploys the commit like any other. See CLAUDE.md, Commands.
 #
-# The two markets run independently: if NSE or BSE refuse GitHub's machines,
-# the US half still lands, and the job then fails so GitHub emails the owner.
+# The two markets run independently: if a source refuses GitHub's machines,
+# the other half still lands, and the job then fails so GitHub emails the owner.
 # A source that answers with too little cannot replace a good file — each
 # builder refuses to write a list more than a tenth smaller than the last.
+#
+# BSE ANSWERS 403 FROM HERE (first run, 23 Nov 2026); NSE does not. So India's
+# BSE rows are carried over from the last build (see src/lib/symbolBuild.js,
+# which flags it as a warning, not a failure) and India's SECTORS are not run
+# at all: they are read from BSE scrip by scrip, and 5,000 refusals would take
+# four minutes to change nothing. Both stay local commands — npm run symbols
+# and npm run sectors from a machine BSE answers, every month or two.
 #
 # No secrets: everything fetched is public, and the repo is public too, so the
 # commit step names the five files it may touch and never adds anything else.
@@ -42,13 +49,6 @@ jobs:
         continue-on-error: true
         run: npm run symbols
 
-      # Reads symbols.json, so only after a good one.
-      - name: India sectors
-        id: in_sec
-        if: steps.in_sym.outcome == 'success'
-        continue-on-error: true
-        run: npm run sectors
-
       - name: US symbols
         id: us_sym
         continue-on-error: true
@@ -81,9 +81,9 @@ jobs:
       # After the commit, so a good half is never held back by a bad one.
       - name: Fail if a market did not refresh
         if: >-
-          steps.in_sym.outcome != 'success' || steps.in_sec.outcome != 'success' ||
+          steps.in_sym.outcome != 'success' ||
           steps.us_sym.outcome != 'success' || steps.us_sec.outcome != 'success'
         run: |
-          echo "India symbols: ${{ steps.in_sym.outcome }} · sectors: ${{ steps.in_sec.outcome }}"
+          echo "India symbols: ${{ steps.in_sym.outcome }}"
           echo "US symbols: ${{ steps.us_sym.outcome }} · sectors: ${{ steps.us_sec.outcome }}"
           exit 1

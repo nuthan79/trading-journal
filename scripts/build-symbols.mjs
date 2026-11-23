@@ -54,6 +54,7 @@ import { writeFile, mkdir, readdir, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { findRenames, mergeRenames } from "../src/lib/renames.js";
+import { keepRefusedBse } from "../src/lib/symbolBuild.js";
 
 const OUT = path.join(process.cwd(), "public", "symbols.json");
 const RENAMES = path.join(process.cwd(), "public", "renames.json");
@@ -273,7 +274,26 @@ async function local() {
 }
 
 /* ---------------------------------- run -------------------------------- */
-const all = [...(await nse()), ...(await bse()), ...(await local())];
+let previous = [];
+if (existsSync(OUT)) {
+  try {
+    previous = JSON.parse(await readFile(OUT, "utf8"));
+  } catch {
+    // An unreadable existing file is not a reason to refuse to write a good
+    // one — that would leave the project stuck with a corrupt symbols.json.
+  }
+}
+
+const fetched = [...(await nse()), ...(await bse()), ...(await local())];
+
+/* BSE refusing is expected from a datacentre — see src/lib/symbolBuild.js. */
+const { rows: all, kept } = keepRefusedBse(fetched, previous);
+if (kept) {
+  const msg = `BSE refused; kept the ${kept} BSE rows from the last build. `
+    + `Run npm run symbols from a machine BSE answers to refresh them.`;
+  console.warn(`BSE  → ${msg}`);
+  if (process.env.GITHUB_ACTIONS) console.log(`::warning title=BSE not refreshed::${msg}`);
+}
 
 // De-dupe on symbol+exchange, prefer NSE when a name exists on both
 const seen = new Map();
@@ -324,15 +344,6 @@ if (!list.length) {
  * case of a genuinely shorter list, which is rare enough to be worth typing.
  */
 const FORCE = process.argv.includes("--force");
-let previous = [];
-if (existsSync(OUT)) {
-  try {
-    previous = JSON.parse(await readFile(OUT, "utf8"));
-  } catch {
-    // An unreadable existing file is not a reason to refuse to write a good
-    // one — that would leave the project stuck with a corrupt symbols.json.
-  }
-}
 
 if (!FORCE && previous.length && list.length < previous.length * 0.9) {
   const was = (e) => previous.filter((x) => x.e === e).length;

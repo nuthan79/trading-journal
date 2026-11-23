@@ -113,11 +113,47 @@ test("the weekly job refreshes on a schedule and on demand, naming its files", (
   ok(/schedule:\s*\n\s*- cron: "30 2 \* \* 6"/.test(y), "Saturday 08:00 IST");
   ok(/workflow_dispatch:/.test(y), "and a Run button, to test it by hand");
   ok(/contents: write/.test(y));
-  for (const s of ["symbols", "symbols:us", "sectors", "sectors:us", "probe", "probe:tz"]) {
+  for (const s of ["symbols", "symbols:us", "sectors:us", "probe", "probe:tz"]) {
     ok(new RegExp(`npm run ${s}\\s*$`, "m").test(y), `runs ${s}`);
   }
+  /* India's sectors are read from BSE, which refuses GitHub's machines. */
+  ok(!/npm run sectors\s*$/m.test(y), "India's sectors stay a local command");
   ok(/git add public\/symbols\.json public\/symbols\.us\.json public\/sectors\.json public\/sectors\.us\.json public\/renames\.json\s*$/m.test(y),
      "adds exactly the five data files");
   ok(!/git add (-A|--all|\.)(\s|$)/m.test(y), "never everything");
   ok(/git diff --cached --quiet/.test(y), "commits only when something changed");
+});
+
+/**
+ * BSE REFUSES GITHUB'S MACHINES; NSE DOES NOT.
+ *
+ * Measured on the weekly job's first run, 23 Nov 2026: NSE 2,643, BSE 403. The
+ * shrink guard then refused the file — correctly — and would have done so
+ * every Saturday. Last build's BSE rows now stand in, so NSE refreshes weekly.
+ */
+import { keepRefusedBse } from "@/lib/symbolBuild";
+
+test("when BSE sends nothing, last build's BSE rows are kept", () => {
+  const prev = [row("RELIANCE", "NSE", "I1"), row("ABB", "BSE", "I2"), row("XYZ", "BSE", "I3")];
+  const fresh = [row("RELIANCE", "NSE", "I1"), row("NEWIPO", "NSE", "I9")];
+  const { rows, kept } = keepRefusedBse(fresh, prev);
+  eq(kept, 2);
+  eq(rows.map((r) => `${r.e}:${r.s}`).join(), "NSE:RELIANCE,NSE:NEWIPO,BSE:ABB,BSE:XYZ",
+     "this week's NSE, last week's BSE");
+});
+
+test("when BSE answers, its fresh rows are used and nothing is carried", () => {
+  const { rows, kept } = keepRefusedBse([row("ABB", "BSE", "I2")], [row("OLD", "BSE", "I8")]);
+  eq(kept, 0);
+  eq(rows.map((r) => r.s).join(), "ABB");
+});
+
+test("NSE refusing is still a failure — nothing stands in for it", () => {
+  /* Both refused: only BSE may be carried, so the guard still sees NSE gone. */
+  const { rows } = keepRefusedBse([], [row("RELIANCE", "NSE", "I1"), row("ABB", "BSE", "I2")]);
+  eq(rows.map((r) => `${r.e}:${r.s}`).join(), "BSE:ABB", "the shrink guard must see NSE missing");
+  const src = read("scripts/build-symbols.mjs");
+  const carry = src.indexOf("keepRefusedBse(fetched, previous)");
+  ok(carry > 0 && carry < src.indexOf("Refusing to write"), "carried before the guard counts");
+  ok(/::warning title=BSE not refreshed::/.test(src), "and said on the job's page, not failed");
 });
