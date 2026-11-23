@@ -53,8 +53,10 @@
 import { writeFile, mkdir, readdir, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { findRenames, mergeRenames } from "../src/lib/renames.js";
 
 const OUT = path.join(process.cwd(), "public", "symbols.json");
+const RENAMES = path.join(process.cwd(), "public", "renames.json");
 const DATA_DIR = path.join(process.cwd(), "data");
 const NSE_URL = "https://nsearchives.nseindia.com/content/equities/EQUITY_L.csv";
 
@@ -344,9 +346,28 @@ if (!FORCE && previous.length && list.length < previous.length * 0.9) {
   process.exit(1);
 }
 
+/**
+ * RENAMES, SEEN ONLY HERE. The file being replaced is the one place the old
+ * name still exists, so this build is the only moment a rename can be caught:
+ * an ISIN that sat under one symbol now sits under another. Kept cumulatively
+ * in public/renames.json for Holdings to mark — see src/lib/renames.js.
+ * Dated by the day in India, wherever this runs; the weekly job runs in UTC.
+ */
+const day = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+let known = {};
+if (existsSync(RENAMES)) {
+  try { known = JSON.parse(await readFile(RENAMES, "utf8")).renames || {}; } catch {}
+}
+const found = findRenames(previous, list, day);
+const renames = mergeRenames(known, found, list);
+
 await mkdir(path.dirname(OUT), { recursive: true });
 await writeFile(OUT, JSON.stringify(list));
+await writeFile(RENAMES, JSON.stringify({ built: day, renames }, null, 1) + "\n");
 
 const kb = (Buffer.byteLength(JSON.stringify(list)) / 1024).toFixed(0);
 console.log(`\nWrote ${list.length} symbols to public/symbols.json (${kb} KB)`);
 console.log(`  NSE ${list.filter((x) => x.e === "NSE").length}  ·  BSE ${list.filter((x) => x.e === "BSE").length}`);
+const fresh = Object.entries(found);
+console.log(`Renames: ${fresh.length} new this build, ${Object.keys(renames).length} on record (public/renames.json)`);
+for (const [k, v] of fresh) console.log(`  ${k} → ${v.to}`);

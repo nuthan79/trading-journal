@@ -1,0 +1,137 @@
+{
+ "built": "2026-11-23",
+ "renames": {
+  "BSE:ABCOTS": {
+   "to": "ABCIND",
+   "since": "2026-11-23"
+  },
+  "BSE:ABVL": {
+   "to": "PASURA",
+   "since": "2026-10-28"
+  },
+  "BSE:BANSTEA": {
+   "to": "NOVYRA",
+   "since": "2026-10-28"
+  },
+  "BSE:BODHTREE": {
+   "to": "DATAKOSA",
+   "since": "2026-10-28"
+  },
+  "BSE:BRIGHT": {
+   "to": "BRIGHTOUTD",
+   "since": "2026-11-23"
+  },
+  "BSE:CDG": {
+   "to": "JUJHARLOGI",
+   "since": "2026-10-28"
+  },
+  "BSE:FMEC": {
+   "to": "DHVIJAFIN",
+   "since": "2026-10-28"
+  },
+  "BSE:HEG": {
+   "to": "HEGAM",
+   "since": "2026-10-28"
+  },
+  "BSE:ICICIPRULI": {
+   "to": "ICICILIFE",
+   "since": "2026-10-28"
+  },
+  "BSE:JOLYPLS": {
+   "to": "SAHAJDIGI",
+   "since": "2026-11-23"
+  },
+  "BSE:LYKISLTD": {
+   "to": "KROWNIQ",
+   "since": "2026-10-28"
+  },
+  "BSE:MANBRO": {
+   "to": "KDGREEN",
+   "since": "2026-10-28"
+  },
+  "BSE:NOVARTIND": {
+   "to": "EVONILE",
+   "since": "2026-11-23"
+  },
+  "BSE:RISHYRN": {
+   "to": "IMPERA",
+   "since": "2026-10-28"
+  },
+  "BSE:SATTVASUKU": {
+   "to": "TAVEXIA",
+   "since": "2026-10-28"
+  },
+  "BSE:SBIBPB": {
+   "to": "SBIPSUBNK",
+   "since": "2026-11-23"
+  },
+  "BSE:SBINEQWETF": {
+   "to": "SBIEQLWT50",
+   "since": "2026-11-23"
+  },
+  "BSE:SBINMID150": {
+   "to": "SBIMID150",
+   "since": "2026-11-23"
+  },
+  "BSE:SETFNIF50": {
+   "to": "SBINIFTY50",
+   "since": "2026-11-23"
+  },
+  "BSE:SETFNIFBK": {
+   "to": "SBIBANKNIF",
+   "since": "2026-11-23"
+  },
+  "BSE:SHASHANK": {
+   "to": "COSENER",
+   "since": "2026-11-23"
+  },
+  "BSE:SHUKRAPHAR": {
+   "to": "SHUKRAMED",
+   "since": "2026-11-23"
+  },
+  "BSE:SUGALDAM": {
+   "to": "SUGALESL",
+   "since": "2026-11-23"
+  },
+  "BSE:VIRAT": {
+   "to": "BRAHMVIRAT",
+   "since": "2026-11-23"
+  },
+  "NSE:ABCOTS": {
+   "to": "ABCIND",
+   "since": "2026-11-23"
+  },
+  "NSE:HEG": {
+   "to": "HEGAM",
+   "since": "2026-10-28"
+  },
+  "NSE:ICICIPRULI": {
+   "to": "ICICILIFE",
+   "since": "2026-10-28"
+  },
+  "NSE:MANBRO": {
+   "to": "KDGREEN",
+   "since": "2026-10-28"
+  },
+  "NSE:NOVARTIND": {
+   "to": "EVONILE",
+   "since": "2026-11-23"
+  },
+  "NSE:SANGINITA": {
+   "to": "AGASTYAEN",
+   "since": "2026-10-28"
+  },
+  "NSE:SHUKRAPHAR": {
+   "to": "SHUKRAMED",
+   "since": "2026-11-23"
+  },
+  "NSE:SILLYMONKS": {
+   "to": "CRESTO",
+   "since": "2026-10-28"
+  },
+  "NSE:VIRAT": {
+   "to": "BRAHMVIRAT",
+   "since": "2026-11-23"
+  }
+ }
+}

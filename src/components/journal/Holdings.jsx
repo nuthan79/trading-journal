@@ -10,6 +10,7 @@ import { isMtf } from "@/lib/mtf";
 import { useColumnPrefs } from "@/lib/useColumnPrefs";
 import { useSectors } from "@/lib/sectors";
 import { useMarketCap, hasMarketCaps } from "@/lib/marketCap";
+import { useRenames } from "@/lib/useRenames";
 import Qty from "@/components/Qty";
 import { qty } from "@/lib/format";
 import ColumnPicker from "./ColumnPicker";
@@ -396,6 +397,26 @@ export default function Holdings({
   /* What the company was on the day it was bought — the same answer Trades
      and What works give, so one position never reads two sizes. */
   const capOf = useMarketCap(show("mcap"));
+
+  /**
+   * A holding stored under a name the exchange has since retired. Prices are
+   * asked for by symbol, so it stops pricing without saying why — the mark is
+   * the why. Only where an ISIN moved from this symbol to another; a name
+   * merely missing from the list is not a rename. See lib/renames.js.
+   */
+  const renamedOf = useRenames();
+  const renameMark = (symbol, exchange) => {
+    const rn = renamedOf(symbol, exchange);
+    return rn && (
+      <span className="ps-renamed"
+            title={`Now listed as ${rn.to} — the same company, matched by its ISIN `
+              + `(first seen in the ${dmy(rn.since)} symbol update). Prices are looked up `
+              + `by the current name, so this holding has no price until you edit its `
+              + `symbol to ${rn.to}.`}>
+        now {rn.to}
+      </span>
+    );
+  };
 
   const rows = useMemo(() => {
     return open
@@ -944,6 +965,7 @@ export default function Holdings({
             <b className="disp">{g.symbol}</b>
           </button>
           <span className="ps-dim"> {g.exchange}</span>
+          {renameMark(g.symbol, g.exchange)}
           <i className="ps-lots">{g.lots.length} buys</i>
         </td>
         {show("sector") && <td className="ps-sect" title={g.sector}>{g.sector || "—"}</td>}
@@ -1006,6 +1028,7 @@ export default function Holdings({
                       <b className="disp">{r.symbol}</b>
                     </button>
                     <span className="ps-dim"> {r.exchange}</span>
+                    {!nested && renameMark(r.symbol, r.exchange)}
                     {flagged.has(r.id) && (
                       <BreakevenFlag c={flagged.get(r.id)} busy={busyId === r.id}
                                      onAck={ackBreakeven} />
@@ -1851,6 +1874,11 @@ export default function Holdings({
         .ps-badge svg { display: block; }
         .ps-badge-power { color: var(--brass); }
         .ps-badge-back { color: var(--short); }
+        /* Words, not an icon: it says what to type, and needs no key. */
+        .ps-renamed {
+          margin-left: 6px; font-size: 10.5px; color: var(--short);
+          border-bottom: 1px dotted currentColor; cursor: help; white-space: nowrap;
+        }
         .ps-flag:hover:not(:disabled) { transform: translateY(-1px) scale(1.15); }
         .ps-flag:disabled { opacity: 0.4; cursor: default; }
         .ps-flag.done {
