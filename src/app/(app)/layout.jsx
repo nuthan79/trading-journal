@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { noteMarked } from "@/lib/liveMarks";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Plus, LayoutGrid, Layers, Table2, LineChart, BookOpen, ClipboardList, Target, Brain, Upload, Activity } from "lucide-react";
@@ -457,6 +458,7 @@ export default function AppLayout({ children }) {
         const here = currentRegion(profile);
         const openNow = t.filter((x) => isOpen(x) && regionOf(x) === here);
         if (openNow.length) {
+          noteMarked();     // Holdings reads this clock — see lib/liveMarks.js
           markOpenPositions(openNow).then(({ marked }) => {
             if (marked.length) mergeMarks(marked);
           });

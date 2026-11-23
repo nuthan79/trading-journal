@@ -45,6 +45,8 @@ export const REGIONS = [
     fiscalStartMonth: 4,
     fiscalLabel: "FY",
     timeZone: "Asia/Kolkata",
+    /* The cash session, in the market's own clock. */
+    session: { open: "09:15", close: "15:30" },
     /* Margin funding as a broker product, with pledge fees and a per-lakh
        daily rate. It has no equivalent in the US, where margin is an interest
        rate on a balance — a different model, not a different number. */
@@ -65,6 +67,7 @@ export const REGIONS = [
     fiscalStartMonth: 1,
     fiscalLabel: "",
     timeZone: "America/New_York",
+    session: { open: "09:30", close: "16:00" },
     hasMtf: false,
   },
 ];
@@ -113,6 +116,31 @@ export const activeRegion = () => active;
 
 /** Is this a market where a stock can be bought on margin funding? */
 export const hasMtf = (id) => region(id).hasMtf;
+
+/**
+ * Whether a market's cash session is running at `now` — read in the market's
+ * own time zone, so it is right from a browser anywhere, and through the US
+ * clock change without a table of dates.
+ *
+ * WEEKDAYS ONLY, NO HOLIDAY CALENDAR. On a holiday this says open and the
+ * quotes that come back are yesterday's close, which is the truth; keeping an
+ * exchange calendar current for that is not worth it.
+ *
+ * Runs on CLOSE_GRACE_MIN past the bell so the last refresh lands after the
+ * close and the day ends on its closing price rather than on 15:25's.
+ */
+export const CLOSE_GRACE_MIN = 15;
+
+export function isMarketOpen(id, now = new Date()) {
+  const r = region(id);
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-GB", {
+    timeZone: r.timeZone, weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).formatToParts(now).map((p) => [p.type, p.value]));
+  if (parts.weekday === "Sat" || parts.weekday === "Sun") return false;
+  const mins = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+  const t = Number(parts.hour) * 60 + Number(parts.minute);
+  return t >= mins(r.session.open) && t < mins(r.session.close) + CLOSE_GRACE_MIN;
+}
 
 /**
  * The account size and risk % for a region.

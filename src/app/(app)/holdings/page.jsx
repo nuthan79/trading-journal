@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Holdings from "@/components/journal/Holdings";
 import { markOpenPositions, acknowledgeBreakeven, resolveSoldSnapshots,
          listSplits, listClosesOn, applySplitAdjustments } from "@/lib/db";
@@ -9,7 +9,8 @@ import { loadSplitCache, saveSplitCache, staleKeys, splitsFromCache,
          mergeIntoCache } from "@/lib/splitCache";
 import { measurePaths, needsMeasuring } from "@/lib/measure";
 import { useJournal } from "../JournalContext";
-import { regionSettings } from "@/lib/regions";
+import { regionSettings, isMarketOpen } from "@/lib/regions";
+import { noteMarked, markedAgo, LIVE_EVERY_MS } from "@/lib/liveMarks";
 
 export default function HoldingsPage() {
   const {
@@ -135,9 +136,50 @@ export default function HoldingsPage() {
     }
   };
 
+  /**
+   * LIVE PRICES WHILE THE MARKET IS OPEN — every five minutes, only while this
+   * page is open and on screen.
+   *
+   * A one-minute tick asks three questions and usually answers no: is the tab
+   * visible, is this book's market open (in its own clock — lib/regions.js),
+   * and has it been five minutes since anything last asked. Checking on a
+   * tick rather than firing on a five-minute timer is what makes coming back
+   * to a tab after lunch refresh at once instead of up to five minutes later.
+   *
+   * Quotes only, and silent. Refresh also measures each position's path for
+   * the badges, which is history and does not move by the minute, so that
+   * stays on the button; and a toast every five minutes would be noise. A
+   * failed fetch says nothing either — the marks just stay as they were.
+   */
+  const [live, setLive] = useState(() => isMarketOpen(bookRegion));
+  const openRef = useRef(open);
+  openRef.current = open;
+  useEffect(() => {
+    let alive = true;
+    const tick = () => {
+      const on = isMarketOpen(bookRegion);
+      setLive(on);
+      if (!on || document.visibilityState !== "visible") return;
+      if (markedAgo() < LIVE_EVERY_MS || !openRef.current.length) return;
+      noteMarked();
+      markOpenPositions(openRef.current).then(({ marked }) => {
+        if (alive && marked.length) mergeMarks(marked);
+      });
+    };
+    const id = setInterval(tick, 60 * 1000);
+    document.addEventListener("visibilitychange", tick);
+    tick();
+    return () => {
+      alive = false;
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", tick);
+    };
+  }, [bookRegion, mergeMarks]);
+
   const refresh = async () => {
     setRefreshing(true);
     try {
+      noteMarked();
       const { marked, error } = await markOpenPositions(open);
       if (marked.length) mergeMarks(marked);
       // Quotes are best-effort — the journal is fully usable without a mark,
@@ -151,8 +193,9 @@ export default function HoldingsPage() {
        * Refresh is already the action that means "go and look at the market",
        * and reading a week of closes for the handful of symbols on this screen
        * costs one request beside the one just made. Attached here it also
-       * cannot surprise anybody: nothing reaches the network on this page
-       * without the user asking it to.
+       * cannot surprise anybody: the path is only measured when the user asks.
+       * (Prices alone refresh by themselves while the market is open — see
+       * the live tick above.)
        *
        * Deliberately last, and deliberately silent. A mark that arrived is
        * worth more than a badge that did not, so this must never be able to
@@ -194,6 +237,7 @@ journalName={profile?.journal_name}
       closed={closed}
       diary={diary}
       onRefresh={refresh}
+      live={live}
       onAttachChart={saveDiaryEntry}
       onRemoveChart={removeChartFromEntry}
       refreshing={refreshing}

@@ -316,7 +316,7 @@ export default function Holdings({
   open, closed, diary = [], journalName = "", onRefresh, refreshing, onAckBreakeven,
   onEditTrade, onExitTrade, onDeleteTrade, onAttachChart, onRemoveChart,
   onFixSoldSnapshots, splitPlan: splitPlanRows = [], onFixSplits,
-  splitsUnsure = [], accountSize = 0,
+  splitsUnsure = [], accountSize = 0, live = false,
 }) {
   const [detailId, setDetailId] = useState(null);
   const [acked, setAcked] = useState([]);
@@ -1290,6 +1290,9 @@ export default function Holdings({
           <div className="eyebrow">Holdings</div>
           <div className="ps-sub">
             {rows.length} held · valued at the last CMP fetched, so P&amp;L moves with the market
+            {/* Only while it is true: the page refreshes prices by itself
+                during the session, and nowhere else says so. */}
+            {live && rows.length > 0 && <> · updating every 5 minutes while the market is open</>}
             {flagged.size > 0 && (
               <>
                 {" · "}
