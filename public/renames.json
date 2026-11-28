@@ -1,5 +1,5 @@
 {
- "built": "2026-11-23",
+ "built": "2026-11-28",
  "renames": {
   "BSE:ABCOTS": {
    "to": "ABCIND",
@@ -109,6 +109,10 @@
    "to": "ICICILIFE",
    "since": "2026-10-28"
   },
+  "NSE:LAL": {
+   "to": "MONTEIL",
+   "since": "2026-11-28"
+  },
   "NSE:MANBRO": {
    "to": "KDGREEN",
    "since": "2026-10-28"
@@ -128,6 +132,10 @@
   "NSE:SILLYMONKS": {
    "to": "CRESTO",
    "since": "2026-10-28"
+  },
+  "NSE:UMIYA-MRO": {
+   "to": "MROTEK",
+   "since": "2026-11-28"
   },
   "NSE:VIRAT": {
    "to": "BRAHMVIRAT",
